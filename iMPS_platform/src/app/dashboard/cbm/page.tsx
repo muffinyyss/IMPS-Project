@@ -16,8 +16,22 @@ import NoData from "@/app/dashboard/components/NoData";
 
 import React, { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import useLanguage, { type Lang } from "@/utils/useLanguage";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
+
+// ==================== TRANSLATIONS ====================
+const T = {
+  errInitFormat: { th: "ผิดรูปแบบข้อมูล init", en: "Invalid init data format" },
+  errSse: {
+    th: "SSE หลุดการเชื่อมต่อ (กำลังพยายามเชื่อมใหม่อัตโนมัติ)",
+    en: "SSE connection lost (reconnecting automatically)",
+  },
+  noData: { th: "ไม่มีข้อมูล", en: "No data" },
+  loadingData: { th: "กำลังโหลดข้อมูล...", en: "Loading data..." },
+  lastUpdated: { th: "อัปเดตล่าสุด:", en: "Last updated:" },
+} as const;
+const t = (k: keyof typeof T, lang: Lang) => T[k][lang];
 
 /** shape ของ hardware config ที่ดึงจาก charger document */
 type HardwareConfig = {
@@ -98,6 +112,7 @@ export default function SalesPage() {
   const [SN, setSN] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const { lang } = useLanguage();
 
   // hardware config ที่ดึงตรงจาก charger document (แยกจาก SSE)
   const [hwConfig, setHwConfig] = useState<HardwareConfig | null>(null);
@@ -161,7 +176,7 @@ export default function SalesPage() {
         setLoading(false);
         setErr(null);
       } catch {
-        setErr("ผิดรูปแบบข้อมูล init");
+        setErr("errInitFormat");
         setLoading(false);
       }
     };
@@ -181,7 +196,7 @@ export default function SalesPage() {
 
     es.onerror = () => {
       clearTimeout(noDataTimer);
-      setErr("SSE หลุดการเชื่อมต่อ (กำลังพยายามเชื่อมใหม่อัตโนมัติ)");
+      setErr("errSse");
       setLoading(false);
     };
 
@@ -269,7 +284,7 @@ export default function SalesPage() {
   // ── wrapper: ถ้า disabled → เทา + pointer-events ปิด
   function DisabledWrapper({
     disabled,
-    label = "ไม่มีข้อมูล",
+    label = t("noData", lang),
     children,
   }: {
     disabled: boolean;
@@ -302,14 +317,14 @@ export default function SalesPage() {
   return (
     <div className="tw-mt-8 tw-mb-4">
       {err && (
-        <div className="tw-mt-2 tw-text-sm tw-text-red-500">{err}</div>
+        <div className="tw-mt-2 tw-text-sm tw-text-red-500">{t(err as keyof typeof T, lang)}</div>
       )}
 
-      <LoadingOverlay show={loading} text="กำลังโหลดข้อมูล..." />
+      <LoadingOverlay show={loading} text={t("loadingData", lang)} />
 
       {lastUpdated && (
         <span className="tw-text-xs !tw-text-blue-gray-500">
-          อัปเดตล่าสุด: {lastUpdated}
+          {t("lastUpdated", lang)} {lastUpdated}
         </span>
       )}
 

@@ -1,6 +1,27 @@
 "use client";
 import React, { useState } from "react";
 import { ModuleResult } from "../../lib/api";
+import useLanguage, { type Lang } from "@/utils/useLanguage";
+
+const T = {
+  loading: { th: "กำลังโหลด...", en: "Loading..." },
+  headerTitle: { th: "AI-Module Detection — ตรวจสอบอินพุตด้วยตนเอง", en: "AI-Module Detection — Manual Input Inspection" },
+  headerSub: {
+    th: "32 ฟิลด์ telemetry · 22 AI conditions · Ensemble(AE + 1D-CNN + BiLSTM + Transformer + DNN)",
+    en: "32 telemetry fields · 22 AI conditions · Ensemble(AE + 1D-CNN + BiLSTM + Transformer + DNN)",
+  },
+  error: { th: "ผิดพลาด", en: "Error" },
+  liveData: { th: "ข้อมูลสด", en: "Live data" },
+  inputFields: { th: "📥 ฟิลด์ข้อมูล Telemetry (32)", en: "📥 Telemetry Input Fields (32)" },
+  all: { th: "ทั้งหมด", en: "All" },
+  aiConditions: { th: "🧠 AI Detection Conditions (C01–C22)", en: "🧠 AI Detection Conditions (C01–C22)" },
+  anomalyFlags: { th: "Anomaly Flags", en: "Anomaly Flags" },
+  criticalCond: { th: "Condition วิกฤต", en: "Critical Cond." },
+  warningCond: { th: "Condition เตือน", en: "Warning Cond." },
+  flags: { th: "Flags", en: "Flags" },
+} as const;
+
+const t = (k: keyof typeof T, lang: Lang) => T[k][lang];
 
 interface Props {
   data: ModuleResult | null;
@@ -184,6 +205,7 @@ function CondBadge({ cond, status }: { cond: typeof CONDITIONS[0]; status: "OK" 
 // ── Main component ────────────────────────────────────────────────────────
 export default function M4AiDetectionTab({ data, countdown, isPaused, onTogglePause }: Props) {
   const [activeGroup, setActiveGroup] = useState<string | null>(null);
+  const { lang } = useLanguage();
   const d = (data as any)?.data ?? {};
   const anomalyFlags = (data as any)?.anomaly_flags ?? 0;
   const groups = Array.from(new Set(INPUT_FIELDS.map((f) => f.group)));
@@ -197,7 +219,7 @@ export default function M4AiDetectionTab({ data, countdown, isPaused, onTogglePa
   const warnCount = condStatuses.filter((s) => s === "WARN").length;
 
   if (!data) return (
-    <div style={{ padding:40, textAlign:"center", color:"#94a3b8", fontSize:".8em" }}>กำลังโหลด...</div>
+    <div style={{ padding:40, textAlign:"center", color:"#94a3b8", fontSize:".8em" }}>{t("loading", lang)}</div>
   );
 
   return (
@@ -207,21 +229,21 @@ export default function M4AiDetectionTab({ data, countdown, isPaused, onTogglePa
       <div style={{ background:"#fff", borderRadius:12, border:"1px solid #e2e8f0", padding:"16px 20px", display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:10 }}>
         <div>
           <div style={{ fontSize:".62em", fontWeight:700, color:"#718096", textTransform:"uppercase", letterSpacing:"2px", marginBottom:4 }}>
-            AI-Module Detection — Manual Input Inspection
+            {t("headerTitle", lang)}
           </div>
           <div style={{ fontSize:".72em", color:"#2d3748" }}>
-            32 telemetry fields · 22 AI conditions · Ensemble(AE + 1D-CNN + BiLSTM + Transformer + DNN)
+            {t("headerSub", lang)}
           </div>
         </div>
         <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
           <div style={{ display:"flex", alignItems:"center", gap:6 }}>
             <div style={{ width:8, height:8, borderRadius:"50%", background: data.error ? "#dc2626" : "#22c55e", boxShadow: !data.error ? "0 0 6px #22c55e" : undefined }} />
-            <span style={{ fontSize:".65em", color:"#718096" }}>{data.error ? "Error" : "Live data"}</span>
+            <span style={{ fontSize:".65em", color:"#718096" }}>{data.error ? t("error", lang) : t("liveData", lang)}</span>
           </div>
           {[
             { l:`${critCount} CRIT`, bg:"rgba(239,68,68,.1)", c:"#dc2626" },
             { l:`${warnCount} WARN`, bg:"rgba(217,119,6,.1)", c:"#d97706" },
-            { l:`${anomalyFlags} Flags`, bg:"rgba(100,116,139,.08)", c:"#64748b" },
+            { l:`${anomalyFlags} ${t("flags", lang)}`, bg:"rgba(100,116,139,.08)", c:"#64748b" },
           ].map((item) => (
             <span key={item.l} style={{ fontSize:".6em", fontWeight:700, padding:"2px 8px", borderRadius:10, background:item.bg, color:item.c }}>
               {item.l}
@@ -234,7 +256,7 @@ export default function M4AiDetectionTab({ data, countdown, isPaused, onTogglePa
       <div style={{ background:"#fff", borderRadius:12, border:"1px solid #e2e8f0", padding:"16px 20px" }}>
         <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12, flexWrap:"wrap", gap:8 }}>
           <div style={{ fontSize:".62em", fontWeight:700, color:"#718096", textTransform:"uppercase", letterSpacing:"2px" }}>
-            📥 Telemetry Input Fields (32)
+            {t("inputFields", lang)}
           </div>
           {/* Group filter pills */}
           <div style={{ display:"flex", flexWrap:"wrap", gap:4 }}>
@@ -244,7 +266,7 @@ export default function M4AiDetectionTab({ data, countdown, isPaused, onTogglePa
                 background: !activeGroup ? "#2d3748" : "#f1f5f9",
                 color: !activeGroup ? "#fff" : "#64748b",
               }}
-            >All</button>
+            >{t("all", lang)}</button>
             {groups.map((g) => (
               <button key={g}
                 onClick={() => setActiveGroup(activeGroup === g ? null : g)}
@@ -270,7 +292,7 @@ export default function M4AiDetectionTab({ data, countdown, isPaused, onTogglePa
       <div style={{ background:"#fff", borderRadius:12, border:"1px solid #e2e8f0", padding:"16px 20px" }}>
         <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12, flexWrap:"wrap", gap:8 }}>
           <div style={{ fontSize:".62em", fontWeight:700, color:"#718096", textTransform:"uppercase", letterSpacing:"2px" }}>
-            🧠 AI Detection Conditions (C01–C22)
+            {t("aiConditions", lang)}
           </div>
           <div style={{ display:"flex", gap:8, fontSize:".6em" }}>
             {[
@@ -295,9 +317,9 @@ export default function M4AiDetectionTab({ data, countdown, isPaused, onTogglePa
       {/* Summary */}
       <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10 }}>
         {[
-          { l:"Anomaly Flags",  v:`${anomalyFlags}/22`,  c: anomalyFlags>0?"#dc2626":"#22c55e" },
-          { l:"Critical Cond.", v:`${critCount}`,         c: critCount>0?"#dc2626":"#22c55e" },
-          { l:"Warning Cond.",  v:`${warnCount}`,         c: warnCount>0?"#d97706":"#22c55e" },
+          { l:t("anomalyFlags", lang),  v:`${anomalyFlags}/22`,  c: anomalyFlags>0?"#dc2626":"#22c55e" },
+          { l:t("criticalCond", lang), v:`${critCount}`,         c: critCount>0?"#dc2626":"#22c55e" },
+          { l:t("warningCond", lang),  v:`${warnCount}`,         c: warnCount>0?"#d97706":"#22c55e" },
         ].map((item) => (
           <div key={item.l} style={{ background:"#fff", borderRadius:10, border:"1px solid #e2e8f0", padding:"12px 14px", textAlign:"center" }}>
             <div style={{ fontSize:".55em", color:"#94a3b8", fontWeight:600, textTransform:"uppercase", letterSpacing:"1px", marginBottom:4 }}>{item.l}</div>

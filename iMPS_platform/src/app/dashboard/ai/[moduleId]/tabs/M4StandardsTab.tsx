@@ -1,8 +1,45 @@
 "use client";
 import React, { useState } from "react";
+import useLanguage, { type Lang } from "@/utils/useLanguage";
+
+const T = {
+  introTitle: {
+    th: "📚 อ้างอิงมาตรฐาน — M4 Abnormal Power Delivery",
+    en: "📚 Standards Reference — M4 Abnormal Power Delivery",
+  },
+  introDesc: {
+    th: "M4 ตรวจจับ 22 conditions โดย map กับมาตรฐานสากล 5 ฉบับ ทุก condition มีระบุ Standard, Threshold และ Equipment group",
+    en: "M4 detects 22 conditions mapped to 5 international standards. Every condition specifies its Standard, Threshold and Equipment group.",
+  },
+  deratingTitle: {
+    th: "🔥 ตาราง CCS Cable Derating (Phoenix Contact) — Conditions C17, C18",
+    en: "🔥 CCS Cable Derating Table (Phoenix Contact) — Conditions C17, C18",
+  },
+  deratingNote: {
+    th: "Boost mode: มีข้อจำกัดด้านระยะเวลาเมื่อใช้งานเกินพิกัดต่อเนื่อง หากเกินขีดจำกัดระบบจะ derating อัตโนมัติ",
+    en: "Boost mode: duration limits apply when operating above continuous rating. Exceeding limits triggers automatic derating.",
+  },
+  conditionsTitle: {
+    th: "📋 ทั้งหมด 22 Conditions — การ Map กับมาตรฐาน",
+    en: "📋 All 22 Conditions — Standard Mapping",
+  },
+  hTemp: { th: "อุณหภูมิ", en: "Temp" },
+  hContinuous: { th: "ต่อเนื่อง", en: "Continuous" },
+  h30min: { th: "30 นาที", en: "30 min" },
+  h10min: { th: "10 นาที", en: "10 min" },
+  h35min: { th: "3–5 นาที", en: "3–5 min" },
+  hType: { th: "ประเภท", en: "Type" },
+  hCondition: { th: "Condition", en: "Condition" },
+  hThreshold: { th: "เกณฑ์", en: "Threshold" },
+  hStandard: { th: "มาตรฐาน", en: "Standard" },
+  hEquipment: { th: "อุปกรณ์", en: "Equipment" },
+} as const;
+
+const t = (k: keyof typeof T, lang: Lang) => T[k][lang];
 
 export default function M4StandardsTab() {
   const [activeStd, setActiveStd] = useState<string | null>(null);
+  const { lang } = useLanguage();
 
   const standards = [
     {
@@ -99,10 +136,9 @@ export default function M4StandardsTab() {
 
       {/* Intro */}
       <div style={{ background: "#fff", borderRadius: 12, border: "1px solid #e2e8f0", padding: "16px 20px" }}>
-        <div style={{ fontSize: ".72em", fontWeight: 800, marginBottom: 8 }}>📚 Standards Reference — M4 Abnormal Power Delivery</div>
+        <div style={{ fontSize: ".72em", fontWeight: 800, marginBottom: 8 }}>{t("introTitle", lang)}</div>
         <div style={{ fontSize: ".65em", color: "#718096", lineHeight: 1.7 }}>
-          M4 ตรวจจับ 22 conditions โดย map กับมาตรฐานสากล 5 ฉบับ
-          ทุก condition มีระบุ Standard, Threshold และ Equipment group
+          {t("introDesc", lang)}
         </div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
           {[
@@ -164,13 +200,13 @@ export default function M4StandardsTab() {
       {/* CCS Derating Table */}
       <div style={{ background: "#fff", borderRadius: 12, border: "1px solid #e2e8f0", padding: "16px 20px" }}>
         <div style={{ fontSize: ".62em", fontWeight: 700, color: "#718096", textTransform: "uppercase", letterSpacing: "2px", marginBottom: 12 }}>
-          🔥 CCS Cable Derating Table (Phoenix Contact) — Conditions C17, C18
+          {t("deratingTitle", lang)}
         </div>
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: ".62em", fontFamily: "'JetBrains Mono',monospace" }}>
             <thead>
               <tr style={{ background: "#f8fafc" }}>
-                {["Temp", "Continuous", "30 min", "10 min", "3–5 min"].map((h) => (
+                {[t("hTemp", lang), t("hContinuous", lang), t("h30min", lang), t("h10min", lang), t("h35min", lang)].map((h) => (
                   <th key={h} style={{ padding: "8px 12px", textAlign: "left", fontWeight: 700, color: "#718096", borderBottom: "1px solid #e2e8f0" }}>{h}</th>
                 ))}
               </tr>
@@ -189,20 +225,20 @@ export default function M4StandardsTab() {
           </table>
         </div>
         <div style={{ marginTop: 8, fontSize: ".58em", color: "#94a3b8" }}>
-          Boost mode: duration limits apply when operating above continuous rating. Exceeding limits triggers automatic derating.
+          {t("deratingNote", lang)}
         </div>
       </div>
 
       {/* Condition mapping table */}
       <div style={{ background: "#fff", borderRadius: 12, border: "1px solid #e2e8f0", padding: "16px 20px" }}>
         <div style={{ fontSize: ".62em", fontWeight: 700, color: "#718096", textTransform: "uppercase", letterSpacing: "2px", marginBottom: 12 }}>
-          📋 All 22 Conditions — Standard Mapping
+          {t("conditionsTitle", lang)}
         </div>
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: ".6em" }}>
             <thead>
               <tr style={{ background: "#f8fafc" }}>
-                {["#", "Type", "Condition", "Threshold", "Standard", "Equipment"].map((h) => (
+                {["#", t("hType", lang), t("hCondition", lang), t("hThreshold", lang), t("hStandard", lang), t("hEquipment", lang)].map((h) => (
                   <th key={h} style={{ padding: "6px 10px", textAlign: "left", fontWeight: 700, color: "#718096", borderBottom: "1px solid #e2e8f0", whiteSpace: "nowrap" }}>{h}</th>
                 ))}
               </tr>

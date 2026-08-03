@@ -7,6 +7,30 @@ import { useAutoRefresh } from "../hooks/useAutoRefresh";
 import { AreaChart, Area, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
 import "../ai-theme.css";
 import { useStation } from "../hooks/useStation";
+import useLanguage, { type Lang } from "@/utils/useLanguage";
+
+// ==================== TRANSLATIONS ====================
+const T = {
+    systemHealth: { th: "สุขภาพระบบ", en: "System Health" },
+    activeStation: { th: "สถานีที่เลือก", en: "Active Station" },
+    dataPoints: { th: "จำนวนข้อมูล", en: "Data Points" },
+    timeRange: { th: "ช่วงเวลา", en: "Time Range" },
+    zoneGood: { th: "ดี ≥80%", en: "Good ≥80%" },
+    zoneMonitor: { th: "เฝ้าระวัง 60%", en: "Monitor 60%" },
+    zoneInspect: { th: "ตรวจสอบ 40%", en: "Inspect 40%" },
+    systemHealthPct: { th: "สุขภาพระบบ %", en: "System Health %" },
+    weightedAvg: { th: "ค่าเฉลี่ยถ่วงน้ำหนัก —", en: "Weighted avg —" },
+    range24h: { th: "24 ชม.", en: "24 hrs" },
+    range7d: { th: "7 วัน", en: "7 days" },
+    range30d: { th: "30 วัน", en: "30 days" },
+    perModuleHealth: { th: "สุขภาพรายโมดูล", en: "Per-Module Health" },
+    modulesSelected: { th: "โมดูลที่เลือก", en: "modules selected" },
+    updated: { th: "อัปเดต", en: "Updated" },
+    loading: { th: "กำลังโหลด...", en: "Loading..." },
+    noData: { th: "ไม่มีข้อมูล", en: "No data" },
+    loadError: { th: "ไม่สามารถโหลด Health History ได้", en: "Failed to load Health History" },
+} as const;
+const t = (k: keyof typeof T, lang: Lang) => T[k][lang];
 
 function AnimatedNumber({ value, decimals = 0 }: { value: number | null; decimals?: number }) {
     const [display, setDisplay] = useState(value ?? 0);
@@ -34,19 +58,19 @@ function Sparkline({ data, color, height = 20 }: { data: number[]; color: string
     return (<svg width={w} height={height} style={{ overflow: "visible", flexShrink: 0 }}><polyline points={pts} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>);
 }
 
-function KpiSummaryCards({ currentHealth, previousHealth, dataCount, range, activeSn }: { currentHealth: number | null; previousHealth: number | null; dataCount: number; range: string; activeSn: string; }) {
+function KpiSummaryCards({ currentHealth, previousHealth, dataCount, range, activeSn, lang }: { currentHealth: number | null; previousHealth: number | null; dataCount: number; range: string; activeSn: string; lang: Lang; }) {
     const rangeLabel = range === "daily" ? "24h" : range === "weekly" ? "7d" : "30d";
     const healthColor = currentHealth == null ? "#fff" : currentHealth >= 75 ? "#34d399" : currentHealth >= 50 ? "#fbbf24" : "#f87171";
     const cards = [
-        { label: "System Health", isAnimated: true, value: currentHealth, suffix: "%", decimals: 1, valueStyle: { color: healthColor }, iconBg: "rgba(255,255,255,.10)", iconRing: "rgba(255,255,255,.15)", icon: <span className="tw-text-base">⚙️</span>, extra: <TrendBadge current={currentHealth} previous={previousHealth} /> },
-        { label: "Active Station", isAnimated: false, rawValue: activeSn || "—", valueStyle: { color: "#fff", fontSize: ".9em" }, iconBg: "rgba(255,255,255,.10)", iconRing: "rgba(255,255,255,.15)", icon: <span className="tw-text-base">⚡</span> },
-        { label: "Data Points", isAnimated: true, value: dataCount, decimals: 0, valueStyle: { color: "#60a5fa" }, iconBg: "rgba(59,130,246,.15)", iconRing: "rgba(96,165,250,.25)", icon: <span className="tw-text-base">📊</span> },
-        { label: "Time Range", isAnimated: false, rawValue: rangeLabel, valueStyle: { color: "#fbbf24" }, iconBg: "rgba(234,179,8,.15)", iconRing: "rgba(251,191,36,.25)", icon: <span className="tw-text-base">🕐</span> },
+        { id: "health", label: t("systemHealth", lang), isAnimated: true, value: currentHealth, suffix: "%", decimals: 1, valueStyle: { color: healthColor }, iconBg: "rgba(255,255,255,.10)", iconRing: "rgba(255,255,255,.15)", icon: <span className="tw-text-base">⚙️</span>, extra: <TrendBadge current={currentHealth} previous={previousHealth} /> },
+        { id: "station", label: t("activeStation", lang), isAnimated: false, rawValue: activeSn || "—", valueStyle: { color: "#fff", fontSize: ".9em" }, iconBg: "rgba(255,255,255,.10)", iconRing: "rgba(255,255,255,.15)", icon: <span className="tw-text-base">⚡</span> },
+        { id: "points", label: t("dataPoints", lang), isAnimated: true, value: dataCount, decimals: 0, valueStyle: { color: "#60a5fa" }, iconBg: "rgba(59,130,246,.15)", iconRing: "rgba(96,165,250,.25)", icon: <span className="tw-text-base">📊</span> },
+        { id: "range", label: t("timeRange", lang), isAnimated: false, rawValue: rangeLabel, valueStyle: { color: "#fbbf24" }, iconBg: "rgba(234,179,8,.15)", iconRing: "rgba(251,191,36,.25)", icon: <span className="tw-text-base">🕐</span> },
     ];
     return (
         <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-4 tw-gap-2 sm:tw-gap-2.5 tw-mb-4 sm:tw-mb-5">
             {cards.map((card) => (
-                <div key={card.label} className="tw-group tw-relative tw-overflow-hidden tw-rounded-xl sm:tw-rounded-2xl tw-bg-gradient-to-br tw-from-gray-900 tw-via-gray-800 tw-to-gray-900 tw-px-3 sm:tw-px-5 tw-py-3 sm:tw-py-4 tw-ring-1 tw-ring-white/10 tw-shadow-lg hover:tw-shadow-xl tw-transition-all tw-duration-300 hover:tw--translate-y-0.5">
+                <div key={card.id} className="tw-group tw-relative tw-overflow-hidden tw-rounded-xl sm:tw-rounded-2xl tw-bg-gradient-to-br tw-from-gray-900 tw-via-gray-800 tw-to-gray-900 tw-px-3 sm:tw-px-5 tw-py-3 sm:tw-py-4 tw-ring-1 tw-ring-white/10 tw-shadow-lg hover:tw-shadow-xl tw-transition-all tw-duration-300 hover:tw--translate-y-0.5">
                     <div className="tw-absolute tw-inset-0 tw-opacity-[0.03] tw-pointer-events-none" style={{ backgroundImage: "radial-gradient(circle at 1px 1px, white 1px, transparent 0)", backgroundSize: "20px 20px" }} />
                     <div className="tw-relative tw-z-10">
                         <div className="tw-flex tw-items-center tw-gap-1.5 sm:tw-gap-2 tw-mb-2">
@@ -76,7 +100,7 @@ function ModulePill({ mod, sparkData, current, active, onClick }: { mod: typeof 
     );
 }
 
-const CBM_ZONES = [{ y: 80, label: "Good ≥80%", color: "#059669" }, { y: 60, label: "Monitor 60%", color: "#d97706" }, { y: 40, label: "Inspect 40%", color: "#ea580c" }];
+const CBM_ZONES = [{ y: 80, labelKey: "zoneGood" as const, color: "#059669" }, { y: 60, labelKey: "zoneMonitor" as const, color: "#d97706" }, { y: 40, labelKey: "zoneInspect" as const, color: "#ea580c" }];
 
 function CustomTooltip({ active, payload, label }: any) {
     if (!active || !payload?.length) return null;
@@ -110,11 +134,12 @@ export default function HistoryPage() {
     const [activeMods, setActiveMods] = useState<Set<string>>(new Set(MODULES.map((m) => m.key)));
     const { activeSn } = useStation();
     const { tick, countdown, refresh } = useAutoRefresh(120);
+    const { lang } = useLanguage();
 
     const loadData = useCallback(async () => {
         setLoading(true); setError(null);
         try { const res = await aiApi.healthHistory(range); const list = (res as any)?.data ?? (Array.isArray(res) ? res : []); setData(list); setLastUpdate(new Date().toLocaleTimeString("th-TH")); }
-        catch { setError("ไม่สามารถโหลด Health History ได้"); }
+        catch { setError("loadError"); }
         finally { setLoading(false); }
     }, [range]);
 
@@ -128,7 +153,7 @@ export default function HistoryPage() {
     const currentHealth = systemChartData[systemChartData.length - 1]?.value ?? null;
     const previousHealth = systemChartData[Math.max(0, systemChartData.length - 10)]?.value ?? null;
 
-    const LoadingSpinner = () => (<div className="tw-flex tw-items-center tw-justify-center tw-h-48 sm:tw-h-64 tw-gap-3"><div className="tw-w-6 tw-h-6 tw-rounded-full tw-border-2 tw-border-gray-200 tw-border-t-gray-900 tw-animate-spin" /><span className="tw-text-sm tw-text-gray-400">กำลังโหลด...</span></div>);
+    const LoadingSpinner = () => (<div className="tw-flex tw-items-center tw-justify-center tw-h-48 sm:tw-h-64 tw-gap-3"><div className="tw-w-6 tw-h-6 tw-rounded-full tw-border-2 tw-border-gray-200 tw-border-t-gray-900 tw-animate-spin" /><span className="tw-text-sm tw-text-gray-400">{t("loading", lang)}</span></div>);
 
     return (
         <div className="ai-root tw-min-h-screen">
@@ -150,30 +175,30 @@ export default function HistoryPage() {
                 </div>
                 <div className="tw-flex tw-items-center tw-gap-2">
                     <button onClick={refresh} className="tw-flex tw-items-center tw-gap-1.5 tw-px-3 tw-py-1.5 tw-text-xs tw-font-bold tw-bg-gray-900 hover:tw-bg-black tw-text-white tw-rounded-lg tw-transition-colors" style={{ fontFamily: "'JetBrains Mono', monospace" }}>↻ {countdown}s</button>
-                    {lastUpdate && <span className="tw-text-xs tw-text-gray-400 tw-hidden sm:tw-inline">อัปเดต {lastUpdate}</span>}
+                    {lastUpdate && <span className="tw-text-xs tw-text-gray-400 tw-hidden sm:tw-inline">{t("updated", lang)} {lastUpdate}</span>}
                 </div>
             </div>
 
             <div className="tw-p-3 sm:tw-p-4 lg:tw-p-6 tw-flex tw-flex-col tw-gap-4 sm:tw-gap-5">
-                {error && <div className="tw-p-3 sm:tw-p-4 tw-bg-red-50 tw-border tw-border-red-200 tw-rounded-xl tw-text-red-700 tw-text-sm">⚠ {error}</div>}
+                {error && <div className="tw-p-3 sm:tw-p-4 tw-bg-red-50 tw-border tw-border-red-200 tw-rounded-xl tw-text-red-700 tw-text-sm">⚠ {t(error as keyof typeof T, lang)}</div>}
 
-                <KpiSummaryCards currentHealth={currentHealth} previousHealth={previousHealth} dataCount={data.length} range={range} activeSn={activeSn} />
+                <KpiSummaryCards currentHealth={currentHealth} previousHealth={previousHealth} dataCount={data.length} range={range} activeSn={activeSn} lang={lang} />
 
                 {/* System Health Chart */}
                 <div className="tw-bg-white tw-rounded-xl sm:tw-rounded-2xl tw-border tw-border-gray-100 tw-shadow-sm tw-overflow-hidden">
                     <div className="tw-px-4 sm:tw-px-6 tw-py-4 sm:tw-py-5 tw-bg-gradient-to-r tw-from-white tw-to-blue-gray-50/30 tw-border-b tw-border-gray-100">
                         <div className="tw-flex tw-items-start sm:tw-items-center tw-justify-between tw-flex-wrap tw-gap-2 sm:tw-gap-3">
                             <div>
-                                <div className="tw-text-sm tw-font-bold tw-text-gray-800 tw-uppercase tw-tracking-wide">System Health %</div>
-                                <div className="tw-text-xs tw-text-gray-400 tw-mt-0.5">Weighted avg — {range === "daily" ? "24 ชม." : range === "weekly" ? "7 วัน" : "30 วัน"}</div>
+                                <div className="tw-text-sm tw-font-bold tw-text-gray-800 tw-uppercase tw-tracking-wide">{t("systemHealthPct", lang)}</div>
+                                <div className="tw-text-xs tw-text-gray-400 tw-mt-0.5">{t("weightedAvg", lang)} {range === "daily" ? t("range24h", lang) : range === "weekly" ? t("range7d", lang) : t("range30d", lang)}</div>
                             </div>
                             <div className="tw-hidden sm:tw-flex tw-gap-3 sm:tw-gap-4">
-                                {CBM_ZONES.map((z) => (<div key={z.y} className="tw-flex tw-items-center tw-gap-1.5"><div className="tw-w-4 sm:tw-w-5 tw-border-t-2 tw-border-dashed" style={{ borderColor: z.color }} /><span className="tw-text-[10px] sm:tw-text-xs tw-text-gray-400">{z.label}</span></div>))}
+                                {CBM_ZONES.map((z) => (<div key={z.y} className="tw-flex tw-items-center tw-gap-1.5"><div className="tw-w-4 sm:tw-w-5 tw-border-t-2 tw-border-dashed" style={{ borderColor: z.color }} /><span className="tw-text-[10px] sm:tw-text-xs tw-text-gray-400">{t(z.labelKey, lang)}</span></div>))}
                             </div>
                         </div>
                     </div>
                     <div className="tw-p-3 sm:tw-p-5">
-                        {loading ? <LoadingSpinner /> : systemChartData.length === 0 ? (<div className="tw-flex tw-items-center tw-justify-center tw-h-48 sm:tw-h-64 tw-text-gray-400 tw-text-sm">ไม่มีข้อมูล</div>) : (
+                        {loading ? <LoadingSpinner /> : systemChartData.length === 0 ? (<div className="tw-flex tw-items-center tw-justify-center tw-h-48 sm:tw-h-64 tw-text-gray-400 tw-text-sm">{t("noData", lang)}</div>) : (
                             <ResponsiveContainer width="100%" height={220}>
                                 <AreaChart data={systemChartData} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
                                     <defs><linearGradient id="sysGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#111827" stopOpacity={0.2} /><stop offset="95%" stopColor="#111827" stopOpacity={0} /></linearGradient></defs>
@@ -182,7 +207,7 @@ export default function HistoryPage() {
                                     <YAxis domain={[0, 100]} tick={{ fontSize: 10, fill: "#94a3b8" }} tickLine={false} axisLine={false} />
                                     <Tooltip content={<CustomTooltip />} />
                                     {CBM_ZONES.map((z) => (<ReferenceLine key={z.y} y={z.y} stroke={z.color} strokeDasharray="4 3" strokeWidth={1.5} />))}
-                                    <Area type="monotone" dataKey="value" name="System Health" stroke="#111827" strokeWidth={2.5} fill="url(#sysGrad)" dot={false} activeDot={{ r: 4, fill: "#111827", stroke: "#fff", strokeWidth: 2 }} connectNulls />
+                                    <Area type="monotone" dataKey="value" name={t("systemHealth", lang)} stroke="#111827" strokeWidth={2.5} fill="url(#sysGrad)" dot={false} activeDot={{ r: 4, fill: "#111827", stroke: "#fff", strokeWidth: 2 }} connectNulls />
                                 </AreaChart>
                             </ResponsiveContainer>
                         )}
@@ -194,8 +219,8 @@ export default function HistoryPage() {
                     <div className="tw-px-4 sm:tw-px-6 tw-py-4 sm:tw-py-5 tw-bg-gradient-to-r tw-from-white tw-to-blue-gray-50/30 tw-border-b tw-border-gray-100">
                         <div className="tw-flex tw-items-center tw-justify-between tw-mb-3">
                             <div>
-                                <div className="tw-text-sm tw-font-bold tw-text-gray-800 tw-uppercase tw-tracking-wide">Per-Module Health</div>
-                                <div className="tw-text-xs tw-text-gray-400 tw-mt-0.5">{Array.from(activeMods).length} modules selected</div>
+                                <div className="tw-text-sm tw-font-bold tw-text-gray-800 tw-uppercase tw-tracking-wide">{t("perModuleHealth", lang)}</div>
+                                <div className="tw-text-xs tw-text-gray-400 tw-mt-0.5">{Array.from(activeMods).length} {t("modulesSelected", lang)}</div>
                             </div>
                         </div>
                         <div className="tw-flex tw-flex-wrap tw-gap-1.5 sm:tw-gap-2">
@@ -203,7 +228,7 @@ export default function HistoryPage() {
                         </div>
                     </div>
                     <div className="tw-p-3 sm:tw-p-5">
-                        {loading ? <LoadingSpinner /> : moduleChartData.length === 0 ? (<div className="tw-flex tw-items-center tw-justify-center tw-h-48 tw-text-gray-400 tw-text-sm">ไม่มีข้อมูล</div>) : (
+                        {loading ? <LoadingSpinner /> : moduleChartData.length === 0 ? (<div className="tw-flex tw-items-center tw-justify-center tw-h-48 tw-text-gray-400 tw-text-sm">{t("noData", lang)}</div>) : (
                             <ResponsiveContainer width="100%" height={240}>
                                 <LineChart data={moduleChartData} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
                                     <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />

@@ -16,6 +16,20 @@ import {
 import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
 import { apiFetch } from "@/utils/api";
 import { UserRole } from "@/utils/roles";
+import useLanguage, { type Lang } from "@/utils/useLanguage";
+
+const T = {
+    saving: { th: "กำลังบันทึก...", en: "Saving..." },
+    addNewUser: { th: "เพิ่มผู้ใช้ใหม่", en: "Add New User" },
+    roleOwner: { th: "เจ้าของ", en: "Owner" },
+    roleAdmin: { th: "ผู้ดูแลระบบ", en: "Admin" },
+    roleTechnician: { th: "ช่างเทคนิค", en: "Technician" },
+    roleCS: { th: "CS", en: "CS" },
+    rolePlanner: { th: "ผู้วางแผน", en: "Planner" },
+    roleEngineer: { th: "วิศวกร", en: "Engineer" },
+} as const;
+
+const t = (k: keyof typeof T, lang: Lang) => T[k][lang];
 
 export type NewUserPayload = {
     username: string;
@@ -47,6 +61,7 @@ type Props = {
 };
 
 export default function AddUserModal({ open, onClose, onSubmit, loading }: Props) {
+    const { lang } = useLanguage();
     const [form, setForm] = useState<NewUserPayload>({
         username: "",
         password: "",
@@ -135,10 +150,10 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
     return (
         <Dialog open={open} handler={resetAndClose} size="md" className="tw-relative tw-space-y-5 tw-px-8 tw-py-4">
             {/* Loading Overlay — ครอบทับ modal ตอน saving */}
-            <LoadingOverlay show={!!loading} text="กำลังบันทึก..." />
+            <LoadingOverlay show={!!loading} text={t("saving", lang)} />
 
             <DialogHeader className="tw-flex tw-items-center tw-justify-between">
-                <Typography variant="h5" color="blue-gray">Add New User</Typography>
+                <Typography variant="h5" color="blue-gray">{t("addNewUser", lang)}</Typography>
                 <Button variant="text" onClick={resetAndClose} disabled={loading}>✕</Button>
             </DialogHeader>
 
@@ -195,12 +210,12 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
                                     }}
                                     label="Role"
                                 >
-                                    <Option value="owner">Owner</Option>
-                                    <Option value="admin">Admin</Option>
-                                    <Option value="technician">Technician</Option>
-                                    <Option value="cs">CS</Option>
-                                    <Option value="planner">Planner</Option>
-                                    <Option value="engineer">Engineer</Option>
+                                    <Option value="owner">{t("roleOwner", lang)}</Option>
+                                    <Option value="admin">{t("roleAdmin", lang)}</Option>
+                                    <Option value="technician">{t("roleTechnician", lang)}</Option>
+                                    <Option value="cs">{t("roleCS", lang)}</Option>
+                                    <Option value="planner">{t("rolePlanner", lang)}</Option>
+                                    <Option value="engineer">{t("roleEngineer", lang)}</Option>
 
                                 </Select>
 

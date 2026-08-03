@@ -2,6 +2,7 @@
 import React from "react";
 import { ModuleResult } from "../../lib/api";
 import { DetCard, DetTitle, AutoPredictPanel } from "./DetectionLayout";
+import useLanguage, { type Lang } from "@/utils/useLanguage";
 
 interface Props {
   data: ModuleResult | null;
@@ -10,18 +11,42 @@ interface Props {
   onTogglePause?: () => void;
 }
 
-const ICP_STATES: Record<number, { name: string; color: string; desc: string }> = {
-  0: { name: "Inactive", color: "#6b7280", desc: "ระบบไม่ทำงาน" },
-  1: { name: "A1", color: "#94a3b8", desc: "Connector ยังไม่เสียบ (PWM off)" },
-  2: { name: "B1", color: "#60a5fa", desc: "Connector เสียบแล้ว (PWM off)" },
-  3: { name: "C1", color: "#34d399", desc: "รถพร้อมชาร์จ (PWM off)" },
-  4: { name: "D1", color: "#6ee7b7", desc: "รถพร้อม + ระบายอากาศ" },
-  5: { name: "A2", color: "#c084fc", desc: "Connector ยังไม่เสียบ (PWM on)" },
-  6: { name: "B2", color: "#38bdf8", desc: "Connector เสียบแล้ว (PWM on)" },
-  7: { name: "C2", color: "#22c55e", desc: "กำลังชาร์จอยู่" },
-  8: { name: "D2", color: "#4ade80", desc: "ชาร์จ + ระบายอากาศ" },
-  9: { name: "E", color: "#ef4444", desc: "CP=0V Fault" },
-  10: { name: "Error", color: "#dc2626", desc: "State machine error" },
+const T = {
+  noData: { th: "ไม่มีข้อมูล State Monitor", en: "No State Monitor data" },
+  past: { th: "ผ่านแล้ว", en: "past" },
+  current: { th: "ปัจจุบัน", en: "current" },
+  future: { th: "ยังไม่ถึง", en: "future" },
+  unknown: { th: "ไม่ทราบ", en: "Unknown" },
+  inferredNotDirect: { th: "อนุมานค่า (ไม่ได้อ่านโดยตรง)", en: "Inferred (not direct read)" },
+  inferred: { th: "อนุมานค่า", en: "Inferred" },
+  connectivity: { th: "การเชื่อมต่อ", en: "Connectivity" },
+  contractorStatus: { th: "สถานะ Contractor", en: "Contractor Status" },
+  powerTelemetry: { th: "ข้อมูลกำลังไฟ", en: "Power Telemetry" },
+  anomalyResults: { th: "ผลการตรวจจับความผิดปกติ", en: "Anomaly Detection Results" },
+  icpState: { th: "สถานะ ICP", en: "ICP State" },
+  uslinkState: { th: "สถานะ USLink", en: "USLink State" },
+  icpSequence: { th: "ลำดับสถานะ ICP (IEC 61851-1)", en: "ICP State Sequence (IEC 61851-1)" },
+  uslinkSequence: { th: "ลำดับสถานะ USLink (ISO 15118-2)", en: "USLink State Sequence (ISO 15118-2)" },
+  v2gSequence: {
+    th: "ลำดับการสื่อสาร V2G (ISO 15118 DC Charging)",
+    en: "V2G Communication Sequence (ISO 15118 DC Charging)",
+  },
+} as const;
+
+const tr = (k: keyof typeof T, lang: Lang) => T[k][lang];
+
+const ICP_STATES: Record<number, { name: string; color: string; desc: { th: string; en: string } }> = {
+  0: { name: "Inactive", color: "#6b7280", desc: { th: "ระบบไม่ทำงาน", en: "System inactive" } },
+  1: { name: "A1", color: "#94a3b8", desc: { th: "Connector ยังไม่เสียบ (PWM off)", en: "Connector not plugged in (PWM off)" } },
+  2: { name: "B1", color: "#60a5fa", desc: { th: "Connector เสียบแล้ว (PWM off)", en: "Connector plugged in (PWM off)" } },
+  3: { name: "C1", color: "#34d399", desc: { th: "รถพร้อมชาร์จ (PWM off)", en: "Vehicle ready to charge (PWM off)" } },
+  4: { name: "D1", color: "#6ee7b7", desc: { th: "รถพร้อม + ระบายอากาศ", en: "Vehicle ready + ventilation" } },
+  5: { name: "A2", color: "#c084fc", desc: { th: "Connector ยังไม่เสียบ (PWM on)", en: "Connector not plugged in (PWM on)" } },
+  6: { name: "B2", color: "#38bdf8", desc: { th: "Connector เสียบแล้ว (PWM on)", en: "Connector plugged in (PWM on)" } },
+  7: { name: "C2", color: "#22c55e", desc: { th: "กำลังชาร์จอยู่", en: "Charging in progress" } },
+  8: { name: "D2", color: "#4ade80", desc: { th: "ชาร์จ + ระบายอากาศ", en: "Charging + ventilation" } },
+  9: { name: "E", color: "#ef4444", desc: { th: "CP=0V Fault", en: "CP=0V Fault" } },
+  10: { name: "Error", color: "#dc2626", desc: { th: "State machine error", en: "State machine error" } },
 };
 
 const USL_STATES: Record<number, { name: string; color: string }> = {
@@ -46,11 +71,12 @@ const USL_STATES: Record<number, { name: string; color: string }> = {
 
 // ── Sequence step row (.sq-step pattern) ─────────────────────────────────
 function SequenceSteps({
-  current, states, maxId,
+  current, states, maxId, lang,
 }: {
   current: number | null;
-  states: Record<number, { name: string; color: string; desc?: string }>;
+  states: Record<number, { name: string; color: string; desc?: { th: string; en: string } }>;
   maxId: number;
+  lang: Lang;
 }) {
   return (
     <div style={{
@@ -103,7 +129,7 @@ function SequenceSteps({
         return (
           <React.Fragment key={i}>
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", minWidth: 52 }}>
-              <div style={nodeStyle} title={state.desc ?? ""}>
+              <div style={nodeStyle} title={state.desc ? state.desc[lang] : ""}>
                 {i}
               </div>
               <div style={lblStyle}>{state.name}</div>
@@ -149,9 +175,11 @@ function ContractorLed({ label, val }: { label: string; val: number | null }) {
 }
 
 export default function M7StateMonitorTab({ data, countdown, isPaused, onTogglePause }: Props) {
+  const { lang } = useLanguage();
+
   if (!data || data.error) return (
     <div style={{ padding: 40, textAlign: "center", color: "var(--color-text-secondary,#94a3b8)" }}>
-      ไม่มีข้อมูล State Monitor
+      {tr("noData", lang)}
     </div>
   );
 
@@ -177,7 +205,7 @@ export default function M7StateMonitorTab({ data, countdown, isPaused, onToggleP
           padding: 20,
           borderTop: `3px solid ${icpS?.color ?? "#6b7280"}`,
         }}>
-          <DetTitle>⚡ ICP State</DetTitle>
+          <DetTitle>⚡ {tr("icpState", lang)}</DetTitle>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <div style={{
               width: 48, height: 48, borderRadius: 12,
@@ -189,11 +217,11 @@ export default function M7StateMonitorTab({ data, countdown, isPaused, onToggleP
             }}>{d.icp_state ?? "—"}</div>
             <div>
               <div style={{ fontSize: ".9em", fontWeight: 800, color: "var(--color-text-primary,#2d3748)" }}>
-                {icpS?.name ?? "Unknown"}
+                {icpS?.name ?? tr("unknown", lang)}
               </div>
               {icpS?.desc && (
                 <div style={{ fontSize: ".65em", color: "var(--color-text-secondary,#718096)", marginTop: 2 }}>
-                  {icpS.desc}
+                  {icpS.desc[lang]}
                 </div>
               )}
               {d.icp_inferred && (
@@ -202,7 +230,7 @@ export default function M7StateMonitorTab({ data, countdown, isPaused, onToggleP
                   color: "#d97706", display: "flex", alignItems: "center", gap: 4,
                 }}>
                   <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#d97706" }} />
-                  Inferred (not direct read)
+                  {tr("inferredNotDirect", lang)}
                 </div>
               )}
             </div>
@@ -213,7 +241,7 @@ export default function M7StateMonitorTab({ data, countdown, isPaused, onToggleP
           padding: 20,
           borderTop: `3px solid ${uslS?.color ?? "#6b7280"}`,
         }}>
-          <DetTitle>🔗 USLink State</DetTitle>
+          <DetTitle>🔗 {tr("uslinkState", lang)}</DetTitle>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <div style={{
               width: 48, height: 48, borderRadius: 12,
@@ -224,11 +252,11 @@ export default function M7StateMonitorTab({ data, countdown, isPaused, onToggleP
             }}>{d.uslink_state ?? "—"}</div>
             <div>
               <div style={{ fontSize: ".9em", fontWeight: 800, color: "var(--color-text-primary,#2d3748)" }}>
-                {uslS?.name ?? "Unknown"}
+                {uslS?.name ?? tr("unknown", lang)}
               </div>
               {d.usl_inferred && (
                 <div style={{ marginTop: 4, fontSize: ".58em", fontWeight: 700, color: "#d97706" }}>
-                  Inferred
+                  {tr("inferred", lang)}
                 </div>
               )}
             </div>
@@ -238,26 +266,26 @@ export default function M7StateMonitorTab({ data, countdown, isPaused, onToggleP
 
       {/* ICP Sequence */}
       <DetCard accent="#ec4899">
-        <DetTitle>⚡ ICP State Sequence (IEC 61851-1)</DetTitle>
-        <SequenceSteps current={d.icp_state} states={ICP_STATES} maxId={10} />
+        <DetTitle>⚡ {tr("icpSequence", lang)}</DetTitle>
+        <SequenceSteps current={d.icp_state} states={ICP_STATES} maxId={10} lang={lang} />
         <div style={{ marginTop: 8, fontSize: ".6em", color: "var(--color-text-secondary,#94a3b8)" }}>
-          <span style={{ color: "#22c55e", fontWeight: 700 }}>● past</span>
+          <span style={{ color: "#22c55e", fontWeight: 700 }}>● {tr("past", lang)}</span>
           {"  "}
-          <span style={{ color: "#0ea5e9", fontWeight: 700 }}>● current</span>
+          <span style={{ color: "#0ea5e9", fontWeight: 700 }}>● {tr("current", lang)}</span>
           {"  "}
-          <span style={{ color: "#94a3b8" }}>● future</span>
+          <span style={{ color: "#94a3b8" }}>● {tr("future", lang)}</span>
         </div>
       </DetCard>
 
       {/* USLink Sequence */}
       <DetCard accent="#ec4899">
-        <DetTitle>🔗 USLink State Sequence (ISO 15118-2)</DetTitle>
-        <SequenceSteps current={d.uslink_state} states={USL_STATES} maxId={16} />
+        <DetTitle>🔗 {tr("uslinkSequence", lang)}</DetTitle>
+        <SequenceSteps current={d.uslink_state} states={USL_STATES} maxId={16} lang={lang} />
       </DetCard>
 
       {/* V2G Communication Sequence */}
       <DetCard accent="#ec4899">
-        <DetTitle>🔄 V2G Communication Sequence (ISO 15118 DC Charging)</DetTitle>
+        <DetTitle>🔄 {tr("v2gSequence", lang)}</DetTitle>
         <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 4, padding: "8px 0" }}>
           {[
             { uslink: 2, label: "SLAC" },
@@ -304,7 +332,7 @@ export default function M7StateMonitorTab({ data, countdown, isPaused, onToggleP
       {/* Connectivity + Contractors */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
         <DetCard accent="#ec4899">
-          <DetTitle>📡 Connectivity</DetTitle>
+          <DetTitle>📡 {tr("connectivity", lang)}</DetTitle>
           {[
             { label: "PLC 1", val: d.plc_status === "Active" ? 1 : 0, raw: d.plc_status },
             { label: "PLC 2", val: d.plc2_status === "Active" ? 1 : 0, raw: d.plc2_status },
@@ -333,7 +361,7 @@ export default function M7StateMonitorTab({ data, countdown, isPaused, onToggleP
         </DetCard>
 
         <DetCard accent="#ec4899">
-          <DetTitle>🔌 Contractor Status</DetTitle>
+          <DetTitle>🔌 {tr("contractorStatus", lang)}</DetTitle>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             <ContractorLed label="AC Magnetic 1" val={t.AC_magnetic_contractor1 ?? null} />
             <ContractorLed label="DC Contractor 1" val={t.DC_contractor1 ?? null} />
@@ -345,7 +373,7 @@ export default function M7StateMonitorTab({ data, countdown, isPaused, onToggleP
 
       {/* Power telemetry */}
       <DetCard accent="#ec4899">
-        <DetTitle>⚡ Power Telemetry</DetTitle>
+        <DetTitle>⚡ {tr("powerTelemetry", lang)}</DetTitle>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(130px,1fr))", gap: 8 }}>
           {[
             { label: "Voltage H1", val: t.presentVoltage1 ?? t.present_voltage1, unit: "V" },
@@ -374,7 +402,7 @@ export default function M7StateMonitorTab({ data, countdown, isPaused, onToggleP
       {/* Anomaly Detection Results */}
       {d.model_results && Object.keys(d.model_results).length > 0 && (
         <DetCard accent="#ec4899">
-          <DetTitle>🧠 Anomaly Detection Results</DetTitle>
+          <DetTitle>🧠 {tr("anomalyResults", lang)}</DetTitle>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(180px,1fr))", gap: 8 }}>
             {Object.entries(d.model_results).map(([key, val]: any) => {
               const isAnomaly = val?.anomaly === true;

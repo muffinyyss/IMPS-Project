@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Card from "./chargerSetting-card";
 import { useSearchParams } from "next/navigation";
+import useLanguage from "@/utils/useLanguage";
 
 type SettingDoc = {
     insulation_monitoring1?: string;
@@ -13,6 +14,8 @@ type SettingDoc = {
 };
 
 export default function InfoPanel({ head, data }: { head: 1 | 2; data: any }) {
+
+    const { lang } = useLanguage();
 
     // ฟังก์ชันแปลงค่าจาก true/false เป็นข้อความที่เหมาะสม
     const formatFaultStatus = (status?: boolean): string => {
@@ -43,7 +46,7 @@ export default function InfoPanel({ head, data }: { head: 1 | 2; data: any }) {
             {/* แสดงสถานะการโหลดหรือข้อผิดพลาด */}
             {!data && (
                 <div className="tw-px-3 tw-py-2">
-                    <div className="tw-text-sm tw-text-blue-gray-600">กำลังโหลดข้อมูล...</div>
+                    <div className="tw-text-sm tw-text-blue-gray-600">{lang === "th" ? "กำลังโหลดข้อมูล..." : "Loading data..."}</div>
                 </div>
             )}
 

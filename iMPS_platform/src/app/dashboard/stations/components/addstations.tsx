@@ -203,7 +203,7 @@ const chargerShortName = (location: string): string =>
  * so the form still works offline.
  */
 export const MaximoLocationSelect = ({
-    label, value, onSelect, options, loading, disabled, searchPlaceholder, emptyLabel,
+    label, value, onSelect, options, loading, disabled, searchPlaceholder, emptyLabel, loadingLabel = "Loading…",
 }: {
     label: string;
     value: string;
@@ -213,6 +213,7 @@ export const MaximoLocationSelect = ({
     disabled: boolean;
     searchPlaceholder: string;
     emptyLabel: string;
+    loadingLabel?: string;
 }) => {
     const [open, setOpen] = useState(false);
     const [query, setQuery] = useState("");
@@ -267,7 +268,7 @@ export const MaximoLocationSelect = ({
                     </div>
                     <ul className="tw-max-h-56 tw-overflow-y-auto tw-py-1">
                         {loading ? (
-                            <li className="tw-px-3 tw-py-3 tw-flex tw-items-center tw-gap-2 tw-text-sm tw-text-blue-gray-400"><Spinner />Loading…</li>
+                            <li className="tw-px-3 tw-py-3 tw-flex tw-items-center tw-gap-2 tw-text-sm tw-text-blue-gray-400"><Spinner />{loadingLabel}</li>
                         ) : filtered.length === 0 ? (
                             <li className="tw-px-3 tw-py-3 tw-text-sm tw-text-blue-gray-400">{emptyLabel}</li>
                         ) : (
@@ -337,6 +338,7 @@ export default function AddStationModal({
                 enterOwner: "ระบุชื่อเจ้าของ",
                 maximoSearch: "ค้นหา location...",
                 maximoEmpty: "ไม่พบ location",
+                maximoLoading: "กำลังโหลด…",
                 locationTitle: "Source",
                 sourceName: "กรอกชื่อสถานี",
                 selectSourceFirst: "เลือกแหล่งข้อมูลก่อน — Maximo หรือกรอกชื่อสถานี",
@@ -373,6 +375,7 @@ export default function AddStationModal({
                 enterOwner: "Enter owner name",
                 maximoSearch: "Search location...",
                 maximoEmpty: "No location found",
+                maximoLoading: "Loading…",
                 locationTitle: "Source",
                 sourceName: "Enter name",
                 selectSourceFirst: "Select a source first — Maximo or enter the name",
@@ -834,6 +837,7 @@ export default function AddStationModal({
                                         disabled={false}
                                         searchPlaceholder={t.maximoSearch}
                                         emptyLabel={t.maximoEmpty}
+                                        loadingLabel={t.maximoLoading}
                                         onSelect={handleMaximoStationSelect}
                                     />
                                     )}

@@ -4,6 +4,69 @@ import React, { useMemo, useState, useEffect } from "react";
 import { Button, Input, Textarea } from "@material-tailwind/react";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useLanguage, type Lang } from "@/utils/useLanguage";
+
+// ==================== TRANSLATIONS ====================
+const T = {
+    reportTitle: { th: "รายงานบันทึกปัญหา (CM)", en: "Corrective Maintenance Report (CM)" },
+    orgLine1: { th: "การไฟฟ้าฝ่ายผลิตแห่งประเทศไทย (กฟผ.)", en: "Electricity Generating Authority of Thailand (EGAT)" },
+    orgLine2: { th: "เลขที่ 53 หมู่ 2 ถนนจรัญสนิทวงศ์ ตำบลบางกรวย อำเภอบางกรวย", en: "53 Moo 2, Charan Sanitwong Rd., Bang Kruai Sub-district, Bang Kruai District" },
+    orgLine3: { th: "จังหวัดนนทบุรี 11130 ศูนย์บริการข้อมูล กฟผ. สายด่วน 1416", en: "Nonthaburi 11130, EGAT Call Center 1416" },
+
+    location: { th: "สถานที่", en: "Location" },
+    foundDate: { th: "พบปัญหา", en: "Found Date" },
+    resolvedDate: { th: "เสร็จสิ้น", en: "Resolved Date" },
+
+    problemSection: { th: "รายละเอียดปัญหา", en: "Problem Details" },
+    severity: { th: "ความเร่งด่วน", en: "Severity" },
+    selectPlaceholder: { th: "เลือก...", en: "Select..." },
+    problem: { th: "ปัญหา", en: "Problem" },
+    details: { th: "รายละเอียด", en: "Details" },
+    jobStatus: { th: "สถานะงาน", en: "Job Status" },
+
+    initialCause: { th: "สาเหตุเบื้องต้น", en: "Initial Cause" },
+    cause: { th: "สาเหตุ", en: "Cause" },
+
+    correctiveAction: { th: "การแก้ไข (Corrective Action)", en: "Corrective Action" },
+    delete: { th: "ลบ", en: "Delete" },
+    uploadedPhotos: { th: "รูปที่อัปโหลดไว้แล้ว — ข้อที่", en: "Uploaded photos — item" },
+
+    repairResult: { th: "ผลหลังซ่อม", en: "Repair Result" },
+    repairFixed: { th: "แก้ไขสำเร็จ", en: "Fixed" },
+    repairNotFixed: { th: "แก้ไขไม่สำเร็จ", en: "Not fixed" },
+    repairFollowUp: { th: "อยู่ระหว่างการติดตามผล", en: "Under follow-up" },
+    repairWaitingPart: { th: "อยู่ระหว่างการรออะไหล่", en: "Waiting for spare part" },
+
+    repairInfo: { th: "ข้อมูลการซ่อม", en: "Repair Information" },
+    faultyEquipment: { th: "ตำแหน่งจุดที่มีความผิดปกติ", en: "Faulty Equipment / Location" },
+    correction: { th: "การแก้ไข", en: "Correction" },
+    startRepairAt: { th: "วันที่/เวลา เริ่มแก้ไข", en: "Repair Start Date/Time" },
+    finishRepairAt: { th: "วันที่/เวลา แก้ไขเสร็จ", en: "Repair Finish Date/Time" },
+    timeSuffix: { th: " น.", en: "" },
+    signature: { th: "ลายเซ็นผู้ซ่อม", en: "Technician Signature" },
+
+    problemPhotos: { th: "รูปภาพปัญหา", en: "Problem Photos" },
+    remarks: { th: "หมายเหตุ", en: "Remarks" },
+
+    alertNoStation: { th: "ไม่พบ station_id ใน URL", en: "station_id not found in URL" },
+    alertSaveFailed: { th: "บันทึกไม่สำเร็จ", en: "Save failed" },
+    alertUploadFailed: { th: "อัปโหลดรูปข้อที่", en: "Failed to upload photos for item" },
+    alertUploadFailedSuffix: { th: "ล้มเหลว", en: "" },
+} as const;
+
+const t = (k: keyof typeof T, lang: Lang) => T[k][lang];
+
+// ป้ายกำกับ (label) ของผลหลังซ่อม — ค่าที่เก็บลง DB ยังเป็นภาษาไทยเหมือนเดิม
+const REPAIR_LABEL_KEY = {
+    "แก้ไขสำเร็จ": "repairFixed",
+    "แก้ไขไม่สำเร็จ": "repairNotFixed",
+    "อยู่ระหว่างการติดตามผล": "repairFollowUp",
+    "อยู่ระหว่างการรออะไหล่": "repairWaitingPart",
+} as const;
+
+const itemLabel = (i: number, lang: Lang) => (lang === "th" ? `รายการที่ ${i}` : `Item ${i}`);
+const reporterLabel = (i: number, lang: Lang) => (lang === "th" ? `ผู้รายงานที่ ${i}` : `Reporter ${i}`);
+const numberedLabel = (i: number, lang: Lang) => (lang === "th" ? `ข้อที่ ${i}` : `No. ${i}`);
 
 type Severity = "" | "Low" | "Medium" | "High" | "Urgent";
 type Status = "" | "Closed";
@@ -113,6 +176,7 @@ function absUrl(u?: string) {
 }
 
 export default function CMForm() {
+    const { lang } = useLanguage();
     const router = useRouter();
     const searchParams = useSearchParams();                  // 👈
     const stationId = searchParams.get("station_id");
@@ -385,7 +449,7 @@ export default function CMForm() {
     // };
     const onFinalSave = async () => {
         try {
-            if (!stationId) { alert("ไม่พบ station_id ใน URL"); return; }
+            if (!stationId) { alert(t("alertNoStation", lang)); return; }
             setSaving(true);
 
             if (isEdit && editId) {
@@ -462,7 +526,7 @@ export default function CMForm() {
             router.replace(buildListUrl());
         } catch (e: any) {
             console.error(e);
-            alert(`บันทึกไม่สำเร็จ: ${e.message || e}`);
+            alert(`${t("alertSaveFailed", lang)}: ${e.message || e}`);
         } finally {
             setSaving(false);
         }
@@ -816,7 +880,7 @@ export default function CMForm() {
 
             if (!res.ok) {
                 const msg = await res.text().catch(() => `HTTP ${res.status}`);
-                throw new Error(`อัปโหลดรูปข้อที่ ${i + 1} ล้มเหลว: ${msg}`);
+                throw new Error(`${t("alertUploadFailed", lang)} ${i + 1} ${t("alertUploadFailedSuffix", lang)}: ${msg}`);
             }
         }
     }
@@ -859,12 +923,12 @@ export default function CMForm() {
 
                             <div>
                                 <div className="tw-font-semibold tw-text-blue-gray-900">
-                                    รายงานบันทึกปัญหา (CM) – {headerLabel}
+                                    {t("reportTitle", lang)} – {headerLabel}
                                 </div>
                                 <div className="tw-text-sm tw-text-blue-gray-600">
-                                    การไฟฟ้าฝ่ายผลิตแห่งประเทศไทย (กฟผ.)<br />
-                                    เลขที่ 53 หมู่ 2 ถนนจรัญสนิทวงศ์ ตำบลบางกรวย อำเภอบางกรวย<br />
-                                    จังหวัดนนทบุรี 11130 ศูนย์บริการข้อมูล กฟผ. สายด่วน 1416
+                                    {t("orgLine1", lang)}<br />
+                                    {t("orgLine2", lang)}<br />
+                                    {t("orgLine3", lang)}
                                 </div>
                             </div>
                         </div>
@@ -920,7 +984,7 @@ export default function CMForm() {
 
                             <div className="sm:tw-col-span-2 lg:tw-col-span-3">
                                 <label className="tw-block tw-text-xs tw-text-blue-gray-500 tw-mb-1">
-                                    สถานที่
+                                    {t("location", lang)}
                                 </label>
                                 <Input
                                     value={job.location}
@@ -935,7 +999,7 @@ export default function CMForm() {
 
                             <div className="lg:tw-col-span-1">
                                 <label className="tw-block tw-text-xs tw-text-blue-gray-500 tw-mb-1">
-                                    พบปัญหา
+                                    {t("foundDate", lang)}
                                 </label>
                                 <Input
                                     type="date"
@@ -951,7 +1015,7 @@ export default function CMForm() {
 
                             <div className="lg:tw-col-span-1">
                                 <label className="tw-block tw-text-xs tw-text-blue-gray-500 tw-mb-1">
-                                    เสร็จสิ้น
+                                    {t("resolvedDate", lang)}
                                 </label>
                                 <Input
                                     type="date"
@@ -987,7 +1051,7 @@ export default function CMForm() {
                                 {job.equipment_list.map((val, i) => (
                                     <div key={i} className="tw-flex tw-items-center tw-gap-2">
                                         <Input
-                                            label={`รายการที่ ${i + 1}`}
+                                            label={itemLabel(i + 1, lang)}
                                             value={val}
                                             onChange={(e) => setStringItem("equipment_list")(i, e.target.value)}
                                             crossOrigin=""
@@ -1033,7 +1097,7 @@ export default function CMForm() {
                                 {job.reported_by.map((name, i) => (
                                     <div key={i} className="tw-flex tw-items-center tw-gap-2">
                                         <Input
-                                            label={`ผู้รายงานที่ ${i + 1}`}
+                                            label={reporterLabel(i + 1, lang)}
                                             value={name}
                                             onChange={(e) => setStringItem("reported_by")(i, e.target.value)}
                                             crossOrigin=""
@@ -1062,12 +1126,12 @@ export default function CMForm() {
                         {/* รายละเอียดปัญหา */}
                         <div>
                             <div className="tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-3">
-                                รายละเอียดปัญหา
+                                {t("problemSection", lang)}
                             </div>
                             <div className="tw-border tw-border-blue-gray-100 tw-rounded-lg tw-p-4 tw-space-y-4">
                                 <div>
                                     <div className="tw-text-sm tw-font-medium tw-text-blue-gray-800 tw-mb-3">
-                                        ความเร่งด่วน
+                                        {t("severity", lang)}
                                     </div>
                                     <select
                                         value={job.severity}
@@ -1079,16 +1143,16 @@ export default function CMForm() {
                                     >
                                         {SEVERITY_OPTIONS.map((s) => (
                                             <option key={s} value={s}>
-                                                {s || "เลือก..."}
+                                                {s || t("selectPlaceholder", lang)}
                                             </option>
                                         ))}
                                     </select>
                                 </div>
                                 <div className="tw-text-sm tw-font-medium tw-text-blue-gray-800 tw-mb-3">
-                                    ปัญหา
+                                    {t("problem", lang)}
                                 </div>
                                 <Input
-                                    label="ปัญหา"
+                                    label={t("problem", lang)}
                                     value={job.problem_type}
                                     onChange={(e) => setJob({ ...job, problem_type: e.target.value })}
                                     crossOrigin=""
@@ -1096,7 +1160,7 @@ export default function CMForm() {
                                     className={`!tw-w-full ${isEdit ? "!tw-bg-blue-gray-50" : ""}`}
                                 />
                                 <Textarea
-                                    label="รายละเอียด"
+                                    label={t("details", lang)}
                                     rows={3}
                                     value={job.problem_details}
                                     onChange={(e) => setJob({ ...job, problem_details: e.target.value })}
@@ -1109,7 +1173,7 @@ export default function CMForm() {
                                 {/* สถานะงาน */}
                                 <div>
                                     <div className="tw-text-sm tw-font-medium tw-text-blue-gray-800 tw-mb-2">
-                                        สถานะงาน
+                                        {t("jobStatus", lang)}
                                     </div>
 
                                     <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-3 tw-gap-2">
@@ -1145,10 +1209,10 @@ export default function CMForm() {
                         {/* สาเหตุ */}
                         <div className="tw-space-y-2">
                             <div className="tw-text-sm tw-font-semibold tw-text-blue-gray-800">
-                                สาเหตุเบื้องต้น
+                                {t("initialCause", lang)}
                             </div>
                             <Textarea
-                                label="สาเหตุ"
+                                label={t("cause", lang)}
                                 rows={3}
                                 value={job.initial_cause}
                                 onChange={(e) => setJob({ ...job, initial_cause: e.target.value })}
@@ -1163,7 +1227,7 @@ export default function CMForm() {
                         {/* การแก้ไข (Corrective Action) */}
                         <div>
                             <div className="tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-3">
-                                การแก้ไข (Corrective Action)
+                                {t("correctiveAction", lang)}
                             </div>
                             <div className="tw-border tw-border-blue-gray-100 tw-rounded-lg tw-p-4 tw-space-y-4">
                                 {/* รายการการแก้ไขหลายข้อ */}
@@ -1192,7 +1256,7 @@ export default function CMForm() {
                                             >
                                                 <div className="tw-flex tw-items-start tw-justify-between tw-gap-3">
                                                     <Textarea
-                                                        label={`ข้อที่ ${i + 1}`}
+                                                        label={numberedLabel(i + 1, lang)}
                                                         rows={3}
                                                         value={item.text}
                                                         onChange={(e) => patchCorrective(i, { text: e.target.value })}
@@ -1216,7 +1280,7 @@ export default function CMForm() {
                                                                     onClick={() => removeCorrectiveImage(i, j)}
                                                                     className="tw-absolute tw-top-1 tw-right-1 tw-bg-white/80 tw-backdrop-blur tw-text-red-600 tw-text-xs tw-rounded tw-px-2 tw-py-1 hover:tw-bg-white"
                                                                 >
-                                                                    ลบ
+                                                                    {t("delete", lang)}
                                                                 </button>
                                                             </div>
                                                         ))}
@@ -1226,7 +1290,7 @@ export default function CMForm() {
                                                 {/* ✅ รูป "ที่มีอยู่แล้ว" จาก backend ของข้อ i (g{i+1}) */}
                                                 {isEdit && existing.length > 0 && (
                                                     <div className="tw-space-y-2">
-                                                        <div className="tw-text-sm tw-font-medium">รูปที่อัปโหลดไว้แล้ว — ข้อที่ {i + 1}</div>
+                                                        <div className="tw-text-sm tw-font-medium">{t("uploadedPhotos", lang)} {i + 1}</div>
                                                         <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 md:tw-grid-cols-4 tw-gap-3">
                                                             {existing.map((p, k) => (
                                                                 <a
@@ -1296,7 +1360,7 @@ export default function CMForm() {
                                 {/* ผลหลังซ่อม */}
                                 <div>
                                     <div className="tw-text-sm tw-font-medium tw-text-blue-gray-800 tw-mb-3">
-                                        ผลหลังซ่อม
+                                        {t("repairResult", lang)}
                                     </div>
                                     <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 tw-gap-x-4 tw-gap-y-2">
                                         {REPAIR_OPTIONS.map((opt) => (
@@ -1310,7 +1374,7 @@ export default function CMForm() {
                                                     checked={job.repair_result === opt}
                                                     onChange={() => setJob((prev) => ({ ...prev, repair_result: opt }))}
                                                 />
-                                                <span className="tw-text-sm tw-text-blue-gray-800">{opt}</span>
+                                                <span className="tw-text-sm tw-text-blue-gray-800">{t(REPAIR_LABEL_KEY[opt], lang)}</span>
                                             </label>
                                         ))}
                                     </div>
@@ -1334,7 +1398,7 @@ export default function CMForm() {
                                     {job.preventive_action.map((val, i) => (
                                         <div key={i} className="tw-flex tw-items-center tw-gap-2">
                                             <Input
-                                                label={`ข้อที่ ${i + 1}`}
+                                                label={numberedLabel(i + 1, lang)}
                                                 value={val}
                                                 onChange={(e) => setStringItem("preventive_action")(i, e.target.value)}
                                                 crossOrigin=""
@@ -1368,30 +1432,30 @@ export default function CMForm() {
                         {/* ข้อมูลการซ่อม (การแก้ไข / วันที่-เวลา / ลายเซ็น) */}
                         <div>
                             <div className="tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-3">
-                                ข้อมูลการซ่อม
+                                {t("repairInfo", lang)}
                             </div>
                             <div className="tw-border tw-border-blue-gray-100 tw-rounded-lg tw-p-4 tw-space-y-4">
                                 <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 tw-gap-4">
                                     <div>
-                                        <div className="tw-text-xs tw-text-blue-gray-500 tw-mb-1">ตำแหน่งจุดที่มีความผิดปกติ</div>
+                                        <div className="tw-text-xs tw-text-blue-gray-500 tw-mb-1">{t("faultyEquipment", lang)}</div>
                                         <Input value={job.faulty_equipment || "-"} readOnly crossOrigin="" className="!tw-w-full !tw-bg-blue-gray-50" containerProps={{ className: "!tw-min-w-0" }} />
                                     </div>
                                     <div>
-                                        <div className="tw-text-xs tw-text-blue-gray-500 tw-mb-1">การแก้ไข</div>
+                                        <div className="tw-text-xs tw-text-blue-gray-500 tw-mb-1">{t("correction", lang)}</div>
                                         <Input value={job.correction || "-"} readOnly crossOrigin="" className="!tw-w-full !tw-bg-blue-gray-50" containerProps={{ className: "!tw-min-w-0" }} />
                                     </div>
                                     <div>
-                                        <div className="tw-text-xs tw-text-blue-gray-500 tw-mb-1">วันที่/เวลา เริ่มแก้ไข</div>
-                                        <Input value={`${(job.start_repair_date || "").slice(0, 10) || "-"}${job.start_repair_time ? " " + job.start_repair_time + " น." : ""}`} readOnly crossOrigin="" className="!tw-w-full !tw-bg-blue-gray-50" containerProps={{ className: "!tw-min-w-0" }} />
+                                        <div className="tw-text-xs tw-text-blue-gray-500 tw-mb-1">{t("startRepairAt", lang)}</div>
+                                        <Input value={`${(job.start_repair_date || "").slice(0, 10) || "-"}${job.start_repair_time ? " " + job.start_repair_time + t("timeSuffix", lang) : ""}`} readOnly crossOrigin="" className="!tw-w-full !tw-bg-blue-gray-50" containerProps={{ className: "!tw-min-w-0" }} />
                                     </div>
                                     <div>
-                                        <div className="tw-text-xs tw-text-blue-gray-500 tw-mb-1">วันที่/เวลา แก้ไขเสร็จ</div>
-                                        <Input value={`${(job.resolved_date || "").slice(0, 10) || "-"}${job.resolved_time ? " " + job.resolved_time + " น." : ""}`} readOnly crossOrigin="" className="!tw-w-full !tw-bg-blue-gray-50" containerProps={{ className: "!tw-min-w-0" }} />
+                                        <div className="tw-text-xs tw-text-blue-gray-500 tw-mb-1">{t("finishRepairAt", lang)}</div>
+                                        <Input value={`${(job.resolved_date || "").slice(0, 10) || "-"}${job.resolved_time ? " " + job.resolved_time + t("timeSuffix", lang) : ""}`} readOnly crossOrigin="" className="!tw-w-full !tw-bg-blue-gray-50" containerProps={{ className: "!tw-min-w-0" }} />
                                     </div>
                                 </div>
                                 {job.signature && (
                                     <div>
-                                        <div className="tw-text-xs tw-text-blue-gray-500 tw-mb-1">ลายเซ็นผู้ซ่อม</div>
+                                        <div className="tw-text-xs tw-text-blue-gray-500 tw-mb-1">{t("signature", lang)}</div>
                                         <img src={job.signature} alt="signature" className="tw-h-28 tw-border tw-border-blue-gray-100 tw-rounded-lg tw-bg-white tw-object-contain" />
                                     </div>
                                 )}
@@ -1401,7 +1465,7 @@ export default function CMForm() {
                         {/* รูปภาพปัญหา (จากตอนแจ้ง) */}
                         {(photos["problem"]?.length ?? 0) > 0 && (
                             <div>
-                                <div className="tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-3">รูปภาพปัญหา</div>
+                                <div className="tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-3">{t("problemPhotos", lang)}</div>
                                 <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 md:tw-grid-cols-4 tw-gap-3">
                                     {photos["problem"].map((p, k) => (
                                         <a key={`problem-${k}`} href={p.url} target="_blank" rel="noreferrer" className="tw-relative tw-aspect-video tw-rounded-md tw-overflow-hidden tw-border tw-border-blue-gray-100 hover:tw-shadow">
@@ -1415,11 +1479,11 @@ export default function CMForm() {
                         {/* หมายเหตุ */}
                         <div>
                             <div className="tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-3">
-                                หมายเหตุ
+                                {t("remarks", lang)}
                             </div>
                             <div className="tw-border tw-border-blue-gray-100 tw-rounded-lg tw-p-4">
                                 <Textarea
-                                    label="หมายเหตุ"
+                                    label={t("remarks", lang)}
                                     rows={3}
                                     value={job.remarks}
                                     onChange={(e) => setJob({ ...job, remarks: e.target.value })}

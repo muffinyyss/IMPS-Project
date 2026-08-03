@@ -14,6 +14,7 @@ const translations = {
     callCenter: "ศูนย์บริการข้อมูล กฟผ. สายด่วน 1416",
     documentName: "ชื่อเอกสาร",
     loading: "กำลังโหลด...",
+    logoAlt: "โลโก้บริษัท",
   },
   en: {
     reportTitle: "Test Report (AC Charger)",
@@ -22,6 +23,7 @@ const translations = {
     callCenter: "Call Center Tel. 02-114-3350",
     documentName: "Document Name",
     loading: "Loading...",
+    logoAlt: "Company logo",
   },
 };
 
@@ -79,7 +81,7 @@ export default function ACFormHeader({
             >
               <Image
                 src={logoSrc}
-                alt="Company logo"
+                alt={t.logoAlt}
                 fill
                 priority
                 className="tw-object-contain tw-p-0"

@@ -3,6 +3,31 @@ import React from "react";
 import { ModuleResult } from "../../lib/api";
 import { getHealthColor } from "../../lib/constants";
 import { AutoPredictPanel, DetCard, DetTitle } from "./DetectionLayout";
+import useLanguage, { type Lang } from "@/utils/useLanguage";
+
+const T = {
+  loading: { th: "กำลังโหลด...", en: "Loading..." },
+  cloggingRisk: { th: "ความเสี่ยงการอุดตัน", en: "Clogging Risk" },
+  riskScore: { th: "คะแนนความเสี่ยง", en: "Risk Score" },
+  waiting: { th: "รอข้อมูล…", en: "Waiting…" },
+  clean: { th: "สะอาด", en: "Clean" },
+  moderate: { th: "ปานกลาง", en: "Moderate" },
+  degraded: { th: "เสื่อมสภาพ", en: "Degraded" },
+  clogged: { th: "อุดตัน", en: "Clogged" },
+  filterAge: { th: "อายุการใช้งานแผ่นกรอง", en: "Filter Age" },
+  days: { th: "วัน", en: "days" },
+  connected: { th: "เชื่อมต่อแล้ว", en: "Connected" },
+  connectionError: { th: "เชื่อมต่อไม่สำเร็จ", en: "Connection error" },
+  ensembleDecision: { th: "🎯 ผลรวมการตัดสินใจ (Ensemble)", en: "🎯 Ensemble Decision" },
+  status: { th: "สถานะ", en: "Status" },
+  confidence: { th: "ความเชื่อมั่น", en: "Confidence" },
+  modelBreakdown: { th: "รายละเอียดรายโมเดล", en: "Model Breakdown" },
+  method: { th: "วิธีการ", en: "Method" },
+  riskThresholds: { th: "📊 เกณฑ์ความเสี่ยง", en: "📊 Risk Thresholds" },
+  systemHealthWeight: { th: "น้ำหนักต่อ System Health", en: "System Health Weight" },
+} as const;
+
+const tr = (k: keyof typeof T, lang: Lang) => T[k][lang];
 
 interface Props {
   data: ModuleResult | null;
@@ -13,7 +38,7 @@ interface Props {
 }
 
 // ── 270° Ring Gauge (matches original m1-gauge-wrap, circumference=368, maxArc=245) ─
-function RingGauge({ risk }: { risk: number | null }) {
+function RingGauge({ risk, lang }: { risk: number | null; lang: Lang }) {
   const CRC     = 368;
   const MAX_ARC = 245;
   const pct    = risk != null ? Math.max(0, Math.min(risk, 1)) : 0;
@@ -27,18 +52,18 @@ function RingGauge({ risk }: { risk: number | null }) {
     : "#ef4444";
 
   const label =
-    risk == null    ? "Waiting…"
-    : risk < 0.25   ? "Clean"
-    : risk < 0.50   ? "Moderate"
-    : risk < 0.75   ? "Degraded"
-    : "Clogged";
+    risk == null    ? tr("waiting", lang)
+    : risk < 0.25   ? tr("clean", lang)
+    : risk < 0.50   ? tr("moderate", lang)
+    : risk < 0.75   ? tr("degraded", lang)
+    : tr("clogged", lang);
 
   const riskPct = risk != null ? `${(risk * 100).toFixed(1)}%` : "--";
 
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
       <div style={{ fontSize: ".62em", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".04em", color: "#718096" }}>
-        Clogging Risk
+        {tr("cloggingRisk", lang)}
       </div>
       <div style={{ position: "relative", width: 160, height: 160 }}>
         <svg viewBox="0 0 180 180" style={{ width: 160, height: 160 }}>
@@ -89,7 +114,7 @@ function RingGauge({ risk }: { risk: number | null }) {
             {riskPct}
           </div>
           <div style={{ fontSize: ".6em", fontWeight: 700, color: "#718096", marginTop: 2 }}>
-            Risk Score
+            {tr("riskScore", lang)}
           </div>
           <div style={{ fontSize: ".65em", fontWeight: 800, color, marginTop: 2 }}>
             {label}
@@ -143,7 +168,7 @@ function EnvItem({
 }
 
 // ── Filter age progress bar ────────────────────────────────────────────────
-function FilterAgeBar({ days }: { days: number | null }) {
+function FilterAgeBar({ days, lang }: { days: number | null; lang: Lang }) {
   const MAX_DAYS = 720;
   const pct   = days != null ? Math.min(100, (days / MAX_DAYS) * 100) : 0;
   const color = pct < 50 ? "#22c55e" : pct < 75 ? "#eab308" : "#ef4444";
@@ -157,9 +182,9 @@ function FilterAgeBar({ days }: { days: number | null }) {
         color: "#718096",
         marginBottom: 4,
       }}>
-        <span>Filter Age</span>
+        <span>{tr("filterAge", lang)}</span>
         <span style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 700 }}>
-          {days ?? "--"} days
+          {days ?? "--"} {tr("days", lang)}
         </span>
       </div>
       <div style={{ height: 6, borderRadius: 3, background: "#d0dae8", overflow: "hidden" }}>
@@ -202,6 +227,8 @@ function ResultChip({ label, value, color }: { label: string; value: string; col
 
 // ── Main component ────────────────────────────────────────────────────────
 export default function M1FilterHealthTab({ data }: Props) {
+  const { lang } = useLanguage();
+
   if (!data) {
     return (
       <div style={{
@@ -210,7 +237,7 @@ export default function M1FilterHealthTab({ data }: Props) {
         color: "#94a3b8",
         fontSize: ".8em",
       }}>
-        กำลังโหลด...
+        {tr("loading", lang)}
       </div>
     );
   }
@@ -253,7 +280,7 @@ export default function M1FilterHealthTab({ data }: Props) {
       }}>
         <span style={{ color: "#718096" }}>🗄</span>
         <span style={{ color: data.error ? "#dc2626" : "#059669", fontWeight: 700 }}>
-          {data.error ? "Connection error" : "Connected"}
+          {data.error ? tr("connectionError", lang) : tr("connected", lang)}
         </span>
         <span style={{ opacity: .3 }}>|</span>
         <span style={{ color: "#718096" }}>
@@ -284,8 +311,8 @@ export default function M1FilterHealthTab({ data }: Props) {
         }}>
           {/* Left: gauge + filter bar */}
           <div>
-            <RingGauge risk={risk} />
-            <FilterAgeBar days={t.dust_filter_charging ?? null} />
+            <RingGauge risk={risk} lang={lang} />
+            <FilterAgeBar days={t.dust_filter_charging ?? null} lang={lang} />
           </div>
 
           {/* Right: env grid */}
@@ -341,7 +368,7 @@ export default function M1FilterHealthTab({ data }: Props) {
       {/* Ensemble decision */}
       {!data.error && (
         <DetCard accent="#059669">
-          <DetTitle>🎯 Ensemble Decision</DetTitle>
+          <DetTitle>{tr("ensembleDecision", lang)}</DetTitle>
 
           <div style={{
             display: "grid",
@@ -350,23 +377,23 @@ export default function M1FilterHealthTab({ data }: Props) {
             marginBottom: 12,
           }}>
             <ResultChip
-              label="Risk Score"
+              label={tr("riskScore", lang)}
               value={riskDisplay}
               color={ensembleColor}
             />
             <ResultChip
-              label="Status"
+              label={tr("status", lang)}
               value={
                 risk == null   ? "—"
-                : risk < 0.25  ? "Clean"
-                : risk < 0.50  ? "Moderate"
-                : risk < 0.75  ? "Degraded"
-                : "Clogged"
+                : risk < 0.25  ? tr("clean", lang)
+                : risk < 0.50  ? tr("moderate", lang)
+                : risk < 0.75  ? tr("degraded", lang)
+                : tr("clogged", lang)
               }
               color={ensembleColor}
             />
             <ResultChip
-              label="Confidence"
+              label={tr("confidence", lang)}
               value={
                 (data as any).confidence != null
                   ? `${((data as any).confidence * 100).toFixed(1)}%`
@@ -387,7 +414,7 @@ export default function M1FilterHealthTab({ data }: Props) {
                 letterSpacing: "2px",
                 marginBottom: 8,
               }}>
-                Model Breakdown
+                {tr("modelBreakdown", lang)}
               </div>
               <div style={{
                 display: "grid",
@@ -432,7 +459,7 @@ export default function M1FilterHealthTab({ data }: Props) {
               color: "#94a3b8",
               fontFamily: "'JetBrains Mono', monospace",
             }}>
-              Method: {(data as any).method}
+              {tr("method", lang)}: {(data as any).method}
             </div>
           )}
         </DetCard>
@@ -440,13 +467,13 @@ export default function M1FilterHealthTab({ data }: Props) {
 
       {/* Thresholds reference */}
       <DetCard>
-        <DetTitle>📊 Risk Thresholds</DetTitle>
+        <DetTitle>{tr("riskThresholds", lang)}</DetTitle>
         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
           {[
-            { range: "ensemble_risk &lt; 0.25", label: "✓ NORMAL — Clean",    bg: "rgba(34,197,94,.08)",  color: "#16a34a", border: "rgba(34,197,94,.2)"  },
-            { range: "ensemble_risk &lt; 0.50", label: "✓ OK — Moderate",     bg: "rgba(34,197,94,.06)",  color: "#16a34a", border: "rgba(34,197,94,.15)" },
-            { range: "ensemble_risk &lt; 0.75", label: "⚠ WARN — Degraded",   bg: "rgba(217,119,6,.08)",  color: "#d97706", border: "rgba(217,119,6,.2)"  },
-            { range: "ensemble_risk ≥ 0.75",    label: "✕ CRIT — Clogged",    bg: "rgba(239,68,68,.08)",  color: "#dc2626", border: "rgba(239,68,68,.2)"  },
+            { range: "ensemble_risk &lt; 0.25", label: `✓ NORMAL — ${tr("clean", lang)}`,    bg: "rgba(34,197,94,.08)",  color: "#16a34a", border: "rgba(34,197,94,.2)"  },
+            { range: "ensemble_risk &lt; 0.50", label: `✓ OK — ${tr("moderate", lang)}`,     bg: "rgba(34,197,94,.06)",  color: "#16a34a", border: "rgba(34,197,94,.15)" },
+            { range: "ensemble_risk &lt; 0.75", label: `⚠ WARN — ${tr("degraded", lang)}`,   bg: "rgba(217,119,6,.08)",  color: "#d97706", border: "rgba(217,119,6,.2)"  },
+            { range: "ensemble_risk ≥ 0.75",    label: `✕ CRIT — ${tr("clogged", lang)}`,    bg: "rgba(239,68,68,.08)",  color: "#dc2626", border: "rgba(239,68,68,.2)"  },
           ].map((row) => (
             <div key={row.label} style={{
               display: "flex",
@@ -476,7 +503,7 @@ export default function M1FilterHealthTab({ data }: Props) {
           ))}
         </div>
         <div style={{ marginTop: 8, fontSize: ".6em", color: "#94a3b8", fontFamily: "'JetBrains Mono', monospace" }}>
-          System Health Weight: <strong style={{ color: "#059669" }}>12%</strong>
+          {tr("systemHealthWeight", lang)}: <strong style={{ color: "#059669" }}>12%</strong>
         </div>
       </DetCard>
     </div>

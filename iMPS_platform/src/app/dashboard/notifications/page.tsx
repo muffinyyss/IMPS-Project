@@ -1001,8 +1001,8 @@ export default function NotificationsPage() {
           <option value={0}>{t.settingsOff}</option>
           <option value={15}>15s</option>
           <option value={30}>30s</option>
-          <option value={60}>1 min</option>
-          <option value={300}>5 min</option>
+          <option value={60}>{lang === "th" ? "1 นาที" : "1 min"}</option>
+          <option value={300}>{lang === "th" ? "5 นาที" : "5 min"}</option>
         </select>
       </div>
 
@@ -1253,8 +1253,8 @@ export default function NotificationsPage() {
                   { label: lang === "th" ? "วันที่" : "Date" },
                   { label: lang === "th" ? "เวลา" : "Time" },
                   { label: lang === "th" ? "สถานี" : "Station" },
-                  { label: "Event" },
-                  { label: "Connector" },
+                  { label: lang === "th" ? "เหตุการณ์" : "Event" },
+                  { label: lang === "th" ? "หัวชาร์จ" : "Connector" },
                   { label: lang === "th" ? "ข้อความ" : "Message" },
                   { label: lang === "th" ? "เมื่อ" : "When" },
                   // { label: lang === "th" ? "จัดการ" : "Actions" },
@@ -1281,7 +1281,7 @@ export default function NotificationsPage() {
                       <td className="tw-px-3 tw-py-3 tw-border-y tw-border-x-0 tw-border-blue-gray-50 tw-whitespace-nowrap">
                         <span className="tw-text-xs tw-tabular-nums tw-text-blue-gray-600">
                           {notification.timestamp
-                            ? new Date(notification.timestamp).toLocaleDateString("th-TH", {
+                            ? new Date(notification.timestamp).toLocaleDateString(lang === "th" ? "th-TH" : "en-GB", {
                               year: "numeric", month: "short", day: "numeric",
                             })
                             : "—"}
@@ -1292,7 +1292,7 @@ export default function NotificationsPage() {
                       <td className="tw-px-3 tw-py-3 tw-border-y tw-border-x-0 tw-border-blue-gray-50 tw-whitespace-nowrap">
                         <span className="tw-text-xs tw-tabular-nums tw-font-mono tw-text-blue-gray-600">
                           {notification.timestamp
-                            ? new Date(notification.timestamp).toLocaleTimeString("th-TH", {
+                            ? new Date(notification.timestamp).toLocaleTimeString(lang === "th" ? "th-TH" : "en-GB", {
                               hour: "2-digit", minute: "2-digit", second: "2-digit",
                             })
                             : "—"}

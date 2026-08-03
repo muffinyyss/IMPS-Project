@@ -12,9 +12,29 @@ import {
   Button,
   Typography,
 } from "@/components/MaterialTailwind";
+import useLanguage, { type Lang } from "@/utils/useLanguage";
 // import { headers } from "next/headers";
 
+// ===== Translations =====
+const T = {
+  signIn:        { th: "เข้าสู่ระบบ", en: "Sign In" },
+  subtitle:      { th: "กรอกอีเมลและรหัสผ่านเพื่อเข้าสู่ระบบ", en: "Enter your email and password to Sign In." },
+  yourEmail:     { th: "อีเมลของคุณ", en: "Your email" },
+  password:      { th: "รหัสผ่าน", en: "Password" },
+  forgotPassword:{ th: "ลืมรหัสผ่าน?", en: "Forgot password?" },
+  signingIn:     { th: "กำลังเข้าสู่ระบบ...", en: "Signing in..." },
+  back:          { th: "ย้อนกลับ", en: "Back" },
+  imageAlt:      { th: "ภาพประกอบ", en: "Illustration" },
+  badResponse:   { th: "เซิร์ฟเวอร์ตอบกลับไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง", en: "Invalid server response. Please try again." },
+  loginFailed:   { th: "เข้าสู่ระบบไม่สำเร็จ", en: "Login failed" },
+  serverError:   { th: "เซิร์ฟเวอร์มีข้อผิดพลาด กรุณาแจ้งผู้ดูแลระบบ", en: "Server error. Please contact the administrator." },
+  loginSuccess:  { th: "เข้าสู่ระบบสำเร็จ ✅", en: "Login success ✅" },
+} as const;
+
+const t = (k: keyof typeof T, lang: Lang) => T[k][lang];
+
 export default function BasicPage() {
+  const { lang } = useLanguage();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState("");
@@ -58,8 +78,8 @@ export default function BasicPage() {
       } catch {
         throw new Error(
           res.ok
-            ? "เซิร์ฟเวอร์ตอบกลับไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง"
-            : `เข้าสู่ระบบไม่สำเร็จ (HTTP ${res.status}) — เซิร์ฟเวอร์มีข้อผิดพลาด กรุณาแจ้งผู้ดูแลระบบ`
+            ? t("badResponse", lang)
+            : `${t("loginFailed", lang)} (HTTP ${res.status}) — ${t("serverError", lang)}`
         );
       }
 
@@ -69,7 +89,7 @@ export default function BasicPage() {
           const msgs = (data as any).detail.map((err: any) => `${err.loc?.join(".")}: ${err.msg}`);
           throw new Error(msgs.join(", "));
         }
-        throw new Error((data as any)?.detail || "Login failed ❌");
+        throw new Error((data as any)?.detail || `${t("loginFailed", lang)} ❌`);
       }
 
       // ✅ เก็บคีย์ให้ “ตรงกับ Navbar”
@@ -81,11 +101,11 @@ export default function BasicPage() {
       // ✅ แจ้ง Navbar ให้รีโหลดสถานะทันที (แท็บเดียวกัน storage ไม่ยิง)
       window.dispatchEvent(new Event("auth"));
 
-      setMessage(data?.message || "Login success ✅");
+      setMessage(data?.message || t("loginSuccess", lang));
       router.push("/pages/mainpages/home");
     } catch (err: any) {
       console.error(err);
-      setMessage(err?.message || "Server error");
+      setMessage(err?.message || t("serverError", lang));
     } finally {
       setLoading(false);
     }
@@ -102,6 +122,8 @@ export default function BasicPage() {
             variant="outlined"
             size="sm"
             className="tw-flex tw-items-center tw-gap-2"
+            aria-label={t("back", lang)}
+            title={t("back", lang)}
           >
             <ArrowLeftIcon className="tw-h-5 tw-w-5" />
           </Button>
@@ -112,10 +134,10 @@ export default function BasicPage() {
         <div className="tw-w-full">
           <div className="tw-text-center">
             <Typography variant="h2" className="!tw-font-bold tw-mb-4">
-              Sign In
+              {t("signIn", lang)}
             </Typography>
             <Typography className="tw-text-lg !tw-font-normal !tw-text-blue-gray-500">
-              Enter your email and password to Sign In.
+              {t("subtitle", lang)}
             </Typography>
           </div>
           <form className="tw-mt-8 tw-mb-2 tw-mx-auto tw-w-80 tw-max-w-screen-lg lg:tw-w-1/2" onSubmit={handleSubmit}>
@@ -125,11 +147,11 @@ export default function BasicPage() {
                 color="blue-gray"
                 className="-tw-mb-3 !tw-font-medium"
               >
-                Your email
+                {t("yourEmail", lang)}
               </Typography>
               <Input
                 size="lg"
-                label="Your email"
+                label={t("yourEmail", lang)}
                 type="text"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -142,7 +164,7 @@ export default function BasicPage() {
                 color="blue-gray"
                 className="-tw-mb-3 !tw-font-medium"
               >
-                Password
+                {t("password", lang)}
               </Typography>
               {/* <Input type="password" size="lg" label="Password"
                 value={password}
@@ -150,7 +172,7 @@ export default function BasicPage() {
               <Input
                 type={showPassword ? "text" : "password"}
                 size="lg"
-                label="Password"
+                label={t("password", lang)}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 crossOrigin={undefined}
@@ -179,7 +201,7 @@ export default function BasicPage() {
                   variant="small"
                   className="!tw-font-medium !tw-text-blue-gray-500 hover:!tw-text-blue-gray-900 tw-transition-colors"
                 >
-                  Forgot password?
+                  {t("forgotPassword", lang)}
                 </Typography>
               </Link>
             </div>
@@ -190,7 +212,7 @@ export default function BasicPage() {
             {message && <p>{message}</p>} */}
 
             <Button className="tw-mt-6" fullWidth type="submit" disabled={loading}>
-              {loading ? "Signing in..." : "Sign In"}
+              {loading ? t("signingIn", lang) : t("signIn", lang)}
             </Button>
 
             {!!message && <p className="tw-mt-3">{message}</p>}
@@ -216,7 +238,7 @@ export default function BasicPage() {
       <div className="tw-p-8 tw-hidden xl:tw-block">
         <img
           src="/img/pattern.png"
-          alt="image"
+          alt={t("imageAlt", lang)}
           className="tw-object-cover tw-object-center tw-max-h-[calc(100vh-4rem)] tw-w-full tw-rounded-2xl"
         />
       </div>

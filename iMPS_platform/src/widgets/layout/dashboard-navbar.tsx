@@ -159,7 +159,7 @@ export function DashboardNavbar() {
       } catch { /* ignore */ }
       window.location.reload();
     } catch (e: any) {
-      alert("สลับ role ไม่สำเร็จ: " + (e?.message || e));
+      alert((lang === "th" ? "สลับ role ไม่สำเร็จ: " : "Failed to switch role: ") + (e?.message || e));
       setSwitching(false);
     }
   };

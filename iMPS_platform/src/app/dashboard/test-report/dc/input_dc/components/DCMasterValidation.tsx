@@ -793,6 +793,7 @@ const DCMasterValidation: React.FC<DCMasterValidationProps> = ({
         className={`tw-px-4 tw-py-3 tw-cursor-pointer tw-flex tw-items-center tw-justify-between ${
           isComplete ? "tw-bg-green-100" : "tw-bg-amber-100"
         }`}
+        title={isComplete ? undefined : isExpanded ? t.collapseErrors : t.expandToSeeErrors}
         onClick={() => setIsExpanded(!isExpanded)}
       >
         <div className="tw-flex tw-items-center tw-gap-3">

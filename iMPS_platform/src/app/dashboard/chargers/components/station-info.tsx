@@ -90,6 +90,7 @@ const translations = {
     connecting: "กำลังเชื่อมต่อ...",
     sseConnected: "เชื่อมต่อแล้ว",
     sseDisconnected: "ขาดการเชื่อมต่อ",
+    refresh: "รีเฟรช",
   },
   en: {
     stationInfo: "Station Information",
@@ -141,6 +142,7 @@ const translations = {
     connecting: "Connecting...",
     sseConnected: "Connected",
     sseDisconnected: "Disconnected",
+    refresh: "Refresh",
   },
 };
 
@@ -737,7 +739,7 @@ export default function StationInfo({
                   </div>
                   <button onClick={handleRefresh} disabled={isLoadingMonitor}
                     className={`tw-inline-flex tw-items-center tw-justify-center tw-w-7 tw-h-7 tw-rounded-md tw-text-blue-gray-400 hover:tw-text-blue-600 hover:tw-bg-blue-50 tw-transition-all ${isLoadingMonitor ? "tw-animate-spin" : ""}`}
-                    title="Refresh"><RefreshIcon /></button>
+                    title={t.refresh}><RefreshIcon /></button>
                 </div>
                 {monitorLastUpdated && (
                   <div className="tw-text-xs tw-text-blue-gray-400 tw-mb-3">{t.lastUpdated}: {monitorLastUpdated}</div>

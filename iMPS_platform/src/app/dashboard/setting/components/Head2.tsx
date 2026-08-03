@@ -6,8 +6,51 @@ import { useSearchParams } from "next/navigation";
 
 import Card from "./chargerSetting-card";
 import BarProgress from "./BarProgress"; // ← เปลี่ยนจาก CircleProgress
+import useLanguage, { type Lang } from "@/utils/useLanguage";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
+
+const T = {
+    loading: { th: "กำลังโหลด...", en: "Loading..." },
+    saveFailed: { th: "บันทึกการตั้งค่าไม่สำเร็จ", en: "Failed to save settings" },
+    badInitData: { th: "ผิดรูปแบบข้อมูล init", en: "Invalid init data format" },
+    sseDisconnected: {
+        th: "SSE หลุดการเชื่อมต่อ (กำลังพยายามเชื่อมใหม่อัตโนมัติ)",
+        en: "SSE disconnected (reconnecting automatically)",
+    },
+    editingCurrent: { th: "กำลังแก้ค่า Current (Power ถูกล็อกไว้)", en: "Editing Current (Power locked)" },
+    editingPower: { th: "กำลังแก้ค่า Power (Current ถูกล็อกไว้)", en: "Editing Power (Current locked)" },
+    lockedWhilePower: { th: "ล็อกไว้ชั่วคราว (กำลังแก้ Power)", en: "Temporarily locked (editing Power)" },
+    lockedWhileCurrent: { th: "ล็อกไว้ชั่วคราว (กำลังแก้ Current)", en: "Temporarily locked (editing Current)" },
+    readyToEdit: { th: "พร้อมแก้ไข", en: "Ready to edit" },
+    resetCurrent: { th: "รีเซ็ต Current", en: "Reset Current" },
+    resetPower: { th: "รีเซ็ต Power", en: "Reset Power" },
+    sending: { th: "กำลังส่ง...", en: "send..." },
+    submit: { th: "ยืนยัน", en: "submit" },
+    confirmStart: {
+        th: "คุณต้องการเริ่มชาร์จหัว2จริงหรือไม่?\n\nกด OK เพื่อยืนยัน หรือ Cancel เพื่อยกเลิก",
+        en: "Do you really want to start charging on Head 2?\n\nPress OK to confirm or Cancel to abort.",
+    },
+    confirmStop: {
+        th: "คุณต้องการหยุดชาร์จหัว2จริงหรือไม่?\n\nกด OK เพื่อยืนยัน หรือ Cancel เพื่อยกเลิก",
+        en: "Do you really want to stop charging on Head 2?\n\nPress OK to confirm or Cancel to abort.",
+    },
+    chargerHead: { th: "หัวชาร์จ 2", en: "Charger Head 2" },
+    vehicleCharging: { th: "รถกำลังชาร์จ", en: "Vehicle is charging" },
+    vehicleIdle: { th: "รถยังไม่ได้ชาร์จ", en: "Vehicle is idle" },
+    stopCharging: { th: "หยุดชาร์จ", en: "Stop Charging" },
+    tryAgain: { th: "ลองใหม่อีกครั้ง", en: "Try Again" },
+    startCharging: { th: "เริ่มชาร์จ", en: "Start Charging" },
+    stAvailable: { th: "พร้อมใช้งาน", en: "Avaliable" },
+    stPreparing: { th: "กำลังเตรียม", en: "Preparing" },
+    stCableCheck: { th: "ตรวจสอบสายชาร์จ", en: "Cable Check" },
+    stPreCharge: { th: "เตรียมจ่ายไฟ", en: "Precharge" },
+    stCharging: { th: "กำลังชาร์จ..", en: "Charging.." },
+    stFinishing: { th: "กำลังสิ้นสุด…", en: "Finishing…" },
+    stFaulted: { th: "ขัดข้อง", en: "Faulted" },
+} as const;
+
+const t = (k: keyof typeof T, lang: Lang) => T[k][lang];
 
 function LimitRow({
     label, unit, value, onChange, min = 0, max = 200, disabled = false,
@@ -42,29 +85,29 @@ function LimitRow({
 type ChargeState = "available" | "preparing" | "cableCheck" | "preCharge" | "charging" | "finishing" | "faulted";
 type PLCSetting = { SN: string; dynamic_max_current2: number; dynamic_max_power2: number; cp_status2: "start" | "stop"; };
 
-const STATE_META: Record<ChargeState, { label: string; className: string }> = {
-    available: { label: "Avaliable", className: "tw-text-blue-gray-600" },
-    preparing: { label: "Preparing", className: "tw-text-blue-600" },
-    cableCheck: { label: "Cable Check", className: "tw-text-amber-600" },
-    preCharge: { label: "Precharge", className: "tw-text-amber-600" },
-    charging: { label: "Charging..", className: "tw-text-green-600" },
-    finishing: { label: "Finishing…", className: "tw-text-amber-600" },
-    faulted: { label: "Faulted", className: "tw-text-red-600" },
+const STATE_META: Record<ChargeState, { labelKey: keyof typeof T; className: string }> = {
+    available: { labelKey: "stAvailable", className: "tw-text-blue-gray-600" },
+    preparing: { labelKey: "stPreparing", className: "tw-text-blue-600" },
+    cableCheck: { labelKey: "stCableCheck", className: "tw-text-amber-600" },
+    preCharge: { labelKey: "stPreCharge", className: "tw-text-amber-600" },
+    charging: { labelKey: "stCharging", className: "tw-text-green-600" },
+    finishing: { labelKey: "stFinishing", className: "tw-text-amber-600" },
+    faulted: { labelKey: "stFaulted", className: "tw-text-red-600" },
 };
 
-function StateText({ status }: { status: ChargeState }) {
+function StateText({ status, lang }: { status: ChargeState; lang: Lang }) {
     const meta = STATE_META[status];
-    return <p className={`tw-text-sm tw-font-semibold tw-text-center ${meta.className}`} aria-live="polite">{meta.label}</p>;
+    return <p className={`tw-text-sm tw-font-semibold tw-text-center ${meta.className}`} aria-live="polite">{t(meta.labelKey, lang)}</p>;
 }
 
-function PrimaryCTA({ status, busy, onStart, onStop }: { status: ChargeState; busy?: boolean; onStart: () => void; onStop: () => void; }) {
+function PrimaryCTA({ status, busy, onStart, onStop, lang }: { status: ChargeState; busy?: boolean; onStart: () => void; onStop: () => void; lang: Lang; }) {
     const isCharging = status === "charging";
     const isPreparing = status === "preparing";
     const isFinishing = status === "finishing";
     const isFaulted = status === "faulted";
     const isAvailable = status === "available";
     const isDisabled = !!busy || isFinishing || isAvailable || !(isCharging || isPreparing || isFaulted);
-    const label = isCharging ? "Stop Charging" : isFaulted ? "Try Again" : "Start Charging";
+    const label = isCharging ? t("stopCharging", lang) : isFaulted ? t("tryAgain", lang) : t("startCharging", lang);
     const Icon = busy ? ArrowPathIcon : isCharging ? StopIcon : PlayIcon;
     const color = isCharging || isFaulted ? "tw-bg-red-500 hover:tw-bg-red-600 focus-visible:tw-ring-red-300" : isFinishing ? "tw-bg-green-500" : "tw-bg-green-500 hover:tw-bg-green-600 focus-visible:tw-ring-green-300";
     const base = "tw-inline-flex tw-items-center tw-justify-center tw-gap-2 tw-rounded-lg tw-h-10 tw-px-4 tw-text-xs tw-font-semibold tw-text-white tw-shadow-sm focus-visible:tw-ring-2 tw-transition tw-w-full";
@@ -92,7 +135,7 @@ const statusFromCP = (cp: any): ChargeState => {
     }
 };
 
-function HeadRow({ title, status, busy, soc, onStart, onStop }: { title: string; status: ChargeState; busy?: boolean; soc?: number | null; onStart: () => void; onStop: () => void; }) {
+function HeadRow({ title, status, busy, soc, onStart, onStop, lang }: { title: string; status: ChargeState; busy?: boolean; soc?: number | null; onStart: () => void; onStop: () => void; lang: Lang; }) {
     const charging = status === "charging";
     const socVal = soc ?? 0;
     return (
@@ -103,10 +146,10 @@ function HeadRow({ title, status, busy, soc, onStart, onStop }: { title: string;
                 {/* BarProgress แทน CircleProgress */}
                 <BarProgress value={socVal} label="SoC" />
 
-                <StateText status={status} />
+                <StateText status={status} lang={lang} />
                 <div className="tw-pt-1">
-                    <PrimaryCTA status={status} busy={!!busy} onStart={onStart} onStop={onStop} />
-                    <p className="tw-mt-2 tw-text-center tw-text-xs tw-text-blue-gray-500">{charging ? "Vehicle is charging" : "Vehicle is idle"}</p>
+                    <PrimaryCTA status={status} busy={!!busy} onStart={onStart} onStop={onStop} lang={lang} />
+                    <p className="tw-mt-2 tw-text-center tw-text-xs tw-text-blue-gray-500">{charging ? t("vehicleCharging", lang) : t("vehicleIdle", lang)}</p>
                 </div>
             </div>
         </div>
@@ -116,6 +159,7 @@ function HeadRow({ title, status, busy, soc, onStart, onStop }: { title: string;
 type SettingDoc = { _id: string; timestamp?: string; CP_status2?: string | number; SOC2?: string | number | null; dynamic_max_current2?: string | number; dynamic_max_power2?: string | number; present_current2?: string | number; present_power2?: string | number; [key: string]: any; };
 
 export default function Head2() {
+    const { lang } = useLanguage();
     const initSavedRef = useRef(false);
     const searchParams = useSearchParams();
     const [SN, setSN] = useState<string | null>(null);
@@ -155,7 +199,7 @@ export default function Head2() {
                 setCpCmd2(null);
             }
             setActiveLimiter(null);
-        } catch (e: any) { console.error(e); setErr(e?.message || "บันทึกการตั้งค่าไม่สำเร็จ"); } finally { setSaving(false); }
+        } catch (e: any) { console.error(e); setErr(e?.message || t("saveFailed", lang)); } finally { setSaving(false); }
     }
 
     const presentCurrent2 = useMemo(() => toNum(data?.present_current2), [data?.present_current2]);
@@ -181,10 +225,10 @@ export default function Head2() {
         if (!SN) return;
         setLoading(true); setErr(null);
         const es = new EventSource(`${API_BASE}/setting?SN=${encodeURIComponent(SN)}`, { withCredentials: true });
-        const onInit = (e: MessageEvent) => { try { setData(JSON.parse(e.data)); setLoading(false); } catch { setErr("ผิดรูปแบบข้อมูล init"); setLoading(false); } };
+        const onInit = (e: MessageEvent) => { try { setData(JSON.parse(e.data)); setLoading(false); } catch { setErr(t("badInitData", lang)); setLoading(false); } };
         es.addEventListener("init", onInit);
         es.onmessage = (e) => { try { setData(JSON.parse(e.data)); } catch { } };
-        es.onerror = () => { setErr("SSE หลุดการเชื่อมต่อ (กำลังพยายามเชื่อมใหม่อัตโนมัติ)"); setLoading(false); };
+        es.onerror = () => { setErr(t("sseDisconnected", lang)); setLoading(false); };
         return () => { es.removeEventListener("init", onInit); es.close(); };
     }, [SN]);
 
@@ -206,12 +250,12 @@ export default function Head2() {
     }
 
     const startH2 = async () => {
-        if (!window.confirm("คุณต้องการเริ่มชาร์จหัว2จริงหรือไม่?\n\nกด OK เพื่อยืนยัน หรือ Cancel เพื่อยกเลิก")) return;
+        if (!window.confirm(t("confirmStart", lang))) return;
         try { setBusyH2(true); setCpCmd2("start"); if (h2Status !== "preparing") return; await sendCpCommand("start"); } catch (e) { console.error(e); setH2Status("faulted"); } finally { setBusyH2(false); }
     };
 
     const stopH2 = async () => {
-        if (!window.confirm("คุณต้องการหยุดชาร์จหัว2จริงหรือไม่?\n\nกด OK เพื่อยืนยัน หรือ Cancel เพื่อยกเลิก")) return;
+        if (!window.confirm(t("confirmStop", lang))) return;
         try { setBusyH2(true); setCpCmd2("stop"); await sendCpCommand("stop"); } catch (e) { console.error(e); setH2Status("faulted"); } finally { setBusyH2(false); }
     };
 
@@ -225,30 +269,30 @@ export default function Head2() {
         <Card 
         // title={<div className="tw-flex tw-items-center tw-justify-between tw-gap-3"><span>Head2</span>{lastUpdated && <span className="tw-text-xs !tw-text-blue-gray-500">อัปเดตล่าสุด: {lastUpdated}</span>}</div>}
         >
-            {(loading || err) && (<div className="tw-px-3 tw-py-2">{loading && <div className="tw-text-sm tw-text-blue-gray-600">กำลังโหลด...</div>}{err && <div className="tw-text-sm tw-text-red-600">{err}</div>}</div>)}
+            {(loading || err) && (<div className="tw-px-3 tw-py-2">{loading && <div className="tw-text-sm tw-text-blue-gray-600">{t("loading", lang)}</div>}{err && <div className="tw-text-sm tw-text-red-600">{err}</div>}</div>)}
             <div className="tw-space-y-8">
                 <div className="tw-space-y-6">
                     <LimitRow label="Dynamic Max Current H2" unit="A" value={maxCurrentH2} onChange={(v) => { if (isGlobalDisabled) return; if (activeLimiter === null) setActiveLimiter("current"); if (activeLimiter === null || activeLimiter === "current") setMaxCurrentH2(v); }} min={0} max={maxCurrentSlider} disabled={isGlobalDisabled || disableCurrent || (activeLimiter !== null && activeLimiter !== "current")} />
                     <div className="tw-flex tw-justify-between tw-items-center tw-mt-1">
-                        <span className="tw-text-xs tw-text-blue-gray-500">{activeLimiter === "current" ? "กำลังแก้ค่า Current (Power ถูกล็อกไว้)" : activeLimiter === "power" ? "ล็อกไว้ชั่วคราว (กำลังแก้ Power)" : "พร้อมแก้ไข"}</span>
+                        <span className="tw-text-xs tw-text-blue-gray-500">{activeLimiter === "current" ? t("editingCurrent", lang) : activeLimiter === "power" ? t("lockedWhilePower", lang) : t("readyToEdit", lang)}</span>
                         <button type="button" onClick={() => { if (isGlobalDisabled) return; setMaxCurrentH2(lastSaved.maxCurrentH2); setActiveLimiter(null); }} disabled={isGlobalDisabled || activeLimiter !== "current"} className={["tw-inline-flex tw-items-center tw-gap-1 tw-text-xs tw-font-semibold tw-rounded-md tw-px-2 tw-py-1 tw-border tw-border-blue-gray-200 hover:tw-bg-blue-gray-50", (isGlobalDisabled || activeLimiter !== "current") ? "tw-opacity-60 tw-cursor-not-allowed" : ""].join(" ")}>
-                            <ArrowPathIcon className="tw-w-3 tw-h-3" />รีเซ็ต Current
+                            <ArrowPathIcon className="tw-w-3 tw-h-3" />{t("resetCurrent", lang)}
                         </button>
                     </div>
                     <LimitRow label="Dynamic Max Power H2" unit="kW" value={maxPowerH2} onChange={(v) => { if (isGlobalDisabled) return; if (activeLimiter === null) setActiveLimiter("power"); if (activeLimiter === null || activeLimiter === "power") setMaxPowerH2(v); }} min={0} max={maxPowerSlider} disabled={isGlobalDisabled || disablePower || (activeLimiter !== null && activeLimiter !== "power")} />
                     <div className="tw-flex tw-justify-between tw-items-center tw-mt-1">
-                        <span className="tw-text-xs tw-text-blue-gray-500">{activeLimiter === "power" ? "กำลังแก้ค่า Power (Current ถูกล็อกไว้)" : activeLimiter === "current" ? "ล็อกไว้ชั่วคราว (กำลังแก้ Current)" : "พร้อมแก้ไข"}</span>
+                        <span className="tw-text-xs tw-text-blue-gray-500">{activeLimiter === "power" ? t("editingPower", lang) : activeLimiter === "current" ? t("lockedWhileCurrent", lang) : t("readyToEdit", lang)}</span>
                         <button type="button" onClick={() => { if (isGlobalDisabled) return; setMaxPowerH2(lastSaved.maxPowerH2); setActiveLimiter(null); }} disabled={isGlobalDisabled || activeLimiter !== "power"} className={["tw-inline-flex tw-items-center tw-gap-1 tw-text-xs tw-font-semibold tw-rounded-md tw-px-2 tw-py-1 tw-border tw-border-blue-gray-200 hover:tw-bg-blue-gray-50", (isGlobalDisabled || activeLimiter !== "power") ? "tw-opacity-60 tw-cursor-not-allowed" : ""].join(" ")}>
-                            <ArrowPathIcon className="tw-w-3 tw-h-3" />รีเซ็ต Power
+                            <ArrowPathIcon className="tw-w-3 tw-h-3" />{t("resetPower", lang)}
                         </button>
                     </div>
                     <div className="tw-flex tw-justify-end">
                         <button type="button" onClick={applySettings} disabled={isGlobalDisabled || !isDirty} className={["tw-inline-flex tw-items-center tw-justify-center tw-rounded-lg tw-h-8 tw-px-4 tw-text-xs tw-font-semibold tw-text-white tw-bg-black hover:tw-bg-black/90 tw-shadow-sm tw-transition", (!isDirty || isGlobalDisabled) ? "tw-opacity-60 tw-cursor-not-allowed" : ""].join(" ")}>
-                            {saving ? "send..." : "submit"}
+                            {saving ? t("sending", lang) : t("submit", lang)}
                         </button>
                     </div>
                 </div>
-                <HeadRow title="Charger Head 2" status={h2Status} busy={busyH2} soc={soc2 ?? 0} onStart={startH2} onStop={stopH2} />
+                <HeadRow title={t("chargerHead", lang)} status={h2Status} busy={busyH2} soc={soc2 ?? 0} onStart={startH2} onStop={stopH2} lang={lang} />
             </div>
         </Card>
     );

@@ -89,6 +89,8 @@ const T = {
   // Tooltips
   uploadPdf: { th: "อัปโหลด PDF", en: "Upload PDF" },
   preview: { th: "ดูตัวอย่าง", en: "Preview" },
+  downloadPhotos: { th: "ดาวน์โหลดรูปภาพ", en: "Download Photos" },
+  loadingData: { th: "กำลังโหลดข้อมูล...", en: "Loading data..." },
 };
 
 const t = (key: keyof typeof T, lang: Lang): string => T[key][lang];
@@ -738,12 +740,12 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
               </a>
               {info.row.original.has_photos && (
                 <a
-                  aria-label="Download Photos"
+                  aria-label={t("downloadPhotos", lang)}
                   href={`${BASE}/stationpmreport/${info.row.original.id}/photos/zip?station_id=${encodeURIComponent(stationId || "")}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="tw-inline-flex tw-items-center tw-justify-center tw-rounded-md tw-p-1.5 sm:tw-p-2 tw-text-green-600 hover:tw-text-green-800 hover:tw-bg-green-50 tw-transition-colors"
-                  title="Download Photos"
+                  title={t("downloadPhotos", lang)}
                 >
                   <PhotoIcon className="tw-h-5 tw-w-5 sm:tw-h-6 sm:tw-w-6" />
                 </a>
@@ -939,7 +941,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
 
   return (
     <>
-      <LoadingOverlay show={pageLoading} text="กำลังโหลดข้อมูล..." />
+      <LoadingOverlay show={pageLoading} text={t("loadingData", lang)} />
       {/* Toast Notification */}
       {toast.show && (
         <div className="tw-fixed tw-top-4 tw-left-1/2 tw--translate-x-1/2 tw-z-[9999] tw-animate-[slideDown_0.3s_ease-out] tw-max-w-md tw-w-[calc(100%-2rem)]">

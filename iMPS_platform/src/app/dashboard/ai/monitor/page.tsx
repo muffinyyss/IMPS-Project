@@ -8,18 +8,43 @@ import { HealthPill, GradeBadge, CoverageBar } from "../components/ui";
 import "../ai-theme.css";
 import { useStation } from "../hooks/useStation";
 import { ChevronUpDownIcon } from "@heroicons/react/24/solid";
+import useLanguage, { type Lang } from "@/utils/useLanguage";
 
-function KpiSummaryCards({ data }: { data: MonitorOverviewResponse | null }) {
+// ==================== TRANSLATIONS ====================
+const T = {
+    totalStations: { th: "สถานีทั้งหมด", en: "Total Stations" },
+    fullCoverage: { th: "ครบทุกโมดูล", en: "Full Coverage" },
+    partial: { th: "ไม่ครบ", en: "Partial" },
+    noDataCard: { th: "ไม่มีข้อมูล", en: "No Data" },
+    searchPlaceholder: { th: "🔍 ค้นหาชื่อสถานี, SN หรือจังหวัด...", en: "🔍 Search station name, SN or province..." },
+    optAll: { th: "ทุกสถานี", en: "All Stations" },
+    optFull: { th: "ครบทุกโมดูล (7/7)", en: "Full Coverage (7/7)" },
+    optPartial: { th: "ไม่ครบทุกโมดูล", en: "Partial Coverage" },
+    optNone: { th: "ไม่มีข้อมูล", en: "No Data" },
+    table: { th: "ตาราง", en: "Table" },
+    cards: { th: "การ์ด", en: "Cards" },
+    stationsUnit: { th: "สถานี", en: "stations" },
+    colStation: { th: "สถานี", en: "Station" },
+    colHealth: { th: "สุขภาพ", en: "Health" },
+    colCover: { th: "ครอบคลุม", en: "Cover" },
+    colUpdated: { th: "อัปเดต", en: "Updated" },
+    loading: { th: "กำลังโหลด...", en: "Loading..." },
+    noStationFound: { th: "ไม่พบข้อมูลสถานี", en: "No station found" },
+    loadError: { th: "ไม่สามารถโหลดข้อมูล Station Monitor ได้", en: "Failed to load Station Monitor data" },
+} as const;
+const t = (k: keyof typeof T, lang: Lang) => T[k][lang];
+
+function KpiSummaryCards({ data, lang }: { data: MonitorOverviewResponse | null; lang: Lang }) {
     const cards = [
-        { label: "Total Stations", value: data?.total ?? "—", valueStyle: { color: "#fff" }, iconBg: "rgba(255,255,255,.10)", iconRing: "rgba(255,255,255,.15)", icon: <span className="tw-text-base">📍</span> },
-        { label: "Full Coverage", value: data?.full_coverage ?? "—", valueStyle: { color: "#34d399" }, iconBg: "rgba(16,185,129,.15)", iconRing: "rgba(52,211,153,.25)", icon: (<span className="tw-relative tw-flex tw-h-2.5 tw-w-2.5"><span className="tw-animate-ping tw-absolute tw-inline-flex tw-h-full tw-w-full tw-rounded-full tw-opacity-75" style={{ background: "#34d399" }} /><span className="tw-relative tw-inline-flex tw-rounded-full tw-h-2.5 tw-w-2.5" style={{ background: "#34d399" }} /></span>) },
-        { label: "Partial", value: data?.partial ?? "—", valueStyle: { color: "#fbbf24" }, iconBg: "rgba(234,179,8,.15)", iconRing: "rgba(251,191,36,.25)", icon: <span className="tw-text-base">⚠️</span> },
-        { label: "No Data", value: data?.no_data ?? "—", valueStyle: { color: "#f87171" }, iconBg: "rgba(239,68,68,.15)", iconRing: "rgba(248,113,113,.25)", icon: <span className="tw-h-2.5 tw-w-2.5 tw-rounded-full tw-inline-block" style={{ background: "#f87171" }} /> },
+        { id: "total", label: t("totalStations", lang), value: data?.total ?? "—", valueStyle: { color: "#fff" }, iconBg: "rgba(255,255,255,.10)", iconRing: "rgba(255,255,255,.15)", icon: <span className="tw-text-base">📍</span> },
+        { id: "full", label: t("fullCoverage", lang), value: data?.full_coverage ?? "—", valueStyle: { color: "#34d399" }, iconBg: "rgba(16,185,129,.15)", iconRing: "rgba(52,211,153,.25)", icon: (<span className="tw-relative tw-flex tw-h-2.5 tw-w-2.5"><span className="tw-animate-ping tw-absolute tw-inline-flex tw-h-full tw-w-full tw-rounded-full tw-opacity-75" style={{ background: "#34d399" }} /><span className="tw-relative tw-inline-flex tw-rounded-full tw-h-2.5 tw-w-2.5" style={{ background: "#34d399" }} /></span>) },
+        { id: "partial", label: t("partial", lang), value: data?.partial ?? "—", valueStyle: { color: "#fbbf24" }, iconBg: "rgba(234,179,8,.15)", iconRing: "rgba(251,191,36,.25)", icon: <span className="tw-text-base">⚠️</span> },
+        { id: "nodata", label: t("noDataCard", lang), value: data?.no_data ?? "—", valueStyle: { color: "#f87171" }, iconBg: "rgba(239,68,68,.15)", iconRing: "rgba(248,113,113,.25)", icon: <span className="tw-h-2.5 tw-w-2.5 tw-rounded-full tw-inline-block" style={{ background: "#f87171" }} /> },
     ];
     return (
         <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-4 tw-gap-2 sm:tw-gap-2.5 tw-mb-4 sm:tw-mb-5">
             {cards.map((card) => (
-                <div key={card.label}
+                <div key={card.id}
                     className="tw-group tw-relative tw-overflow-hidden tw-rounded-xl sm:tw-rounded-2xl tw-bg-gradient-to-br tw-from-gray-900 tw-via-gray-800 tw-to-gray-900 tw-px-3 sm:tw-px-5 tw-py-3 sm:tw-py-4 tw-ring-1 tw-ring-white/10 tw-shadow-lg hover:tw-shadow-xl tw-transition-all tw-duration-300 hover:tw--translate-y-0.5">
                     <div className="tw-absolute tw-inset-0 tw-opacity-[0.03] tw-pointer-events-none"
                         style={{ backgroundImage: "radial-gradient(circle at 1px 1px, white 1px, transparent 0)", backgroundSize: "20px 20px" }} />
@@ -98,6 +123,7 @@ export default function MonitorPage() {
 
     const { tick, countdown, refresh } = useAutoRefresh(120);
     const { activeSn } = useStation();
+    const { lang } = useLanguage();
 
     const loadData = useCallback(async () => {
         setLoading(true); setError(null);
@@ -112,7 +138,7 @@ export default function MonitorPage() {
             } as MonitorOverviewResponse;
             setOverview(normalized);
             setLastUpdate(new Date().toLocaleTimeString("th-TH"));
-        } catch { setError("ไม่สามารถโหลดข้อมูล Station Monitor ได้"); }
+        } catch { setError("loadError"); }
         finally { setLoading(false); }
     }, []);
 
@@ -147,36 +173,36 @@ export default function MonitorPage() {
     return (
         <div className="ai-root tw-min-h-screen">
             <div className="tw-p-3 sm:tw-p-4 lg:tw-p-6">
-                {error && <div className="tw-mb-4 tw-p-3 sm:tw-p-4 tw-bg-red-50 tw-border tw-border-red-200 tw-rounded-xl tw-text-red-700 tw-text-sm">⚠ {error}</div>}
+                {error && <div className="tw-mb-4 tw-p-3 sm:tw-p-4 tw-bg-red-50 tw-border tw-border-red-200 tw-rounded-xl tw-text-red-700 tw-text-sm">⚠ {t(error as keyof typeof T, lang)}</div>}
 
-                <KpiSummaryCards data={overview} />
+                <KpiSummaryCards data={overview} lang={lang} />
 
                 {/* Toolbar */}
                 <div className="tw-flex tw-flex-col sm:tw-flex-row tw-gap-2 sm:tw-gap-3 tw-mb-4">
                     <input className="tw-flex-1 tw-px-3 sm:tw-px-4 tw-py-2 tw-text-sm tw-border tw-border-gray-200 tw-rounded-xl tw-outline-none focus:tw-border-gray-900 tw-bg-white"
-                        placeholder="🔍 ค้นหาชื่อสถานี, SN หรือจังหวัด..."
+                        placeholder={t("searchPlaceholder", lang)}
                         value={search} onChange={(e) => setSearch(e.target.value)} />
                     <div className="tw-flex tw-items-center tw-gap-2">
                         <select className="tw-flex-1 sm:tw-flex-none tw-px-3 sm:tw-px-4 tw-py-2 tw-text-sm tw-border tw-border-gray-200 tw-rounded-xl tw-outline-none tw-bg-white tw-cursor-pointer"
                             value={filter} onChange={(e) => setFilter(e.target.value as FilterType)}>
-                            <option value="all">All Stations</option>
-                            <option value="full">Full Coverage (7/7)</option>
-                            <option value="partial">Partial Coverage</option>
-                            <option value="none">No Data</option>
+                            <option value="all">{t("optAll", lang)}</option>
+                            <option value="full">{t("optFull", lang)}</option>
+                            <option value="partial">{t("optPartial", lang)}</option>
+                            <option value="none">{t("optNone", lang)}</option>
                         </select>
                         {/* View toggle */}
                         <div className="tw-flex tw-gap-0.5 tw-bg-gray-100 tw-rounded-lg tw-p-0.5">
-                            <button onClick={() => setViewMode("table")} className="tw-px-2.5 tw-py-1.5 tw-text-xs tw-rounded-md tw-font-bold tw-transition-all" style={viewMode === "table" ? { background: "#111827", color: "#fff" } : { color: "#6b7280" }}>☰ <span className="tw-hidden sm:tw-inline">Table</span></button>
-                            <button onClick={() => setViewMode("card")} className="tw-px-2.5 tw-py-1.5 tw-text-xs tw-rounded-md tw-font-bold tw-transition-all" style={viewMode === "card" ? { background: "#111827", color: "#fff" } : { color: "#6b7280" }}>⊞ <span className="tw-hidden sm:tw-inline">Cards</span></button>
+                            <button onClick={() => setViewMode("table")} className="tw-px-2.5 tw-py-1.5 tw-text-xs tw-rounded-md tw-font-bold tw-transition-all" style={viewMode === "table" ? { background: "#111827", color: "#fff" } : { color: "#6b7280" }}>☰ <span className="tw-hidden sm:tw-inline">{t("table", lang)}</span></button>
+                            <button onClick={() => setViewMode("card")} className="tw-px-2.5 tw-py-1.5 tw-text-xs tw-rounded-md tw-font-bold tw-transition-all" style={viewMode === "card" ? { background: "#111827", color: "#fff" } : { color: "#6b7280" }}>⊞ <span className="tw-hidden sm:tw-inline">{t("cards", lang)}</span></button>
                         </div>
                         <button onClick={refresh} className="tw-flex tw-items-center tw-gap-1.5 tw-px-3 tw-py-1.5 tw-text-xs tw-font-bold tw-bg-gray-900 hover:tw-bg-black tw-text-white tw-rounded-lg tw-transition-colors" style={{ fontFamily: "'JetBrains Mono', monospace" }}>↻ {countdown}s</button>
-                        <span className="tw-text-xs tw-text-gray-400 tw-whitespace-nowrap tw-hidden sm:tw-inline">{rows.length} สถานี</span>
+                        <span className="tw-text-xs tw-text-gray-400 tw-whitespace-nowrap tw-hidden sm:tw-inline">{rows.length} {t("stationsUnit", lang)}</span>
                     </div>
                 </div>
 
                 {viewMode === "card" ? (
-                    loading ? (<div className="tw-flex tw-items-center tw-justify-center tw-h-40 tw-gap-3"><div className="tw-w-6 tw-h-6 tw-rounded-full tw-border-2 tw-border-gray-200 tw-border-t-gray-900 tw-animate-spin" /><span className="tw-text-sm tw-text-gray-400">กำลังโหลด...</span></div>)
-                    : rows.length === 0 ? (<div className="tw-flex tw-items-center tw-justify-center tw-h-40 tw-text-gray-400 tw-text-sm">ไม่พบข้อมูลสถานี</div>)
+                    loading ? (<div className="tw-flex tw-items-center tw-justify-center tw-h-40 tw-gap-3"><div className="tw-w-6 tw-h-6 tw-rounded-full tw-border-2 tw-border-gray-200 tw-border-t-gray-900 tw-animate-spin" /><span className="tw-text-sm tw-text-gray-400">{t("loading", lang)}</span></div>)
+                    : rows.length === 0 ? (<div className="tw-flex tw-items-center tw-justify-center tw-h-40 tw-text-gray-400 tw-text-sm">{t("noStationFound", lang)}</div>)
                     : (<div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 lg:tw-grid-cols-3 xl:tw-grid-cols-4 tw-gap-3">{rows.map((row) => <StationCard key={row.sn} row={row} />)}</div>)
                 ) : (
                     <div className="tw-border tw-border-gray-100 tw-shadow-sm tw-rounded-2xl tw-overflow-hidden">
@@ -186,17 +212,17 @@ export default function MonitorPage() {
                                     <thead className="tw-bg-gradient-to-r tw-from-gray-900 tw-to-gray-800"><tr>{Array.from({ length: 11 }).map((_, i) => (<th key={i} className="tw-px-3 tw-py-3"><div className="tw-h-3 tw-rounded tw-bg-white/20 tw-animate-pulse" style={{ width: i === 1 ? 80 : 36 }} /></th>))}</tr></thead>
                                     <tbody>{Array.from({ length: 5 }).map((_, i) => (<tr key={i} className="tw-animate-pulse">{Array.from({ length: 11 }).map((_, j) => (<td key={j} className="tw-px-3 tw-py-4"><div className="tw-h-4 tw-rounded-md tw-bg-gray-100" style={{ width: j === 0 ? 24 : "60%" }} /></td>))}</tr>))}</tbody>
                                 </table>
-                            ) : rows.length === 0 ? (<div className="tw-flex tw-items-center tw-justify-center tw-h-40 tw-text-gray-400 tw-text-sm">ไม่พบข้อมูลสถานี</div>)
+                            ) : rows.length === 0 ? (<div className="tw-flex tw-items-center tw-justify-center tw-h-40 tw-text-gray-400 tw-text-sm">{t("noStationFound", lang)}</div>)
                             : (
                                 <table className="tw-w-full tw-border-separate tw-border-spacing-0">
                                     <thead className="tw-bg-gradient-to-r tw-from-gray-900 tw-to-gray-800 tw-sticky tw-top-0 tw-z-10">
                                         <tr>
                                             <th className="tw-px-3 sm:tw-px-4 tw-py-3 tw-text-left"><span className="tw-text-[11px] tw-font-bold tw-uppercase tw-tracking-wider tw-text-white/60">#</span></th>
-                                            <th className="tw-px-3 sm:tw-px-4 tw-py-3 tw-text-left tw-cursor-pointer" onClick={() => handleSort("name")}><span className="tw-flex tw-items-center tw-text-[11px] tw-font-bold tw-uppercase tw-tracking-wider tw-text-white/80">Station <SortIcon col="name" /></span></th>
+                                            <th className="tw-px-3 sm:tw-px-4 tw-py-3 tw-text-left tw-cursor-pointer" onClick={() => handleSort("name")}><span className="tw-flex tw-items-center tw-text-[11px] tw-font-bold tw-uppercase tw-tracking-wider tw-text-white/80">{t("colStation", lang)} <SortIcon col="name" /></span></th>
                                             {MODULES.map((mod) => (<th key={mod.key} className="tw-px-1 sm:tw-px-2 tw-py-3 tw-text-center tw-cursor-pointer tw-whitespace-nowrap" onClick={() => handleSort(mod.key)}><span className="tw-flex tw-items-center tw-justify-center tw-text-[11px] tw-font-bold tw-text-white/80"><span style={{ color: mod.color }}>{mod.icon}</span><span className="tw-hidden sm:tw-inline tw-ml-0.5">M</span>{mod.num}<SortIcon col={mod.key} /></span></th>))}
-                                            <th className="tw-px-3 sm:tw-px-4 tw-py-3 tw-text-center tw-cursor-pointer" onClick={() => handleSort("system_health")}><span className="tw-flex tw-items-center tw-justify-center tw-text-[11px] tw-font-bold tw-uppercase tw-tracking-wider tw-text-white/80">Health <SortIcon col="system_health" /></span></th>
-                                            <th className="tw-px-3 sm:tw-px-4 tw-py-3 tw-text-left tw-cursor-pointer" onClick={() => handleSort("ok_count")}><span className="tw-flex tw-items-center tw-text-[11px] tw-font-bold tw-uppercase tw-tracking-wider tw-text-white/80">Cover <SortIcon col="ok_count" /></span></th>
-                                            <th className="tw-px-3 sm:tw-px-4 tw-py-3 tw-text-left tw-hidden lg:tw-table-cell"><span className="tw-text-[11px] tw-font-bold tw-uppercase tw-tracking-wider tw-text-white/60">Updated</span></th>
+                                            <th className="tw-px-3 sm:tw-px-4 tw-py-3 tw-text-center tw-cursor-pointer" onClick={() => handleSort("system_health")}><span className="tw-flex tw-items-center tw-justify-center tw-text-[11px] tw-font-bold tw-uppercase tw-tracking-wider tw-text-white/80">{t("colHealth", lang)} <SortIcon col="system_health" /></span></th>
+                                            <th className="tw-px-3 sm:tw-px-4 tw-py-3 tw-text-left tw-cursor-pointer" onClick={() => handleSort("ok_count")}><span className="tw-flex tw-items-center tw-text-[11px] tw-font-bold tw-uppercase tw-tracking-wider tw-text-white/80">{t("colCover", lang)} <SortIcon col="ok_count" /></span></th>
+                                            <th className="tw-px-3 sm:tw-px-4 tw-py-3 tw-text-left tw-hidden lg:tw-table-cell"><span className="tw-text-[11px] tw-font-bold tw-uppercase tw-tracking-wider tw-text-white/60">{t("colUpdated", lang)}</span></th>
                                         </tr>
                                     </thead>
                                     <tbody>

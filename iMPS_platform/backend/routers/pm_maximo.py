@@ -387,3 +387,341 @@ async def pm_maximo_work_orders(
         "locations": locations,
         "station_id": station_id,
     }
+
+
+# ══════════════════════════════════════════════════════════════════
+# 4) Open — Maximo ยิงเข้ามาตอน "เปิดใบงาน PM"
+#     contract 4 field ที่ iMPS ต้องได้รับ:
+#       location, pm_date, wonum, status
+#
+#    ⚠️ location ที่ Maximo ส่งมาเป็น "ระดับสถานี" (station-level) — 1 ใบงาน
+#    ต่อ 1 สถานี ไม่ได้ระบุอุปกรณ์ ผู้ใช้ต้องมาเลือกใน iMPS เองว่าจะ PM
+#    อุปกรณ์ตัวไหนบ้าง (เลือกได้หลายตัว) → เก็บที่ field selected_equipment
+#    ผ่าน POST /maximo/pm/{wonum}/equipment (ไม่ได้มาจาก Maximo)
+#
+#    ลงที่ collection iMPS.maximo_pm_open (แยกจาก maximo_pm_workorders
+#    ของ pull/webhook เดิม เพื่อไม่ให้ 2 contract ปนกัน) — dedup ด้วย wonum
+# ══════════════════════════════════════════════════════════════════
+def _open_coll():
+    """iMPS.maximo_pm_open — motor async collection"""
+    return client["iMPS"]["maximo_pm_open"]
+
+
+# ประเภทอุปกรณ์ที่เลือก PM ได้ในสถานีหนึ่ง ๆ (ตรงกับ tab ใน PM report)
+EQUIP_TYPES = {"charger", "mdb", "ccb", "cbbox", "station"}
+# alias ที่ frontend/Maximo อาจส่งมา → normalize เป็น key มาตรฐาน
+EQUIP_ALIASES = {"cb_box": "cbbox", "cbbox": "cbbox", "cb-box": "cbbox"}
+
+
+class PMWorkOrderOpenIn(BaseModel):
+    """
+    ใบงาน PM ที่ Maximo เปิดแล้วยิงเข้ามา — 5 field ที่ iMPS ต้องได้รับ:
+      location — รหัส Maximo location "ระดับสถานี" เช่น "PTG0001-EV"
+      pm_date  — วันที่นัด PM (YYYY-MM-DD หรือ ISO datetime)
+      wonum    — Maximo Work Order Number ใช้เป็น key กันซ้ำ/อ้างอิงตอนส่งกลับ
+      status   — สถานะฝั่ง Maximo (WAPPR/APPR/INPRG/COMP/…)
+      company  — บริษัท/ผู้ดูแลสถานี
+    (description ส่งมาก็เก็บให้ ไม่ส่งก็ได้)
+    """
+    location: str
+    pm_date: str
+    wonum: str
+    status: str
+    company: str
+    description: Optional[str] = None
+
+    class Config:
+        extra = "allow"
+
+
+class PMWorkOrderOpenBatchIn(BaseModel):
+    workorders: list[PMWorkOrderOpenIn] = Field(default_factory=list)
+
+    class Config:
+        # กัน single-body ที่ field ไม่ครบ หลุดมาถูกตีความเป็น batch ว่าง
+        extra = "forbid"
+
+
+def _normalize_open(raw: dict) -> dict | None:
+    """แปลง WO ที่ Maximo ส่งมาเป็น shape ที่เก็บ — คืน None ถ้าไม่มี location"""
+    location = str(raw.get("location") or "").strip()
+    if not location:
+        return None
+
+    owner = _resolve_owner(location)
+
+    return {
+        "location": location,
+        "description": raw.get("description"),
+        "pm_date": _norm_pm_date(raw.get("pm_date")),
+        "wonum": str(raw.get("wonum") or "").strip() or None,
+        "status": raw.get("status"),
+        "company": raw.get("company"),
+        # ── map กลับเข้าระบบ iMPS ──
+        "station_id": owner.get("station_id"),
+        "sn": owner.get("sn"),
+        "origin": "maximo-open",
+        "raw": raw,
+        "updatedAt": datetime.now(timezone.utc),
+    }
+
+
+def _open_dedup_key(doc: dict) -> dict:
+    """ใช้ wonum เป็น key กันซ้ำ (ยิง wonum เดิมซ้ำ = อัปเดตใบเดิม)"""
+    if doc.get("wonum"):
+        return {"wonum": doc["wonum"]}
+    # กันเหนียว: ถ้าไม่มี wonum ใช้ location + pm_date
+    return {"location": doc["location"], "pm_date": doc.get("pm_date")}
+
+
+async def _upsert_open(items: list[dict]) -> dict:
+    coll = _open_coll()
+    try:
+        await coll.create_index("wonum", sparse=True)
+        await coll.create_index([("location", 1), ("pm_date", -1)])
+        await coll.create_index([("station_id", 1), ("status", 1)])
+    except Exception:
+        pass
+
+    inserted = updated = skipped = 0
+    for raw in items:
+        doc = _normalize_open(raw)
+        if not doc:
+            skipped += 1
+            continue
+        res = await coll.update_one(
+            _open_dedup_key(doc),
+            {
+                "$set": doc,
+                # selected_equipment เป็นค่าที่ผู้ใช้เลือกฝั่ง iMPS — ตั้งค่าเริ่มต้น
+                # เฉพาะตอน insert เท่านั้น เพื่อไม่ให้ Maximo ยิงซ้ำมาล้างของที่เลือกไว้
+                "$setOnInsert": {
+                    "receivedAt": datetime.now(timezone.utc),
+                    "selected_equipment": [],
+                },
+            },
+            upsert=True,
+        )
+        if res.upserted_id:
+            inserted += 1
+        elif res.modified_count:
+            updated += 1
+
+    return {"inserted": inserted, "updated": updated, "skipped": skipped}
+
+
+@router.post("/maximo/pm/open")
+async def maximo_pm_open(
+    body: PMWorkOrderOpenIn | PMWorkOrderOpenBatchIn,
+    x_maximo_token: str | None = Header(default=None, alias="X-Maximo-Token"),
+):
+    """
+    รับใบงาน PM ที่ Maximo เปิด (push/webhook)
+
+    ยิงได้ทั้งใบเดียว (location = ระดับสถานี):
+        {
+          "location": "PTG0001-EV",
+          "pm_date": "2026-07-22",
+          "wonum": "WO26070001",
+          "status": "APPR",
+          "company": "PTG"
+        }
+    และเป็น batch:
+        { "workorders": [ {…}, {…} ] }
+
+    ป้องกันด้วย shared secret ใน header X-Maximo-Token (env MAXIMO_WEBHOOK_SECRET)
+    """
+    if not MAXIMO_WEBHOOK_SECRET:
+        raise HTTPException(
+            status_code=503,
+            detail="MAXIMO_WEBHOOK_SECRET is not configured on this server",
+        )
+    if x_maximo_token != MAXIMO_WEBHOOK_SECRET:
+        raise HTTPException(status_code=401, detail="invalid X-Maximo-Token")
+
+    if isinstance(body, PMWorkOrderOpenBatchIn):
+        items = [w.model_dump() for w in body.workorders]
+    else:
+        items = [body.model_dump()]
+
+    if not items:
+        return {"status": "OK"}
+
+    missing = [i for i, it in enumerate(items) if not str(it.get("location") or "").strip()]
+    if missing:
+        raise HTTPException(
+            status_code=400,
+            detail=f"location จำเป็นต้องมี — ขาดในรายการลำดับ {missing}",
+        )
+
+    stats = await _upsert_open(items)
+    log.info(f"  📥 Maximo PM open: {stats} ({len(items)} received)")
+    # ตอบกลับ Maximo แค่ status: OK (รายละเอียด inserted/updated ดูได้จาก log)
+    return {"status": "OK"}
+
+
+def _serialize_open(doc: dict) -> dict:
+    return {
+        "location": doc.get("location"),
+        "description": doc.get("description"),
+        "pm_date": doc.get("pm_date"),
+        "wonum": doc.get("wonum"),
+        "status": doc.get("status"),
+        "company": doc.get("company"),
+        "station_id": doc.get("station_id"),
+        "sn": doc.get("sn"),
+        "origin": doc.get("origin"),
+        # อุปกรณ์ที่ผู้ใช้เลือกจะ PM ในฝั่ง iMPS (เลือกได้หลายตัว)
+        "selected_equipment": doc.get("selected_equipment") or [],
+        "selected_at": (
+            doc["selected_at"].isoformat() if isinstance(doc.get("selected_at"), datetime) else None
+        ),
+        "selected_by": doc.get("selected_by"),
+        "receivedAt": (
+            doc["receivedAt"].isoformat() if isinstance(doc.get("receivedAt"), datetime) else None
+        ),
+    }
+
+
+@router.get("/maximo/pm/open")
+async def list_maximo_pm_open(
+    location: Optional[str] = Query(None, description="กรองตาม Maximo location"),
+    station_id: Optional[str] = Query(None, description="กรองตาม station_id ของ iMPS"),
+    only_open: bool = Query(True, description="เอาเฉพาะใบงานที่ยังเปิดอยู่"),
+    limit: int = Query(50, ge=1, le=200),
+    current: UserClaims = Depends(get_current_user),
+):
+    """อ่านใบงาน PM ที่ Maximo เปิดเข้ามา (protected — ต้อง login)"""
+    q: dict[str, Any] = {}
+    if location:
+        q["location"] = location.strip()
+    if station_id:
+        q["station_id"] = station_id.strip()
+    if only_open:
+        # ใบงานที่ Maximo ไม่ได้ส่ง status มา ถือว่ายังเปิดอยู่
+        q["$or"] = [
+            {"status": {"$in": list(OPEN_WO_STATUSES)}},
+            {"status": {"$in": [None, ""]}},
+        ]
+
+    cursor = _open_coll().find(q).sort([("pm_date", -1), ("_id", -1)]).limit(limit)
+    docs = await cursor.to_list(length=limit)
+    return {"items": [_serialize_open(d) for d in docs], "total": len(docs)}
+
+
+# ══════════════════════════════════════════════════════════════════
+# 5) Select equipment — ผู้ใช้เลือกอุปกรณ์ที่จะ PM ในฝั่ง iMPS
+#    Maximo ส่งใบงานมาระดับสถานี → ผู้ใช้เลือกได้หลายอุปกรณ์ต่อ 1 ใบงาน
+# ══════════════════════════════════════════════════════════════════
+def _norm_equip_type(value: Any) -> str:
+    s = str(value or "").strip().lower()
+    return EQUIP_ALIASES.get(s, s)
+
+
+class EquipmentItem(BaseModel):
+    """1 อุปกรณ์ที่เลือกจะ PM — charger ระบุ sn ด้วย, อุปกรณ์ระดับสถานีใส่แค่ type"""
+    type: str                          # charger / mdb / ccb / cbbox / station
+    sn: Optional[str] = None           # สำหรับ charger (ระบุตู้)
+    location: Optional[str] = None     # maximo location ของอุปกรณ์ (ถ้ามี)
+    label: Optional[str] = None        # ชื่อไว้โชว์
+
+
+class SelectEquipmentIn(BaseModel):
+    equipment: list[EquipmentItem] = Field(default_factory=list)
+
+
+async def _find_open_wo(wonum: str) -> dict | None:
+    return await _open_coll().find_one({"wonum": wonum})
+
+
+@router.get("/maximo/pm/{wonum}/equipment-choices")
+async def pm_equipment_choices(
+    wonum: str,
+    current: UserClaims = Depends(get_current_user),
+):
+    """
+    รายการอุปกรณ์ที่เลือก PM ได้ภายใต้สถานีของใบงานนี้
+    (ตู้ชาร์จทุกตู้ในสถานี + อุปกรณ์ระดับสถานี mdb/ccb/cbbox/station)
+    ให้ frontend เอาไปทำ checkbox เลือกหลายตัว
+    """
+    wonum = (wonum or "").strip()
+    doc = await _find_open_wo(wonum)
+    if not doc:
+        raise HTTPException(status_code=404, detail=f"ไม่พบใบงาน wonum={wonum}")
+
+    station_id = doc.get("station_id")
+    chargers: list[dict] = []
+    if station_id:
+        # charger_collection เป็น pymongo (sync) — วนตรง ๆ ได้
+        for c in charger_collection.find(
+            {"station_id": station_id},
+            {"_id": 0, "SN": 1, "chargeBoxID": 1, "name": 1, "maximo_location": 1},
+        ):
+            chargers.append({
+                "type": "charger",
+                "sn": c.get("SN"),
+                "label": c.get("name") or c.get("chargeBoxID") or c.get("SN"),
+                "location": c.get("maximo_location"),
+            })
+
+    fixed = [{"type": t} for t in ("mdb", "ccb", "cbbox", "station")]
+
+    return {
+        "wonum": wonum,
+        "station_id": station_id,
+        "location": doc.get("location"),
+        "chargers": chargers,          # เลือกได้หลายตู้
+        "fixed": fixed,                # อุปกรณ์ระดับสถานี
+        "selected_equipment": doc.get("selected_equipment") or [],
+    }
+
+
+@router.post("/maximo/pm/{wonum}/equipment")
+async def set_pm_equipment(
+    wonum: str,
+    body: SelectEquipmentIn,
+    current: UserClaims = Depends(get_current_user),
+):
+    """
+    บันทึกอุปกรณ์ที่ผู้ใช้เลือกจะ PM (เลือกได้หลายตัว) ผูกกับใบงาน Maximo ระดับสถานี
+    ยิงทับได้ — ส่ง list ใหม่มาแทนของเดิมทั้งชุด
+    """
+    wonum = (wonum or "").strip()
+    if not wonum:
+        raise HTTPException(status_code=400, detail="wonum is required")
+
+    items: list[dict] = []
+    for e in body.equipment:
+        etype = _norm_equip_type(e.type)
+        if etype not in EQUIP_TYPES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"ประเภทอุปกรณ์ไม่ถูกต้อง: {e.type} — ต้องเป็น {', '.join(sorted(EQUIP_TYPES))}",
+            )
+        if etype == "charger" and not (e.sn or "").strip():
+            raise HTTPException(
+                status_code=400, detail="charger ต้องระบุ sn ของตู้ที่จะ PM"
+            )
+        item = {"type": etype}
+        if e.sn:
+            item["sn"] = e.sn.strip()
+        if e.location:
+            item["location"] = e.location.strip()
+        if e.label:
+            item["label"] = e.label
+        items.append(item)
+
+    res = await _open_coll().update_one(
+        {"wonum": wonum},
+        {"$set": {
+            "selected_equipment": items,
+            "selected_at": datetime.now(timezone.utc),
+            "selected_by": current.username or current.sub,
+        }},
+    )
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail=f"ไม่พบใบงาน wonum={wonum}")
+
+    doc = await _find_open_wo(wonum)
+    log.info(f"  ✅ PM equipment selected for {wonum}: {len(items)} item(s)")
+    return {"ok": True, "wonum": wonum, "item": _serialize_open(doc)}

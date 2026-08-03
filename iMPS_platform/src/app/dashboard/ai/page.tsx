@@ -9,12 +9,34 @@ import { HealthGaugeSvg, StatusBadge, RefreshBar } from "./components/ui";
 import NoData from "@/app/dashboard/components/NoData";
 import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
 import { useAiNav } from "./ai-nav-context";
+import useLanguage, { type Lang } from "@/utils/useLanguage";
 import "./ai-theme.css";
 
+// ── Translations ──────────────────────────────────────────────────────────
+const T = {
+    status:         { th: "สถานะ",              en: "Status" },
+    models:         { th: "โมเดล",              en: "Models" },
+    loaded:         { th: "โมเดล",              en: "loaded" },
+    ruleBased:      { th: "ใช้กฎ (Rule-based)", en: "Rule-based" },
+    weightOf:       { th: "น้ำหนัก",            en: "Weight" },
+    ofSystemHealth: { th: "ของ System Health",  en: "of System Health" },
+    clickToOpen:    { th: "คลิกเพื่อเปิดโมดูล",  en: "Click to open module" },
+    systemHealth:   { th: "System Health",      en: "System Health" },
+    totalModules:   { th: "จำนวนโมดูลทั้งหมด",  en: "Total Modules" },
+    normal:         { th: "ปกติ",               en: "Normal" },
+    warning:        { th: "เตือน",              en: "Warning" },
+    critical:       { th: "วิกฤต",              en: "Critical" },
+    loadingData:    { th: "กำลังโหลดข้อมูล...",  en: "Loading data..." },
+    connectFailed:  { th: "ไม่สามารถเชื่อมต่อ AI Server", en: "Unable to connect to the AI Server" },
+    batchLoad:      { th: "เวลาโหลดรวม",        en: "Batch load" },
+} as const;
+
+const t = (k: keyof typeof T, lang: Lang) => T[k][lang];
+
 // ── Module Card ───────────────────────────────────────────────────────────
-function ModuleCard({ mod, data, loading, onClick }: {
+function ModuleCard({ mod, data, loading, onClick, lang }: {
     mod: typeof MODULES[0]; data: ModuleResult | null;
-    loading: boolean; onClick: () => void;
+    loading: boolean; onClick: () => void; lang: Lang;
 }) {
     const health = (data as any)?.health ?? null;
     const hasErr = !data || !!(data as any).error;
@@ -50,15 +72,15 @@ function ModuleCard({ mod, data, loading, onClick }: {
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
                     <div style={{ padding: "8px 10px", borderRadius: 8, background: "#f9fafb", border: "1px solid #f3f4f6" }}>
-                        <div style={{ fontSize: ".5em", fontWeight: 600, color: "#6b7280", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 2 }}>Status</div>
+                        <div style={{ fontSize: ".5em", fontWeight: 600, color: "#6b7280", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 2 }}>{t("status", lang)}</div>
                         <div style={{ fontSize: "1em", fontWeight: 800, fontFamily: "'JetBrains Mono',monospace", color: hColor }}>
                             {hasErr ? "NO DATA" : health == null ? "—" : health >= 75 ? "NORMAL" : health >= 50 ? "WARN" : "CRIT"}
                         </div>
                     </div>
                     <div style={{ padding: "8px 10px", borderRadius: 8, background: "#f9fafb", border: "1px solid #f3f4f6" }}>
-                        <div style={{ fontSize: ".5em", fontWeight: 600, color: "#6b7280", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 2 }}>Models</div>
+                        <div style={{ fontSize: ".5em", fontWeight: 600, color: "#6b7280", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 2 }}>{t("models", lang)}</div>
                         <div style={{ fontSize: "1em", fontWeight: 800, fontFamily: "'JetBrains Mono',monospace" }}>
-                            {mod.aiModels.length > 0 ? `${mod.aiModels.length} loaded` : "Rule-based"}
+                            {mod.aiModels.length > 0 ? `${mod.aiModels.length} ${t("loaded", lang)}` : t("ruleBased", lang)}
                         </div>
                     </div>
                 </div>
@@ -71,7 +93,7 @@ function ModuleCard({ mod, data, loading, onClick }: {
                 </div>
                 {data && !(data as any).error && (
                     <div style={{ marginTop: 4, fontSize: ".58em", color: "#6b7280", textAlign: "center" }}>
-                        Weight: {(mod.weight * 100).toFixed(0)}% of System Health
+                        {t("weightOf", lang)}: {(mod.weight * 100).toFixed(0)}% {t("ofSystemHealth", lang)}
                     </div>
                 )}
             </div>
@@ -80,7 +102,7 @@ function ModuleCard({ mod, data, loading, onClick }: {
                 display: "flex", justifyContent: "space-between", alignItems: "center",
                 fontSize: ".52em", color: "#6b7280", borderTop: "1px solid #e5e7eb",
             }}>
-                <span>Click to open module</span>
+                <span>{t("clickToOpen", lang)}</span>
                 <span style={{ fontFamily: "'JetBrains Mono',monospace" }}>
                     {(data as any)?._result_ts
                         ? new Date((data as any)._result_ts).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" })
@@ -92,6 +114,7 @@ function ModuleCard({ mod, data, loading, onClick }: {
 }
 
 export default function AiDashboardPage() {
+    const { lang } = useLanguage();
     const router = useRouter();
     const [data, setData] = useState<DashboardAllResponse | null>(null);
     const [loading, setLoading] = useState(true);
@@ -115,9 +138,9 @@ export default function AiDashboardPage() {
             ]);
             setData(res);
             setLastUpdate(new Date().toLocaleTimeString("th-TH"));
-        } catch { setError("ไม่สามารถเชื่อมต่อ AI Server"); setData(null); }
+        } catch { setError(t("connectFailed", lang)); setData(null); }
         finally { setLoading(false); }
-    }, []);
+    }, [lang]);
 
     useEffect(() => { loadData(); }, [tick, loadData]);
 
@@ -179,7 +202,7 @@ export default function AiDashboardPage() {
     if (showLoading) {
         return (
             <div className="ai-root tw-min-h-screen">
-                <LoadingOverlay show text="กำลังโหลดข้อมูล..." />
+                <LoadingOverlay show text={t("loadingData", lang)} />
             </div>
         );
     }
@@ -216,15 +239,15 @@ export default function AiDashboardPage() {
                         <div className="tw-flex tw-items-center tw-gap-1.5">
                             <div style={{ width: 8, height: 8, borderRadius: "50%", background: getHealthColor(systemHealth), flexShrink: 0 }} />
                             <span className="tw-text-xs sm:tw-text-sm tw-font-bold" style={{ color: getHealthColor(systemHealth) }}>{systemHealth}%</span>
-                            <span className="tw-text-xs tw-text-gray-400 tw-hidden sm:tw-inline">System Health</span>
+                            <span className="tw-text-xs tw-text-gray-400 tw-hidden sm:tw-inline">{t("systemHealth", lang)}</span>
                         </div>
                     )}
                 </div>
                 <div className="tw-flex tw-items-center tw-gap-1.5 sm:tw-gap-2">
                     {[
-                        { label: `✓ ${counts.ok}`, full: "Normal", bg: "#f0fdf4", color: "#059669", ring: "rgba(5,150,105,.2)" },
-                        { label: `⚠ ${counts.warn}`, full: "Warning", bg: "#fefce8", color: "#d97706", ring: "rgba(234,179,8,.2)" },
-                        { label: `✕ ${counts.crit}`, full: "Critical", bg: "#fef2f2", color: "#dc2626", ring: "rgba(220,38,38,.2)" },
+                        { label: `✓ ${counts.ok}`, full: t("normal", lang), bg: "#f0fdf4", color: "#059669", ring: "rgba(5,150,105,.2)" },
+                        { label: `⚠ ${counts.warn}`, full: t("warning", lang), bg: "#fefce8", color: "#d97706", ring: "rgba(234,179,8,.2)" },
+                        { label: `✕ ${counts.crit}`, full: t("critical", lang), bg: "#fef2f2", color: "#dc2626", ring: "rgba(220,38,38,.2)" },
                     ].map((c) => (
                         <span key={c.label}
                             className="tw-inline-flex tw-items-center tw-gap-1 tw-px-2 sm:tw-px-3 tw-py-1 tw-rounded-md tw-text-xs tw-font-bold"
@@ -242,11 +265,11 @@ export default function AiDashboardPage() {
                 {/* KPI Row */}
                 <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 lg:tw-grid-cols-5 tw-gap-2 sm:tw-gap-2.5 tw-mb-4 sm:tw-mb-5">
                     {[
-                        { label: "System Health", value: systemHealth != null ? `${systemHealth}%` : "—", iconStyle: { background: "rgba(255,255,255,.10)", boxShadow: "0 0 0 1px rgba(255,255,255,.15)" }, icon: <span className="tw-text-base">⚙️</span>, valueStyle: { color: "#fff" } },
-                        { label: "Total Modules", value: 7, iconStyle: { background: "rgba(255,255,255,.10)", boxShadow: "0 0 0 1px rgba(255,255,255,.15)" }, icon: <span className="tw-text-base">🤖</span>, valueStyle: { color: "#fff" } },
-                        { label: "Normal", value: counts.ok, iconStyle: { background: "rgba(16,185,129,.15)", boxShadow: "0 0 0 1px rgba(52,211,153,.25)" }, icon: (<span className="tw-relative tw-flex tw-h-2.5 tw-w-2.5"><span className="tw-animate-ping tw-absolute tw-inline-flex tw-h-full tw-w-full tw-rounded-full tw-opacity-75" style={{ background: "#34d399" }} /><span className="tw-relative tw-inline-flex tw-rounded-full tw-h-2.5 tw-w-2.5" style={{ background: "#34d399" }} /></span>), valueStyle: { color: "#34d399" } },
-                        { label: "Warning", value: counts.warn, iconStyle: { background: "rgba(234,179,8,.15)", boxShadow: "0 0 0 1px rgba(251,191,36,.25)" }, icon: <span className="tw-text-base">⚠️</span>, valueStyle: { color: "#fbbf24" } },
-                        { label: "Critical", value: counts.crit, iconStyle: { background: "rgba(239,68,68,.15)", boxShadow: "0 0 0 1px rgba(248,113,113,.25)" }, icon: <span className="tw-h-2.5 tw-w-2.5 tw-rounded-full tw-inline-block" style={{ background: "#f87171" }} />, valueStyle: { color: "#f87171" } },
+                        { label: t("systemHealth", lang), value: systemHealth != null ? `${systemHealth}%` : "—", iconStyle: { background: "rgba(255,255,255,.10)", boxShadow: "0 0 0 1px rgba(255,255,255,.15)" }, icon: <span className="tw-text-base">⚙️</span>, valueStyle: { color: "#fff" } },
+                        { label: t("totalModules", lang), value: 7, iconStyle: { background: "rgba(255,255,255,.10)", boxShadow: "0 0 0 1px rgba(255,255,255,.15)" }, icon: <span className="tw-text-base">🤖</span>, valueStyle: { color: "#fff" } },
+                        { label: t("normal", lang), value: counts.ok, iconStyle: { background: "rgba(16,185,129,.15)", boxShadow: "0 0 0 1px rgba(52,211,153,.25)" }, icon: (<span className="tw-relative tw-flex tw-h-2.5 tw-w-2.5"><span className="tw-animate-ping tw-absolute tw-inline-flex tw-h-full tw-w-full tw-rounded-full tw-opacity-75" style={{ background: "#34d399" }} /><span className="tw-relative tw-inline-flex tw-rounded-full tw-h-2.5 tw-w-2.5" style={{ background: "#34d399" }} /></span>), valueStyle: { color: "#34d399" } },
+                        { label: t("warning", lang), value: counts.warn, iconStyle: { background: "rgba(234,179,8,.15)", boxShadow: "0 0 0 1px rgba(251,191,36,.25)" }, icon: <span className="tw-text-base">⚠️</span>, valueStyle: { color: "#fbbf24" } },
+                        { label: t("critical", lang), value: counts.crit, iconStyle: { background: "rgba(239,68,68,.15)", boxShadow: "0 0 0 1px rgba(248,113,113,.25)" }, icon: <span className="tw-h-2.5 tw-w-2.5 tw-rounded-full tw-inline-block" style={{ background: "#f87171" }} />, valueStyle: { color: "#f87171" } },
                     ].map((card) => (
                         <div key={card.label}
                             className="tw-group tw-relative tw-overflow-hidden tw-rounded-xl sm:tw-rounded-2xl tw-bg-gradient-to-br tw-from-gray-900 tw-via-gray-800 tw-to-gray-900 tw-px-3 sm:tw-px-5 tw-py-3 sm:tw-py-4 tw-ring-1 tw-ring-white/10 tw-shadow-lg hover:tw-shadow-xl tw-transition-all tw-duration-300 hover:tw--translate-y-0.5">
@@ -270,6 +293,7 @@ export default function AiDashboardPage() {
                         <ModuleCard key={mod.key} mod={mod}
                             data={(data?.modules?.[mod.key] as ModuleResult) ?? null}
                             loading={loading}
+                            lang={lang}
                             onClick={() => router.push(`/dashboard/ai/${mod.num}`)}
                         />
                     ))}
@@ -277,7 +301,7 @@ export default function AiDashboardPage() {
 
                 {data?.elapsed_ms != null && (
                     <div className="tw-mt-3 tw-text-right tw-text-xs tw-text-gray-400 tw-font-mono">
-                        Batch load: {data.elapsed_ms.toFixed(1)}ms
+                        {t("batchLoad", lang)}: {data.elapsed_ms.toFixed(1)}ms
                     </div>
                 )}
             </div>

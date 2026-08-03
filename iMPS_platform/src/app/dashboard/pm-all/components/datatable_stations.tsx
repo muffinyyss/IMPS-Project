@@ -139,10 +139,11 @@ const UploadBtn = ({ label, onChange }: { label: string; onChange: React.ChangeE
     </label>
 );
 
-const ImageZone = ({ label, previews, onUpload, onRemove, emptyLabel, uploadLabel, existingImages, apiBase, onRemoveExisting }: {
+const ImageZone = ({ label, previews, onUpload, onRemove, emptyLabel, uploadLabel, existingImages, apiBase, onRemoveExisting, currentLabel = "Current" }: {
     label: string; previews: string[]; onUpload: React.ChangeEventHandler<HTMLInputElement>;
     onRemove: (i: number) => void; emptyLabel: string; uploadLabel: string;
     existingImages?: string[]; apiBase?: string; onRemoveExisting?: (i: number) => void;
+    currentLabel?: string;
 }) => (
     <div className="tw-space-y-1.5 sm:tw-space-y-2 tw-p-2.5 sm:tw-p-3 tw-rounded-xl tw-bg-blue-gray-50/40 tw-ring-1 tw-ring-blue-gray-100/60">
         <div className="tw-flex tw-items-center tw-justify-between tw-min-h-[28px]">
@@ -160,7 +161,7 @@ const ImageZone = ({ label, previews, onUpload, onRemove, emptyLabel, uploadLabe
                         {onRemoveExisting && (
                             <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); onRemoveExisting(i); }} className="tw-absolute tw-top-0.5 tw-right-0.5 sm:tw-top-1 sm:tw-right-1 tw-h-5 tw-w-5 tw-rounded-full tw-bg-red-500 tw-text-white tw-flex tw-items-center tw-justify-center sm:tw-opacity-0 group-hover/img:tw-opacity-100 tw-shadow-lg tw-transition-all tw-duration-150 hover:tw-bg-red-600 hover:tw-scale-110 tw-text-[10px] tw-leading-none tw-z-10">✕</button>
                         )}
-                        <span className="tw-absolute tw-bottom-0 tw-inset-x-0 tw-text-center tw-text-[7px] tw-font-medium tw-text-white tw-bg-gradient-to-t tw-from-black/50 tw-to-transparent tw-pt-3 tw-pb-0.5 tw-pointer-events-none">Current {i + 1}</span>
+                        <span className="tw-absolute tw-bottom-0 tw-inset-x-0 tw-text-center tw-text-[7px] tw-font-medium tw-text-white tw-bg-gradient-to-t tw-from-black/50 tw-to-transparent tw-pt-3 tw-pb-0.5 tw-pointer-events-none">{currentLabel} {i + 1}</span>
                     </div>
                 ))}
             </div>
@@ -516,7 +517,7 @@ export function SearchDataTables() {
             setNotice({ type: "success", msg: lang === "th" ? "ลบสำเร็จ" : "Deleted successfully" });
             setTimeout(() => setNotice(null), 2500);
         } catch (e: any) {
-            setNotice({ type: "error", msg: e.message || "Delete failed" });
+            setNotice({ type: "error", msg: e.message || t.deleteFailed });
             setTimeout(() => setNotice(null), 3500);
         } finally {
             setDeletingReportId(null);
@@ -554,6 +555,13 @@ export function SearchDataTables() {
                 upload: "เลือกรูป", noImages: "ยังไม่มีรูป",
                 stationImages: "รูปภาพสถานี", chargerImages: "รูปภาพ",
                 duplicateChargeBoxID: "Charge Box ID ซ้ำกัน กรุณาตรวจสอบ",
+                imageOnly: "กรุณาเลือกเฉพาะไฟล์รูปภาพ", fileTooLarge: "มีขนาดใหญ่เกินไป (สูงสุด 3MB)",
+                noEditPermission: "คุณไม่มีสิทธิ์แก้ไขสถานีนี้",
+                updateFailed: "อัปเดตไม่สำเร็จ", deleteFailed: "ลบไม่สำเร็จ",
+                deleteStationFailed: "ลบสถานีไม่สำเร็จ", deleteChargerFailed: "ลบตู้ชาร์จไม่สำเร็จ",
+                createChargerFailed: "สร้างตู้ชาร์จไม่สำเร็จ",
+                fetchFailed: "โหลดข้อมูลไม่สำเร็จ", networkError: "เครือข่าย/เซิร์ฟเวอร์ผิดพลาด",
+                currentImageBadge: "ปัจจุบัน",
             },
             en: {
                 stationManagement: "Station Management", stationManagementDesc: "Manage Stations and Chargers. Click on a row to view chargers, click on a charger card to view details.",
@@ -584,6 +592,13 @@ export function SearchDataTables() {
                 upload: "Browse", noImages: "No images yet",
                 stationImages: "Station Images", chargerImages: "Images",
                 duplicateChargeBoxID: "Duplicate Charge Box ID found, please check",
+                imageOnly: "Please select image files only", fileTooLarge: "is too large (max 3MB)",
+                noEditPermission: "You don't have permission to edit this station",
+                updateFailed: "Update failed", deleteFailed: "Delete failed",
+                deleteStationFailed: "Failed to delete station", deleteChargerFailed: "Failed to delete charger",
+                createChargerFailed: "Failed to create charger",
+                fetchFailed: "Fetch failed", networkError: "Network/Server error",
+                currentImageBadge: "Current",
             },
         };
         return translations[lang];
@@ -606,7 +621,7 @@ export function SearchDataTables() {
 
     const pickChargerImage: React.ChangeEventHandler<HTMLInputElement> = (e) => {
         const files = Array.from(e.target.files || []);
-        const valid = files.filter(f => { if (!f.type.startsWith("image/")) { alert("Please select image files only"); return false; } if (f.size > MAX_IMAGE_BYTES) { alert(`${f.name} is too large (max 3MB)`); return false; } return true; });
+        const valid = files.filter(f => { if (!f.type.startsWith("image/")) { alert(t.imageOnly); return false; } if (f.size > MAX_IMAGE_BYTES) { alert(`${f.name} ${t.fileTooLarge}`); return false; } return true; });
         if (!valid.length) return;
         setEditChargerImages(prev => [...prev, ...valid]);
         setEditChargerPreviews(prev => [...prev, ...valid.map(f => URL.createObjectURL(f))]);
@@ -615,7 +630,7 @@ export function SearchDataTables() {
 
     const pickDeviceImage: React.ChangeEventHandler<HTMLInputElement> = (e) => {
         const files = Array.from(e.target.files || []);
-        const valid = files.filter(f => { if (!f.type.startsWith("image/")) { alert("Please select image files only"); return false; } if (f.size > MAX_IMAGE_BYTES) { alert(`${f.name} is too large (max 3MB)`); return false; } return true; });
+        const valid = files.filter(f => { if (!f.type.startsWith("image/")) { alert(t.imageOnly); return false; } if (f.size > MAX_IMAGE_BYTES) { alert(`${f.name} ${t.fileTooLarge}`); return false; } return true; });
         if (!valid.length) return;
         setEditDeviceImages(prev => [...prev, ...valid]);
         setEditDevicePreviews(prev => [...prev, ...valid.map(f => URL.createObjectURL(f))]);
@@ -628,7 +643,7 @@ export function SearchDataTables() {
 
     const pickStationImage: React.ChangeEventHandler<HTMLInputElement> = (e) => {
         const files = Array.from(e.target.files || []);
-        const valid = files.filter(f => { if (!f.type.startsWith("image/")) { alert("Please select image files only"); return false; } if (f.size > MAX_IMAGE_BYTES) { alert(`${f.name} is too large (max 3MB)`); return false; } return true; });
+        const valid = files.filter(f => { if (!f.type.startsWith("image/")) { alert(t.imageOnly); return false; } if (f.size > MAX_IMAGE_BYTES) { alert(`${f.name} ${t.fileTooLarge}`); return false; } return true; });
         if (!valid.length) return;
         setEditStationImages(prev => [...prev, ...valid]);
         setEditStationPreviews(prev => [...prev, ...valid.map(f => URL.createObjectURL(f))]);
@@ -638,7 +653,7 @@ export function SearchDataTables() {
     // ✅ MDB image handler
     const pickMdbImage: React.ChangeEventHandler<HTMLInputElement> = (e) => {
         const files = Array.from(e.target.files || []);
-        const valid = files.filter(f => { if (!f.type.startsWith("image/")) { alert("Please select image files only"); return false; } if (f.size > MAX_IMAGE_BYTES) { alert(`${f.name} is too large (max 3MB)`); return false; } return true; });
+        const valid = files.filter(f => { if (!f.type.startsWith("image/")) { alert(t.imageOnly); return false; } if (f.size > MAX_IMAGE_BYTES) { alert(`${f.name} ${t.fileTooLarge}`); return false; } return true; });
         if (!valid.length) return;
         setEditMdbImages(prev => [...prev, ...valid]);
         setEditMdbPreviews(prev => [...prev, ...valid.map(f => URL.createObjectURL(f))]);
@@ -660,7 +675,7 @@ export function SearchDataTables() {
 
     const pickAddChargerImage: React.ChangeEventHandler<HTMLInputElement> = (e) => {
         const files = Array.from(e.target.files || []);
-        const valid = files.filter(f => { if (!f.type.startsWith("image/")) { alert("Please select image files only"); return false; } if (f.size > MAX_IMAGE_BYTES) { alert(`${f.name} is too large (max 3MB)`); return false; } return true; });
+        const valid = files.filter(f => { if (!f.type.startsWith("image/")) { alert(t.imageOnly); return false; } if (f.size > MAX_IMAGE_BYTES) { alert(`${f.name} ${t.fileTooLarge}`); return false; } return true; });
         if (!valid.length) return;
         setAddChargerImages(prev => [...prev, ...valid]);
         setAddChargerPreviews(prev => [...prev, ...valid.map(f => URL.createObjectURL(f))]);
@@ -669,7 +684,7 @@ export function SearchDataTables() {
 
     const pickAddDeviceImage: React.ChangeEventHandler<HTMLInputElement> = (e) => {
         const files = Array.from(e.target.files || []);
-        const valid = files.filter(f => { if (!f.type.startsWith("image/")) { alert("Please select image files only"); return false; } if (f.size > MAX_IMAGE_BYTES) { alert(`${f.name} is too large (max 3MB)`); return false; } return true; });
+        const valid = files.filter(f => { if (!f.type.startsWith("image/")) { alert(t.imageOnly); return false; } if (f.size > MAX_IMAGE_BYTES) { alert(`${f.name} ${t.fileTooLarge}`); return false; } return true; });
         if (!valid.length) return;
         setAddDeviceImages(prev => [...prev, ...valid]);
         setAddDevicePreviews(prev => [...prev, ...valid.map(f => URL.createObjectURL(f))]);
@@ -853,7 +868,7 @@ export function SearchDataTables() {
                 const claims = decodeJwt(token);
                 if (claims) setMe({ user_id: claims.user_id ?? "-", username: claims.username ?? "-", role: claims.role ?? "user" });
                 const res = await apiFetch(`/all-stations/`);
-                if (!res.ok) { setErr(`Fetch failed: ${res.status}`); setData([]); return; }
+                if (!res.ok) { setErr(`${t.fetchFailed}: ${res.status}`); setData([]); return; }
                 const json = await res.json();
                 const list = Array.isArray(json?.stations) ? json.stations : [];
                 const rows = list.map(mapStation);
@@ -861,7 +876,7 @@ export function SearchDataTables() {
                 const rowsWithStatus = await fetchChargerStatuses(rows);
                 setData(rowsWithStatus);
                 fetchAvailability(rowsWithStatus);
-            } catch (e) { console.error(e); setErr("Network/Server error"); setData([]); } finally { setLoading(false); }
+            } catch (e) { console.error(e); setErr(t.networkError); setData([]); } finally { setLoading(false); }
         })();
     }, []);
 
@@ -888,7 +903,7 @@ export function SearchDataTables() {
         [filteredDataByStatus, pmCounts, typeFilter]
     );
 
-    const handleEditStation = (station: StationRow, e: React.MouseEvent) => { e.stopPropagation(); if (!isAdmin && station.user_id !== me?.user_id) { alert("You don't have permission to edit this station"); return; } setEditingStation(station); setOpenEditStation(true); };
+    const handleEditStation = (station: StationRow, e: React.MouseEvent) => { e.stopPropagation(); if (!isAdmin && station.user_id !== me?.user_id) { alert(t.noEditPermission); return; } setEditingStation(station); setOpenEditStation(true); };
     const handleEditCharger = (stationId: string, charger: ChargerData, e: React.MouseEvent) => { e.stopPropagation(); setEditingCharger({ stationId, charger }); setOpenEditCharger(true); };
 
     const handleChargerCardClick = (charger: ChargerData, stationId: string) => {
@@ -961,7 +976,7 @@ export function SearchDataTables() {
             setOpenEditStation(false);
             setNotice({ type: "success", msg: t.stationUpdated });
             setTimeout(() => setNotice(null), 2500);
-        } catch (e: any) { console.error(e); setNotice({ type: "error", msg: e?.message || "Update failed" }); setTimeout(() => setNotice(null), 3500); } finally { setSaving(false); }
+        } catch (e: any) { console.error(e); setNotice({ type: "error", msg: e?.message || t.updateFailed }); setTimeout(() => setNotice(null), 3500); } finally { setSaving(false); }
     };
 
     const handleUpdateCharger = async () => {
@@ -979,7 +994,7 @@ export function SearchDataTables() {
             await refetchStations();
             setExpanded(currentExpanded);
             setOpenEditCharger(false); setNotice({ type: "success", msg: t.chargerUpdated }); setTimeout(() => setNotice(null), 2500);
-        } catch (e: any) { console.error(e); setNotice({ type: "error", msg: e?.message || "Update failed" }); setTimeout(() => setNotice(null), 3500); } finally { setSaving(false); }
+        } catch (e: any) { console.error(e); setNotice({ type: "error", msg: e?.message || t.updateFailed }); setTimeout(() => setNotice(null), 3500); } finally { setSaving(false); }
     };
 
     const handleDeleteStation = (station: StationRow, e: React.MouseEvent) => {
@@ -997,7 +1012,7 @@ export function SearchDataTables() {
                     if (!res.ok) throw new Error(`Delete failed: ${res.status}`);
                     setData(prev => prev.filter(s => s.id !== station.id));
                     closeConfirm(); setNotice({ type: "success", msg: t.deleteSuccess }); setTimeout(() => setNotice(null), 2500);
-                } catch (e: any) { console.error(e); closeConfirm(); setNotice({ type: "error", msg: e.message || "Failed to delete station" }); setTimeout(() => setNotice(null), 3500); }
+                } catch (e: any) { console.error(e); closeConfirm(); setNotice({ type: "error", msg: e.message || t.deleteStationFailed }); setTimeout(() => setNotice(null), 3500); }
             },
         });
     };
@@ -1017,7 +1032,7 @@ export function SearchDataTables() {
                     if (!res.ok) throw new Error(`Delete failed: ${res.status}`);
                     setData(prev => prev.map(st => { if (st.station_id !== stationId) return st; return { ...st, chargers: st.chargers.filter(c => c.id !== charger.id) }; }));
                     closeConfirm(); setNotice({ type: "success", msg: t.chargerDeleted }); setTimeout(() => setNotice(null), 2500);
-                } catch (e: any) { console.error(e); closeConfirm(); setNotice({ type: "error", msg: e.message || "Failed to delete charger" }); setTimeout(() => setNotice(null), 3500); }
+                } catch (e: any) { console.error(e); closeConfirm(); setNotice({ type: "error", msg: e.message || t.deleteChargerFailed }); setTimeout(() => setNotice(null), 3500); }
             },
         });
     };
@@ -1043,7 +1058,7 @@ export function SearchDataTables() {
             await refetchStations();
             setExpanded(currentExpanded);
             resetAddChargerImages(); setOpenAddCharger(false); setNotice({ type: "success", msg: t.chargerCreated }); setTimeout(() => setNotice(null), 2500);
-        } catch (e: any) { console.error(e); setNotice({ type: "error", msg: e?.message || "Failed to create charger" }); setTimeout(() => setNotice(null), 3500); } finally { setSaving(false); }
+        } catch (e: any) { console.error(e); setNotice({ type: "error", msg: e?.message || t.createChargerFailed }); setTimeout(() => setNotice(null), 3500); } finally { setSaving(false); }
     };
 
     useEffect(() => { const lock = openAdd || openEditStation || openEditCharger || openAddCharger; if (lock) { const scrollY = window.scrollY; document.body.style.position = "fixed"; document.body.style.top = `-${scrollY}px`; document.body.style.left = "0"; document.body.style.right = "0"; document.body.style.width = "100%"; document.body.style.overflow = "hidden"; } else { const top = document.body.style.top; document.body.style.position = ""; document.body.style.top = ""; document.body.style.left = ""; document.body.style.right = ""; document.body.style.width = ""; document.body.style.overflow = ""; if (top) { const y = parseInt(top || "0") * -1; window.scrollTo(0, y); } } }, [openAdd, openEditStation, openEditCharger, openAddCharger]);
@@ -1135,7 +1150,7 @@ export function SearchDataTables() {
                                             {lang === "th" ? "ประเภท" : "Type"}
                                         </th>
                                         <th className="tw-px-3 tw-py-2 tw-text-left tw-text-[11px] tw-font-bold tw-text-blue-gray-500 tw-uppercase tw-tracking-wider tw-border-b tw-border-blue-gray-100">
-                                            PM Date
+                                            {lang === "th" ? "วันที่ PM" : "PM Date"}
                                         </th>
                                         <th className="tw-px-3 tw-py-2 tw-text-left tw-text-[11px] tw-font-bold tw-text-blue-gray-500 tw-uppercase tw-tracking-wider tw-border-b tw-border-blue-gray-100">
                                             {lang === "th" ? "ช่างเทคนิค" : "Technician"}
@@ -1499,11 +1514,11 @@ export function SearchDataTables() {
                                     <p className="tw-text-[10px] sm:tw-text-[11px] tw-font-bold tw-text-blue-gray-500 tw-uppercase tw-tracking-widest tw-mb-2.5 sm:tw-mb-3">📷 {t.chargerImages}</p>
                                     <div className="tw-grid tw-grid-cols-1 tw-gap-2.5 sm:tw-grid-cols-2 sm:tw-gap-3">
                                         <div className="tw-space-y-2">
-                                            <ImageZone label={t.chargerImage} previews={editChargerPreviews} onUpload={pickChargerImage} onRemove={removeEditChargerImage} emptyLabel={t.noImages} uploadLabel={t.upload} existingImages={editingCharger?.charger.chargerImages?.filter((_, i) => !deletedExistingChargerIdxs.has(i))} apiBase={API_BASE} onRemoveExisting={(filteredIdx) => { const remaining = (editingCharger?.charger.chargerImages || []).map((url, i) => ({ url, i })).filter(({ i }) => !deletedExistingChargerIdxs.has(i)); if (remaining[filteredIdx]) { setDeletedExistingChargerIdxs(prev => { const next = new Set(Array.from(prev)); next.add(remaining[filteredIdx].i); return next; }); } }} />
+                                            <ImageZone label={t.chargerImage} previews={editChargerPreviews} onUpload={pickChargerImage} onRemove={removeEditChargerImage} emptyLabel={t.noImages} uploadLabel={t.upload} currentLabel={t.currentImageBadge} existingImages={editingCharger?.charger.chargerImages?.filter((_, i) => !deletedExistingChargerIdxs.has(i))} apiBase={API_BASE} onRemoveExisting={(filteredIdx) => { const remaining = (editingCharger?.charger.chargerImages || []).map((url, i) => ({ url, i })).filter(({ i }) => !deletedExistingChargerIdxs.has(i)); if (remaining[filteredIdx]) { setDeletedExistingChargerIdxs(prev => { const next = new Set(Array.from(prev)); next.add(remaining[filteredIdx].i); return next; }); } }} />
                                             {deletedExistingChargerIdxs.size > 0 && (<div className="tw-flex tw-items-center tw-gap-2 tw-px-3 tw-py-2 tw-rounded-lg tw-bg-red-50 tw-ring-1 tw-ring-red-200/60"><TrashIcon className="tw-h-4 tw-w-4 tw-text-red-500" /><span className="tw-text-[11px] tw-text-red-600 tw-font-medium">{deletedExistingChargerIdxs.size} {t.willBeDeleted}</span><button type="button" onClick={() => setDeletedExistingChargerIdxs(new Set())} className="tw-ml-auto tw-text-[11px] tw-text-blue-600 tw-font-semibold hover:tw-underline">{t.undo}</button></div>)}
                                         </div>
                                         <div className="tw-space-y-2">
-                                            <ImageZone label={t.deviceImage} previews={editDevicePreviews} onUpload={pickDeviceImage} onRemove={removeEditDeviceImage} emptyLabel={t.noImages} uploadLabel={t.upload} existingImages={editingCharger?.charger.deviceImages?.filter((_, i) => !deletedExistingDeviceIdxs.has(i))} apiBase={API_BASE} onRemoveExisting={(filteredIdx) => { const remaining = (editingCharger?.charger.deviceImages || []).map((url, i) => ({ url, i })).filter(({ i }) => !deletedExistingDeviceIdxs.has(i)); if (remaining[filteredIdx]) { setDeletedExistingDeviceIdxs(prev => { const next = new Set(Array.from(prev)); next.add(remaining[filteredIdx].i); return next; }); } }} />
+                                            <ImageZone label={t.deviceImage} previews={editDevicePreviews} onUpload={pickDeviceImage} onRemove={removeEditDeviceImage} emptyLabel={t.noImages} uploadLabel={t.upload} currentLabel={t.currentImageBadge} existingImages={editingCharger?.charger.deviceImages?.filter((_, i) => !deletedExistingDeviceIdxs.has(i))} apiBase={API_BASE} onRemoveExisting={(filteredIdx) => { const remaining = (editingCharger?.charger.deviceImages || []).map((url, i) => ({ url, i })).filter(({ i }) => !deletedExistingDeviceIdxs.has(i)); if (remaining[filteredIdx]) { setDeletedExistingDeviceIdxs(prev => { const next = new Set(Array.from(prev)); next.add(remaining[filteredIdx].i); return next; }); } }} />
                                             {deletedExistingDeviceIdxs.size > 0 && (<div className="tw-flex tw-items-center tw-gap-2 tw-px-3 tw-py-2 tw-rounded-lg tw-bg-red-50 tw-ring-1 tw-ring-red-200/60"><TrashIcon className="tw-h-4 tw-w-4 tw-text-red-500" /><span className="tw-text-[11px] tw-text-red-600 tw-font-medium">{deletedExistingDeviceIdxs.size} {t.willBeDeleted}</span><button type="button" onClick={() => setDeletedExistingDeviceIdxs(new Set())} className="tw-ml-auto tw-text-[11px] tw-text-blue-600 tw-font-semibold hover:tw-underline">{t.undo}</button></div>)}
                                         </div>
                                     </div>

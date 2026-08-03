@@ -145,7 +145,7 @@ export default function PipelineConfigModal({ open, onClose, sn, chargeBoxID, st
         setLoading(true);
         if (!sn) { setNotice({ type: "error", msg: t.noSn }); return; }
         const res = await apiFetch(`/all-stations/`);
-        if (!res.ok) throw new Error(`Fetch failed: ${res.status}`);
+        if (!res.ok) throw new Error(`${lang === "th" ? "โหลดข้อมูลไม่สำเร็จ" : "Fetch failed"}: ${res.status}`);
         const json = await res.json();
         const stations: any[] = Array.isArray(json?.stations) ? json.stations : [];
         let found: any = null;
@@ -158,7 +158,7 @@ export default function PipelineConfigModal({ open, onClose, sn, chargeBoxID, st
         hydrate(found);
       } catch (e: any) {
         console.error(e);
-        setNotice({ type: "error", msg: e?.message || "Load error" });
+        setNotice({ type: "error", msg: e?.message || (lang === "th" ? "โหลดข้อมูลไม่สำเร็จ" : "Load error") });
       } finally { setLoading(false); }
     })();
   }, [open, sn, hydrate, t.noSn, t.notFound]);
@@ -227,14 +227,14 @@ export default function PipelineConfigModal({ open, onClose, sn, chargeBoxID, st
       });
       if (!res.ok) {
         const errBody = await res.json().catch(() => ({}));
-        throw new Error(errBody?.detail || `Update failed: ${res.status}`);
+        throw new Error(errBody?.detail || `${lang === "th" ? "บันทึกไม่สำเร็จ" : "Update failed"}: ${res.status}`);
       }
       setNotice({ type: "success", msg: t.saved });
       onSaved?.(true, t.saved);                       // ← เพิ่ม
       setTimeout(() => { setNotice(null); onClose(); }, 1200);
     } catch (e: any) {
       console.error(e);
-      const msg = e?.message || "Update failed";
+      const msg = e?.message || (lang === "th" ? "บันทึกไม่สำเร็จ" : "Update failed");
       setNotice({ type: "error", msg });
       onSaved?.(false, msg);                           // ← เพิ่ม
       setTimeout(() => setNotice(null), 3500);

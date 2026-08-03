@@ -29,6 +29,7 @@ const translations = {
         save: "บันทึก",
         saving: "กำลังบันทึก...",
         required: "กรุณากรอก Topic",
+        stationNotFound: "ไม่พบ Station ID",
         success: "บันทึกเรียบร้อยแล้ว",
         error: "บันทึกไม่สำเร็จ",
     },
@@ -41,6 +42,7 @@ const translations = {
         save: "Save",
         saving: "Saving...",
         required: "Please fill the Topic",
+        stationNotFound: "Station ID not found",
         success: "Saved successfully",
         error: "Save failed",
     },
@@ -82,7 +84,7 @@ export default function RelayTopicDialog({
     }, [toast]);
 
     const handleSubmit = async () => {
-        if (!stationId) return setToast({ type: "error", message: "Station ID not found" });
+        if (!stationId) return setToast({ type: "error", message: t.stationNotFound });
         if (!topic.trim()) return setToast({ type: "error", message: t.required });
 
         setSaving(true);

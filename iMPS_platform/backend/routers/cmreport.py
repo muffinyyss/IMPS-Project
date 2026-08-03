@@ -899,6 +899,15 @@ async def cmreport_detail_path(
         "sched_start": doc.get("sched_start") or "",
         "sched_finish": doc.get("sched_finish") or "",
         "assignees": doc.get("assignees") or [],
+        # วันที่/เวลาที่ engineer วางแผน (ประทับตอนเปิดฟอร์มเข้ามาวางแผน) — แสดงอย่างเดียว แก้ไม่ได้
+        "planned_date": doc.get("planned_date") or "",
+        "planned_time": doc.get("planned_time") or "",
+        # ประวัติแผนรอบก่อน ๆ — ใบที่ติดรออะไหล่/รอหน้างานแล้ววางแผนใหม่ จะเก็บรอบเดิมไว้ที่นี่
+        # flat fields ด้านบนคือ "แผนรอบล่าสุด" เสมอ (list/filter ยังอ่านจากตรงนั้นเหมือนเดิม)
+        "plan_history": doc.get("plan_history") or [],
+        # ประวัติผลซ่อมรอบก่อน ๆ — ช่างบันทึกเป็นสถานะรอ (material/site) แล้วกลับมาซ่อมใหม่
+        # flat fields ของ InProgress ด้านล่างคือ "รอบที่กำลังทำอยู่" (ว่างระหว่างรอ)
+        "repair_history": doc.get("repair_history") or [],
 
         # flat fields จาก InProgress
         "inspector": doc.get("inspector") or "",
@@ -989,6 +998,7 @@ async def cmreport_update_status(
             "equipment_list", "problem_details", "problem_type", "severity",
             "reported_by","inspector", "assignee", "initial_cause", "corrective_actions",
             "sched_start", "sched_finish", "assignees",
+            "planned_date", "planned_time", "plan_history", "repair_history",
             "resolved_date", "repair_result", "preventive_action", 
             "remarks", "remarks_open",
             "faulty_equipment",

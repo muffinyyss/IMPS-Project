@@ -2,6 +2,24 @@
 import React, { useRef, useEffect, useCallback } from "react";
 import { ModuleResult } from "../../lib/api";
 import { AutoPredictPanel, HealthSummaryBar } from "./DetectionLayout";
+import useLanguage, { type Lang } from "@/utils/useLanguage";
+
+// ── Translations (UI chrome only) ───────────────────────────────────────────
+const T = {
+    loading:        { th: "กำลังโหลด...",          en: "Loading..." },
+    aiModels:       { th: "โมเดล AI",              en: "AI Models" },
+    detectionGroups:{ th: "กลุ่มการตรวจจับ",       en: "Detection Groups" },
+    groups:         { th: "กลุ่ม",                 en: "Groups" },
+    conditions:     { th: "เงื่อนไข",              en: "Conditions" },
+    equipment:      { th: "อุปกรณ์",               en: "Equipment" },
+    healthScore:    { th: "คะแนนสุขภาพ",           en: "Health Score" },
+    aiModelTree:    { th: "ผังสถานะโมเดล AI",      en: "AI Model Status Tree" },
+    online:         { th: "ออนไลน์",               en: "online" },
+    rootCause:      { th: "สาเหตุหลัก",            en: "Root Cause" },
+    conditionRef:   { th: "ตารางอ้างอิงเงื่อนไข",   en: "Condition Reference" },
+} as const;
+
+const t = (k: keyof typeof T, lang: Lang) => T[k][lang];
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared tree styles (ตรงต้นฉบับ .m2-mn, .m2-gn, .m2-cond, .m2-equip)
@@ -170,6 +188,7 @@ interface M2Props {
 }
 
 function M2ModelTree({ data }: M2Props) {
+    const { lang } = useLanguage();
     const scores = (data as any)?.model_scores ?? {};
 
     const getStatus = (v: number | undefined): "OK" | "WARN" | "CRIT" | "IDLE" => {
@@ -279,7 +298,7 @@ function M2ModelTree({ data }: M2Props) {
             {/* COL 1 — AI Models */}
             <div style={{ flex: "0 0 260px", zIndex: 2, paddingTop: 6 }}>
                 <div style={{ fontSize: ".6em", fontWeight: 700, color: "#718096", textTransform: "uppercase", letterSpacing: ".08em", marginBottom: 6, fontFamily: "'JetBrains Mono',monospace" }}>
-                    AI Models (6)
+                    {t("aiModels", lang)} (6)
                 </div>
                 {/* reg group */}
                 <div data-mn-grp="reg" style={S.mn}>
@@ -342,7 +361,7 @@ function M2ModelTree({ data }: M2Props) {
             {/* COL 2 — Detection Groups */}
             <div style={{ flex: "0 0 160px", position: "relative", margin: "0 40px", zIndex: 2 }}>
                 <div style={{ fontSize: ".6em", fontWeight: 700, color: "#718096", textTransform: "uppercase", letterSpacing: ".08em", marginBottom: 6, fontFamily: "'JetBrains Mono',monospace" }}>
-                    Detection Groups
+                    {t("detectionGroups", lang)}
                 </div>
                 {groups.map((g) => (
                     <div key={g.key} data-grp-node={g.key} style={S.gn(g.color)}>
@@ -370,6 +389,7 @@ function M2ModelTree({ data }: M2Props) {
 }
 
 function M2SystemGauge({ data }: { data: ModuleResult | null }) {
+    const { lang } = useLanguage();
     const health = data?.health ?? null;
     const risk = (data as any)?.ensemble_risk ?? (data as any)?.risk_score ?? null;
     const level = risk == null ? "—" : risk < 0.25 ? "CLEAN" : risk < 0.5 ? "MODERATE" : risk < 0.75 ? "DEGRADED" : "CLOGGED";
@@ -410,7 +430,7 @@ function M2SystemGauge({ data }: { data: ModuleResult | null }) {
                     <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: "1.8em", fontWeight: 900, color, lineHeight: 1 }}>
                         {health != null ? `${health}%` : "—"}
                     </div>
-                    <div style={{ fontSize: ".52em", fontWeight: 700, color: "#718096", marginTop: 2 }}>Health Score</div>
+                    <div style={{ fontSize: ".52em", fontWeight: 700, color: "#718096", marginTop: 2 }}>{t("healthScore", lang)}</div>
                 </div>
             </div>
             <div style={{ fontSize: ".7em", fontWeight: 700 }}>🌡️ Filter Clogging Risk</div>
@@ -422,6 +442,7 @@ function M2SystemGauge({ data }: { data: ModuleResult | null }) {
 }
 
 function M2ConditionTree({ data }: { data: ModuleResult | null }) {
+    const { lang } = useLanguage();
     const d = (data as any)?.data ?? {};
 
     const conds = [
@@ -544,7 +565,7 @@ function M2ConditionTree({ data }: { data: ModuleResult | null }) {
 
             {/* COL 1 — Conditions */}
             <div style={{ flex: "0 0 280px", zIndex: 2, paddingTop: 6 }}>
-                <div style={{ ...S.ct, marginBottom: 6 }}>Conditions (15)</div>
+                <div style={{ ...S.ct, marginBottom: 6 }}>{t("conditions", lang)} (15)</div>
                 {groups.map((g) => (
                     <React.Fragment key={g.key}>
                         {g.conds.map((c) => (
@@ -564,7 +585,7 @@ function M2ConditionTree({ data }: { data: ModuleResult | null }) {
 
             {/* COL 2 — Equipment Groups */}
             <div style={{ flex: "0 0 140px", position: "relative", margin: "0 40px", zIndex: 2 }}>
-                <div style={{ ...S.ct, marginBottom: 6 }}>Equipment (5)</div>
+                <div style={{ ...S.ct, marginBottom: 6 }}>{t("equipment", lang)} (5)</div>
                 {equips.map((eq) => (
                     <div key={eq.key} data-eq-node={eq.key} style={{ ...S.equip, marginBottom: 32 }}>
                         <div style={S.equipNm}>{eq.nm}</div>
@@ -591,7 +612,8 @@ function M2ConditionTree({ data }: { data: ModuleResult | null }) {
 }
 
 export function M2DetectionTab({ data }: M2Props) {
-    if (!data) return <div style={{ padding: 40, textAlign: "center", color: "#94a3b8" }}>กำลังโหลด...</div>;
+    const { lang } = useLanguage();
+    if (!data) return <div style={{ padding: 40, textAlign: "center", color: "#94a3b8" }}>{t("loading", lang)}</div>;
 
     const risk = (data as any).ensemble_risk ?? (data as any).risk_score;
     const modelScores = (data as any).model_scores ?? {};
@@ -626,7 +648,7 @@ export function M2DetectionTab({ data }: M2Props) {
 
             {/* AI Model Tree */}
             <div style={S.card}>
-                <div style={S.ct}><i>🤖</i> AI Model Status Tree</div>
+                <div style={S.ct}><i>🤖</i> {t("aiModelTree", lang)}</div>
                 <M2ModelTree data={data} />
             </div>
 
@@ -650,6 +672,7 @@ interface M3Props {
 }
 
 function M3ModelTree({ data }: M3Props) {
+    const { lang } = useLanguage();
     const scores = (data as any)?.model_scores ?? {};
 
     const getStatus = (v: number | undefined): "OK" | "WARN" | "CRIT" | "IDLE" => {
@@ -747,7 +770,7 @@ function M3ModelTree({ data }: M3Props) {
 
             {/* COL 1 */}
             <div style={{ flex: "0 0 260px", zIndex: 2, paddingTop: 6 }}>
-                <div style={{ ...S.ct, marginBottom: 6 }}>AI Models (6)</div>
+                <div style={{ ...S.ct, marginBottom: 6 }}>{t("aiModels", lang)} (6)</div>
                 {["cls", "ew", "ad"].map((grpKey) => (
                     <React.Fragment key={grpKey}>
                         {models.filter((m) => m.grp === grpKey).map((m) => (
@@ -769,7 +792,7 @@ function M3ModelTree({ data }: M3Props) {
 
             {/* COL 2 */}
             <div style={{ flex: "0 0 160px", position: "relative", margin: "0 40px", zIndex: 2 }}>
-                <div style={{ ...S.ct, marginBottom: 6 }}>Groups</div>
+                <div style={{ ...S.ct, marginBottom: 6 }}>{t("groups", lang)}</div>
                 {groups.map((g) => (
                     <div key={g.key} data-m3-gn={g.key} style={{ ...S.gn(g.color), marginBottom: 40 }}>
                         <div style={S.gnT}>{g.label}</div>
@@ -792,6 +815,7 @@ function M3ModelTree({ data }: M3Props) {
 }
 
 function M3StatusGauge({ data }: { data: ModuleResult | null }) {
+    const { lang } = useLanguage();
     const health = data?.health ?? null;
     const onlineCount = (data as any)?.online_count ?? 0;
     const totalDevices = (data as any)?.total_devices ?? 6;
@@ -824,14 +848,15 @@ function M3StatusGauge({ data }: { data: ModuleResult | null }) {
                 {rootCause}
             </div>
             <div style={{ fontSize: ".62em", color: "#718096" }}>
-                🟢 {onlineCount}/{totalDevices} online
+                🟢 {onlineCount}/{totalDevices} {t("online", lang)}
             </div>
         </div>
     );
 }
 
 export function M3DetectionTab({ data }: M3Props) {
-    if (!data) return <div style={{ padding: 40, textAlign: "center", color: "#94a3b8" }}>กำลังโหลด...</div>;
+    const { lang } = useLanguage();
+    if (!data) return <div style={{ padding: 40, textAlign: "center", color: "#94a3b8" }}>{t("loading", lang)}</div>;
 
     const d = (data as any).data ?? {};
     const rootCause = (data as any).root_cause ?? "NORMAL";
@@ -870,7 +895,7 @@ export function M3DetectionTab({ data }: M3Props) {
             <div style={{ ...S.card, borderTop: `3px solid ${rcColor[rootCause] ?? "#d0dae8"}` }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap", marginBottom: 16 }}>
                     <div>
-                        <div style={S.ct}><i>🔍</i> Root Cause</div>
+                        <div style={S.ct}><i>🔍</i> {t("rootCause", lang)}</div>
                         <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: "1.1em", fontWeight: 800, color: rcColor[rootCause] ?? "#718096" }}>
                             {rootCause}
                         </div>
@@ -905,13 +930,13 @@ export function M3DetectionTab({ data }: M3Props) {
 
             {/* AI Model Tree */}
             <div style={S.card}>
-                <div style={S.ct}><i>🤖</i> AI Model Status Tree</div>
+                <div style={S.ct}><i>🤖</i> {t("aiModelTree", lang)}</div>
                 <M3ModelTree data={data} />
             </div>
 
             {/* Condition table */}
             <div style={S.card}>
-                <div style={S.ct}><i>📋</i> Condition Reference (C01–C17)</div>
+                <div style={S.ct}><i>📋</i> {t("conditionRef", lang)} (C01–C17)</div>
                 <div style={{ overflowX: "auto" }}>
                     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: ".62em", fontFamily: "'JetBrains Mono',monospace" }}>
                         <thead>

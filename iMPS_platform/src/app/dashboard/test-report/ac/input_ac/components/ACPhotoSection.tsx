@@ -42,6 +42,9 @@ const translations = {
     clickToViewFull: "คลิกเพื่อดูรูปเต็ม",
     clickToScroll: "คลิกเพื่อไปยังช่องที่ต้องกรอก",
     categoryTooltip: "อัปโหลดรูปภาพสำหรับหมวดหมู่นี้",
+    // Image alt texts
+    selectedPhotoAlt: "รูปที่เลือก",
+    additionalPhotoAlt: "รูปเพิ่มเติม",
   },
   en: {
     addPhoto: "Add Photo / Take Photo",
@@ -63,6 +66,9 @@ const translations = {
     clickToViewFull: "Click to view full image",
     clickToScroll: "Click to go to the field",
     categoryTooltip: "Upload photo for this category",
+    // Image alt texts
+    selectedPhotoAlt: "Selected photo",
+    additionalPhotoAlt: "Additional photo",
   },
 };
 
@@ -415,7 +421,7 @@ const ACPhotoSection: React.FC<ACPhotoSectionProps> = ({ initialItems, onItemsCh
                     <div className="tw-relative tw-w-full tw-h-[180px] tw-flex tw-items-center tw-justify-center">
                       <Image
                         src={photoItems[categoryIndex].images[0].url}
-                        alt={`${categoryName}-selected`}
+                        alt={`${categoryName} - ${t.selectedPhotoAlt}`}
                         fill
                         className="tw-object-contain tw-rounded-md"
                       />
@@ -426,6 +432,8 @@ const ACPhotoSection: React.FC<ACPhotoSectionProps> = ({ initialItems, onItemsCh
                             e.preventDefault();
                             removeItemImage(categoryIndex, 0);
                           }}
+                          aria-label={t.deletePhotoTooltip}
+                          title={t.deletePhotoTooltip}
                           className="tw-absolute tw-top-2 tw-right-2 tw-bg-red-500 tw-text-white tw-text-xs tw-rounded-full tw-w-7 tw-h-7 tw-flex tw-items-center tw-justify-center hover:tw-bg-red-600 tw-transition-colors tw-shadow-md"
                         >
                           ×
@@ -514,10 +522,12 @@ const ACPhotoSection: React.FC<ACPhotoSectionProps> = ({ initialItems, onItemsCh
                           key={j}
                           className="tw-relative tw-aspect-video tw-rounded-md tw-overflow-hidden tw-border tw-border-blue-gray-100"
                         >
-                          <Image src={img.url} alt={`extra-${actualIndex}-img-${j}`} fill className="tw-object-cover" />
+                          <Image src={img.url} alt={`${t.additionalPhotoAlt} ${actualIndex - 5} - ${j + 1}`} fill className="tw-object-cover" />
                           <button
                             type="button"
                             onClick={() => removeItemImage(actualIndex, j)}
+                            title={t.deleteThis}
+                            aria-label={t.deleteThis}
                             className="tw-absolute tw-top-1 tw-right-1 tw-bg-white/80 tw-backdrop-blur tw-text-red-600 tw-text-xs tw-rounded tw-px-2 tw-py-1 hover:tw-bg-white"
                           >
                             {t.delete}

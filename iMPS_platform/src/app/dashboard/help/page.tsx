@@ -7,26 +7,48 @@ import {
   DocumentArrowDownIcon,
   ChevronRightIcon,
 } from "@heroicons/react/24/solid";
+import useLanguage, { type Lang } from "@/utils/useLanguage";
+
+type DocKey = "userManual" | "sourceCodeManual";
 
 type DocLink = {
-  title: string;
-  description: string;
+  key: DocKey;
   href: string;
   icon: React.ElementType;
   adminOnly?: boolean; // แสดงเฉพาะ role = "admin"
 };
 
+const T = {
+  userManualTitle: { th: "คู่มือการใช้งานระบบ", en: "System User Manual" },
+  userManualDesc: {
+    th: "ภาพรวมและวิธีใช้งาน iMPS Platform สำหรับผู้ใช้งานทั่วไป",
+    en: "Overview and how to use the iMPS Platform for general users",
+  },
+  sourceCodeManualTitle: { th: "คู่มือการใช้งาน Source Code", en: "Source Code Manual" },
+  sourceCodeManualDesc: {
+    th: "โครงสร้างโค้ดและแนวทางพัฒนาต่อยอด สำหรับทีมพัฒนา",
+    en: "Code structure and development guidelines for the dev team",
+  },
+  pdfDocument: { th: "เอกสาร PDF", en: "PDF document" },
+  openDocument: { th: "เปิดเอกสาร", en: "Open document" },
+} as const;
+
+const t = (k: keyof typeof T, lang: Lang) => T[k][lang];
+
+const DOC_TEXT: Record<DocKey, { title: keyof typeof T; description: keyof typeof T }> = {
+  userManual: { title: "userManualTitle", description: "userManualDesc" },
+  sourceCodeManual: { title: "sourceCodeManualTitle", description: "sourceCodeManualDesc" },
+};
+
 // วางไฟล์ไว้ใน /public/docs แล้วอ้าง path ตรงนี้ (encodeURI รองรับชื่อไทย/เว้นวรรค)
 const DOCS: DocLink[] = [
   {
-    title: "คู่มือการใช้งานระบบ",
-    description: "ภาพรวมและวิธีใช้งาน iMPS Platform สำหรับผู้ใช้งานทั่วไป",
+    key: "userManual",
     href: encodeURI("/docs/คู่มือการใช้งานระบบ_iMPS Platform.pdf"),
     icon: BookOpenIcon,
   },
   {
-    title: "คู่มือการใช้งาน Source Code",
-    description: "โครงสร้างโค้ดและแนวทางพัฒนาต่อยอด สำหรับทีมพัฒนา",
+    key: "sourceCodeManual",
     href: encodeURI("/docs/คู่มือการใช้งาน source code_iMPS Platform.pdf"),
     icon: CodeBracketIcon,
     adminOnly: true,
@@ -34,6 +56,7 @@ const DOCS: DocLink[] = [
 ];
 
 export default function HelpPage() {
+  const { lang } = useLanguage();
   const [role, setRole] = useState<string>("");
 
   useEffect(() => {
@@ -71,9 +94,10 @@ export default function HelpPage() {
       <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 tw-gap-3 sm:tw-gap-4 tw-mt-6">
         {docs.map((doc) => {
           const Icon = doc.icon;
+          const text = DOC_TEXT[doc.key];
           return (
             <a
-              key={doc.title}
+              key={doc.key}
               href={doc.href}
               target="_blank"
               rel="noopener noreferrer"
@@ -86,10 +110,10 @@ export default function HelpPage() {
                 </div>
                 <div className="tw-flex-1 tw-min-w-0">
                   <h3 className="tw-text-sm lg:tw-text-base tw-font-bold tw-text-blue-gray-900 tw-leading-snug">
-                    {doc.title}
+                    {t(text.title, lang)}
                   </h3>
                   <p className="tw-text-xs lg:tw-text-sm tw-text-blue-gray-500 tw-mt-1 tw-leading-relaxed">
-                    {doc.description}
+                    {t(text.description, lang)}
                   </p>
                 </div>
               </div>
@@ -101,10 +125,10 @@ export default function HelpPage() {
               <div className="tw-flex tw-items-center tw-justify-between tw-px-4 tw-py-2.5 tw-bg-gray-50/50">
                 <span className="tw-inline-flex tw-items-center tw-gap-1.5 tw-text-[11px] lg:tw-text-xs tw-font-medium tw-text-blue-gray-500">
                   <DocumentArrowDownIcon className="tw-w-3.5 tw-h-3.5" />
-                  เอกสาร PDF
+                  {t("pdfDocument", lang)}
                 </span>
                 <span className="tw-inline-flex tw-items-center tw-gap-0.5 tw-text-[11px] lg:tw-text-xs tw-font-semibold tw-text-blue-gray-700 group-hover:tw-text-gray-900 tw-transition-colors">
-                  เปิดเอกสาร
+                  {t("openDocument", lang)}
                   <ChevronRightIcon className="tw-w-3.5 tw-h-3.5 tw-transition-transform group-hover:tw-translate-x-0.5" />
                 </span>
               </div>

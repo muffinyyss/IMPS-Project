@@ -38,7 +38,7 @@ const T = {
     remarks_open: { th: "หมายเหตุ", en: "Remarks" },
     save: { th: "บันทึก", en: "Save" },
     saving: { th: "กำลังบันทึก...", en: "Saving..." },
-    assign: { th: "Assign", en: "Assign" },
+    assign: { th: "มอบหมาย", en: "Assign" },
     cancelJob: { th: "ยกเลิกงาน", en: "Cancel Job" },
     approve: { th: "อนุมัติ", en: "Approve" },
     approveTitle: { th: "อนุมัติใบงาน", en: "Approve work order" },
@@ -63,6 +63,16 @@ const T = {
     rejectedBannerTitle: { th: "ใบงานถูกตีกลับจากผู้วางแผน — กรุณาแก้ไขแล้วบันทึก", en: "Returned by planner — please revise and save" },
     rejectedBy: { th: "โดย", en: "by" },
     planningSection: { th: "การวางแผนงาน", en: "Planning" },
+    plannedAt: { th: "วันที่/เวลาที่วางแผน", en: "Planned at" },
+    planRound: { th: "วางแผนครั้งที่", en: "Planning round" },
+    repairInfoSection: { th: "ข้อมูลที่ช่างบันทึกไว้", en: "Technician's records" },
+    riProblem: { th: "ปัญหา", en: "Problem" },
+    riCause: { th: "สาเหตุ", en: "Cause" },
+    riAction: { th: "การแก้ไข", en: "Corrective action" },
+    riEquipment: { th: "อุปกรณ์ที่ซ่อม", en: "Repaired equipment" },
+    riRemarks: { th: "หมายเหตุของช่าง", en: "Technician remarks" },
+    riBefore: { th: "รูปก่อนแก้ไข", en: "Before" },
+    riAfter: { th: "รูปหลังแก้ไข", en: "After" },
     schedStart: { th: "วันที่เริ่มตามแผน", en: "Scheduled Start" },
     schedFinish: { th: "วันที่เสร็จตามแผน", en: "Scheduled Finish" },
     technician: { th: "ช่างผู้รับผิดชอบ", en: "Technician" },
@@ -98,6 +108,12 @@ const T = {
     maximoSrFailed: { th: "ไม่สามารถสร้าง Maximo SR (บันทึก CM สำเร็จแล้ว)", en: "Maximo SR not created (CM saved)" },
     savedSuccess: { th: "บันทึกสำเร็จ", en: "Saved successfully" },
     redirecting: { th: "กำลังกลับหน้ารายการ...", en: "Redirecting to list..." },
+    optional: { th: "(ไม่บังคับ)", en: "(optional)" },
+    maxPhotos: { th: "สูงสุด", en: "Max" },
+    photosUnit: { th: "รูป", en: "photos" },
+    photoSavedBadge: { th: "บันทึกแล้ว", en: "Saved" },
+    removeTechnician: { th: "ลบช่าง", en: "Remove technician" },
+    cancelledBannerTitle: { th: "ใบงานถูกยกเลิก", en: "Work order cancelled" },
 };
 
 const t = (key: keyof typeof T, lang: Lang): string => T[key][lang];
@@ -117,6 +133,27 @@ const WAIT_STATES = [
     "WO - wait for site condition",
 ] as const;
 const DEFAULT_WAIT_STATE = WAIT_STATES[0];
+
+// ข้อมูลที่ช่างกรอกไว้แล้ว (อ่านอย่างเดียว) — แสดงเฉพาะเมื่อมีข้อมูลจริง
+type RepairInfo = {
+    problem_type: string[];
+    problem_type_other: string;
+    cause: string[];
+    repaired_equipment: string[];
+    inprogress_remarks: string;
+    corrective_actions: { text: string; beforeImages: { url?: string }[]; afterImages: { url?: string }[] }[];
+};
+
+// แผน 1 รอบ — ใบที่ติดรออะไหล่/รอหน้างานแล้วถูกวางแผนใหม่ จะเก็บรอบเดิมไว้ใน plan_history
+type PlanRound = {
+    planned_date?: string;
+    planned_time?: string;
+    wait_state?: string;
+    wait_remark?: string;
+    sched_start?: string;
+    sched_finish?: string;
+    assignees?: string[];
+};
 
 // รองรับข้อมูลเก่า: map ค่าที่เปลี่ยนชื่อแล้ว → ค่าใหม่ (manpower→scheduled, spare part→material, site access→site condition)
 const LEGACY_WAIT_STATE_MAP: Record<string, (typeof WAIT_STATES)[number]> = {
@@ -140,9 +177,102 @@ const LOGO_SRC = "/img/logo_egat.png";
 const LIST_ROUTE = "/dashboard/cm-report";
 const MAX_PHOTOS = 5;
 
+// ใช้ตัวแปลง value → label ชุดเดียวกับฟอร์ม InProgress จะได้ไม่ต้องดูแลลิสต์ซ้ำสองที่
+import { problemLabelOf, causeLabelOf } from "@/app/dashboard/cm-report/inprogress/input_CMreport/components/checkList";
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
 // ==================== VALIDATION CARD ====================
+// การ์ดแสดงแผนรอบก่อนหน้า — อ่านอย่างเดียว ใช้ในหน้าวางแผนเมื่อใบถูกวางแผนใหม่หลายรอบ
+// ข้อมูลที่ช่างบันทึกไว้ — อ่านอย่างเดียว ใช้ตอน engineer กลับมาวางแผนรอบใหม่
+// ซ่อนทั้งการ์ดถ้าช่างยังไม่ได้กรอกอะไรเลย และซ่อนเป็นรายหัวข้อถ้าหัวข้อนั้นว่าง
+function RepairInfoCard({ info, lang }: { info: RepairInfo; lang: Lang }) {
+    const problems = [...info.problem_type.map(problemLabelOf), info.problem_type_other].map(x => (x || "").trim()).filter(Boolean);
+    const causes = info.cause.map(x => causeLabelOf((x || "").trim())).filter(Boolean);
+    const equipment = info.repaired_equipment.map(x => (x || "").trim()).filter(Boolean);
+    const actions = info.corrective_actions.filter(
+        a => (a.text || "").trim() || (a.beforeImages?.length ?? 0) > 0 || (a.afterImages?.length ?? 0) > 0
+    );
+    const remarks = (info.inprogress_remarks || "").trim();
+
+    if (!problems.length && !causes.length && !equipment.length && !actions.length && !remarks) return null;
+
+    const src = (u?: string) => (!u ? "" : u.startsWith("http") ? u : `${API_BASE}${u}`);
+    const block = (label: string, body: React.ReactNode) => (
+        <div className="tw-mb-3 last:tw-mb-0">
+            <p className="tw-text-xs tw-font-semibold tw-text-blue-gray-500 tw-mb-1">{label}</p>
+            {body}
+        </div>
+    );
+    const thumbs = (label: string, imgs: { url?: string }[]) =>
+        imgs.length ? (
+            <div className="tw-mt-2">
+                <p className="tw-text-[11px] tw-text-blue-gray-400 tw-mb-1">{label}</p>
+                <div className="tw-flex tw-flex-wrap tw-gap-2">
+                    {imgs.map((im, k) => (
+                        <a key={k} href={src(im.url)} target="_blank" rel="noreferrer"
+                            className="tw-block tw-w-20 tw-h-20 tw-rounded-lg tw-overflow-hidden tw-border tw-border-blue-gray-100 tw-bg-blue-gray-50">
+                            <img src={src(im.url)} alt={label} className="tw-w-full tw-h-full tw-object-cover" />
+                        </a>
+                    ))}
+                </div>
+            </div>
+        ) : null;
+
+    return (
+        <div className="tw-mb-6 tw-p-5 tw-rounded-xl tw-border tw-border-blue-gray-100 tw-bg-blue-gray-50/40">
+            <h3 className="tw-text-base tw-font-bold tw-text-blue-gray-800 tw-mb-4">{t("repairInfoSection", lang)}</h3>
+            {problems.length ? block(t("riProblem", lang),
+                <p className="tw-text-sm tw-text-blue-gray-800 tw-break-words">{problems.join(", ")}</p>) : null}
+            {causes.length ? block(t("riCause", lang),
+                <p className="tw-text-sm tw-text-blue-gray-800 tw-break-words">{causes.join(", ")}</p>) : null}
+            {equipment.length ? block(t("riEquipment", lang),
+                <p className="tw-text-sm tw-text-blue-gray-800 tw-break-words">{equipment.join(", ")}</p>) : null}
+            {actions.length ? block(t("riAction", lang),
+                <div className="tw-space-y-3">
+                    {actions.map((a, i) => (
+                        <div key={i} className="tw-rounded-lg tw-bg-white tw-border tw-border-blue-gray-100 tw-p-3">
+                            {(a.text || "").trim() && <p className="tw-text-sm tw-text-blue-gray-800 tw-break-words">{a.text}</p>}
+                            {thumbs(t("riBefore", lang), a.beforeImages ?? [])}
+                            {thumbs(t("riAfter", lang), a.afterImages ?? [])}
+                        </div>
+                    ))}
+                </div>) : null}
+            {remarks ? block(t("riRemarks", lang),
+                <p className="tw-text-sm tw-text-blue-gray-800 tw-break-words">{remarks}</p>) : null}
+        </div>
+    );
+}
+
+function PlanRoundCard({ round, index, lang }: { round: PlanRound; index: number; lang: Lang }) {
+    const row = (label: string, value?: string) => (
+        <div>
+            <p className="tw-text-xs tw-font-semibold tw-text-blue-gray-500 tw-mb-1">{label}</p>
+            <p className="tw-text-sm tw-text-blue-gray-800 tw-break-words">{value?.trim() ? value : "-"}</p>
+        </div>
+    );
+    const when = [round.planned_date, round.planned_time].filter(Boolean).join(" ");
+    return (
+        <div className="tw-mb-4 tw-p-4 tw-rounded-xl tw-border tw-border-blue-gray-100 tw-bg-white">
+            <h4 className="tw-text-sm tw-font-bold tw-text-blue-gray-700 tw-mb-3">
+                {t("planRound", lang)} {index + 1}
+            </h4>
+            {/* วันที่ / สถานะรอ / หมายเหตุ อยู่บรรทัดเดียวกัน */}
+            <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-3 tw-gap-3">
+                {row(t("plannedAt", lang), when)}
+                {row(t("waitState", lang), round.wait_state)}
+                {row(t("waitRemark", lang), round.wait_remark)}
+            </div>
+            {/* วันเริ่ม/เสร็จ แสดงเฉพาะรอบที่เคยกำหนดตารางไว้ (wait for scheduled) */}
+            {(round.sched_start?.trim() || round.sched_finish?.trim()) && (
+                <div className="tw-mt-3 tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-3">
+                    {row(t("schedStart", lang), round.sched_start?.replace("T", " "))}
+                    {row(t("schedFinish", lang), round.sched_finish?.replace("T", " "))}
+                </div>
+            )}
+        </div>
+    );
+}
+
 function CMValidationCard({ validations, lang }: { validations: ValidationItem[]; lang: Lang; }) {
     const [isExpanded, setIsExpanded] = useState(true);
     const requiredValidations = validations.filter(v => v.isRequired);
@@ -198,7 +328,7 @@ function CMValidationCard({ validations, lang }: { validations: ValidationItem[]
                     </div>
                     {validations.filter(v => !v.isRequired && !v.isValid).length > 0 && (
                         <div className="tw-bg-white/60 tw-rounded-lg tw-p-4 tw-border tw-border-blue-gray-200">
-                            <p className="tw-text-xs tw-text-blue-gray-600 tw-mb-2 tw-font-semibold">💡 {t("remaining", lang)} (ไม่บังคับ)</p>
+                            <p className="tw-text-xs tw-text-blue-gray-600 tw-mb-2 tw-font-semibold">💡 {t("remaining", lang)} {t("optional", lang)}</p>
                             <ul className="tw-space-y-1">
                                 {validations.filter(v => !v.isRequired && !v.isValid).map(v => (
                                     <li key={v.key} onClick={() => scrollToElement(v.scrollId)} className="tw-flex tw-items-center tw-gap-2 tw-text-xs tw-text-gray-500 tw-cursor-pointer hover:tw-underline">
@@ -241,12 +371,12 @@ function SuccessBanner({
                         <div className="tw-mt-2 tw-space-y-1">
                             {issueId && (
                                 <p className="tw-text-sm tw-text-green-700">
-                                    Issue ID: <span className="tw-font-mono tw-font-semibold">{issueId}</span>
+                                    {t("issueId", lang)}: <span className="tw-font-mono tw-font-semibold">{issueId}</span>
                                 </p>
                             )}
                             {docName && (
                                 <p className="tw-text-sm tw-text-green-700">
-                                    Doc: <span className="tw-font-semibold">{docName}</span>
+                                    {t("docName", lang)}: <span className="tw-font-semibold">{docName}</span>
                                 </p>
                             )}
                             {maximoTicketId ? (
@@ -284,7 +414,7 @@ function PhotoUpload({ photos_open, onAdd, onRemove, max, disabled, lang, id }: 
                     <button type="button" onClick={() => fileInputRef.current?.click()} className="tw-inline-flex tw-items-center tw-gap-2 tw-px-4 tw-py-2 tw-rounded-lg tw-border-2 tw-border-blue-600 tw-text-blue-600 tw-font-bold tw-text-sm hover:tw-bg-blue-50 tw-transition-colors">
                         <PhotoIcon className="tw-w-4 tw-h-4" /> {t("attachPhoto", lang)}
                     </button>
-                    <span className="tw-text-sm tw-text-blue-gray-500">Max {max} photos</span>
+                    <span className="tw-text-sm tw-text-blue-gray-500">{t("maxPhotos", lang)} {max} {t("photosUnit", lang)}</span>
                 </div>
             )}
 
@@ -304,7 +434,7 @@ function PhotoUpload({ photos_open, onAdd, onRemove, max, disabled, lang, id }: 
                                 </span>
                             )}
                             {photo.isServer && (
-                                <span className="tw-absolute tw-bottom-1 tw-left-1 tw-text-[10px] tw-bg-blue-500 tw-text-white tw-px-1.5 tw-py-0.5 tw-rounded">Saved</span>
+                                <span className="tw-absolute tw-bottom-1 tw-left-1 tw-text-[10px] tw-bg-blue-500 tw-text-white tw-px-1.5 tw-py-0.5 tw-rounded">{t("photoSavedBadge", lang)}</span>
                             )}
                             {!disabled && !photo.isServer && (
                                 <button type="button" onClick={() => onRemove(photo.id)} className="tw-absolute tw-top-1 tw-right-1 tw-w-6 tw-h-6 tw-bg-red-500 tw-text-white tw-rounded-full tw-flex tw-items-center tw-justify-center hover:tw-bg-red-600 tw-shadow-md tw-transition-all">
@@ -358,6 +488,12 @@ export default function CMOpenForm() {
     const [faultyEquipment, setFaultyEquipment] = useState("");
 
     // ═══ ขั้นวางแผน (เห็นเฉพาะ role ที่วางแผนได้) ═══
+    // ประวัติแผนรอบก่อน ๆ (อ่านอย่างเดียว) — flat fields ด้านล่างคือรอบที่กำลังกรอก
+    const [repairInfo, setRepairInfo] = useState<RepairInfo | null>(null);
+    const [planHistory, setPlanHistory] = useState<PlanRound[]>([]);
+    // วันที่/เวลาที่วางแผน — ประทับตอนเปิดฟอร์มเข้ามาวางแผน (แสดงอย่างเดียว)
+    const [plannedDate, setPlannedDate] = useState("");
+    const [plannedTime, setPlannedTime] = useState("");
     const [schedStart, setSchedStart] = useState("");
     const [schedFinish, setSchedFinish] = useState("");
     const [assignees, setAssignees] = useState<string[]>([""]);   // 1 แถว = 1 ช่าง — เริ่มที่แถวว่าง 1 แถว แล้วกด + เพิ่มเอง
@@ -385,6 +521,9 @@ export default function CMOpenForm() {
     const [showSuccessBanner, setShowSuccessBanner] = useState(false);
 
     const editId = searchParams.get("edit_id") ?? "";
+    // เปิดจากตาราง In Progress ของใบที่ติดรออะไหล่/รอหน้างาน = มาวางแผนรอบใหม่
+    // แผนรอบเดิมจะถูกดันลง planHistory แล้วให้กรอกรอบใหม่ในช่องเดิม
+    const isRePlan = searchParams.get("planning") === "1";
     const isEdit = !!editId;
     // คนเปิดใบงาน (reported_by) แก้ไขใบงานที่ยัง Open ได้ — คนอื่นเห็นแบบอ่านอย่างเดียว
     const isOwner = isEdit && !!currentUsername.trim() && currentUsername.trim() === reported_by.trim();
@@ -398,6 +537,17 @@ export default function CMOpenForm() {
     // ขั้นวางแผน: engineer วางแผนตาม flow, admin/owner คุมภาพรวม — cs เปิดใบงานอย่างเดียว วางแผนไม่ได้
     // เห็นทั้งตอนเปิดใบใหม่และตอนเปิดใบเดิม (เปิดงาน + วางแผน รวดเดียวได้)
     const canPlan = !isCancelled && ["admin", "owner", "engineer"].includes(userRole.toLowerCase());
+    // สถานะรอที่เลือกได้ในรอบนี้ — ตัดสถานะที่เคยใช้ในรอบก่อน ๆ ออก จะได้ไม่วางแผนซ้ำสถานะเดิม
+    // ถ้าใช้ครบทุกสถานะแล้ว ให้กลับไปใช้รายการเต็ม กัน dropdown ว่างจนกรอกต่อไม่ได้
+    const usedWaitStates = useMemo(
+        () => new Set(planHistory.map(r => (r.wait_state || "").trim()).filter(Boolean)),
+        [planHistory],
+    );
+    const availableWaitStates = useMemo(() => {
+        const left = WAIT_STATES.filter(w => !usedWaitStates.has(w));
+        return left.length ? left : [...WAIT_STATES];
+    }, [usedWaitStates]);
+
     // assignees = 1 แถว 1 ช่าง — แถวที่เพิ่งกด + จะยังเป็น "" จนกว่าจะเลือก
     const pickedAssignees = useMemo(() => assignees.filter(Boolean), [assignees]);
     // มีการกรอกแผนไว้บ้างหรือยัง — ใช้ตัดสินว่าต้องบันทึกแผนต่อจากการเปิดใบไหม
@@ -474,6 +624,15 @@ export default function CMOpenForm() {
     const localTodayISO = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
     const localNowHHMM = () => { const d = new Date(); return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; };
     const displayToISO = (s: string) => { if (!s) return localTodayISO(); const p = s.split("/"); return p.length === 3 ? `${p[2]}-${p[1]}-${p[0]}` : localTodayISO(); };
+
+    // ใบเปิดใหม่ไม่มีขั้นโหลดจาก server จึงประทับตอนเข้าหน้าเลย
+    // เก็บใน state ก่อน แล้วค่อยบันทึกลง DB พร้อมแผน — แค่เปิดดูไม่ควรเขียนข้อมูล
+    useEffect(() => {
+        if (isEdit || plannedDate) return;
+        setPlannedDate(localTodayISO());
+        setPlannedTime(localNowHHMM());
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isEdit, plannedDate]);
     const isoToDisplay = (s: string) => { if (!s) return localTodayFormatted(); const p = s.slice(0, 10).split("-"); return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : localTodayFormatted(); };
 
     // หา current tab จาก URL
@@ -694,15 +853,52 @@ export default function CMOpenForm() {
                 setReportedBy(data.reported_by ?? "");
                 setReporterSignature(data.reporter_signature ?? "");
                 // ค่าที่เคยวางแผนไว้ (ถ้ามี) — datetime-local รับได้แค่ "YYYY-MM-DDTHH:MM"
-                setSchedStart((data.sched_start ?? "").slice(0, 16));
-                setSchedFinish((data.sched_finish ?? "").slice(0, 16));
+                setRepairInfo({
+                    problem_type: Array.isArray(data.problem_type) ? data.problem_type : (data.problem_type ? [data.problem_type] : []),
+                    problem_type_other: data.problem_type_other ?? "",
+                    cause: Array.isArray(data.cause) ? data.cause : (data.cause ? [data.cause] : []),
+                    repaired_equipment: Array.isArray(data.repaired_equipment) ? data.repaired_equipment : [],
+                    inprogress_remarks: data.inprogress_remarks ?? "",
+                    corrective_actions: Array.isArray(data.corrective_actions) ? data.corrective_actions : [],
+                });
+                const prevHistory: PlanRound[] = Array.isArray(data.plan_history) ? data.plan_history : [];
+                const loadedWait = normalizeWaitState(data.repair_result ?? "");
+                if (isRePlan) {
+                    // วางแผนรอบใหม่ — เก็บแผนรอบเดิมไว้ดูเป็นประวัติ แล้วเริ่มกรอกรอบใหม่จากว่าง
+                    setPlanHistory([...prevHistory, {
+                        planned_date: data.planned_date ?? "",
+                        planned_time: data.planned_time ?? "",
+                        wait_state: loadedWait,
+                        wait_remark: data.repair_result_remark ?? "",
+                        sched_start: data.sched_start ?? "",
+                        sched_finish: data.sched_finish ?? "",
+                        assignees: Array.isArray(data.assignees) ? data.assignees : [],
+                    }]);
+                    // เวลาของรอบใหม่ = ตอนที่เปิดฟอร์มเข้ามา
+                    setPlannedDate(localTodayISO());
+                    setPlannedTime(localNowHHMM());
+                    setSchedStart("");
+                    setSchedFinish("");
+                } else {
+                    setPlanHistory(prevHistory);
+                    // ยังไม่เคยวางแผน → ประทับเวลา "ตอนที่เปิดฟอร์มเข้ามา" ไม่ใช่ตอนกดบันทึก
+                    // มีค่าเดิมแล้วไม่ทับ เพื่อให้เป็นเวลาที่วางแผนรอบนี้จริง ๆ
+                    setPlannedDate(data.planned_date || localTodayISO());
+                    setPlannedTime(data.planned_time || localNowHHMM());
+                    setSchedStart((data.sched_start ?? "").slice(0, 16));
+                    setSchedFinish((data.sched_finish ?? "").slice(0, 16));
+                }
                 // ใบที่ยังไม่เคยวางแผน → คงแถวว่าง 1 แถวไว้ให้เลือกได้เลย
                 const loadedAssignees = Array.isArray(data.assignees) ? data.assignees : [];
-                setAssignees(loadedAssignees.length ? loadedAssignees : [""]);
+                setAssignees(isRePlan ? [""] : (loadedAssignees.length ? loadedAssignees : [""]));
                 // เก็บเฉพาะสถานะรอที่เลือกตอนวางแผนได้ — ใบที่ซ่อมไปแล้วอาจมี repair_result เป็นค่าอื่น
                 // (รองรับค่าเก่าที่เปลี่ยนชื่อแล้วด้วย normalizeWaitState)
-                setWaitState(normalizeWaitState(data.repair_result ?? ""));
-                setWaitRemark(data.repair_result_remark ?? "");
+                // รอบใหม่: สถานะของรอบก่อนถูกตัดออกจากตัวเลือกแล้ว จึงต้องเลือกค่าใหม่ให้ ไม่งั้น select จะค้างค่าที่ไม่มีในลิสต์
+                const loadedUsed = new Set([...prevHistory.map(r => (r.wait_state || "").trim()), ...(isRePlan ? [loadedWait] : [])].filter(Boolean));
+                const firstFree = WAIT_STATES.find(w => !loadedUsed.has(w));
+                setWaitState(isRePlan ? (firstFree ?? DEFAULT_WAIT_STATE) : loadedWait);
+                // รอบใหม่เริ่มจากว่าง — หมายเหตุของรอบก่อนไปอยู่ในการ์ดประวัติแล้ว
+                setWaitRemark(isRePlan ? "" : (data.repair_result_remark ?? ""));
 
                 // ═══ แสดง Maximo ticket ถ้ามี (edit mode) ═══
                 if (data.maximo_ticket_id) {
@@ -797,6 +993,9 @@ export default function CMOpenForm() {
                         assignees: needsSchedule ? pickedAssignees : [],
                         repair_result: waitState,
                         repair_result_remark: needsSchedule ? "" : waitRemark.trim(),
+                        planned_date: plannedDate || localTodayISO(),
+                        planned_time: plannedTime || localNowHHMM(),
+                        plan_history: planHistory,
                     };
                 }
                 const res = await apiFetch(`${API_BASE}/cmreport/${encodeURIComponent(editId)}/status`, {
@@ -818,7 +1017,8 @@ export default function CMOpenForm() {
                 setOverlayText(lang === "th" ? "บันทึกสำเร็จ ✓" : "Saved successfully ✓");
                 await new Promise(r => setTimeout(r, 1200));
                 // Assign แล้วกลับหน้า Open list (ไม่เด้งไป In Progress) — engineer จัดการ SR/WO อื่นต่อได้
-                router.push(buildListUrl("open"));
+                // ยกเว้นกรณีมาวางแผนรอบใหม่จากตาราง In Progress — ต้องกลับที่เดิมที่กดเข้ามา
+                router.push(buildListUrl(isRePlan ? "in-progress" : "open"));
 
             } else {
                 const submitRes = await apiFetch(`${API_BASE}/cmreport/submit`, {
@@ -856,6 +1056,9 @@ export default function CMOpenForm() {
                     if (nextStatus === "In Progress") {
                         planPayload.job.repair_result = waitState;
                         planPayload.job.repair_result_remark = needsSchedule ? "" : waitRemark.trim();
+                        planPayload.job.planned_date = plannedDate || localTodayISO();
+                        planPayload.job.planned_time = plannedTime || localNowHHMM();
+                        planPayload.job.plan_history = planHistory;
                     } else {
                         // ยังไม่ Assign — ใบยังอยู่ด่าน cs, คง stage ไว้กัน backend re-stamp เป็น close_approval
                         planPayload.job.stage = "cs_approval";
@@ -883,7 +1086,8 @@ export default function CMOpenForm() {
                 setOverlayText(lang === "th" ? "บันทึกสำเร็จ ✓" : "Saved successfully ✓");
                 await new Promise(r => setTimeout(r, 1500));
                 // Assign แล้วกลับหน้า Open list (ไม่เด้งไป In Progress) — engineer จัดการ SR/WO อื่นต่อได้
-                router.push(buildListUrl("open"));
+                // ยกเว้นกรณีมาวางแผนรอบใหม่จากตาราง In Progress — ต้องกลับที่เดิมที่กดเข้ามา
+                router.push(buildListUrl(isRePlan ? "in-progress" : "open"));
             }
         } catch (e: any) {
             setUploadState({ show: false, total: 0, completed: 0 });
@@ -978,6 +1182,10 @@ export default function CMOpenForm() {
         setFaultyEquipment("");
         setPhotosOpen([]);
         setSummary("");
+        setRepairInfo(null);
+        setPlanHistory([]);
+        setPlannedDate("");
+        setPlannedTime("");
         setSchedStart("");
         setSchedFinish("");
         setAssignees([""]);
@@ -1181,17 +1389,38 @@ export default function CMOpenForm() {
                         </div>
                     )}
 
+                    {/* ข้อมูลที่ช่างกรอกไว้ — โชว์เฉพาะเมื่อมีจริง (การ์ดคืน null เองถ้าว่าง) */}
+                    {canPlan && repairInfo && <RepairInfoCard info={repairInfo} lang={lang} />}
+
                     {/* Planning Section — เห็นเฉพาะ role ที่วางแผนได้ (admin/owner/engineer) ข้อมูลด้านบนเป็น read-only สำหรับคนกลุ่มนี้อยู่แล้ว */}
                     {canPlan && (
                         <div className="tw-mb-6 tw-p-5 tw-rounded-xl tw-border tw-border-blue-gray-100 tw-bg-blue-gray-50/40">
                             <h3 className="tw-text-base tw-font-bold tw-text-blue-gray-800 tw-mb-4">{t("planningSection", lang)}</h3>
+                            {/* แผนรอบก่อนหน้า — อ่านอย่างเดียว */}
+                            {planHistory.map((r, i) => <PlanRoundCard key={i} round={r} index={i} lang={lang} />)}
+                            {/* รอบที่กำลังกรอก — ใส่เลขรอบต่อจากประวัติ */}
+                            {planHistory.length > 0 && (
+                                <h4 className="tw-text-sm tw-font-bold tw-text-blue-gray-700 tw-mb-3">
+                                    {t("planRound", lang)} {planHistory.length + 1}
+                                </h4>
+                            )}
                             <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-4">
-                                {/* สถานะรอ — อยู่ช่องแรก */}
+                                {/* วันที่/เวลาที่วางแผน — ประทับตอน engineer เปิดฟอร์มเข้ามาครั้งแรก แก้ไม่ได้ */}
+                                <div>
+                                    <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-2">{t("plannedAt", lang)}</label>
+                                    <input
+                                        type="text"
+                                        readOnly
+                                        value={plannedDate ? `${plannedDate}${plannedTime ? ` ${plannedTime}` : ""}` : "-"}
+                                        className="tw-w-full tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-gray-100 tw-px-3 tw-py-2.5 tw-text-sm tw-text-blue-gray-700 tw-cursor-default focus:tw-outline-none"
+                                    />
+                                </div>
+                                {/* สถานะรอ */}
                                 <div>
                                     <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-2">{t("waitState", lang)} <span className="tw-text-red-500">*</span></label>
                                     <select value={waitState} onChange={e => setWaitState(e.target.value)}
                                         className="tw-w-full tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-px-3 tw-py-2.5 tw-text-sm tw-text-blue-gray-800 focus:tw-outline-none focus:tw-border-blue-500">
-                                        {WAIT_STATES.map(w => <option key={w} value={w}>{w}</option>)}
+                                        {availableWaitStates.map(w => <option key={w} value={w}>{w}</option>)}
                                     </select>
                                 </div>
                                 {/* หมายเหตุ — เฉพาะ material/site condition (อยู่ข้างๆ dropdown) */}
@@ -1228,7 +1457,7 @@ export default function CMOpenForm() {
                                                 </select>
                                                 {/* แถวเดียวลบไม่ได้ — ช่างเป็นฟิลด์บังคับ อย่างน้อยต้องเหลือ 1 แถวไว้เลือก */}
                                                 {assignees.length > 1 && (
-                                                    <button type="button" aria-label={`remove technician ${i + 1}`} onClick={() => setAssignees(prev => prev.filter((_, j) => j !== i))}
+                                                    <button type="button" aria-label={`${t("removeTechnician", lang)} ${i + 1}`} onClick={() => setAssignees(prev => prev.filter((_, j) => j !== i))}
                                                         className="tw-shrink-0 tw-rounded-lg tw-border tw-border-blue-gray-200 tw-p-2 tw-text-blue-gray-500 hover:tw-border-red-300 hover:tw-bg-red-50 hover:tw-text-red-600 tw-transition-colors">
                                                         <XMarkIcon className="tw-h-4 tw-w-4" />
                                                     </button>

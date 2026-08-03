@@ -6,8 +6,18 @@ import { useSearchParams } from "next/navigation";
 import DCTables from "@/app/dashboard/test-report/dc/list/components/dc-table";
 import ACTables from "@/app/dashboard/test-report/ac/list/components/ac-table";
 import { ChevronDoubleUpIcon, ChevronDoubleDownIcon } from "@heroicons/react/24/solid";
+import useLanguage, { type Lang } from "@/utils/useLanguage";
 
 type ChargerType = "DC" | "AC";
+
+// ===== Translations =====
+const T = {
+  selectCharger:  { th: "กรุณาเลือก Charger จากแถบด้านบน", en: "Please select a charger from the top bar" },
+  scrollToTop:    { th: "เลื่อนขึ้นสุด",  en: "Scroll to top" },
+  scrollToBottom: { th: "เลื่อนลงสุด",   en: "Scroll to bottom" },
+} as const;
+
+const t = (k: keyof typeof T, lang: Lang) => T[k][lang];
 
 // เลื่อนขึ้นสุด/ลงสุดของหน้า
 const scrollToTop = () =>
@@ -16,6 +26,7 @@ const scrollToBottom = () =>
   window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "smooth" });
 
 export default function DataTablesPage() {
+  const { lang } = useLanguage();
   const [chargerType, setChargerType] = useState<ChargerType | null>(null);
   const searchParams = useSearchParams();
 
@@ -51,7 +62,7 @@ export default function DataTablesPage() {
   if (!chargerType) {
     return (
       <div className="tw-w-full tw-text-center tw-py-12 tw-text-gray-400">
-        กรุณาเลือก Charger จากแถบด้านบน
+        {t("selectCharger", lang)}
       </div>
     );
   }
@@ -66,8 +77,8 @@ export default function DataTablesPage() {
         <button
           type="button"
           onClick={scrollToTop}
-          title="เลื่อนขึ้นสุด"
-          aria-label="Scroll to top"
+          title={t("scrollToTop", lang)}
+          aria-label={t("scrollToTop", lang)}
           className="tw-flex tw-items-center tw-justify-center tw-w-11 tw-h-11
                      tw-rounded-full tw-bg-gray-900 tw-text-white
                      tw-shadow-lg tw-shadow-gray-900/30
@@ -79,8 +90,8 @@ export default function DataTablesPage() {
         <button
           type="button"
           onClick={scrollToBottom}
-          title="เลื่อนลงสุด"
-          aria-label="Scroll to bottom"
+          title={t("scrollToBottom", lang)}
+          aria-label={t("scrollToBottom", lang)}
           className="tw-flex tw-items-center tw-justify-center tw-w-11 tw-h-11
                      tw-rounded-full tw-bg-gray-900 tw-text-white
                      tw-shadow-lg tw-shadow-gray-900/30

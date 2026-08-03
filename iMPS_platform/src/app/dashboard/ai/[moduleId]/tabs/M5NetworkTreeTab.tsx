@@ -2,6 +2,34 @@
 import React, { useRef, useEffect } from "react";
 import { ModuleResult } from "../../lib/api";
 import { AutoPredictPanel, HealthSummaryBar } from "./DetectionLayout";
+import useLanguage, { type Lang } from "@/utils/useLanguage";
+
+const T = {
+  loading: { th: "กำลังโหลด...", en: "Loading..." },
+  headerTitle: { th: "ตรวจจับปัญหาเครือข่าย — ผังสถานะ AI", en: "Network Problem Detection — AI Status Tree" },
+  aiModels: { th: "โมเดล AI (6)", en: "AI Models (6)" },
+  groups: { th: "กลุ่ม", en: "Groups" },
+  health: { th: "สุขภาพ", en: "HEALTH" },
+  online: { th: "ออนไลน์", en: "online" },
+  severity: { th: "ความรุนแรง", en: "Severity" },
+  networkSeverity: { th: "ความรุนแรงของปัญหาเครือข่าย", en: "Network Severity" },
+  onlineLabel: { th: "ออนไลน์", en: "Online" },
+  offlineLabel: { th: "ออฟไลน์", en: "Offline" },
+  rootCause: { th: "สาเหตุหลัก", en: "Root Cause" },
+  networkTopology: { th: "โครงสร้างเครือข่าย", en: "Network Topology" },
+  aiModelTree: { th: "ผังสถานะโมเดล AI", en: "AI Model Status Tree" },
+  monitoringConditions: { th: "Condition ที่เฝ้าระวัง (C01–C12)", en: "Monitoring Conditions (C01–C12)" },
+  grpCls: { th: "🎯 การจำแนกประเภท", en: "🎯 Classification" },
+  grpEw: { th: "⚠️ เตือนล่วงหน้า", en: "⚠️ Early Warning" },
+  grpAd: { th: "🔍 ตรวจจับความผิดปกติ", en: "🔍 Anomaly Detection" },
+  hType: { th: "ประเภท", en: "Type" },
+  hCondition: { th: "Condition", en: "Condition" },
+  hDetectionRule: { th: "กฎการตรวจจับ", en: "Detection Rule" },
+  hThreshold: { th: "เกณฑ์", en: "Threshold" },
+  hEquipment: { th: "อุปกรณ์", en: "Equipment" },
+} as const;
+
+const tr = (k: keyof typeof T, lang: Lang) => T[k][lang];
 
 interface Props {
   data: ModuleResult | null;
@@ -80,7 +108,7 @@ function GroupStatus({ st }: { st: string }) {
 }
 
 // ── M5 Model Tree (3-column SVG) ──────────────────────────────────────────
-function M5ModelTree({ data }: { data: ModuleResult | null }) {
+function M5ModelTree({ data, lang }: { data: ModuleResult | null; lang: Lang }) {
   const scores = (data as any)?.model_scores ?? {};
   const getStatus = (v: number | undefined): "OK" | "WARN" | "CRIT" | "IDLE" => {
     if (v == null) return "IDLE";
@@ -97,9 +125,9 @@ function M5ModelTree({ data }: { data: ModuleResult | null }) {
   ];
 
   const groups = [
-    { key: "cls", label: "🎯 Classification",   sub: "Models A, A2", color: "#0ea5e9" },
-    { key: "ew",  label: "⚠️ Early Warning",    sub: "Model B",      color: "#d97706" },
-    { key: "ad",  label: "🔍 Anomaly Detection", sub: "Models C, D, E", color: "#8b5cf6" },
+    { key: "cls", label: tr("grpCls", lang),   sub: "Models A, A2", color: "#0ea5e9" },
+    { key: "ew",  label: tr("grpEw", lang),    sub: "Model B",      color: "#d97706" },
+    { key: "ad",  label: tr("grpAd", lang), sub: "Models C, D, E", color: "#8b5cf6" },
   ];
 
   const grpStatus = (grpKey: string) => {
@@ -158,7 +186,7 @@ function M5ModelTree({ data }: { data: ModuleResult | null }) {
 
       {/* COL 1 — AI Models */}
       <div style={{ flex: "0 0 260px", zIndex: 2, paddingTop: 6 }}>
-        <div style={{ ...S.ct, marginBottom: 6 }}>AI Models (6)</div>
+        <div style={{ ...S.ct, marginBottom: 6 }}>{tr("aiModels", lang)}</div>
         {["cls","ew","ad"].map((grpKey) => (
           <React.Fragment key={grpKey}>
             {models.filter((m) => m.grp === grpKey).map((m) => (
@@ -180,7 +208,7 @@ function M5ModelTree({ data }: { data: ModuleResult | null }) {
 
       {/* COL 2 — Detection Groups */}
       <div style={{ flex: "0 0 160px", position: "relative", margin: "0 40px", zIndex: 2 }}>
-        <div style={{ ...S.ct, marginBottom: 6 }}>Groups</div>
+        <div style={{ ...S.ct, marginBottom: 6 }}>{tr("groups", lang)}</div>
         {groups.map((g) => (
           <div key={g.key} data-m5-gn={g.key} style={{ ...S.gn(g.color), marginBottom: 40 }}>
             <div style={S.gnT}>{g.label}</div>
@@ -192,13 +220,13 @@ function M5ModelTree({ data }: { data: ModuleResult | null }) {
 
       {/* COL 3 — Network Status Gauge */}
       <div ref={gaugeRef} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minWidth: 0, zIndex: 2 }}>
-        <M5StatusGauge data={data} />
+        <M5StatusGauge data={data} lang={lang} />
       </div>
     </div>
   );
 }
 
-function M5StatusGauge({ data }: { data: ModuleResult | null }) {
+function M5StatusGauge({ data, lang }: { data: ModuleResult | null; lang: Lang }) {
   const health      = data?.health ?? null;
   const onlineCount = (data as any)?.online_count ?? 0;
   const severity    = (data as any)?.severity ?? 0;
@@ -219,14 +247,14 @@ function M5StatusGauge({ data }: { data: ModuleResult | null }) {
           <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: "1.6em", fontWeight: 900, color, lineHeight: 1 }}>
             {health ?? "—"}%
           </div>
-          <div style={{ fontSize: ".5em", color: "#718096", fontWeight: 600, marginTop: 1 }}>HEALTH</div>
+          <div style={{ fontSize: ".5em", color: "#718096", fontWeight: 600, marginTop: 1 }}>{tr("health", lang)}</div>
         </div>
       </div>
       <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: ".72em", fontWeight: 800, color: rootCause === "NORMAL" ? "#22c55e" : "#dc2626" }}>
         {rootCause}
       </div>
       <div style={{ fontSize: ".62em", color: "#718096" }}>
-        🟢 {onlineCount}/6 online · Severity: {(severity * 100).toFixed(0)}%
+        🟢 {onlineCount}/6 {tr("online", lang)} · {tr("severity", lang)}: {(severity * 100).toFixed(0)}%
       </div>
     </div>
   );
@@ -284,12 +312,12 @@ function NetworkTopology({ data }: { data: ModuleResult | null }) {
 }
 
 // ── Severity bar (.m5-sev pattern) ───────────────────────────────────────
-function SeverityBar({ severity, onlineCount }: { severity: number; onlineCount: number }) {
+function SeverityBar({ severity, onlineCount, lang }: { severity: number; onlineCount: number; lang: Lang }) {
   const color = severity > 0.7 ? "#dc2626" : severity > 0.4 ? "#d97706" : "#22c55e";
   return (
     <div style={{ marginBottom: 12 }}>
       <div style={{ display: "flex", justifyContent: "space-between", fontSize: ".62em", marginBottom: 4 }}>
-        <span style={{ color: "#718096", fontWeight: 600 }}>Network Severity</span>
+        <span style={{ color: "#718096", fontWeight: 600 }}>{tr("networkSeverity", lang)}</span>
         <span style={{ fontFamily: "'JetBrains Mono',monospace", fontWeight: 700, color }}>
           {(severity * 100).toFixed(1)}%
         </span>
@@ -298,8 +326,8 @@ function SeverityBar({ severity, onlineCount }: { severity: number; onlineCount:
         <div style={{ width: `${severity * 100}%`, height: "100%", background: color, borderRadius: 4, transition: "width .6s" }} />
       </div>
       <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6, fontSize: ".6em" }}>
-        <span style={{ color: "#22c55e", fontWeight: 700 }}>🟢 Online: {onlineCount}/6</span>
-        <span style={{ color: "#ef4444", fontWeight: 700 }}>🔴 Offline: {6 - onlineCount}</span>
+        <span style={{ color: "#22c55e", fontWeight: 700 }}>🟢 {tr("onlineLabel", lang)}: {onlineCount}/6</span>
+        <span style={{ color: "#ef4444", fontWeight: 700 }}>🔴 {tr("offlineLabel", lang)}: {6 - onlineCount}</span>
       </div>
     </div>
   );
@@ -321,7 +349,7 @@ const M5_CONDITIONS = [
   { id:"C12", tp:"AI",     nm:"Composite Severity",       rule:"severity_index > 0.4",              thr:">0.4",      eq:"System",       eqC:"#64748b" },
 ];
 
-function ConditionTable({ data }: { data: ModuleResult | null }) {
+function ConditionTable({ data, lang }: { data: ModuleResult | null; lang: Lang }) {
   const d = (data as any)?.data ?? {};
   const isOffline = (v: any) => v != null && ["inactive","offline","disconnected","0"].includes(String(v).toLowerCase());
 
@@ -340,7 +368,7 @@ function ConditionTable({ data }: { data: ModuleResult | null }) {
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: ".62em", fontFamily: "'JetBrains Mono',monospace" }}>
         <thead>
           <tr style={{ background: "#f8fafc" }}>
-            {["#","Type","Condition","Detection Rule","Threshold","Equipment"].map((h) => (
+            {["#", tr("hType", lang), tr("hCondition", lang), tr("hDetectionRule", lang), tr("hThreshold", lang), tr("hEquipment", lang)].map((h) => (
               <th key={h} style={{ padding: "6px 8px", textAlign: "left", fontWeight: 700, color: "#718096", borderBottom: "1px solid #d0dae8", whiteSpace: "nowrap" }}>
                 {h}
               </th>
@@ -384,8 +412,10 @@ function ConditionTable({ data }: { data: ModuleResult | null }) {
 
 // ── Main export ───────────────────────────────────────────────────────────
 export default function M5NetworkTreeTab({ data, countdown, isPaused, onTogglePause }: Props) {
+  const { lang } = useLanguage();
+
   if (!data) return (
-    <div style={{ padding:40, textAlign:"center", color:"#94a3b8", fontSize:".8em" }}>กำลังโหลด...</div>
+    <div style={{ padding:40, textAlign:"center", color:"#94a3b8", fontSize:".8em" }}>{tr("loading", lang)}</div>
   );
 
   const d           = (data as any).data ?? {};
@@ -407,7 +437,7 @@ export default function M5NetworkTreeTab({ data, countdown, isPaused, onTogglePa
     <div>
       {/* Header */}
       <div style={{ ...S.card, display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:8 }}>
-        <div style={S.ct}><i>🌐</i> Network Problem Detection — AI Status Tree</div>
+        <div style={S.ct}><i>🌐</i> {tr("headerTitle", lang)}</div>
         <div style={{ display:"flex", alignItems:"center", gap:10, fontSize:".55em", fontFamily:"'JetBrains Mono',monospace", fontWeight:600, color:"#718096" }}>
           {[{l:"Hybrid",bg:"linear-gradient(135deg,#0284c7,#06b6d4)"},{l:"AI",bg:"linear-gradient(135deg,#7c3aed,#a855f7)"},{l:"Rule",bg:"linear-gradient(135deg,#475569,#64748b)"}].map((i)=>(
             <span key={i.l} style={{ display:"flex", alignItems:"center", gap:3 }}>
@@ -433,31 +463,31 @@ export default function M5NetworkTreeTab({ data, countdown, isPaused, onTogglePa
       <div style={{ ...S.card, borderTop:`3px solid ${rcColor[rootCause]??"#d0dae8"}` }}>
         <div style={{ display:"flex", alignItems:"center", gap:16, flexWrap:"wrap", marginBottom:14 }}>
           <div style={{ flex:1 }}>
-            <div style={S.ct}><i>🔍</i> Root Cause</div>
+            <div style={S.ct}><i>🔍</i> {tr("rootCause", lang)}</div>
             <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:"1.2em", fontWeight:800, color:rcColor[rootCause]??"#718096" }}>
               {rootCause}
             </div>
           </div>
           <div style={{ flex:2, minWidth:200 }}>
-            <SeverityBar severity={severity} onlineCount={onlineCount} />
+            <SeverityBar severity={severity} onlineCount={onlineCount} lang={lang} />
           </div>
         </div>
 
         {/* Network topology */}
-        <div style={S.ct}><i>🗺️</i> Network Topology</div>
+        <div style={S.ct}><i>🗺️</i> {tr("networkTopology", lang)}</div>
         <NetworkTopology data={data} />
       </div>
 
       {/* AI Model Tree */}
       <div style={S.card}>
-        <div style={S.ct}><i>🤖</i> AI Model Status Tree</div>
-        <M5ModelTree data={data} />
+        <div style={S.ct}><i>🤖</i> {tr("aiModelTree", lang)}</div>
+        <M5ModelTree data={data} lang={lang} />
       </div>
 
       {/* Condition table */}
       <div style={S.card}>
-        <div style={S.ct}><i>📋</i> Monitoring Conditions (C01–C12)</div>
-        <ConditionTable data={data} />
+        <div style={S.ct}><i>📋</i> {tr("monitoringConditions", lang)}</div>
+        <ConditionTable data={data} lang={lang} />
       </div>
     </div>
   );

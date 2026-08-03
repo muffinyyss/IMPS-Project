@@ -18,10 +18,46 @@ import {
 } from "@/components/MaterialTailwind";
 
 import Profile from "./components/profile";
+import useLanguage, { type Lang } from "@/utils/useLanguage";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
+const T = {
+  changePassword: { th: "เปลี่ยนรหัสผ่าน", en: "Change Password" },
+  currentPassword: { th: "รหัสผ่านปัจจุบัน", en: "Current Password" },
+  newPassword: { th: "รหัสผ่านใหม่", en: "New Password" },
+  confirmNewPassword: { th: "ยืนยันรหัสผ่านใหม่", en: "Confirm New Password" },
+  passwordsDoNotMatch: { th: "รหัสผ่านไม่ตรงกัน", en: "Passwords do not match" },
+  passwordRequirement: { th: "ข้อกำหนดรหัสผ่าน", en: "Password Requirement" },
+  passwordGuide: {
+    th: "กรุณาทำตามคำแนะนำนี้เพื่อให้ได้รหัสผ่านที่ปลอดภัย",
+    en: "Please follow this guide for a strong password",
+  },
+  reqSpecialChar: { th: "มีอักขระพิเศษอย่างน้อย 1 ตัว", en: "One special character" },
+  reqMinLength: { th: "ความยาวอย่างน้อย 6 ตัวอักษร", en: "Min 6 characters" },
+  reqNumber: { th: "มีตัวเลขอย่างน้อย 1 ตัว (แนะนำ 2 ตัว)", en: "One number (2 are recommended)" },
+  reqMatch: { th: "รหัสผ่านตรงกัน", en: "Passwords match" },
+  updating: { th: "กำลังอัปเดต...", en: "Updating..." },
+  updatePassword: { th: "อัปเดตรหัสผ่าน", en: "Update Password" },
+  changeFailed: { th: "เปลี่ยนรหัสผ่านไม่สำเร็จ", en: "Failed to change password" },
+  genericError: { th: "เกิดข้อผิดพลาด", en: "An error occurred" },
+  changeSuccess: { th: "เปลี่ยนรหัสผ่านสำเร็จ!", en: "Password changed successfully!" },
+  redirecting: { th: "กำลังนำคุณไปหน้าเข้าสู่ระบบ...", en: "Redirecting you to the sign-in page..." },
+  confirmTitle: { th: "ยืนยันการเปลี่ยนรหัสผ่าน", en: "Confirm password change" },
+  confirmQuestion: { th: "คุณต้องการเปลี่ยนรหัสผ่านใช่หรือไม่?", en: "Do you want to change your password?" },
+  confirmNote: {
+    th: "หลังจากเปลี่ยนรหัสผ่านแล้ว ระบบจะนำคุณไปหน้าเข้าสู่ระบบเพื่อ Login ใหม่",
+    en: "After changing your password you will be redirected to sign in again.",
+  },
+  cancel: { th: "ยกเลิก", en: "Cancel" },
+  saving: { th: "กำลังบันทึก...", en: "Saving..." },
+  confirm: { th: "ยืนยัน", en: "Confirm" },
+} as const;
+
+const t = (k: keyof typeof T, lang: Lang) => T[k][lang];
+
 export default function Settings() {
+  const { lang } = useLanguage();
   const router = useRouter();
 
   // ===== State สำหรับ User Info =====
@@ -101,7 +137,7 @@ export default function Settings() {
 
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.detail || "เปลี่ยนรหัสผ่านไม่สำเร็จ");
+        throw new Error(data.detail || t("changeFailed", lang));
       }
 
       // ===== เปิด Overlay ล็อกหน้าจอ =====
@@ -114,7 +150,7 @@ export default function Settings() {
       }, 2000);
 
     } catch (err: any) {
-      setError(err.message || "เกิดข้อผิดพลาด");
+      setError(err.message || t("genericError", lang));
     } finally {
       setLoading(false);
     }
@@ -158,10 +194,10 @@ export default function Settings() {
               </svg>
             </div>
             <Typography variant="h5" color="blue-gray" className="tw-text-center">
-              เปลี่ยนรหัสผ่านสำเร็จ!
+              {t("changeSuccess", lang)}
             </Typography>
             <Typography className="tw-text-center !tw-text-blue-gray-600">
-              กำลังนำคุณไปหน้าเข้าสู่ระบบ...
+              {t("redirecting", lang)}
             </Typography>
             <Spinner className="tw-h-8 tw-w-8" color="blue" />
           </div>
@@ -182,7 +218,7 @@ export default function Settings() {
           >
             <CardHeader floated={false} shadow={false}>
               <Typography variant="h5" color="blue-gray">
-                Change Password
+                {t("changePassword", lang)}
               </Typography>
             </CardHeader>
             <CardBody className="tw-flex tw-flex-col tw-gap-6">
@@ -205,7 +241,7 @@ export default function Settings() {
               )}
 
               <Input 
-                label="Current Password" 
+                label={t("currentPassword", lang)}
                 type={showCurrentPassword ? "text" : "password"}
                 value={currentPassword}
                 onChange={(e) => setCurrentPassword(e.target.value)}
@@ -217,7 +253,7 @@ export default function Settings() {
                 }
               />
               <Input
-                label="New Password"
+                label={t("newPassword", lang)}
                 type={showNewPassword ? "text" : "password"}
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
@@ -229,7 +265,7 @@ export default function Settings() {
                 }
               />
               <Input
-                label="Confirm New Password"
+                label={t("confirmNewPassword", lang)}
                 type={showConfirmPassword ? "text" : "password"}
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
@@ -243,23 +279,23 @@ export default function Settings() {
               />
               {confirmPassword.length > 0 && !passwordsMatch && (
                 <Typography variant="small" className="!tw-text-red-500 tw--mt-4">
-                  รหัสผ่านไม่ตรงกัน
+                  {t("passwordsDoNotMatch", lang)}
                 </Typography>
               )}
             </CardBody>
             <CardFooter>
               <Typography variant="h5" color="blue-gray">
-                Password Requirement
+                {t("passwordRequirement", lang)}
               </Typography>
               <Typography className="tw-my-2 !tw-font-normal !tw-text-blue-gray-500">
-                Please follow this guide for a strong password
+                {t("passwordGuide", lang)}
               </Typography>
               <div className="tw-flex tw-flex-col tw-justify-between lg:tw-items-end md:tw-items-end tw-gap-8 md:tw-flex-row">
                 <div>
-                  <RequirementItem met={hasSpecialChar} text="One special character" />
-                  <RequirementItem met={hasMinLength} text="Min 6 characters" />
-                  <RequirementItem met={hasNumber} text="One number (2 are recommended)" />
-                  <RequirementItem met={passwordsMatch} text="Passwords match" />
+                  <RequirementItem met={hasSpecialChar} text={t("reqSpecialChar", lang)} />
+                  <RequirementItem met={hasMinLength} text={t("reqMinLength", lang)} />
+                  <RequirementItem met={hasNumber} text={t("reqNumber", lang)} />
+                  <RequirementItem met={passwordsMatch} text={t("reqMatch", lang)} />
                 </div>
                 <Button
                   variant="gradient"
@@ -268,7 +304,7 @@ export default function Settings() {
                   onClick={() => setShowConfirm(true)}
                   disabled={!isFormValid || loading || !userId}
                 >
-                  {loading ? "Updating..." : "Update Password"}
+                  {loading ? t("updating", lang) : t("updatePassword", lang)}
                 </Button>
               </div>
             </CardFooter>
@@ -280,15 +316,15 @@ export default function Settings() {
       <Dialog open={showConfirm} handler={() => setShowConfirm(false)} size="xs">
         <DialogHeader className="tw-flex tw-flex-col tw-items-start tw-gap-1">
           <Typography variant="h5" color="blue-gray">
-            ยืนยันการเปลี่ยนรหัสผ่าน
+            {t("confirmTitle", lang)}
           </Typography>
         </DialogHeader>
         <DialogBody divider>
           <Typography className="!tw-text-blue-gray-700">
-            คุณต้องการเปลี่ยนรหัสผ่านใช่หรือไม่?
+            {t("confirmQuestion", lang)}
           </Typography>
           <Typography variant="small" className="!tw-text-blue-gray-500 tw-mt-2">
-            หลังจากเปลี่ยนรหัสผ่านแล้ว ระบบจะนำคุณไปหน้าเข้าสู่ระบบเพื่อ Login ใหม่
+            {t("confirmNote", lang)}
           </Typography>
         </DialogBody>
         <DialogFooter className="tw-flex tw-gap-2">
@@ -298,7 +334,7 @@ export default function Settings() {
             onClick={() => setShowConfirm(false)}
             disabled={loading}
           >
-            ยกเลิก
+            {t("cancel", lang)}
           </Button>
           <Button 
             variant="gradient" 
@@ -306,7 +342,7 @@ export default function Settings() {
             onClick={handleChangePassword}
             disabled={loading}
           >
-            {loading ? "กำลังบันทึก..." : "ยืนยัน"}
+            {loading ? t("saving", lang) : t("confirm", lang)}
           </Button>
         </DialogFooter>
       </Dialog>
