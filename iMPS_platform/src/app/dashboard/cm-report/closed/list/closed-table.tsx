@@ -27,6 +27,12 @@ import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
 
 // ==================== TRANSLATIONS ====================
 const T = {
+  deleteTitle: { th: "ยืนยันการลบใบงาน", en: "Confirm delete" },
+  deleteWarn: { th: "การลบไม่สามารถย้อนกลับได้", en: "This action cannot be undone." },
+  deleteConfirm: { th: "ลบใบงาน", en: "Delete" },
+  deleteCancel: { th: "ยกเลิก", en: "Cancel" },
+  deleting: { th: "กำลังลบ...", en: "Deleting..." },
+  deleteFailedMsg: { th: "ลบไม่สำเร็จ: ", en: "Delete failed: " },
   // Page Header
   pageTitle: { th: "Corrective Maintenance Report", en: "Corrective Maintenance Report" },
   pageSubtitle: { th: "ค้นหาและดาวน์โหลดเอกสาร CM Report", en: "Search and download CM Report documents" },
@@ -82,6 +88,9 @@ const T = {
   alertUploadFailed: { th: "อัพโหลดไม่สำเร็จ:", en: "Upload failed:" },
   alertUploadSuccess: { th: "อัพโหลดสำเร็จ", en: "Upload successful" },
   alertUploadError: { th: "เกิดข้อผิดพลาดระหว่างอัพโหลด", en: "An error occurred during upload" },
+  alertEnterUrl: { th: "กรุณากรอก URL", en: "Please enter a URL" },
+  alertNotRealPdf: { th: "ไฟล์ที่เลือกไม่ใช่ PDF จริง", en: "The selected file is not a real PDF" },
+  loadingData: { th: "กำลังโหลดข้อมูล...", en: "Loading data..." },
 
   // Tooltips
   uploadPdf: { th: "อัพโหลด PDF", en: "Upload PDF" },
@@ -139,6 +148,8 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
   const [docName, setDocName] = useState<string>("");
   const [me, setMe] = useState<Me | null>(null);
   const canDelete = !!(me as any)?.is_super_admin; // ลบถาวรได้เฉพาะ super admin (ซ่อนตอน impersonate role อื่น)
+  const [deleteTarget, setDeleteTarget] = useState<TData | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [inspector, setInspector] = useState<string>("");
   const [toast, setToast] = useState<{ show: boolean; type: "success" | "error" | "warning" | "info"; message: string }>({ show: false, type: "info", message: "" });
   const [chargers, setChargers] = useState<{ chargerNo?: number; charger_id?: string; charger_name?: string; SN?: string; sn?: string; }[]>([]);
@@ -631,7 +642,11 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
       cell: (info: CellContext<TData, unknown>) => (
         <button
           type="button"
-          onClick={() => handleDelete(info.row.original)}
+          onClick={(e) => {
+            // แถวมี onClick เปิดฟอร์ม — ต้องหยุด event ไม่ให้ลามขึ้นไป ไม่งั้นกดลบแล้วเด้งเข้าฟอร์ม
+            e.stopPropagation();
+            handleDelete(info.row.original);
+          }}
           title={lang === "th" ? "ลบใบงาน" : "Delete work order"}
           className="tw-inline-flex tw-items-center tw-justify-center tw-w-8 tw-h-8 tw-rounded-lg tw-text-red-500 hover:tw-text-white hover:tw-bg-red-500 tw-transition-all"
         >
@@ -664,11 +679,11 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
   const [urlText, setUrlText] = useState("");
 
   async function uploadUrls() {
-    if (!stationId) { alert("กรุณาเลือกสถานีก่อน"); return; }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(reportDate)) { alert("วันที่ไม่ถูกต้อง"); return; }
+    if (!stationId) { alert(t("alertSelectStation", lang)); return; }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(reportDate)) { alert(t("alertInvalidDate", lang)); return; }
 
     const urls = urlText.split("\n").map(s => s.trim()).filter(Boolean);
-    if (!urls.length) { alert("กรุณากรอก URL"); return; }
+    if (!urls.length) { alert(t("alertEnterUrl", lang)); return; }
 
     const fd = new FormData();
     fd.append("station_id", stationId);
@@ -680,8 +695,8 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
       credentials: "include",
     });
 
-    if (!res.ok) { alert("อัปโหลดไม่สำเร็จ: " + await res.text()); return; }
-    alert("อัปโหลดสำเร็จ");
+    if (!res.ok) { alert(`${t("alertUploadFailed", lang)} ` + await res.text()); return; }
+    alert(t("alertUploadSuccess", lang));
     setDateOpen(false);
     setUrlText("");
     await fetchRows();
@@ -726,16 +741,17 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
   }, [apiBase]);
 
   // ลบใบงาน (เฉพาะบัญชี thatsawan)
-  const handleDelete = async (row: TData) => {
+  // เปิด dialog ยืนยันแทน window.confirm ให้เหมือนปุ่มอื่นในระบบ
+  const handleDelete = (row: TData) => {
     if (!canDelete) return;
     if (!row.id || !stationId) return;
-    const label = row.doc_name || row.issue_id || row.id;
-    const ok = window.confirm(
-      lang === "th"
-        ? `ต้องการลบใบงาน "${label}" ใช่หรือไม่? การลบไม่สามารถย้อนกลับได้`
-        : `Delete work order "${label}"? This cannot be undone.`
-    );
-    if (!ok) return;
+    setDeleteTarget(row);
+  };
+
+  const confirmDelete = async () => {
+    const row = deleteTarget;
+    if (!row?.id || !stationId) return;
+    setDeleting(true);
     try {
       const url = `${apiBase}/cmreport/${encodeURIComponent(row.id)}?station_id=${encodeURIComponent(stationId)}`;
       const res = await apiFetch(url, { method: "DELETE", credentials: "include" });
@@ -744,8 +760,11 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
         throw new Error(j?.detail || `HTTP ${res.status}`);
       }
       await fetchRows();
+      setDeleteTarget(null);
     } catch (err: any) {
-      alert((lang === "th" ? "ลบไม่สำเร็จ: " : "Delete failed: ") + (err?.message ?? err));
+      alert(t("deleteFailedMsg", lang) + (err?.message ?? err));
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -794,7 +813,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
       const header = await f.slice(0, 5).text();
       if (header.startsWith("%PDF-")) validPdfs.push(f);
     }
-    if (!validPdfs.length) { alert("ไฟล์ที่เลือกไม่ใช่ PDF จริง"); return; }
+    if (!validPdfs.length) { alert(t("alertNotRealPdf", lang)); return; }
 
     setPendingFiles(validPdfs);
     setDateOpen(true);
@@ -859,7 +878,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
 
   return (
     <>
-      <LoadingOverlay show={pageLoading} text="กำลังโหลดข้อมูล..." />
+      <LoadingOverlay show={pageLoading} text={t("loadingData", lang)} />
       {toast.show && (
         <div className="tw-fixed tw-top-4 tw-left-1/2 tw--translate-x-1/2 tw-z-[9999] tw-max-w-md tw-w-[calc(100%-2rem)]">
           <div className={`tw-flex tw-items-start tw-gap-3 tw-px-4 tw-py-3 tw-rounded-xl tw-shadow-2xl tw-border ${toast.type === "success" ? "tw-bg-green-50 tw-border-green-200" :
@@ -1274,6 +1293,47 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
           </Button>
         </DialogFooter>
       </Dialog>
+
+      {/* ยืนยันการลบใบงาน — ใช้ Dialog เหมือนปุ่มอื่น แทน window.confirm ของเบราว์เซอร์ */}
+      <Dialog
+        open={!!deleteTarget}
+        handler={() => { if (!deleting) setDeleteTarget(null); }}
+        size="xs"
+        className="tw-mx-4 tw-max-w-[calc(100vw-2rem)] sm:tw-max-w-sm tw-rounded-xl sm:tw-rounded-2xl"
+      >
+        <DialogHeader className="tw-flex tw-items-center tw-gap-3 tw-text-base sm:tw-text-lg tw-font-semibold tw-px-4 sm:tw-px-6 tw-pt-5 sm:tw-pt-6 tw-pb-2">
+          <span className="tw-w-10 tw-h-10 tw-rounded-full tw-bg-red-100 tw-flex tw-items-center tw-justify-center tw-shrink-0">
+            <TrashIcon className="tw-w-5 tw-h-5 tw-text-red-600" />
+          </span>
+          {t("deleteTitle", lang)}
+        </DialogHeader>
+        <DialogBody className="tw-px-4 sm:tw-px-6 tw-py-3">
+          <p className="tw-text-sm tw-text-blue-gray-800 tw-break-all">
+            {deleteTarget?.doc_name || deleteTarget?.issue_id || deleteTarget?.id || "-"}
+          </p>
+          <p className="tw-mt-2 tw-text-sm tw-text-red-600">{t("deleteWarn", lang)}</p>
+        </DialogBody>
+        <DialogFooter className="tw-gap-2 sm:tw-gap-3 tw-px-4 sm:tw-px-6 tw-pb-5 sm:tw-pb-6 tw-pt-2">
+          <Button
+            variant="text"
+            size="sm"
+            disabled={deleting}
+            onClick={() => setDeleteTarget(null)}
+            className="tw-text-xs sm:tw-text-sm tw-px-4 sm:tw-px-5 tw-py-2 sm:tw-py-2.5 tw-font-medium tw-text-blue-gray-600 hover:tw-bg-blue-gray-50 tw-transition-colors tw-rounded-lg"
+          >
+            {t("deleteCancel", lang)}
+          </Button>
+          <Button
+            size="sm"
+            disabled={deleting}
+            onClick={() => { void confirmDelete(); }}
+            className="tw-bg-red-600 hover:tw-bg-red-700 tw-text-xs sm:tw-text-sm tw-px-5 sm:tw-px-6 tw-py-2 sm:tw-py-2.5 tw-font-medium tw-rounded-lg tw-shadow-md tw-transition-all disabled:tw-opacity-60"
+          >
+            {deleting ? t("deleting", lang) : t("deleteConfirm", lang)}
+          </Button>
+        </DialogFooter>
+      </Dialog>
+
     </>
   );
 }

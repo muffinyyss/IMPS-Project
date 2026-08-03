@@ -2,6 +2,7 @@
 import React, { useMemo } from "react";
 import { Typography } from "@material-tailwind/react";
 import Card from "./chargerSetting-card";
+import useLanguage from "@/utils/useLanguage";
 
 /* ---------- Props Definition ---------- */
 export type EnergyPowerProps = {
@@ -53,6 +54,7 @@ const EnergyPowerCard: React.FC<EnergyPowerProps> = ({
     decimals = 0,
     head,
 }) => {
+    const { lang } = useLanguage();
     //  ดึง timestamp จาก data มาจัดรูปแบบ
     // const updatedAt = data?.timestamp 
     //     ? new Date(data.timestamp).toLocaleString("th-TH") 
@@ -86,7 +88,7 @@ const EnergyPowerCard: React.FC<EnergyPowerProps> = ({
                 {/* แสดง Loading */}
                 {!data && (
                     <div className="tw-text-center tw-py-2 tw-text-sm tw-text-blue-gray-400">
-                        กำลังโหลดข้อมูล...
+                        {lang === "th" ? "กำลังโหลดข้อมูล..." : "Loading data..."}
                     </div>
                 )}
                 

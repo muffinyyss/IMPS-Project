@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { Card, CardHeader, CardBody, Typography } from "@material-tailwind/react";
 import { apiFetch } from "@/utils/api";
+import useLanguage from "@/utils/useLanguage";
 import {
   CMRow, ActiveFilters, DateSel, STATUS_LABELS, WorkStatus,
   normalizeStatus, normalizeWorkStatus, statusBadge, filterByDate, listYears,
@@ -57,11 +58,11 @@ function StatCard({ label, value, color, icon, dim, active, onClick }: {
   );
 }
 
-function FilterChip({ label, onRemove }: { label: string; onRemove: () => void }) {
+function FilterChip({ label, onRemove, lang = "th" }: { label: string; onRemove: () => void; lang?: "th" | "en" }) {
   return (
     <span className="tw-inline-flex tw-items-center tw-gap-1.5 tw-rounded-full tw-bg-blue-100 tw-px-3 tw-py-1 tw-text-xs tw-font-semibold tw-text-blue-700">
       {label}
-      <button onClick={onRemove} aria-label={`ลบตัวกรอง ${label}`} className="tw-text-blue-400 hover:tw-text-blue-700 tw-font-bold tw-text-sm tw-leading-none">
+      <button onClick={onRemove} aria-label={lang === "th" ? `ลบตัวกรอง ${label}` : `Remove filter ${label}`} className="tw-text-blue-400 hover:tw-text-blue-700 tw-font-bold tw-text-sm tw-leading-none">
         <span aria-hidden="true">×</span>
       </button>
     </span>
@@ -89,9 +90,10 @@ function DateSelect({ id, label, value, onChange, options, disabled }: {
   );
 }
 
-function Pagination({ page, total, pageSize, onChange, formatRange }: {
+function Pagination({ page, total, pageSize, onChange, formatRange, lang = "th" }: {
   page: number; total: number; pageSize: number; onChange: (p: number) => void;
   formatRange?: (from: number, to: number, total: number) => string;
+  lang?: "th" | "en";
 }) {
   const totalPages = Math.ceil(total / pageSize);
   if (totalPages <= 1) return null;
@@ -120,7 +122,7 @@ function Pagination({ page, total, pageSize, onChange, formatRange }: {
         <button
           onClick={() => onChange(page - 1)}
           disabled={page === 0}
-          aria-label="หน้าก่อนหน้า"
+          aria-label={lang === "th" ? "หน้าก่อนหน้า" : "Previous page"}
           className="tw-flex tw-h-8 tw-w-8 tw-items-center tw-justify-center tw-rounded-lg tw-border tw-border-gray-200 tw-text-sm tw-text-gray-600 tw-transition-colors hover:tw-bg-gray-50 disabled:tw-cursor-not-allowed disabled:tw-opacity-40"
         >
           ‹
@@ -132,7 +134,7 @@ function Pagination({ page, total, pageSize, onChange, formatRange }: {
             <button
               key={p}
               onClick={() => onChange(p as number)}
-              aria-label={`หน้า ${(p as number) + 1}`}
+              aria-label={lang === "th" ? `หน้า ${(p as number) + 1}` : `Page ${(p as number) + 1}`}
               aria-current={p === page ? "page" : undefined}
               className={`tw-flex tw-h-8 tw-w-8 tw-items-center tw-justify-center tw-rounded-lg tw-text-xs tw-font-medium tw-transition-colors ${
                 p === page
@@ -147,7 +149,7 @@ function Pagination({ page, total, pageSize, onChange, formatRange }: {
         <button
           onClick={() => onChange(page + 1)}
           disabled={page >= totalPages - 1}
-          aria-label="หน้าถัดไป"
+          aria-label={lang === "th" ? "หน้าถัดไป" : "Next page"}
           className="tw-flex tw-h-8 tw-w-8 tw-items-center tw-justify-center tw-rounded-lg tw-border tw-border-gray-200 tw-text-sm tw-text-gray-600 tw-transition-colors hover:tw-bg-gray-50 disabled:tw-cursor-not-allowed disabled:tw-opacity-40"
         >
           ›
@@ -199,15 +201,7 @@ export default function CMDashboardPage() {
   useEffect(() => { localStorage.removeItem("selected_sn"); localStorage.removeItem("selected_charger_no"); window.dispatchEvent(new CustomEvent("charger:deselected")); }, []);
 
   // ── Language ──────────────────────────────────────────────────────────────
-  type Lang = "th" | "en";
-  const [lang, setLang] = useState<Lang>("th");
-  useEffect(() => {
-    const saved = localStorage.getItem("app_language") as Lang | null;
-    if (saved === "th" || saved === "en") setLang(saved);
-    const handler = (e: CustomEvent<{ lang: Lang }>) => setLang(e.detail.lang);
-    window.addEventListener("language:change", handler as EventListener);
-    return () => window.removeEventListener("language:change", handler as EventListener);
-  }, []);
+  const { lang } = useLanguage();
 
   useEffect(() => {
     (async () => {
@@ -397,6 +391,13 @@ export default function CMDashboardPage() {
       volumeWarning: (total: number, limit: number) => `ฐานข้อมูลมี ${total.toLocaleString()} รายการ — แสดงผล ${limit.toLocaleString()} รายการล่าสุด กราฟอาจไม่ครบทั้งหมด`,
       statusLabel: { completed: "เสร็จสิ้น", in_progress: "รอดำเนินการ", open: "รอจัดซื้อ" },
       taskUnit: "งาน",
+      clearAllAria: "ลบตัวกรองทั้งหมด",
+      clearSearchAria: "ล้างคำค้นหา",
+      openReportTitle: "เปิดใบงาน CM",
+      quickOpen: "รอจัดซื้อ",
+      quickInProgress: "รอดำเนินการ",
+      quickComplete: "เสร็จสิ้น",
+      tableHeaders: ["#", "สถานี", "รหัสเอกสาร", "อุปกรณ์ที่ผิดปกติ", "ปัญหาที่พบ", "ความรุนแรง", "วันที่", "สถานะ"],
     },
     en: {
       pageTitle: "Corrective Maintenance (CM)",
@@ -445,6 +446,13 @@ export default function CMDashboardPage() {
       volumeWarning: (total: number, limit: number) => `Database has ${total.toLocaleString()} records — showing latest ${limit.toLocaleString()}. Charts may be incomplete.`,
       statusLabel: { completed: "Complete", in_progress: "In Progress", open: "Open" },
       taskUnit: "tasks",
+      clearAllAria: "Clear all filters",
+      clearSearchAria: "Clear search",
+      openReportTitle: "Open CM work order",
+      quickOpen: "Open",
+      quickInProgress: "In Progress",
+      quickComplete: "Complete",
+      tableHeaders: ["#", "Station", "Issue ID", "Faulty Equipment", "Problem Found", "Severity", "Date", "Status"],
     },
   }[lang]), [lang]);
 
@@ -695,12 +703,12 @@ export default function CMDashboardPage() {
       {activeFilterCount > 0 && (
         <div className="tw-mb-4 tw-flex tw-flex-wrap tw-items-center tw-gap-2">
           <span className="tw-text-xs tw-font-medium tw-text-gray-500">{t.filterLabel}</span>
-          {filters.status && <FilterChip label={`Status: ${displayStatus(filters.status)}`} onRemove={() => clearFilter("status")} />}
-          {filters.workStatus && <FilterChip label={`KPI: ${workStatusLabel[filters.workStatus]}`} onRemove={() => clearFilter("workStatus")} />}
-          {filters.equipment && <FilterChip label={`Equipment: ${filters.equipment}`} onRemove={() => clearFilter("equipment")} />}
-          {filters.severity && <FilterChip label={`Severity: ${filters.severity}`} onRemove={() => clearFilter("severity")} />}
-          {filters.station && <FilterChip label={`Station: ${filters.station}`} onRemove={() => clearFilter("station")} />}
-          <button onClick={clearAll} aria-label="ลบตัวกรองทั้งหมด" className="tw-text-xs tw-font-semibold tw-text-red-500 hover:tw-text-red-700 tw-underline">
+          {filters.status && <FilterChip label={`Status: ${displayStatus(filters.status)}`} lang={lang} onRemove={() => clearFilter("status")} />}
+          {filters.workStatus && <FilterChip label={`KPI: ${workStatusLabel[filters.workStatus]}`} lang={lang} onRemove={() => clearFilter("workStatus")} />}
+          {filters.equipment && <FilterChip label={`Equipment: ${filters.equipment}`} lang={lang} onRemove={() => clearFilter("equipment")} />}
+          {filters.severity && <FilterChip label={`Severity: ${filters.severity}`} lang={lang} onRemove={() => clearFilter("severity")} />}
+          {filters.station && <FilterChip label={`Station: ${filters.station}`} lang={lang} onRemove={() => clearFilter("station")} />}
+          <button onClick={clearAll} aria-label={t.clearAllAria} className="tw-text-xs tw-font-semibold tw-text-red-500 hover:tw-text-red-700 tw-underline">
             {t.clearAll}
           </button>
         </div>
@@ -843,9 +851,9 @@ export default function CMDashboardPage() {
             {/* ปุ่มกรองสถานะด่วน Open / In Progress / Closed — ป้ายเดียวกับ badge ในตาราง */}
             <div className="tw-flex tw-items-center tw-gap-1.5" role="group" aria-label={t.statusFilterLabel}>
               {([
-                { key: "open", label: "Open", color: "#dc2626", bg: "#fee2e2", count: srStats.open },
-                { key: "in_progress", label: "In Progress", color: "#ea580c", bg: "#fff7ed", count: srStats.inProgress },
-                { key: "completed", label: "Complete", color: "#15803d", bg: "#dcfce7", count: srStats.completed },
+                { key: "open", label: t.quickOpen, color: "#dc2626", bg: "#fee2e2", count: srStats.open },
+                { key: "in_progress", label: t.quickInProgress, color: "#ea580c", bg: "#fff7ed", count: srStats.inProgress },
+                { key: "completed", label: t.quickComplete, color: "#15803d", bg: "#dcfce7", count: srStats.completed },
               ] as const).map(({ key, label, color, bg, count }) => {
                 const isActive = filters.status === STATUS_LABELS[key];
                 return (
@@ -895,7 +903,7 @@ export default function CMDashboardPage() {
           {search && (
             <button
               onClick={() => { setSearch(""); setPage(0); }}
-              aria-label="ล้างคำค้นหา"
+              aria-label={t.clearSearchAria}
               className="tw-absolute tw-right-3 tw-top-1/2 -tw-translate-y-1/2 tw-text-gray-400 hover:tw-text-gray-600 tw-text-lg tw-leading-none"
             >
               <span aria-hidden="true">×</span>
@@ -908,7 +916,7 @@ export default function CMDashboardPage() {
             <table className="tw-w-full tw-min-w-[860px] tw-table-auto tw-text-left tw-text-sm">
               <thead>
                 <tr className="tw-bg-gray-50 tw-text-xs tw-font-semibold tw-uppercase tw-tracking-wide tw-text-gray-500">
-                  {["#","Station","Issue ID","Faulty Equipment","Problem Found","Severity","Date","Status"].map((h) => (
+                  {t.tableHeaders.map((h) => (
                     <th key={h} className="tw-px-4 tw-py-3 tw-whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
@@ -926,7 +934,7 @@ export default function CMDashboardPage() {
                     <tr
                       key={r.id}
                       onClick={() => openReport(r)}
-                      title={`เปิดใบงาน CM · ${r.station_name || r.station_id}`}
+                      title={`${t.openReportTitle} · ${r.station_name || r.station_id}`}
                       className="tw-cursor-pointer tw-border-t tw-border-gray-100 hover:tw-bg-blue-50/30"
                     >
                       <td className="tw-px-4 tw-py-3 tw-text-gray-400">{page * pageSize + i + 1}</td>
@@ -984,6 +992,7 @@ export default function CMDashboardPage() {
             total={searchFiltered.length}
             pageSize={pageSize}
             onChange={setPage}
+            lang={lang}
             formatRange={t.pagination}
           />
         </Card>

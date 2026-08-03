@@ -1,5 +1,6 @@
 "use client";
 import React, { useState } from "react";
+import useLanguage from "@/utils/useLanguage";
 
 interface Props {
     modNum: number;
@@ -117,20 +118,22 @@ function ConditionCard({ id, desc, type }: {
 // ══════════════════════════════════════════════════════════════════════════
 
 function M1Algorithm({ color }: { color: string }) {
+    const { lang } = useLanguage();
+    const th = lang === "th";
     return (
         <>
             <InfoBlock title="11 AI Models — Ensemble Voting" color={color}>
-                <ModelCard id="RE" name="Rule Engine" type="Rule" icon="📏" color={color} weight="Fallback" desc="Rule-based weighted fallback เมื่อ AI models ไม่พร้อม คำนวณจาก filter_age(35%), MDB_temp(15%), temp_diff(15%), humidity(12%), pi5(10%), pressure(8%), status(5%)" output="float 0→100 (health score)" />
-                <ModelCard id="A1" name="XGBoost Classifier" type="ML" icon="🌳" color={color} desc="Gradient-boosted decision trees จัดหมวด clogging level พร้อม SHAP explanation สำหรับ feature importance" output="int class 0-4 + float[5] probability + SHAP values" />
-                <ModelCard id="A2" name="XGBoost Regressor" type="ML" icon="📈" color={color} desc="Regression version ทำนาย continuous clogging score แบบ 0-1" output="float 0→1 (clogging probability)" />
-                <ModelCard id="B" name="Autoencoder" type="DL" icon="🔄" color={color} desc="Autoencoder 256→16→256 เรียนรู้ normal pattern แล้ว flag reconstruction error สูง = anomaly" output="float MSE reconstruction error (threshold: P95/P99/P99.9)" />
-                <ModelCard id="C" name="Multi-Task DNN" type="DL" icon="🧠" color={color} desc="DNN หลาย output tasks: clogging score + 7 group scores (temperature, humidity, pressure, filter, power, status, composite)" output="float sigmoid + float[7] group scores" />
-                <ModelCard id="D" name="BiLSTM-Attention" type="DL" icon="⏳" color={color} desc="Bidirectional LSTM + Attention mechanism จับ temporal pattern และ long-range dependencies ใน time series" output="float sigmoid + float[15] attention weights" />
-                <ModelCard id="E" name="1D-CNN" type="DL" icon="🔬" color={color} desc="1D Convolutional Neural Network จับ local temporal pattern และ short-term anomaly spikes" output="float sigmoid" />
-                <ModelCard id="F" name="Gradient Boosting" type="ML" icon="🚀" color={color} desc="Scikit-learn GradientBoostingRegressor เป็น complementary model กับ XGBoost" output="float regression score 0→1" />
-                <ModelCard id="G1" name="Isolation Forest" type="UL" icon="🌲" color={color} desc="Unsupervised anomaly detection โดยการ isolate outliers ใน feature space ไม่ต้องการ labeled data" output="int 1/-1 (normal/anomaly) + float normalized score 0→1" />
-                <ModelCard id="G2" name="LOF" type="UL" icon="🎯" color={color} desc="Local Outlier Factor วัด local density ของ data point เทียบกับ neighbors — anomaly = density ต่ำผิดปกติ" output="int 1/-1 + float normalized score 0→1" />
-                <ModelCard id="EN" name="Ensemble" type="Ensemble" icon="⚡" color={color} desc="Weighted average ของทุก model บนสูตร ensemble_risk = weighted_sum ของ individual scores" output="float 0→1 (ensemble_risk = final decision)" />
+                <ModelCard id="RE" name="Rule Engine" type="Rule" icon="📏" color={color} weight="Fallback" desc={th ? "Rule-based weighted fallback เมื่อ AI models ไม่พร้อม คำนวณจาก filter_age(35%), MDB_temp(15%), temp_diff(15%), humidity(12%), pi5(10%), pressure(8%), status(5%)" : "Rule-based weighted fallback when AI models are unavailable, computed from filter_age(35%), MDB_temp(15%), temp_diff(15%), humidity(12%), pi5(10%), pressure(8%), status(5%)"} output="float 0→100 (health score)" />
+                <ModelCard id="A1" name="XGBoost Classifier" type="ML" icon="🌳" color={color} desc={th ? "Gradient-boosted decision trees จัดหมวด clogging level พร้อม SHAP explanation สำหรับ feature importance" : "Gradient-boosted decision trees classify the clogging level with SHAP explanations for feature importance"} output="int class 0-4 + float[5] probability + SHAP values" />
+                <ModelCard id="A2" name="XGBoost Regressor" type="ML" icon="📈" color={color} desc={th ? "Regression version ทำนาย continuous clogging score แบบ 0-1" : "Regression version predicting a continuous clogging score from 0-1"} output="float 0→1 (clogging probability)" />
+                <ModelCard id="B" name="Autoencoder" type="DL" icon="🔄" color={color} desc={th ? "Autoencoder 256→16→256 เรียนรู้ normal pattern แล้ว flag reconstruction error สูง = anomaly" : "Autoencoder 256→16→256 learns the normal pattern, then flags high reconstruction error as an anomaly"} output="float MSE reconstruction error (threshold: P95/P99/P99.9)" />
+                <ModelCard id="C" name="Multi-Task DNN" type="DL" icon="🧠" color={color} desc={th ? "DNN หลาย output tasks: clogging score + 7 group scores (temperature, humidity, pressure, filter, power, status, composite)" : "DNN with multiple output tasks: clogging score + 7 group scores (temperature, humidity, pressure, filter, power, status, composite)"} output="float sigmoid + float[7] group scores" />
+                <ModelCard id="D" name="BiLSTM-Attention" type="DL" icon="⏳" color={color} desc={th ? "Bidirectional LSTM + Attention mechanism จับ temporal pattern และ long-range dependencies ใน time series" : "Bidirectional LSTM + Attention mechanism captures temporal patterns and long-range dependencies in the time series"} output="float sigmoid + float[15] attention weights" />
+                <ModelCard id="E" name="1D-CNN" type="DL" icon="🔬" color={color} desc={th ? "1D Convolutional Neural Network จับ local temporal pattern และ short-term anomaly spikes" : "1D Convolutional Neural Network captures local temporal patterns and short-term anomaly spikes"} output="float sigmoid" />
+                <ModelCard id="F" name="Gradient Boosting" type="ML" icon="🚀" color={color} desc={th ? "Scikit-learn GradientBoostingRegressor เป็น complementary model กับ XGBoost" : "Scikit-learn GradientBoostingRegressor as a complementary model to XGBoost"} output="float regression score 0→1" />
+                <ModelCard id="G1" name="Isolation Forest" type="UL" icon="🌲" color={color} desc={th ? "Unsupervised anomaly detection โดยการ isolate outliers ใน feature space ไม่ต้องการ labeled data" : "Unsupervised anomaly detection by isolating outliers in feature space — no labeled data required"} output="int 1/-1 (normal/anomaly) + float normalized score 0→1" />
+                <ModelCard id="G2" name="LOF" type="UL" icon="🎯" color={color} desc={th ? "Local Outlier Factor วัด local density ของ data point เทียบกับ neighbors — anomaly = density ต่ำผิดปกติ" : "Local Outlier Factor measures the local density of a data point against its neighbors — anomaly = abnormally low density"} output="int 1/-1 + float normalized score 0→1" />
+                <ModelCard id="EN" name="Ensemble" type="Ensemble" icon="⚡" color={color} desc={th ? "Weighted average ของทุก model บนสูตร ensemble_risk = weighted_sum ของ individual scores" : "Weighted average of every model using ensemble_risk = weighted_sum of the individual scores"} output="float 0→1 (ensemble_risk = final decision)" />
             </InfoBlock>
 
             <InfoBlock title="Input Features" color={color}>
@@ -145,7 +148,7 @@ function M1Algorithm({ color }: { color: string }) {
             <InfoBlock title="Health Score Formula" color={color}>
                 <FormulaBlock code={`health = round((1 - ensemble_risk) × 100)
 
-// ensemble_risk = weighted average ของทุก model
+// ensemble_risk = ${th ? "weighted average ของทุก model" : "weighted average of all models"}
 // range: 0.0 (clean) → 1.0 (clogged)
 
 // Fallback (AI unavailable):
@@ -161,23 +164,25 @@ function M1Algorithm({ color }: { color: string }) {
             </InfoBlock>
 
             <div className="tw-bg-emerald-50 tw-border tw-border-emerald-200 tw-rounded-xl tw-p-3 tw-text-xs tw-text-emerald-700">
-                ⚖️ <strong>System Health Weight: 12%</strong> — M1 มีผลต่อ System Health Score รวม 12%
+                ⚖️ <strong>System Health Weight: 12%</strong> — {th ? "M1 มีผลต่อ System Health Score รวม 12%" : "M1 contributes 12% of the overall System Health Score"}
             </div>
         </>
     );
 }
 
 function M2Algorithm({ color }: { color: string }) {
+    const { lang } = useLanguage();
+    const th = lang === "th";
     return (
         <>
             <InfoBlock title="7 AI Models — Weighted Ensemble" color={color}>
-                <ModelCard id="A1" name="XGBoost Regressor" type="ML" icon="📈" color={color} weight="15%" desc="Gradient-boosted trees ทำนาย clogging probability แบบ continuous" output="float 0→1" />
-                <ModelCard id="A2" name="XGBoost Classifier" type="ML" icon="🌳" color={color} weight="15%" desc="Classification version จัดหมวด 5 ระดับ: Clean/Light/Moderate/Heavy/Severe พร้อม SHAP" output="int 0-4 class + float[5] proba + SHAP" />
-                <ModelCard id="B" name="Autoencoder" type="DL" icon="🔄" color={color} weight="10%" desc="256→16→256 เรียนรู้ thermal signature ปกติ — reconstruction error สูง = filter อุดตัน" output="float MSE (threshold: P95 / P99 / P99.9)" />
+                <ModelCard id="A1" name="XGBoost Regressor" type="ML" icon="📈" color={color} weight="15%" desc={th ? "Gradient-boosted trees ทำนาย clogging probability แบบ continuous" : "Gradient-boosted trees predicting a continuous clogging probability"} output="float 0→1" />
+                <ModelCard id="A2" name="XGBoost Classifier" type="ML" icon="🌳" color={color} weight="15%" desc={th ? "Classification version จัดหมวด 5 ระดับ: Clean/Light/Moderate/Heavy/Severe พร้อม SHAP" : "Classification version with 5 levels: Clean/Light/Moderate/Heavy/Severe, with SHAP"} output="int 0-4 class + float[5] proba + SHAP" />
+                <ModelCard id="B" name="Autoencoder" type="DL" icon="🔄" color={color} weight="10%" desc={th ? "256→16→256 เรียนรู้ thermal signature ปกติ — reconstruction error สูง = filter อุดตัน" : "256→16→256 learns the normal thermal signature — high reconstruction error = clogged filter"} output="float MSE (threshold: P95 / P99 / P99.9)" />
                 <ModelCard id="C" name="Multi-Task DNN" type="DL" icon="🧠" color={color} weight="20%" desc="DNN 5-class + 7 group scores: temp_group, fan_group, env_group, cable_group, power_group, maint_group, composite" output="float sigmoid + float[7] group scores" />
-                <ModelCard id="D" name="BiLSTM-Attention" type="DL" icon="⏳" color={color} weight="20%" desc="Temporal modeling ของ temperature trends พร้อม attention weights บอกว่า timestep ไหนสำคัญ" output="float sigmoid + float[7] groups + float[15] attention" />
-                <ModelCard id="E1" name="Isolation Forest" type="UL" icon="🌲" color={color} weight="10%" desc="Unsupervised anomaly detection สำหรับ multi-sensor thermal profile" output="int 1/-1 + float 0→1" />
-                <ModelCard id="E2" name="LOF" type="UL" icon="🎯" color={color} weight="10%" desc="Local Outlier Factor วัด density ของ thermal signature เทียบกับ neighborhood" output="int 1/-1 + float 0→1" />
+                <ModelCard id="D" name="BiLSTM-Attention" type="DL" icon="⏳" color={color} weight="20%" desc={th ? "Temporal modeling ของ temperature trends พร้อม attention weights บอกว่า timestep ไหนสำคัญ" : "Temporal modeling of temperature trends with attention weights showing which timestep matters"} output="float sigmoid + float[7] groups + float[15] attention" />
+                <ModelCard id="E1" name="Isolation Forest" type="UL" icon="🌲" color={color} weight="10%" desc={th ? "Unsupervised anomaly detection สำหรับ multi-sensor thermal profile" : "Unsupervised anomaly detection for the multi-sensor thermal profile"} output="int 1/-1 + float 0→1" />
+                <ModelCard id="E2" name="LOF" type="UL" icon="🎯" color={color} weight="10%" desc={th ? "Local Outlier Factor วัด density ของ thermal signature เทียบกับ neighborhood" : "Local Outlier Factor measures the density of the thermal signature against its neighborhood"} output="int 1/-1 + float 0→1" />
             </InfoBlock>
 
             <InfoBlock title="Per-Condition Monitoring C01–C15" color={color}>
@@ -215,23 +220,25 @@ health  = round(max(0, min(100, 100 - (maxTemp - 35) × 2.5)))
 }
 
 function M3Algorithm({ color }: { color: string }) {
+    const { lang } = useLanguage();
+    const th = lang === "th";
     const rootCauses = [
-        { id: "0", name: "NETWORK_FAILURE", desc: "เครือข่ายล่ม — router/ISP issue" },
-        { id: "1", name: "POWER_OUTAGE", desc: "ไฟดับ — voltage phase = 0" },
-        { id: "2", name: "PLC_FAULT", desc: "PLC ขัดข้อง — communication failure" },
-        { id: "3", name: "EDGEBOX_CRASH", desc: "Edge device ค้าง — process/memory issue" },
-        { id: "4", name: "SCHEDULED_MAINTENANCE", desc: "บำรุงรักษาตามแผน — planned downtime" },
-        { id: "5", name: "NORMAL", desc: "ปกติ — no anomaly detected" },
+        { id: "0", name: "NETWORK_FAILURE", desc: th ? "เครือข่ายล่ม — router/ISP issue" : "Network down — router/ISP issue" },
+        { id: "1", name: "POWER_OUTAGE", desc: th ? "ไฟดับ — voltage phase = 0" : "Power outage — voltage phase = 0" },
+        { id: "2", name: "PLC_FAULT", desc: th ? "PLC ขัดข้อง — communication failure" : "PLC fault — communication failure" },
+        { id: "3", name: "EDGEBOX_CRASH", desc: th ? "Edge device ค้าง — process/memory issue" : "Edge device hang — process/memory issue" },
+        { id: "4", name: "SCHEDULED_MAINTENANCE", desc: th ? "บำรุงรักษาตามแผน — planned downtime" : "Scheduled maintenance — planned downtime" },
+        { id: "5", name: "NORMAL", desc: th ? "ปกติ — no anomaly detected" : "Normal — no anomaly detected" },
     ];
     return (
         <>
             <InfoBlock title="8 AI Models — Root Cause + Early Warning" color={color}>
-                <ModelCard id="A1" name="XGBoost Root Cause" type="ML" icon="🌳" color={color} desc="จำแนก Root Cause 6 ประเภทจาก device status pattern พร้อม SHAP explanation" output="int class 0-5 + float[6] probability + SHAP values" />
-                <ModelCard id="A2" name="DNN Root Cause" type="DL" icon="🧠" color={color} desc="Deep Neural Network จำแนก Root Cause — higher recall สำหรับ EDGEBOX_CRASH และ PLC_FAULT" output="int class 0-5 + float confidence" />
-                <ModelCard id="B" name="Early Warning" type="DL" icon="⚠️" color={color} desc="ตรวจจับ pre-failure pattern ~2 นาทีก่อนเกิด offline event จาก LSTM sequence model" output="bool alert + int eta_seconds + string failing_device" />
-                <ModelCard id="C" name="Autoencoder" type="DL" icon="🔄" color={color} desc="เรียนรู้ normal status pattern ของทุก device — MSE spike = อุปกรณ์กำลังจะ offline" output="float MSE per-device + string anomaly_level (low/med/high)" />
-                <ModelCard id="D" name="BiLSTM-Attention" type="DL" icon="⏳" color={color} desc="Temporal modeling ของ device status sequence — attention weights บอก device ที่ผิดปกติ" output="float score + float[] attention + string pattern_type" />
-                <ModelCard id="E" name="IF + LOF Ensemble" type="UL" icon="🔬" color={color} desc="50/50 weighted ensemble ของ Isolation Forest และ LOF สำหรับ unsupervised anomaly detection" output="int 1/-1 + float normalized 0→1" />
+                <ModelCard id="A1" name="XGBoost Root Cause" type="ML" icon="🌳" color={color} desc={th ? "จำแนก Root Cause 6 ประเภทจาก device status pattern พร้อม SHAP explanation" : "Classifies 6 root cause types from the device status pattern, with SHAP explanations"} output="int class 0-5 + float[6] probability + SHAP values" />
+                <ModelCard id="A2" name="DNN Root Cause" type="DL" icon="🧠" color={color} desc={th ? "Deep Neural Network จำแนก Root Cause — higher recall สำหรับ EDGEBOX_CRASH และ PLC_FAULT" : "Deep Neural Network root cause classification — higher recall for EDGEBOX_CRASH and PLC_FAULT"} output="int class 0-5 + float confidence" />
+                <ModelCard id="B" name="Early Warning" type="DL" icon="⚠️" color={color} desc={th ? "ตรวจจับ pre-failure pattern ~2 นาทีก่อนเกิด offline event จาก LSTM sequence model" : "Detects the pre-failure pattern ~2 minutes before an offline event using an LSTM sequence model"} output="bool alert + int eta_seconds + string failing_device" />
+                <ModelCard id="C" name="Autoencoder" type="DL" icon="🔄" color={color} desc={th ? "เรียนรู้ normal status pattern ของทุก device — MSE spike = อุปกรณ์กำลังจะ offline" : "Learns the normal status pattern of every device — an MSE spike means a device is about to go offline"} output="float MSE per-device + string anomaly_level (low/med/high)" />
+                <ModelCard id="D" name="BiLSTM-Attention" type="DL" icon="⏳" color={color} desc={th ? "Temporal modeling ของ device status sequence — attention weights บอก device ที่ผิดปกติ" : "Temporal modeling of the device status sequence — attention weights point to the abnormal device"} output="float score + float[] attention + string pattern_type" />
+                <ModelCard id="E" name="IF + LOF Ensemble" type="UL" icon="🔬" color={color} desc={th ? "50/50 weighted ensemble ของ Isolation Forest และ LOF สำหรับ unsupervised anomaly detection" : "50/50 weighted ensemble of Isolation Forest and LOF for unsupervised anomaly detection"} output="int 1/-1 + float normalized 0→1" />
             </InfoBlock>
 
             <InfoBlock title="6 Root Cause Classes" color={color}>
@@ -270,18 +277,20 @@ health = round(online_count / total_devices × 100)
 // Example: 4/6 online = 67% → Grade C (Warning)
 // Example: 2/6 online = 33% → Grade F (Critical)`} />
                 <div className="tw-mt-3 tw-p-3 tw-bg-amber-50 tw-rounded-lg tw-text-xs tw-text-amber-700 tw-border tw-border-amber-200">
-                    ⚠ AI models (A1–E) ใช้สำหรับ Root Cause Analysis และ Early Warning เท่านั้น ไม่ได้ใช้คำนวณ health score
+                    ⚠ {th ? "AI models (A1–E) ใช้สำหรับ Root Cause Analysis และ Early Warning เท่านั้น ไม่ได้ใช้คำนวณ health score" : "AI models (A1–E) are used for Root Cause Analysis and Early Warning only — they are not used to compute the health score"}
                 </div>
             </InfoBlock>
 
             <div className="tw-bg-purple-50 tw-border tw-border-purple-200 tw-rounded-xl tw-p-3 tw-text-xs tw-text-purple-700">
-                ⚖️ <strong>System Health Weight: 16%</strong> — Highest weight นอกจาก M4 เนื่องจาก offline ทำให้ charger ใช้งานไม่ได้เลย
+                ⚖️ <strong>System Health Weight: 16%</strong> — {th ? "Highest weight นอกจาก M4 เนื่องจาก offline ทำให้ charger ใช้งานไม่ได้เลย" : "Highest weight after M4, because going offline makes the charger completely unusable"}
             </div>
         </>
     );
 }
 
 function M4Algorithm({ color }: { color: string }) {
+    const { lang } = useLanguage();
+    const th = lang === "th";
     const conditions = [
         { id: "C01", desc: "Voltage Anomaly H1 — ISO 15118 ±5% target vs present", type: "AI+Rule" },
         { id: "C02", desc: "Current Anomaly H1 — ΔI target deviation", type: "AI+Rule" },
@@ -310,9 +319,9 @@ function M4Algorithm({ color }: { color: string }) {
     return (
         <>
             <InfoBlock title="PerConditionEngine — Autoencoder + DNN" color={color}>
-                <ModelCard id="AE" name="Autoencoder" type="DL" icon="🔄" color={color} desc="เรียนรู้ normal charging pattern ของแต่ละ condition group — reconstruction error สูง = anomaly" output="float anomaly score per group 0→1" />
-                <ModelCard id="DNN" name="DNN Per-Condition" type="DL" icon="🧠" color={color} desc="Deep Neural Network แยก model สำหรับแต่ละ condition group (voltage, current, thermal, cable, energy)" output="float sigmoid per condition 0→1" />
-                <ModelCard id="RULE" name="Rule-Based Engine" type="Rule" icon="📏" color={color} desc="9 real-time rules (R1–R6) สำหรับ immediate detection ไม่รอ AI inference — ทำงานทุก polling cycle" output="bool per rule + string severity (WARN/CRIT)" />
+                <ModelCard id="AE" name="Autoencoder" type="DL" icon="🔄" color={color} desc={th ? "เรียนรู้ normal charging pattern ของแต่ละ condition group — reconstruction error สูง = anomaly" : "Learns the normal charging pattern of each condition group — high reconstruction error = anomaly"} output="float anomaly score per group 0→1" />
+                <ModelCard id="DNN" name="DNN Per-Condition" type="DL" icon="🧠" color={color} desc={th ? "Deep Neural Network แยก model สำหรับแต่ละ condition group (voltage, current, thermal, cable, energy)" : "Deep Neural Network with a separate model per condition group (voltage, current, thermal, cable, energy)"} output="float sigmoid per condition 0→1" />
+                <ModelCard id="RULE" name="Rule-Based Engine" type="Rule" icon="📏" color={color} desc={th ? "9 real-time rules (R1–R6) สำหรับ immediate detection ไม่รอ AI inference — ทำงานทุก polling cycle" : "9 real-time rules (R1–R6) for immediate detection without waiting for AI inference — runs every polling cycle"} output="bool per rule + string severity (WARN/CRIT)" />
             </InfoBlock>
 
             <InfoBlock title="22 Conditions — Asset Health Tree" color={color}>
@@ -329,11 +338,11 @@ function M4Algorithm({ color }: { color: string }) {
             <InfoBlock title="9 Real-Time Rules (R1–R6)" color={color}>
                 <div className="tw-flex tw-flex-col tw-gap-2">
                     {[
-                        { id: "R1×2", desc: "Charging State Check — ICP=C2 + USL=CurrentDemand validation ทั้ง 2 connectors" },
-                        { id: "R2", desc: "Power Module Derating — >55°C → -3.2A/°C และ -1kW/°C ต่อ degree ที่เกิน" },
-                        { id: "R3", desc: "Single Charging Module Check — 1 connector ต้องใช้ 5 power modules" },
+                        { id: "R1×2", desc: th ? "Charging State Check — ICP=C2 + USL=CurrentDemand validation ทั้ง 2 connectors" : "Charging State Check — ICP=C2 + USL=CurrentDemand validation on both connectors" },
+                        { id: "R2", desc: th ? "Power Module Derating — >55°C → -3.2A/°C และ -1kW/°C ต่อ degree ที่เกิน" : "Power Module Derating — >55°C → -3.2A/°C and -1kW/°C per degree over" },
+                        { id: "R3", desc: th ? "Single Charging Module Check — 1 connector ต้องใช้ 5 power modules" : "Single Charging Module Check — 1 connector must use 5 power modules" },
                         { id: "R4", desc: "Dual Charging Split — 2 connectors → H1=2 modules, H2=3 modules" },
-                        { id: "R5×2", desc: "Under-Delivery Check — actual < 95% of target โดยไม่มี CSMS limit" },
+                        { id: "R5×2", desc: th ? "Under-Delivery Check — actual < 95% of target โดยไม่มี CSMS limit" : "Under-Delivery Check — actual < 95% of target with no CSMS limit" },
                         { id: "R6×2", desc: "CCS Cable Temp Derating — Phoenix Contact boost mode derating table" },
                     ].map((r) => (
                         <div key={r.id} className="tw-flex tw-gap-3 tw-p-2.5 tw-bg-amber-50 tw-border tw-border-amber-200 tw-rounded-lg">
@@ -342,11 +351,11 @@ function M4Algorithm({ color }: { color: string }) {
                         </div>
                     ))}
                 </div>
-                <div className="tw-mt-2 tw-text-xs tw-text-gray-500">⚠ Rules R1–R6 ไม่นับรวมใน health score — ใช้สำหรับ real-time alert เท่านั้น</div>
+                <div className="tw-mt-2 tw-text-xs tw-text-gray-500">⚠ {th ? "Rules R1–R6 ไม่นับรวมใน health score — ใช้สำหรับ real-time alert เท่านั้น" : "Rules R1–R6 are not counted in the health score — they are used for real-time alerts only"}</div>
             </InfoBlock>
 
             <InfoBlock title="Health Score Formula" color={color}>
-                <FormulaBlock code={`anomaly_flags = 0  // นับจาก conditions ที่ trigger
+                <FormulaBlock code={`anomaly_flags = 0  // ${th ? "นับจาก conditions ที่ trigger" : "counted from triggered conditions"}
 
 // Rule-based flag:
 if present_voltage > 0 and present_current == 0: flags += 1
@@ -388,13 +397,15 @@ health = max(0, min(100, 100 - anomaly_flags × 15))`} />
             </InfoBlock>
 
             <div className="tw-bg-amber-50 tw-border tw-border-amber-200 tw-rounded-xl tw-p-3 tw-text-xs tw-text-amber-700">
-                ⚖️ <strong>System Health Weight: 20%</strong> — น้ำหนักสูงสุดใน system เพราะ power anomaly กระทบทุก EV ที่ชาร์จอยู่โดยตรง
+                ⚖️ <strong>System Health Weight: 20%</strong> — {th ? "น้ำหนักสูงสุดใน system เพราะ power anomaly กระทบทุก EV ที่ชาร์จอยู่โดยตรง" : "Highest weight in the system, because a power anomaly directly affects every EV currently charging"}
             </div>
         </>
     );
 }
 
 function M5Algorithm({ color }: { color: string }) {
+    const { lang } = useLanguage();
+    const th = lang === "th";
     return (
         <>
             <InfoBlock title="Network Analysis — 6 Device Groups" color={color}>
@@ -417,7 +428,7 @@ function M5Algorithm({ color }: { color: string }) {
                         </div>
                     ))}
                 </div>
-                <div className="tw-text-xs tw-text-gray-500">Multi-alias lookup — API ตรวจสอบทุก field name เพราะ naming convention ต่างกันตาม firmware version</div>
+                <div className="tw-text-xs tw-text-gray-500">{th ? "Multi-alias lookup — API ตรวจสอบทุก field name เพราะ naming convention ต่างกันตาม firmware version" : "Multi-alias lookup — the API checks every field name because the naming convention varies by firmware version"}</div>
             </InfoBlock>
 
             <InfoBlock title="Output Structure" color={color}>
@@ -456,18 +467,20 @@ health   = round(max(0, min(100, (1 - severity) × 100)))
             </InfoBlock>
 
             <div className="tw-bg-blue-50 tw-border tw-border-blue-200 tw-rounded-xl tw-p-3 tw-text-xs tw-text-blue-700">
-                ⚖️ <strong>System Health Weight: 12%</strong> — Network issues ส่งผลทางอ้อม (data loss, remote control failure)
+                ⚖️ <strong>System Health Weight: 12%</strong> — {th ? "Network issues ส่งผลทางอ้อม (data loss, remote control failure)" : "Network issues have an indirect impact (data loss, remote control failure)"}
             </div>
         </>
     );
 }
 
 function M6Algorithm({ color }: { color: string }) {
+    const { lang } = useLanguage();
+    const th = lang === "th";
     return (
         <>
             <InfoBlock title="Temperature-Penalty RUL Model" color={color}>
                 <ModelCard id="RUL" name="Temperature-Penalty RUL" type="ML" icon="⏳" color={color}
-                    desc="ประมาณ Remaining Useful Life ของแต่ละ component โดยใช้ Arrhenius equation-based temperature penalty — อุณหภูมิสูง = degradation rate เร็วขึ้น exponentially"
+                    desc={th ? "ประมาณ Remaining Useful Life ของแต่ละ component โดยใช้ Arrhenius equation-based temperature penalty — อุณหภูมิสูง = degradation rate เร็วขึ้น exponentially" : "Estimates the Remaining Useful Life of each component using an Arrhenius equation-based temperature penalty — higher temperature = exponentially faster degradation rate"}
                     output="float rul_pct (0→1) + string method + float rated" />
             </InfoBlock>
 
@@ -522,23 +535,25 @@ health = round(rul_factor × 100)  // backend-computed
             </InfoBlock>
 
             <div className="tw-bg-red-50 tw-border tw-border-red-200 tw-rounded-xl tw-p-3 tw-text-xs tw-text-red-700">
-                ⚖️ <strong>System Health Weight: 18%</strong> — ส่งผลโดยตรงต่อ maintenance planning และ asset lifecycle management
+                ⚖️ <strong>System Health Weight: 18%</strong> — {th ? "ส่งผลโดยตรงต่อ maintenance planning และ asset lifecycle management" : "Directly affects maintenance planning and asset lifecycle management"}
             </div>
         </>
     );
 }
 
 function M7Algorithm({ color }: { color: string }) {
+    const { lang } = useLanguage();
+    const th = lang === "th";
     const icpStates = [
-        { id: 0, name: "Inactive", color: "#6b7280", desc: "ระบบไม่ทำงาน" },
-        { id: 1, name: "A1", color: "#94a3b8", desc: "Connector ยังไม่เสียบ (PWM off)" },
-        { id: 2, name: "B1", color: "#60a5fa", desc: "Connector เสียบแล้ว (PWM off)" },
-        { id: 3, name: "C1", color: "#34d399", desc: "รถพร้อมชาร์จ (PWM off)" },
-        { id: 4, name: "D1", color: "#6ee7b7", desc: "รถพร้อม + ต้องการระบายอากาศ" },
-        { id: 5, name: "A2", color: "#c084fc", desc: "Connector ยังไม่เสียบ (PWM on)" },
-        { id: 6, name: "B2", color: "#38bdf8", desc: "Connector เสียบแล้ว (PWM on)" },
-        { id: 7, name: "C2 (Charging)", color: "#22c55e", desc: "กำลังชาร์จอยู่" },
-        { id: 8, name: "D2", color: "#4ade80", desc: "ชาร์จ + ระบายอากาศ" },
+        { id: 0, name: "Inactive", color: "#6b7280", desc: th ? "ระบบไม่ทำงาน" : "System inactive" },
+        { id: 1, name: "A1", color: "#94a3b8", desc: th ? "Connector ยังไม่เสียบ (PWM off)" : "Connector not plugged in (PWM off)" },
+        { id: 2, name: "B1", color: "#60a5fa", desc: th ? "Connector เสียบแล้ว (PWM off)" : "Connector plugged in (PWM off)" },
+        { id: 3, name: "C1", color: "#34d399", desc: th ? "รถพร้อมชาร์จ (PWM off)" : "Vehicle ready to charge (PWM off)" },
+        { id: 4, name: "D1", color: "#6ee7b7", desc: th ? "รถพร้อม + ต้องการระบายอากาศ" : "Vehicle ready + ventilation required" },
+        { id: 5, name: "A2", color: "#c084fc", desc: th ? "Connector ยังไม่เสียบ (PWM on)" : "Connector not plugged in (PWM on)" },
+        { id: 6, name: "B2", color: "#38bdf8", desc: th ? "Connector เสียบแล้ว (PWM on)" : "Connector plugged in (PWM on)" },
+        { id: 7, name: "C2 (Charging)", color: "#22c55e", desc: th ? "กำลังชาร์จอยู่" : "Charging in progress" },
+        { id: 8, name: "D2", color: "#4ade80", desc: th ? "ชาร์จ + ระบายอากาศ" : "Charging + ventilation" },
         { id: 9, name: "E (CP=0V Fault)", color: "#ef4444", desc: "CP voltage = 0V → Fault" },
         { id: 10, name: "Error", color: "#dc2626", desc: "State machine error" },
     ];
@@ -546,8 +561,8 @@ function M7Algorithm({ color }: { color: string }) {
     return (
         <>
             <InfoBlock title="EV-PLCC State Machine Analysis" color={color}>
-                <ModelCard id="SM" name="State Machine Analyzer" type="Rule" icon="🔍" color={color} desc="ตรวจสอบ ICP state transitions ตาม IEC 61851-1 CP signaling protocol — invalid transitions = anomaly flag" output="bool anomaly + string transition_error + float health_impact" />
-                <ModelCard id="PLCC" name="EVPLCC Analyzer" type="AI" icon="🔌" color={color} desc="วิเคราะห์ EV Power Line Communication quality, contractor status, และ ISO 15118 USLink protocol sequence" output="bool communication_ok + string protocol_state + float anomaly_score" />
+                <ModelCard id="SM" name="State Machine Analyzer" type="Rule" icon="🔍" color={color} desc={th ? "ตรวจสอบ ICP state transitions ตาม IEC 61851-1 CP signaling protocol — invalid transitions = anomaly flag" : "Checks ICP state transitions against the IEC 61851-1 CP signaling protocol — invalid transitions = anomaly flag"} output="bool anomaly + string transition_error + float health_impact" />
+                <ModelCard id="PLCC" name="EVPLCC Analyzer" type="AI" icon="🔌" color={color} desc={th ? "วิเคราะห์ EV Power Line Communication quality, contractor status, และ ISO 15118 USLink protocol sequence" : "Analyzes EV Power Line Communication quality, contractor status, and the ISO 15118 USLink protocol sequence"} output="bool communication_ok + string protocol_state + float anomaly_score" />
             </InfoBlock>
 
             <InfoBlock title="ICP States (11) — IEC 61851-1 CP Signaling" color={color}>
@@ -595,16 +610,16 @@ health = round(max(0, min(100, 100 - anCount × 10)))
 
             <InfoBlock title="Timeline — In-Memory Buffer" color={color}>
                 <div className="tw-p-3 tw-bg-amber-50 tw-rounded-xl tw-border tw-border-amber-200 tw-text-xs tw-text-amber-700">
-                    <div className="tw-font-bold tw-mb-1">⚠ Important: Timeline ไม่ persistent</div>
-                    <div>• Buffer สูงสุด 50 entries ต่อ timeline (ICP + USLink = 100 total)</div>
-                    <div>• สะสมจาก polling /api/m7/latest ทุก 120 วินาที</div>
-                    <div>• ข้อมูลหายทั้งหมดเมื่อ refresh หน้า</div>
-                    <div>• แสดงเป็น Canvas 2D Gantt bar chart (ไม่ใช่ Chart.js)</div>
+                    <div className="tw-font-bold tw-mb-1">⚠ {th ? "Important: Timeline ไม่ persistent" : "Important: the timeline is not persistent"}</div>
+                    <div>• {th ? "Buffer สูงสุด 50 entries ต่อ timeline (ICP + USLink = 100 total)" : "Buffer of up to 50 entries per timeline (ICP + USLink = 100 total)"}</div>
+                    <div>• {th ? "สะสมจาก polling /api/m7/latest ทุก 120 วินาที" : "Accumulated by polling /api/m7/latest every 120 seconds"}</div>
+                    <div>• {th ? "ข้อมูลหายทั้งหมดเมื่อ refresh หน้า" : "All data is lost when the page is refreshed"}</div>
+                    <div>• {th ? "แสดงเป็น Canvas 2D Gantt bar chart (ไม่ใช่ Chart.js)" : "Rendered as a Canvas 2D Gantt bar chart (not Chart.js)"}</div>
                 </div>
             </InfoBlock>
 
             <div className="tw-bg-pink-50 tw-border tw-border-pink-200 tw-rounded-xl tw-p-3 tw-text-xs tw-text-pink-700">
-                ⚖️ <strong>System Health Weight: 10%</strong> — น้ำหนักต่ำสุด เพราะ EV-PLCC issues ส่งผลเฉพาะ high-level communication ไม่กระทบ physical charging
+                ⚖️ <strong>System Health Weight: 10%</strong> — {th ? "น้ำหนักต่ำสุด เพราะ EV-PLCC issues ส่งผลเฉพาะ high-level communication ไม่กระทบ physical charging" : "Lowest weight, because EV-PLCC issues affect only high-level communication and not physical charging"}
             </div>
         </>
     );
@@ -613,6 +628,7 @@ health = round(max(0, min(100, 100 - anCount × 10)))
 // ── Main component ────────────────────────────────────────────────────────
 export default function AlgorithmTab({ modNum, modLabel, modColor }: Props) {
     const [expanded, setExpanded] = useState(true);
+    const { lang } = useLanguage();
 
     return (
         <div className="tw-flex tw-flex-col tw-gap-0">
@@ -644,7 +660,7 @@ export default function AlgorithmTab({ modNum, modLabel, modColor }: Props) {
 
             {!([1, 2, 3, 4, 5, 6, 7].includes(modNum)) && (
                 <div className="tw-text-center tw-text-gray-400 tw-py-12 tw-text-sm">
-                    ไม่มีข้อมูล Algorithm สำหรับ Module {modNum}
+                    {lang === "th" ? `ไม่มีข้อมูล Algorithm สำหรับ Module ${modNum}` : `No algorithm information for Module ${modNum}`}
                 </div>
             )}
         </div>

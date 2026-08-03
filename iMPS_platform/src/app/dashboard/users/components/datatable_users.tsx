@@ -42,6 +42,65 @@ import {
 // components
 import AddUser, { NewUserPayload } from "@/app/dashboard/users/components/adduser";
 import { apiFetch } from "@/utils/api";
+import useLanguage, { type Lang } from "@/utils/useLanguage";
+
+/* -------------------- Translations -------------------- */
+const T = {
+  checkingSession: { th: "กำลังตรวจสอบเซสชัน…", en: "Checking session…" },
+  loadingData: { th: "กำลังโหลดข้อมูล...", en: "Loading data..." },
+  loading: { th: "กำลังโหลด...", en: "Loading..." },
+  pageTitle: { th: "จัดการผู้ใช้และสิทธิ์", en: "Users & Roles Management" },
+  pageSubtitle: {
+    th: "จัดการผู้ใช้: เพิ่ม แก้ไข หรือลบผู้ใช้ออกจากระบบ",
+    en: "Manage Users: Add, Edit, or Remove users from the system.",
+  },
+  addUser: { th: "เพิ่มผู้ใช้", en: "ADD USER" },
+  entriesPerPage: { th: "รายการต่อหน้า", en: "entries per page" },
+  search: { th: "ค้นหา", en: "Search" },
+  colNo: { th: "ลำดับ", en: "No." },
+  colUsername: { th: "ชื่อผู้ใช้", en: "username" },
+  colEmail: { th: "อีเมล", en: "email" },
+  colTel: { th: "เบอร์โทร", en: "tel" },
+  colCompany: { th: "บริษัท", en: "company" },
+  colRole: { th: "สิทธิ์", en: "role" },
+  colActions: { th: "จัดการ", en: "actions" },
+  editUser: { th: "แก้ไขผู้ใช้", en: "Edit user" },
+  deleteUser: { th: "ลบผู้ใช้", en: "Delete user" },
+  noUsersFound: { th: "ไม่พบผู้ใช้", en: "No users found" },
+  usersSuffix: { th: "ผู้ใช้", en: "Users" },
+  page: { th: "หน้า", en: "Page" },
+  of: { th: "จาก", en: "of" },
+  editUserTitle: { th: "แก้ไขผู้ใช้", en: "Edit User" },
+  username: { th: "ชื่อผู้ใช้", en: "Username" },
+  email: { th: "อีเมล", en: "Email" },
+  company: { th: "บริษัท", en: "Company" },
+  tel: { th: "เบอร์โทร", en: "tel" },
+  role: { th: "สิทธิ์", en: "Role" },
+  aiPackage: { th: "แพ็กเกจ AI", en: "AI Package" },
+  enableAiModules: { th: "เปิดใช้งานโมดูล AI", en: "Enable AI Modules" },
+  selectStation: { th: "เลือกสถานี", en: "Select Station" },
+  typeToSearch: { th: "พิมพ์เพื่อค้นหา...", en: "Type to search..." },
+  noStationsFound: { th: "ไม่พบสถานี", en: "No stations found" },
+  loadingStations: { th: "กำลังโหลดสถานี...", en: "Loading stations..." },
+  noStationsAvailable: { th: "ไม่มีสถานีให้เลือก", en: "No stations available" },
+  selectedStations: { th: "สถานีที่เลือก", en: "Selected Stations" },
+  cancel: { th: "ยกเลิก", en: "Cancel" },
+  saving: { th: "กำลังบันทึก...", en: "Saving..." },
+  saveChanges: { th: "บันทึกการเปลี่ยนแปลง", en: "Save Changes" },
+  deleteTitle: { th: "ลบผู้ใช้?", en: "Delete user?" },
+  delete: { th: "ลบ", en: "Delete" },
+  emailAlreadyUsed: { th: "อีเมลนี้ถูกใช้แล้ว", en: "This email is already in use" },
+  createUserFailed: { th: "สร้างผู้ใช้ไม่สำเร็จ", en: "Failed to create user" },
+  createSuccess: { th: "สร้างผู้ใช้สำเร็จ", en: "Create success" },
+  updateSuccess: { th: "อัปเดตสำเร็จ", en: "Update success" },
+  updateFailed: { th: "อัปเดตไม่สำเร็จ", en: "Update failed" },
+  deleteSuccess: { th: "ลบสำเร็จ", en: "Delete success" },
+  deleteUserFailed: { th: "ลบผู้ใช้ไม่สำเร็จ", en: "Failed to delete user" },
+  userNotFound: { th: "ไม่พบผู้ใช้นี้", en: "User not found" },
+  networkError: { th: "เกิดข้อผิดพลาดของเครือข่าย/เซิร์ฟเวอร์", en: "Network/Server error" },
+} as const;
+
+const t = (k: keyof typeof T, lang: Lang) => T[k][lang];
 
 /* -------------------- Types -------------------- */
 type UserRow = {
@@ -86,6 +145,7 @@ function decodeJwt(token: string | null): JwtClaims | null {
 
 /* -------------------- Component -------------------- */
 export default function SearchDataTables() {
+  const { lang } = useLanguage();
   const router = useRouter();
 
   /* --- Auth state --- */
@@ -197,7 +257,7 @@ export default function SearchDataTables() {
         }));
         setData(rows);
       } catch {
-        setErr("Network/Server error");
+        setErr(t("networkError", lang));
         setData([]);
       } finally {
         setLoading(false);
@@ -281,7 +341,7 @@ export default function SearchDataTables() {
         router.replace(`/auth/signin/basic?next=${next}`);
         return;
       }
-      if (res.status === 409) throw new Error("อีเมลนี้ถูกใช้แล้ว");
+      if (res.status === 409) throw new Error(t("emailAlreadyUsed", lang));
       if (!res.ok) {
         const text = await res.text();
         throw new Error(text || `Create failed: ${res.status}`);
@@ -302,11 +362,11 @@ export default function SearchDataTables() {
       ]);
 
       setOpenAdd(false);
-      setNotice({ type: "success", msg: "Create success" });
+      setNotice({ type: "success", msg: t("createSuccess", lang) });
       setTimeout(() => setNotice(null), 3000);
     } catch (e: any) {
       console.error(e);
-      setNotice({ type: "error", msg: e.message || "สร้างผู้ใช้ไม่สำเร็จ" });
+      setNotice({ type: "error", msg: e.message || t("createUserFailed", lang) });
       setTimeout(() => setNotice(null), 3500);
     } finally {
       setSaving(false);
@@ -359,7 +419,7 @@ export default function SearchDataTables() {
     );
 
     setOpenEdit(false);
-    setNotice({ type: "success", msg: "Update success" });
+    setNotice({ type: "success", msg: t("updateSuccess", lang) });
     setTimeout(() => setNotice(null), 2500);
   }
 
@@ -395,8 +455,11 @@ export default function SearchDataTables() {
     if (!row.id) return;
     setConfirmDialog({
       open: true,
-      title: "ลบผู้ใช้?",
-      message: `คุณต้องการลบผู้ใช้ "${row.username}" ใช่หรือไม่?`,
+      title: t("deleteTitle", lang),
+      message:
+        lang === "th"
+          ? `คุณต้องการลบผู้ใช้ "${row.username}" ใช่หรือไม่?`
+          : `Are you sure you want to delete the user "${row.username}"?`,
       loading: false,
       onConfirm: async () => {
         try {
@@ -408,7 +471,7 @@ export default function SearchDataTables() {
             router.replace(`/auth/signin/basic?next=${next}`);
             return;
           }
-          if (res.status === 404) throw new Error("ไม่พบผู้ใช้นี้");
+          if (res.status === 404) throw new Error(t("userNotFound", lang));
           if (!res.ok) {
             const text = await res.text();
             throw new Error(text || `Delete failed: ${res.status}`);
@@ -416,12 +479,12 @@ export default function SearchDataTables() {
 
           setData((prev) => prev.filter((u) => u.id !== row.id));
           closeConfirm();
-          setNotice({ type: "success", msg: "Delete success" });
+          setNotice({ type: "success", msg: t("deleteSuccess", lang) });
           setTimeout(() => setNotice(null), 2500);
         } catch (e: any) {
           console.error(e);
           closeConfirm();
-          setNotice({ type: "error", msg: e.message || "ลบผู้ใช้ไม่สำเร็จ" });
+          setNotice({ type: "error", msg: e.message || t("deleteUserFailed", lang) });
           setTimeout(() => setNotice(null), 3500);
         }
       },
@@ -433,7 +496,7 @@ export default function SearchDataTables() {
     {
       accessorFn: (_row: UserRow, index: number) => index + 1,
       id: "no",
-      header: () => "No.",
+      header: () => t("colNo", lang),
       enableSorting: true,
       sortingFn: "basic",
       sortDescFirst: true,
@@ -451,14 +514,14 @@ export default function SearchDataTables() {
         return <span className="tw-block tw-w-full">{num}</span>;
       },
     },
-    { accessorFn: (r: UserRow) => r.username ?? "-", id: "username", header: () => "username", cell: (i: any) => i.getValue() },
-    { accessorFn: (r: UserRow) => r.email ?? "-", id: "email", header: () => "email", cell: (i: any) => i.getValue() },
-    { accessorFn: (r: UserRow) => r.tel ?? "-", id: "tel", header: () => "tel", cell: (i: any) => i.getValue() },
+    { accessorFn: (r: UserRow) => r.username ?? "-", id: "username", header: () => t("colUsername", lang), cell: (i: any) => i.getValue() },
+    { accessorFn: (r: UserRow) => r.email ?? "-", id: "email", header: () => t("colEmail", lang), cell: (i: any) => i.getValue() },
+    { accessorFn: (r: UserRow) => r.tel ?? "-", id: "tel", header: () => t("colTel", lang), cell: (i: any) => i.getValue() },
     // { accessorFn: (r: UserRow) => r.company ?? "-",  id: "company",  header: () => "company",  cell: (i: any) => i.getValue() },
     {
       accessorFn: (r: UserRow) => r.company ?? "-",
       id: "company",
-      header: () => "company",
+      header: () => t("colCompany", lang),
       cell: (i: any) => {
         const company = (i.getValue() as string) || "-";
         if (company === "-" || !company.trim()) {
@@ -492,7 +555,7 @@ export default function SearchDataTables() {
     {
       accessorFn: (r: UserRow) => r.role ?? "-",
       id: "role",
-      header: () => "role",
+      header: () => t("colRole", lang),
       cell: (i: any) => {
         const role = i.getValue() as string;
         const colorMap: Record<string, string> = {
@@ -512,20 +575,20 @@ export default function SearchDataTables() {
     },
     {
       id: "actions",
-      header: () => "actions",
+      header: () => t("colActions", lang),
       enableSorting: false,
       size: 80,
       cell: ({ row }: { row: Row<UserRow> }) => (
         <span className="tw-inline-flex tw-items-center tw-gap-1.5">
           <button
-            title="Edit user"
+            title={t("editUser", lang)}
             onClick={() => handleEdit(row.original)}
             className="tw-group/btn tw-rounded-lg tw-p-2 tw-bg-blue-50 tw-ring-1 tw-ring-blue-200/60 hover:tw-bg-blue-600 hover:tw-ring-blue-600 tw-transition-all tw-duration-200 tw-shadow-sm hover:tw-shadow-md"
           >
             <PencilSquareIcon className="tw-h-4 tw-w-4 tw-text-blue-600 group-hover/btn:tw-text-white tw-transition-colors" />
           </button>
           <button
-            title="Delete user"
+            title={t("deleteUser", lang)}
             onClick={() => handleDelete(row.original)}
             className="tw-group/btn tw-rounded-lg tw-p-2 tw-bg-red-50 tw-ring-1 tw-ring-red-200/60 hover:tw-bg-red-600 hover:tw-ring-red-600 tw-transition-all tw-duration-200 tw-shadow-sm hover:tw-shadow-md"
           >
@@ -550,14 +613,14 @@ export default function SearchDataTables() {
 
   /* -------------------- Guard while checking auth -------------------- */
   if (!authChecked) {
-    return <div className="tw-p-4">Checking session…</div>;
+    return <div className="tw-p-4">{t("checkingSession", lang)}</div>;
   }
 
   /* -------------------- JSX -------------------- */
   return (
     <>
 
-      <LoadingOverlay show={loading} text="กำลังโหลดข้อมูล..." />
+      <LoadingOverlay show={loading} text={t("loadingData", lang)} />
 
       <Card className="tw-border tw-border-blue-gray-100 tw-shadow-sm tw-mt-8 tw-scroll-mt-4">
         {notice && (
@@ -575,10 +638,10 @@ export default function SearchDataTables() {
         >
           <div className="tw-ml-3">
             <Typography color="blue-gray" variant="h5" className="tw-text-base sm:tw-text-lg md:tw-text-xl">
-              Users & Roles Management
+              {t("pageTitle", lang)}
             </Typography>
             <Typography variant="small" className="!tw-text-blue-gray-500 !tw-font-normal tw-mt-1 tw-text-xs sm:tw-text-sm">
-              Manage Users: Add, Edit, or Remove users from the system.
+              {t("pageSubtitle", lang)}
             </Typography>
           </div>
 
@@ -589,7 +652,7 @@ export default function SearchDataTables() {
                 size="sm"
                 className="tw-flex tw-items-center tw-gap-2 tw-px-4 sm:tw-px-5 tw-py-2.5 tw-rounded-xl tw-bg-gray-900 hover:tw-bg-black tw-text-white tw-font-semibold tw-text-xs sm:tw-text-sm tw-shadow-lg tw-flex-shrink-0 tw-normal-case tw-tracking-wide"
               >
-                <span className="tw-text-base tw-leading-none">+</span> ADD USER
+                <span className="tw-text-base tw-leading-none">+</span> {t("addUser", lang)}
               </Button>
             </div>
           </div>
@@ -612,7 +675,7 @@ export default function SearchDataTables() {
 
 
             <Typography variant="small" className="!tw-text-blue-gray-500 !tw-font-normal tw-hidden sm:tw-inline">
-              entries per page
+              {t("entriesPerPage", lang)}
             </Typography>
           </div>
 
@@ -622,7 +685,7 @@ export default function SearchDataTables() {
               variant="outlined"
               value={filtering}
               onChange={(e) => setFiltering(e.target.value)}
-              label="Search"
+              label={t("search", lang)}
               crossOrigin={undefined}
               containerProps={{ className: "tw-min-w-0" }}
               className="tw-w-full"
@@ -632,7 +695,7 @@ export default function SearchDataTables() {
 
         <CardFooter className="tw-p-0 tw-overflow-scroll">
           {loading ? (
-            <div className="tw-p-4">Loading...</div>
+            <div className="tw-p-4">{t("loading", lang)}</div>
           ) : err ? (
             <div className="tw-p-4 tw-text-red-600">{err}</div>
           ) : (
@@ -674,7 +737,7 @@ export default function SearchDataTables() {
                 ) : (
                   <tr>
                     <td className="tw-px-4 tw-py-6 tw-text-center" colSpan={columns.length}>
-                      ไม่พบผู้ใช้
+                      {t("noUsersFound", lang)}
                     </td>
                   </tr>
                 )}
@@ -685,11 +748,11 @@ export default function SearchDataTables() {
 
         <div className="tw-flex tw-items-center tw-justify-between tw-px-6 tw-py-4 tw-border-t tw-border-blue-gray-100">
           <Typography variant="small" className="!tw-text-blue-gray-400">
-            {data.length} Users
+            {data.length} {t("usersSuffix", lang)}
           </Typography>
           <div className="tw-flex tw-items-center tw-gap-4">
             <span className="tw-text-sm tw-text-blue-gray-600">
-              Page <strong>{table.getState().pagination.pageIndex + 1}</strong> of <strong>{table.getPageCount()}</strong>
+              {t("page", lang)} <strong>{table.getState().pagination.pageIndex + 1}</strong> {t("of", lang)} <strong>{table.getPageCount()}</strong>
             </span>
             <div className="tw-flex tw-items-center tw-gap-1">
               <Button variant="outlined" size="sm" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()} className="disabled:tw-opacity-30 tw-py-1.5 tw-px-2 tw-rounded-lg tw-border-blue-gray-200">
@@ -720,7 +783,7 @@ export default function SearchDataTables() {
       >
         <DialogHeader className="tw-flex tw-items-center tw-justify-between tw-flex-shrink-0">
           <Typography variant="h5" color="blue-gray">
-            Edit User
+            {t("editUserTitle", lang)}
           </Typography>
           <Button variant="text" onClick={() => setOpenEdit(false)}>
             ✕
@@ -769,21 +832,21 @@ export default function SearchDataTables() {
               }
               await handleUpdateUser(editingRow.id!, payload);
             } catch (err: any) {
-              setNotice({ type: "error", msg: err?.message || "อัปเดตไม่สำเร็จ" });
+              setNotice({ type: "error", msg: err?.message || t("updateFailed", lang) });
               setTimeout(() => setNotice(null), 3500);
             }
           }}
         >
           <DialogBody className="tw-space-y-6 tw-px-6 tw-py-4 tw-overflow-y-auto tw-flex-1 tw-min-h-0">
             <div className="tw-flex tw-flex-col tw-gap-4">
-              <Input name="username" label="Username" defaultValue={editingRow?.username ?? ""} required crossOrigin={undefined} />
-              <Input name="email" label="Email" type="email" defaultValue={editingRow?.email ?? ""} required crossOrigin={undefined} />
-              <Input name="company" label="Company" defaultValue={editingRow?.company ?? ""} crossOrigin={undefined} />
-              <Input name="tel" label="tel" defaultValue={editingRow?.tel ?? ""} crossOrigin={undefined} />
+              <Input name="username" label={t("username", lang)} defaultValue={editingRow?.username ?? ""} required crossOrigin={undefined} />
+              <Input name="email" label={t("email", lang)} type="email" defaultValue={editingRow?.email ?? ""} required crossOrigin={undefined} />
+              <Input name="company" label={t("company", lang)} defaultValue={editingRow?.company ?? ""} crossOrigin={undefined} />
+              <Input name="tel" label={t("tel", lang)} defaultValue={editingRow?.tel ?? ""} crossOrigin={undefined} />
               {/* <Input name="password" label="New Password (optional)" type="password" /> */}
 
               {isAdmin && (
-                <Select label="Role" value={roleValue} onChange={(v) => {
+                <Select label={t("role", lang)} value={roleValue} onChange={(v) => {
                   setRoleValue(v ?? "user");
                   // รีเซ็ต stations เมื่อเปลี่ยน role
                   if (v !== "technician") {
@@ -805,10 +868,10 @@ export default function SearchDataTables() {
               {isAdmin && roleValue === "owner" && (
                 <div className="tw-border tw-border-blue-gray-100 tw-rounded-xl tw-p-4 tw-space-y-3">
                   <Typography variant="small" className="!tw-font-semibold tw-text-blue-gray-700">
-                    AI Package
+                    {t("aiPackage", lang)}
                   </Typography>
                   <div className="tw-flex tw-items-center tw-justify-between">
-                    <Typography variant="small" color="blue-gray">Enable AI Modules</Typography>
+                    <Typography variant="small" color="blue-gray">{t("enableAiModules", lang)}</Typography>
                     <Switch
                       checked={aiPackage.enabled}
                       onChange={() => setAiPackage(p => ({ ...p, enabled: !p.enabled }))}
@@ -831,8 +894,8 @@ export default function SearchDataTables() {
                   {/* Input + Dropdown (ครอบเฉพาะ input ให้ dropdown absolute เทียบกับ input อย่างเดียว) */}
                   <div className="tw-relative">
                     <Input
-                      label="Select Station"
-                      placeholder="Type to search..."
+                      label={t("selectStation", lang)}
+                      placeholder={t("typeToSearch", lang)}
                       value={stationSearchValue}
                       onChange={(e) => {
                         setStationSearchValue(e.target.value);
@@ -860,7 +923,7 @@ export default function SearchDataTables() {
                           if (filtered.length === 0) {
                             return (
                               <div className="tw-px-4 tw-py-3 tw-text-center tw-text-gray-500">
-                                No stations found
+                                {t("noStationsFound", lang)}
                               </div>
                             );
                           }
@@ -890,12 +953,12 @@ export default function SearchDataTables() {
 
                   {loadingStations && (
                     <Typography variant="small" color="gray" className="tw-mt-1">
-                      Loading stations...
+                      {t("loadingStations", lang)}
                     </Typography>
                   )}
                   {!loadingStations && availableStations.length === 0 && (
                     <Typography variant="small" color="red" className="tw-mt-1">
-                      No stations available
+                      {t("noStationsAvailable", lang)}
                     </Typography>
                   )}
 
@@ -903,7 +966,7 @@ export default function SearchDataTables() {
                   {selectedStations.length > 0 && (
                     <div className="tw-mt-3">
                       <Typography variant="small" className="tw-font-semibold tw-mb-2">
-                        Selected Stations ({selectedStations.length}):
+                        {t("selectedStations", lang)} ({selectedStations.length}):
                       </Typography>
                       <div className="tw-flex tw-flex-wrap tw-gap-2 tw-max-h-40 tw-overflow-y-auto tw-p-2 tw-border tw-border-blue-gray-100 tw-rounded-lg tw-bg-blue-gray-50/30">
                         {selectedStations.map((station) => (
@@ -935,10 +998,10 @@ export default function SearchDataTables() {
 
           <DialogFooter className="tw-gap-2 tw-flex-shrink-0 tw-border-t tw-border-blue-gray-50 tw-pt-4">
             <Button variant="outlined" type="button" onClick={() => setOpenEdit(false)}>
-              Cancel
+              {t("cancel", lang)}
             </Button>
             <Button type="submit" className="tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900 hover:tw-to-black" disabled={saving}>
-              {saving ? "Saving..." : "Save Changes"}
+              {saving ? t("saving", lang) : t("saveChanges", lang)}
             </Button>
           </DialogFooter>
         </form>
@@ -950,8 +1013,8 @@ export default function SearchDataTables() {
         onConfirm={confirmDialog.onConfirm}
         title={confirmDialog.title}
         message={confirmDialog.message}
-        confirmLabel="ลบ"
-        cancelLabel="ยกเลิก"
+        confirmLabel={t("delete", lang)}
+        cancelLabel={t("cancel", lang)}
         variant="danger"
         loading={confirmDialog.loading}
       />

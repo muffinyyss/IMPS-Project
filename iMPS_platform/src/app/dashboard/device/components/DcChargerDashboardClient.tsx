@@ -257,7 +257,7 @@ function SideList({
                     <div className="tw-w-1 tw-h-5 tw-bg-gray-400 tw-rounded-full" />
                     <p className="tw-text-sm tw-font-bold tw-text-gray-700 tw-uppercase tw-tracking-wide">{title}</p>
                 </div>
-                <span className="tw-text-xs tw-font-medium tw-text-gray-400">{filtered.length} items</span>
+                <span className="tw-text-xs tw-font-medium tw-text-gray-400">{filtered.length} {t.unit}</span>
             </div>
 
             <div className="tw-space-y-3">

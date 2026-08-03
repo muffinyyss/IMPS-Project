@@ -346,6 +346,13 @@ const T = {
     replaceAirFilter: { th: "เปลี่ยนแผ่นกรองระบายอากาศ", en: "Replace air filter" },
     naNoValue: { th: "N/A (ไม่มีค่า)", en: "N/A (No value)" },
     removeNA: { th: "ลบ N/A", en: "Remove N/A" },
+
+    // Misc UI
+    loading: { th: "กำลังโหลดข้อมูล...", en: "Loading..." },
+    logoAlt: { th: "โลโก้บริษัท", en: "Company logo" },
+    photoPreviewAlt: { th: "ตัวอย่างรูป", en: "Photo preview" },
+    removeItem: { th: "ลบรายการ", en: "Remove item" },
+    uploadFailedItem: { th: "ข้อ", en: "Item" },
 };
 
 const t = (key: keyof typeof T, lang: Lang): string => T[key][lang];
@@ -1657,7 +1664,7 @@ function PhotoMultiInput({
                     {photos.map((p) => (
                         <div key={p.id} className="tw-border tw-rounded-lg tw-overflow-hidden tw-bg-gray-100 tw-shadow-xs tw-flex tw-flex-col">
                             <div className="tw-relative tw-aspect-[4/3] tw-bg-gray-100">
-                                {p.preview && <img src={p.preview} alt="preview" className="tw-w-full tw-h-full tw-object-contain" />}
+                                {p.preview && <img src={p.preview} alt={t("photoPreviewAlt", lang)} className="tw-w-full tw-h-full tw-object-contain" />}
                                 {/* Timestamp & Location overlay */}
                                 {/* {(p.createdAt || p.location) && (
                                     <span className="tw-absolute tw-bottom-1 tw-right-1 tw-text-[8px] tw-leading-tight tw-bg-black/60 tw-text-white tw-px-1.5 tw-py-1 tw-rounded tw-pointer-events-none tw-text-right tw-max-w-[90%] tw-truncate">
@@ -1914,7 +1921,7 @@ function DynamicItemsSection({
                                     {editable && items.length > 1 && removeItem && (
                                         <button type="button" onClick={() => removeItem(idx)}
                                             className="tw-h-6 tw-w-6 tw-flex tw-items-center tw-justify-center tw-rounded tw-bg-red-50 tw-text-red-600 hover:tw-bg-red-100 hover:tw-text-red-700 tw-transition-all tw-duration-200"
-                                            aria-label="Remove item">
+                                            aria-label={t("removeItem", lang)}>
                                             <svg className="tw-w-3.5 tw-h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
                                             </svg>
@@ -3127,7 +3134,7 @@ export default function ChargerPMForm() {
                     });
                     saveDraftLocal(key, { ...loadDraftLocal(key), pendingReportId: report_id, rows, cp, m16: m16.state, summary: summaryPre, dustFilterChanged, photoRefs: latestPhotoRefs });
 
-                    const details = failures.map(f => `ข้อ ${f.group}: ${f.error}`).join("\n");
+                    const details = failures.map(f => `${t("uploadFailedItem", lang)} ${f.group}: ${f.error}`).join("\n");
                     alert(
                         `${lang === "th" ? "อัปโหลดรูปไม่สำเร็จ" : "Photo upload failed"} ${failures.length} ${lang === "th" ? "รูป" : "photos"}\n\n${lang === "th" ? "กดบันทึกอีกครั้งเพื่ออัปโหลดเฉพาะรูปที่ค้าง" : "Click save again to retry only the failed photos"}\n\n${details}`
                     );
@@ -3249,7 +3256,7 @@ export default function ChargerPMForm() {
                     saveDraftLocal(postKey, { ...loadDraftLocal(postKey), pendingReportId: report_id, rows, cp, m16: m16.state, summary, summaryCheck, dustFilterChanged, photoRefs: latestPhotoRefs });
 
                     const groupNums = failures.map(f => f.group).join(", ");
-                    const details = failures.map(f => `ข้อ ${f.group}: ${f.error}`).join("\n");
+                    const details = failures.map(f => `${t("uploadFailedItem", lang)} ${f.group}: ${f.error}`).join("\n");
                     console.error("[Post-PM upload failures]", failures);
                     alert(
                         `${lang === "th" ? "อัปโหลดรูปไม่สำเร็จในข้อ" : "Photo upload failed for group"}: ${groupNums}\n\n${lang === "th" ? "กดบันทึกอีกครั้งเพื่ออัปโหลดเฉพาะรูปที่ค้าง" : "Click save again to retry only the failed photos"}\n\n${details}`
@@ -3291,7 +3298,7 @@ export default function ChargerPMForm() {
 
     return (
         <section className="tw-pb-24">
-            <LoadingOverlay show={pageLoading} text="กำลังโหลดข้อมูล..." />
+            <LoadingOverlay show={pageLoading} text={t("loading", lang)} />
             {/* Pre-PM Upload Progress Overlay */}
             <LoadingOverlay
                 show={uploadProgress.show}
@@ -3335,7 +3342,7 @@ export default function ChargerPMForm() {
                     <div className="tw-flex tw-flex-col tw-gap-4 md:tw-flex-row md:tw-items-start md:tw-justify-between md:tw-gap-6">
                         <div className="tw-flex tw-items-start tw-gap-3 md:tw-gap-4">
                             <div className="tw-relative tw-overflow-hidden tw-bg-white tw-rounded-md tw-shrink-0 tw-h-14 tw-w-[64px] sm:tw-h-16 sm:tw-w-[76px] md:tw-h-20 md:tw-w-[108px] lg:tw-h-24 lg:tw-w-[152px]">
-                                <Image src={LOGO_SRC} alt="Company logo" fill priority className="tw-object-contain tw-p-0" sizes="(min-width:1024px) 152px, (min-width:768px) 108px, (min-width:640px) 76px, 64px" />
+                                <Image src={LOGO_SRC} alt={t("logoAlt", lang)} fill priority className="tw-object-contain tw-p-0" sizes="(min-width:1024px) 152px, (min-width:768px) 108px, (min-width:640px) 76px, 64px" />
                             </div>
                             <div className="tw-min-w-0">
                                 <div className="tw-font-semibold tw-text-blue-gray-900 tw-text-sm sm:tw-text-base">{t("pageTitle", lang)}</div>

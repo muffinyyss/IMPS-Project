@@ -2,6 +2,27 @@
 import React, { useEffect, useState } from "react";
 import { ModuleResult } from "../../lib/api";
 import { aiApi } from "../../lib/api";
+import useLanguage, { type Lang } from "@/utils/useLanguage";
+
+const T = {
+  headerTitle: { th: "การเฝ้าระวังแบบเรียลไทม์ด้วยกฎ (Rule-Based)", en: "Rule-Based Real-Time Monitoring" },
+  headerSub: { th: "6 กฎ · ตรวจสอบเรียลไทม์ 9 รายการ ·", en: "6 rules · 9 real-time checks ·" },
+  liveData: { th: "ข้อมูลสด", en: "Live data" },
+  noData: { th: "ไม่มีข้อมูล", en: "No data" },
+  ruleTree: { th: "แผนผังกฎ", en: "Rule Tree Diagram" },
+  liveRuleResults: { th: "ผลการตรวจสอบกฎแบบเรียลไทม์", en: "Live Rule Results" },
+  alerts: { th: "การแจ้งเตือน", en: "alerts" },
+  note: {
+    th: "⚠ Rules R1–R6 ไม่นับรวมใน Health Score — ใช้สำหรับ real-time alert เท่านั้น ตรวจสอบทุก polling cycle",
+    en: "⚠ Rules R1–R6 are not counted in the Health Score — they are used for real-time alerts only, checked every polling cycle",
+  },
+  grpChg: { th: "🔌 สถานะการชาร์จ", en: "🔌 Charging State" },
+  grpMod: { th: "⚙️ Power Module", en: "⚙️ Power Module" },
+  grpDlv: { th: "📉 จ่ายไฟต่ำกว่าเป้าหมาย", en: "📉 Under-Delivery" },
+  grpCbl: { th: "🔥 ความปลอดภัยสายชาร์จ", en: "🔥 Cable Safety" },
+} as const;
+
+const t = (k: keyof typeof T, lang: Lang) => T[k][lang];
 
 interface Props { 
   data: ModuleResult | null;
@@ -208,12 +229,13 @@ function RuleRow({ rule, status, value, expanded, onToggle }: {
 
 export default function M4RuleBasedTab({ data }: Props) {
   const [expanded, setExpanded] = useState<string | null>(null);
+  const { lang } = useLanguage();
 
   const groups = [
-    { key: "chg", label: "🔌 Charging State", color: "#0284c7" },
-    { key: "mod", label: "⚙️ Power Module",   color: "#d97706" },
-    { key: "dlv", label: "📉 Under-Delivery", color: "#7c3aed" },
-    { key: "cbl", label: "🔥 Cable Safety",   color: "#dc2626" },
+    { key: "chg", label: t("grpChg", lang), color: "#0284c7" },
+    { key: "mod", label: t("grpMod", lang), color: "#d97706" },
+    { key: "dlv", label: t("grpDlv", lang), color: "#7c3aed" },
+    { key: "cbl", label: t("grpCbl", lang), color: "#dc2626" },
   ];
 
   const getGroupStatus = (grpKey: string) => {
@@ -238,15 +260,15 @@ export default function M4RuleBasedTab({ data }: Props) {
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
           <div>
             <div style={{ fontSize: ".62em", fontWeight: 700, color: "#718096", textTransform: "uppercase", letterSpacing: "2px", marginBottom: 4 }}>
-              Rule-Based Real-Time Monitoring
+              {t("headerTitle", lang)}
             </div>
             <div style={{ fontSize: ".72em", color: "#2d3748" }}>
-              6 rules · 9 real-time checks · <span style={{ fontFamily: "'JetBrains Mono',monospace", color: "#0284c7" }}>OCPP/Klongluang3/PLC</span>
+              {t("headerSub", lang)} <span style={{ fontFamily: "'JetBrains Mono',monospace", color: "#0284c7" }}>OCPP/Klongluang3/PLC</span>
             </div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <div style={{ width: 8, height: 8, borderRadius: "50%", background: data ? "#22c55e" : "#94a3b8", boxShadow: data ? "0 0 6px #22c55e" : undefined }} />
-            <span style={{ fontSize: ".65em", color: "#718096" }}>{data ? "Live data" : "No data"}</span>
+            <span style={{ fontSize: ".65em", color: "#718096" }}>{data ? t("liveData", lang) : t("noData", lang)}</span>
             <span style={{ fontSize: ".65em", fontWeight: 700, padding: "2px 10px", borderRadius: 10, background: overallSt.bg, color: overallSt.color }}>
               {overall}
             </span>
@@ -257,7 +279,7 @@ export default function M4RuleBasedTab({ data }: Props) {
       {/* Tree: Groups → Overall */}
       <div style={{ background: "#fff", borderRadius: 12, border: "1px solid #e2e8f0", padding: "16px 20px", overflowX: "auto" }}>
         <div style={{ fontSize: ".62em", fontWeight: 700, color: "#718096", textTransform: "uppercase", letterSpacing: "2px", marginBottom: 14 }}>
-          Rule Tree Diagram
+          {t("ruleTree", lang)}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 0, minWidth: 600 }}>
           {/* Group nodes */}
@@ -297,7 +319,7 @@ export default function M4RuleBasedTab({ data }: Props) {
                 {overall}
               </div>
               <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: ".58em", color: "#718096", marginTop: 2 }}>
-                {allStatuses.filter(s => s !== "OK" && s !== "IDLE").length} alerts
+                {allStatuses.filter(s => s !== "OK" && s !== "IDLE").length} {t("alerts", lang)}
               </div>
             </div>
           </div>
@@ -307,7 +329,7 @@ export default function M4RuleBasedTab({ data }: Props) {
       {/* Rule list */}
       <div style={{ background: "#fff", borderRadius: 12, border: "1px solid #e2e8f0", padding: "16px 20px" }}>
         <div style={{ fontSize: ".62em", fontWeight: 700, color: "#718096", textTransform: "uppercase", letterSpacing: "2px", marginBottom: 12 }}>
-          Live Rule Results
+          {t("liveRuleResults", lang)}
         </div>
         {RULES.map((rule) => (
           <RuleRow
@@ -323,7 +345,7 @@ export default function M4RuleBasedTab({ data }: Props) {
 
       {/* Note */}
       <div style={{ padding: "8px 14px", borderRadius: 8, background: "rgba(2,132,199,.06)", border: "1px solid rgba(2,132,199,.2)", fontSize: ".62em", color: "#0284c7" }}>
-        ⚠ Rules R1–R6 ไม่นับรวมใน Health Score — ใช้สำหรับ real-time alert เท่านั้น ตรวจสอบทุก polling cycle
+        {t("note", lang)}
       </div>
     </div>
   );

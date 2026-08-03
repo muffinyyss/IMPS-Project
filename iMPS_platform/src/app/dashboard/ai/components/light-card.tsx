@@ -3,6 +3,24 @@ import React, { useEffect, useState, useCallback } from "react";
 import { Card, CardBody, CardHeader, Switch, Typography } from "@material-tailwind/react";
 import CircleProgress from "./CircleProgress";
 import { useRouter, useSearchParams } from "next/navigation";
+import useLanguage, { type Lang } from "@/utils/useLanguage";
+
+// ===== Translations =====
+const T = {
+  enabled:      { th: "เปิดใช้งาน",           en: "Enabled" },
+  disabled:     { th: "ปิดใช้งาน",            en: "Disabled" },
+  on:           { th: "เปิด",                 en: "On" },
+  off:          { th: "ปิด",                  en: "Off" },
+  enableAria:   { th: "เปิดใช้งาน",           en: "Enable" },
+  healthIndex:  { th: "ดัชนีสุขภาพ",          en: "Health Index" },
+  moreDetail:   { th: "ดูรายละเอียด",         en: "More detail" },
+  noStation:    { th: "ยังไม่ได้เลือกสถานี",   en: "No station selected" },
+  loading:      { th: "กำลังโหลด...",          en: "Loading..." },
+  refresh:      { th: "รีเฟรช",               en: "Refresh" },
+  refreshing:   { th: "กำลังรีเฟรช...",        en: "Refreshing..." },
+} as const;
+
+const t = (k: keyof typeof T, lang: Lang) => T[k][lang];
 
 type AiItem = {
   id: string;
@@ -31,12 +49,14 @@ function AiItemCard({
   onToggle,
   disabled,
   onMoreDetail,
+  lang,
 }: {
   item: AiItem;
   enabled?: boolean;
   onToggle?: (next: boolean) => void;
   disabled?: boolean;
   onMoreDetail?: () => void;
+  lang: Lang;
 }) {
   const isControlled = typeof enabled === "boolean";
   const [localEnabled, setLocalEnabled] = React.useState(!!item.defaultEnabled);
@@ -80,7 +100,7 @@ function AiItemCard({
                 className={`!tw-text-xs !tw-font-normal ${value ? "tw-text-white/80" : "!tw-text-blue-gray-500"
                   }`}
               >
-                {value ? "Enabled" : "Disabled"}
+                {value ? t("enabled", lang) : t("disabled", lang)}
               </Typography>
             </div>
           </div>
@@ -90,14 +110,14 @@ function AiItemCard({
               className={`!tw-text-sm tw-hidden sm:tw-block ${value ? "tw-text-white/90" : "!tw-text-blue-gray-500"
                 }`}
             >
-              {value ? "On" : "Off"}
+              {value ? t("on", lang) : t("off", lang)}
             </Typography>
             <Switch
               checked={value}
               onChange={handleChange}
               disabled={disabled}
               color={value ? "blue-gray" : "blue"}
-              aria-label={`Enable ${item.title}`}
+              aria-label={`${t("enableAria", lang)} ${item.title}`}
             />
           </div>
         </div>
@@ -107,7 +127,7 @@ function AiItemCard({
         <div className={value ? "" : "tw-opacity-50"}>
           <div className="tw-mx-auto tw-max-w-[220px] tw-w-full">
             <CircleProgress
-              label="Health Index"
+              label={t("healthIndex", lang)}
               value={displayValue}
               valueClassName={value ? "tw-text-white" : "tw-text-blue-gray-900"}
               labelClassName={value ? "tw-text-white/80" : "tw-text-blue-gray-600"}
@@ -128,7 +148,7 @@ function AiItemCard({
                 : "tw-border-gray-300 tw-text-gray-700 hover:tw-bg-gray-100"
               }`}
           >
-            More detail
+            {t("moreDetail", lang)}
           </button>
 
         </div>
@@ -157,6 +177,7 @@ type StationInfoResponse = {
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
 export default function AiSection() {
+  const { lang } = useLanguage();
   const searchParams = useSearchParams();
   const [stationId, setStationId] = useState<string | null>(null);
   const [loadingInfo, setLoadingInfo] = useState(false);
@@ -338,9 +359,9 @@ export default function AiSection() {
     <section className="tw-space-y-4">
       <div className="tw-flex tw-items-center tw-gap-3">
         {!stationId ? (
-          <span className="tw-text-gray-600">ยังไม่ได้เลือกสถานี</span>
+          <span className="tw-text-gray-600">{t("noStation", lang)}</span>
         ) : loadingInfo ? (
-          <span className="tw-text-blue-600">กำลังโหลด...</span>
+          <span className="tw-text-blue-600">{t("loading", lang)}</span>
         ) : (
           <span className="tw-text-red-600">{error}</span>
         )}
@@ -354,7 +375,7 @@ export default function AiSection() {
           }}
           disabled={loadingInfo}
         >
-          {loadingInfo ? "Refreshing..." : "Refresh"}
+          {loadingInfo ? t("refreshing", lang) : t("refresh", lang)}
         </button>
       </div>
       <div className="tw-w-full tw-grid tw-gap-6 tw-grid-cols-1 md:!tw-grid-cols-3">
@@ -370,6 +391,7 @@ export default function AiSection() {
               enabled={isEnabled}
               onToggle={(next: boolean) => toggleModule(item.id, next)}
               disabled={loadingInfo}
+              lang={lang}
               onMoreDetail={() => handleMoreDetail(item.id)}   // 👈 ตรงนี้สำคัญ
             />
           );

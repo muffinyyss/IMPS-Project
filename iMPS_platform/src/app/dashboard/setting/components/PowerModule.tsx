@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Card from "./chargerSetting-card";
 import { useSearchParams } from "next/navigation";
+import useLanguage from "@/utils/useLanguage";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
 
@@ -55,7 +56,7 @@ function Row({
 
 export default function EvPanel({ head, data }: { head: 1 | 2; data: any }) {
 
-
+    const { lang } = useLanguage();
 
     // helper format
     const toNum = (v: any): number | null => {
@@ -123,7 +124,7 @@ export default function EvPanel({ head, data }: { head: 1 | 2; data: any }) {
             {/* แถบสถานะ */}
             {!data && (
                 <div className="tw-px-3 tw-py-2">
-                    <div className="tw-text-sm tw-text-blue-gray-600">กำลังโหลดข้อมูล...</div>
+                    <div className="tw-text-sm tw-text-blue-gray-600">{lang === "th" ? "กำลังโหลดข้อมูล..." : "Loading data..."}</div>
                 </div>
             )}
 

@@ -2,6 +2,24 @@
 import React from "react";
 import { ModuleResult } from "../../lib/api";
 import { DetCard, DetTitle } from "./DetectionLayout";
+import useLanguage, { type Lang } from "@/utils/useLanguage";
+
+// ── Translations (UI chrome only) ─────────────────────────────────────────
+const T = {
+  noLiveData:     { th: "ไม่มีข้อมูล Live Monitor",  en: "No live monitor data" },
+  anomalyScore:   { th: "คะแนนความผิดปกติ",          en: "Anomaly Score" },
+  anomalyFlags:   { th: "จำนวนธงผิดปกติ:",           en: "Anomaly Flags:" },
+  conditions:     { th: "/ 22 เงื่อนไข",             en: "/ 22 conditions" },
+  flagsDetected:  { th: "รายการผิดปกติที่ตรวจพบ",     en: "Anomaly Flags Detected" },
+  checkPower:     { th: "ตรวจสอบค่าผิดปกติในการจ่ายไฟ", en: "Check for abnormal values in the power supply" },
+  groupScores:    { th: "คะแนนกลุ่มการตรวจจับ",       en: "Detection Group Scores" },
+  livePower:      { th: "ข้อมูลการจ่ายไฟแบบเรียลไทม์", en: "Live Power Telemetry" },
+  targetVsActual: { th: "ค่าเป้าหมายเทียบค่าจริง",     en: "Target vs Actual" },
+  voltage:        { th: "แรงดัน",                    en: "Voltage" },
+  current:        { th: "กระแส",                     en: "Current" },
+} as const;
+
+const t = (k: keyof typeof T, lang: Lang) => T[k][lang];
 
 interface Props {
   data: ModuleResult | null;
@@ -10,7 +28,7 @@ interface Props {
   onTogglePause?: () => void;
 }
 
-function AnomalyRingGauge({ score, flags }: { score: number; flags: number }) {
+function AnomalyRingGauge({ score, flags, lang }: { score: number; flags: number; lang: Lang }) {
   const CRC    = 2 * Math.PI * 72;
   const offset = CRC - CRC * Math.min(score, 1);
   const color  = score > 0.7 ? "#dc2626" : score > 0.4 ? "#d97706" : "#059669";
@@ -43,16 +61,16 @@ function AnomalyRingGauge({ score, flags }: { score: number; flags: number }) {
           <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: "1.6em", fontWeight: 900, color, lineHeight: 1 }}>
             {(score * 100).toFixed(0)}%
           </div>
-          <div style={{ fontSize: ".6em", color: "#718096", fontWeight: 600, marginTop: 2 }}>Anomaly Score</div>
+          <div style={{ fontSize: ".6em", color: "#718096", fontWeight: 600, marginTop: 2 }}>{t("anomalyScore", lang)}</div>
           <div style={{ marginTop: 6, padding: "2px 10px", borderRadius: 20, fontSize: ".62em", fontWeight: 800, background: `${sevColor}15`, color: sevColor, border: `1px solid ${sevColor}30` }}>
             {severity}
           </div>
         </div>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: ".62em", color: "#718096", fontFamily: "'JetBrains Mono',monospace" }}>
-        <span>Anomaly Flags:</span>
+        <span>{t("anomalyFlags", lang)}</span>
         <span style={{ fontWeight: 800, color: flags > 0 ? "#dc2626" : "#059669" }}>{flags}</span>
-        <span>/ 22 conditions</span>
+        <span>{t("conditions", lang)}</span>
       </div>
     </div>
   );
@@ -96,10 +114,11 @@ function TelCard({ label, value, unit, warn, target }: { label: string; value: n
 }
 
 export default function M4LiveMonitorTab({ data }: Props) {
+  const { lang } = useLanguage();
   if (!data || data.error) {
     return (
       <div style={{ padding: 40, textAlign: "center", color: "#94a3b8", fontSize: ".8em" }}>
-        ไม่มีข้อมูล Live Monitor
+        {t("noLiveData", lang)}
       </div>
     );
   }
@@ -136,10 +155,10 @@ export default function M4LiveMonitorTab({ data }: Props) {
           </div>
           <div>
             <div style={{ fontWeight: 700, color: alertColor }}>
-              {flags} Anomaly Flag{flags > 1 ? "s" : ""} Detected
+              {flags} {t("flagsDetected", lang)}
             </div>
             <div style={{ color: "#718096", fontSize: ".9em" }}>
-              ตรวจสอบค่าผิดปกติในการจ่ายไฟ
+              {t("checkPower", lang)}
             </div>
           </div>
         </div>
@@ -148,11 +167,11 @@ export default function M4LiveMonitorTab({ data }: Props) {
       {/* Ring gauge + group bars */}
       <div style={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: 14, marginBottom: 14 }}>
         <DetCard style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-          <AnomalyRingGauge score={score} flags={flags} />
+          <AnomalyRingGauge score={score} flags={flags} lang={lang} />
         </DetCard>
 
         <DetCard accent="#d97706">
-          <DetTitle>📊 Detection Group Scores</DetTitle>
+          <DetTitle>📊 {t("groupScores", lang)}</DetTitle>
           {groupDefs.map((g) => (
             <GroupBar
               key={g.key}
@@ -167,7 +186,7 @@ export default function M4LiveMonitorTab({ data }: Props) {
 
       {/* Power telemetry */}
       <DetCard accent="#d97706">
-        <DetTitle>⚡ Live Power Telemetry</DetTitle>
+        <DetTitle>⚡ {t("livePower", lang)}</DetTitle>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(140px,1fr))", gap: 8 }}>
           <TelCard label="Voltage H1"    value={d.present_voltage1}   unit="V"  warn={480} target={d.target_voltage1} />
           <TelCard label="Voltage H2"    value={d.present_voltage2}   unit="V"  warn={480} target={d.target_voltage2} />
@@ -183,7 +202,7 @@ export default function M4LiveMonitorTab({ data }: Props) {
 
       {/* Target vs Actual */}
       <DetCard accent="#d97706">
-        <DetTitle>📐 Target vs Actual</DetTitle>
+        <DetTitle>📐 {t("targetVsActual", lang)}</DetTitle>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           {[
             { label: "Connector H1", tv: d.target_voltage1, av: d.present_voltage1, ti: d.target_current1, ai: d.present_current1 },
@@ -198,7 +217,7 @@ export default function M4LiveMonitorTab({ data }: Props) {
                 <div style={{ fontSize: ".65em", fontWeight: 700, color: "#718096", marginBottom: 8 }}>{item.label}</div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: ".62em" }}>
-                    <span style={{ color: "#718096", minWidth: 40 }}>Voltage</span>
+                    <span style={{ color: "#718096", minWidth: 40 }}>{t("voltage", lang)}</span>
                     <span style={{ fontFamily: "'JetBrains Mono',monospace", fontWeight: 700 }}>{item.av ?? "—"} V</span>
                     <span style={{ color: "#94a3b8" }}>/ {item.tv ?? "—"} V</span>
                     {vDiff != null && (
@@ -208,7 +227,7 @@ export default function M4LiveMonitorTab({ data }: Props) {
                     )}
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: ".62em" }}>
-                    <span style={{ color: "#718096", minWidth: 40 }}>Current</span>
+                    <span style={{ color: "#718096", minWidth: 40 }}>{t("current", lang)}</span>
                     <span style={{ fontFamily: "'JetBrains Mono',monospace", fontWeight: 700 }}>{item.ai ?? "—"} A</span>
                     <span style={{ color: "#94a3b8" }}>/ {item.ti ?? "—"} A</span>
                     {iDiff != null && (

@@ -1,6 +1,7 @@
 "use client";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import CMInProgressForm from "@/app/dashboard/cm-report/inprogress/input_CMreport/components/checkList";
+import CMOpenForm from "@/app/dashboard/cm-report/open/input_CMreport/components/checkList";
 import {
   getCoreRowModel,
   getPaginationRowModel,
@@ -23,6 +24,12 @@ import { useLanguage, type Lang } from "@/utils/useLanguage";
 
 // ==================== TRANSLATIONS ====================
 const T = {
+  deleteTitle: { th: "ยืนยันการลบใบงาน", en: "Confirm delete" },
+  deleteWarn: { th: "การลบไม่สามารถย้อนกลับได้", en: "This action cannot be undone." },
+  deleteConfirm: { th: "ลบใบงาน", en: "Delete" },
+  deleteCancel: { th: "ยกเลิก", en: "Cancel" },
+  deleting: { th: "กำลังลบ...", en: "Deleting..." },
+  deleteFailedMsg: { th: "ลบไม่สำเร็จ: ", en: "Delete failed: " },
   // Page Header
   pageTitle: { th: "Corrective Maintenance Report", en: "Corrective Maintenance Report" },
   pageSubtitle: { th: "ค้นหาและดาวน์โหลดเอกสาร CM Report", en: "Search and download CM Report documents" },
@@ -31,6 +38,7 @@ const T = {
   colNo: { th: "ลำดับ", en: "No." },
   colDocName: { th: "ชื่อเอกสาร", en: "Document Name" },
   colIssueId: { th: "รหัสเอกสาร", en: "Issue ID" },
+  colSr: { th: "เลขที่ SR", en: "SR No." },
   colWo: { th: "เลขที่ WO", en: "WO No." },
   colFoundDate: { th: "วันที่แจ้ง", en: "Found Date" },
   colReportedBy: { th: "ผู้แจ้งปัญหา", en: "Reported By" },
@@ -95,6 +103,15 @@ type Props = {
 
 const BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
+// ใบที่ติดรออะไหล่/รอสภาพหน้างาน = ช่างยังลงมือซ่อมไม่ได้ ต้องกลับไปที่ขั้นวางแผนของ engineer
+// จึงเปิดด้วยฟอร์ม Open (ซึ่งมีส่วนวางแผนและดึงค่าที่ engineer กรอกไว้มาแสดง) แทนฟอร์มกรอกผลซ่อม
+// รวมค่าเก่าก่อนเปลี่ยนชื่อไว้ด้วย เพื่อให้ใบเก่าเปิดถูกฟอร์มเหมือนกัน
+const PLANNING_WAIT_RESULTS = [
+  "WO - wait for material", "WO - wait for spare part",
+  "WO - wait for site condition", "WO - wait for site access",
+];
+const isPlanningWait = (v?: string) => PLANNING_WAIT_RESULTS.includes((v || "").trim());
+
 // Sub-tabs ของหน้า In Progress (มุมขวา) — filter ตาม repair_result ยกเว้น tab approve ที่ใช้ status "Wait for approve"
 // legacy = ค่า repair_result เดิมก่อนเปลี่ยนชื่อ (รองรับข้อมูลเก่า)
 const WO_SUBTABS = [
@@ -115,7 +132,11 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
   const [currentUsername, setCurrentUsername] = useState("");
   const [currentRole, setCurrentRole] = useState("");
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  // role ที่มีหน้าที่วางแผน — ใช้เลือกว่าจะเปิดฟอร์มวางแผนหรือฟอร์มกรอกผลซ่อม
+  const canPlanRole = ["admin", "owner", "engineer"].includes(currentRole.trim().toLowerCase());
   const canDelete = isSuperAdmin; // ลบถาวรได้เฉพาะ super admin (ซ่อนตอน impersonate role อื่น)
+  const [deleteTarget, setDeleteTarget] = useState<TData | null>(null);
+  const [deleting, setDeleting] = useState(false);
   // engineer/planner (หรือ admin) ยกเลิกใบงานที่ยังไม่ปิด → Cancelled
   // หน้า In Progress list ไม่มีปุ่มยกเลิกด้านนอกแล้ว (จัดการยกเลิก/ตีกลับตั้งแต่ด่าน SR/วางแผน)
   const canCancel = false;
@@ -158,6 +179,7 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
     } else {
       params.delete("view");
       params.delete("edit_id");
+      params.delete("planning");
     }
     router[replace ? "replace" : "push"](`${pathname}?${params.toString()}`, { scroll: false });
   };
@@ -378,16 +400,17 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
   }, [apiBase]);
 
   // ลบใบงาน (เฉพาะบัญชี thatsawan)
-  const handleDelete = async (row: TData) => {
+  // เปิด dialog ยืนยันแทน window.confirm ให้เหมือนปุ่มอื่นในระบบ
+  const handleDelete = (row: TData) => {
     if (!canDelete) return;
     if (!row.id || !stationId) return;
-    const label = row.doc_name || row.issue_id || row.id;
-    const ok = window.confirm(
-      lang === "th"
-        ? `ต้องการลบใบงาน "${label}" ใช่หรือไม่? การลบไม่สามารถย้อนกลับได้`
-        : `Delete work order "${label}"? This cannot be undone.`
-    );
-    if (!ok) return;
+    setDeleteTarget(row);
+  };
+
+  const confirmDelete = async () => {
+    const row = deleteTarget;
+    if (!row?.id || !stationId) return;
+    setDeleting(true);
     try {
       const url = `${apiBase}/cmreport/${encodeURIComponent(row.id)}?station_id=${encodeURIComponent(stationId)}`;
       const res = await fetch(url, { method: "DELETE", ...fetchOpts });
@@ -396,8 +419,11 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
         throw new Error(j?.detail || `HTTP ${res.status}`);
       }
       await fetchRows();
+      setDeleteTarget(null);
     } catch (err: any) {
-      alert((lang === "th" ? "ลบไม่สำเร็จ: " : "Delete failed: ") + (err?.message ?? err));
+      alert(t("deleteFailedMsg", lang) + (err?.message ?? err));
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -466,6 +492,24 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
       minSize: 100,
       maxSize: 200,
       meta: { headerAlign: "center", cellAlign: "left" },
+    },
+    {
+      // เลข SR ต้นเรื่อง — อิงลำดับเดียวกับ issue_id (CM-001 → SR001)
+      accessorFn: (row) => {
+        const m = String(row.issue_id || "").match(/(\d+)/);
+        return m ? `SR${m[1].padStart(3, "0")}` : "—";
+      },
+      id: "sr_no",
+      header: () => t("colSr", lang),
+      cell: (info: CellContext<TData, unknown>) => (
+        <span className="tw-block tw-truncate" title={info.getValue() as string}>
+          {info.getValue() as React.ReactNode}
+        </span>
+      ),
+      size: 120,
+      minSize: 90,
+      maxSize: 160,
+      meta: { headerAlign: "center", cellAlign: "center" },
     },
     {
       // In Progress = ใบสั่งงาน (WO) — แสดงเลข WO### อิงลำดับเดียวกับ issue_id (CM-001 → WO001)
@@ -617,7 +661,11 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
         return (
           <button
             type="button"
-            onClick={() => handleCancel(info.row.original)}
+            onClick={(e) => {
+              // ปุ่มในแถว: กันไม่ให้ event ลามไปโดน onClick ของ <tr> ที่เปิดฟอร์ม
+              e.stopPropagation();
+              handleCancel(info.row.original);
+            }}
             title={lang === "th" ? "ยกเลิกใบงาน" : "Cancel work order"}
             className="tw-inline-flex tw-items-center tw-justify-center tw-px-2.5 tw-h-8 tw-rounded-lg tw-text-xs tw-font-medium tw-text-red-600 tw-border tw-border-red-500 hover:tw-text-white hover:tw-bg-red-500 tw-transition-all"
           >
@@ -637,7 +685,11 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
       cell: (info: CellContext<TData, unknown>) => (
         <button
           type="button"
-          onClick={() => handleDelete(info.row.original)}
+          onClick={(e) => {
+            // แถวมี onClick เปิดฟอร์ม — ต้องหยุด event ไม่ให้ลามขึ้นไป ไม่งั้นกดลบแล้วเด้งเข้าฟอร์ม
+            e.stopPropagation();
+            handleDelete(info.row.original);
+          }}
           title={lang === "th" ? "ลบใบงาน" : "Delete work order"}
           className="tw-inline-flex tw-items-center tw-justify-center tw-w-8 tw-h-8 tw-rounded-lg tw-text-red-500 hover:tw-text-white hover:tw-bg-red-500 tw-transition-all"
         >
@@ -698,6 +750,9 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
     const params = new URLSearchParams(searchParams.toString());
     params.set("view", "form");
     params.set("edit_id", row.id);
+    // ใบที่ติดรอของ/รอหน้างาน: engineer/admin/owner ไปหน้าวางแผน ส่วนช่างไปกรอกผลซ่อมรอบใหม่
+    if (isPlanningWait(row.repair_result) && canPlanRole) params.set("planning", "1");
+    else params.delete("planning");
     router.push(`${pathname}?${params.toString()}`, { scroll: false });
   }
 
@@ -708,10 +763,12 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
     }
   };
 
+  const showPlanningForm = searchParams.get("planning") === "1";
+
   if (mode === "form") {
     return (
       <div className="tw-mt-4 sm:tw-mt-6 lg:tw-mt-8">
-        <CMInProgressForm />
+        {showPlanningForm ? <CMOpenForm /> : <CMInProgressForm />}
       </div>
     );
   }
@@ -941,6 +998,47 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
           </div>
         </div>
       </Card>
+
+      {/* ยืนยันการลบใบงาน — ใช้ Dialog เหมือนปุ่มอื่น แทน window.confirm ของเบราว์เซอร์ */}
+      <Dialog
+        open={!!deleteTarget}
+        handler={() => { if (!deleting) setDeleteTarget(null); }}
+        size="xs"
+        className="tw-mx-4 tw-max-w-[calc(100vw-2rem)] sm:tw-max-w-sm tw-rounded-xl sm:tw-rounded-2xl"
+      >
+        <DialogHeader className="tw-flex tw-items-center tw-gap-3 tw-text-base sm:tw-text-lg tw-font-semibold tw-px-4 sm:tw-px-6 tw-pt-5 sm:tw-pt-6 tw-pb-2">
+          <span className="tw-w-10 tw-h-10 tw-rounded-full tw-bg-red-100 tw-flex tw-items-center tw-justify-center tw-shrink-0">
+            <TrashIcon className="tw-w-5 tw-h-5 tw-text-red-600" />
+          </span>
+          {t("deleteTitle", lang)}
+        </DialogHeader>
+        <DialogBody className="tw-px-4 sm:tw-px-6 tw-py-3">
+          <p className="tw-text-sm tw-text-blue-gray-800 tw-break-all">
+            {deleteTarget?.doc_name || deleteTarget?.issue_id || deleteTarget?.id || "-"}
+          </p>
+          <p className="tw-mt-2 tw-text-sm tw-text-red-600">{t("deleteWarn", lang)}</p>
+        </DialogBody>
+        <DialogFooter className="tw-gap-2 sm:tw-gap-3 tw-px-4 sm:tw-px-6 tw-pb-5 sm:tw-pb-6 tw-pt-2">
+          <Button
+            variant="text"
+            size="sm"
+            disabled={deleting}
+            onClick={() => setDeleteTarget(null)}
+            className="tw-text-xs sm:tw-text-sm tw-px-4 sm:tw-px-5 tw-py-2 sm:tw-py-2.5 tw-font-medium tw-text-blue-gray-600 hover:tw-bg-blue-gray-50 tw-transition-colors tw-rounded-lg"
+          >
+            {t("deleteCancel", lang)}
+          </Button>
+          <Button
+            size="sm"
+            disabled={deleting}
+            onClick={() => { void confirmDelete(); }}
+            className="tw-bg-red-600 hover:tw-bg-red-700 tw-text-xs sm:tw-text-sm tw-px-5 sm:tw-px-6 tw-py-2 sm:tw-py-2.5 tw-font-medium tw-rounded-lg tw-shadow-md tw-transition-all disabled:tw-opacity-60"
+          >
+            {deleting ? t("deleting", lang) : t("deleteConfirm", lang)}
+          </Button>
+        </DialogFooter>
+      </Dialog>
+
     </>
   );
 }

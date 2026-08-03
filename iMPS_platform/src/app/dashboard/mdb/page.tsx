@@ -30,6 +30,23 @@ import { Button } from "@/components/MaterialTailwind";
 import { PlusIcon, PencilSquareIcon } from "@heroicons/react/24/solid";
 import AddEquipmentDialog from "./components/add-equipment-dialog";
 import NoData from "@/app/dashboard/components/NoData";
+import useLanguage, { type Lang } from "@/utils/useLanguage";
+
+// ==================== TRANSLATIONS ====================
+const T = {
+    pageTitle: { th: "MDB Monitoring", en: "MDB Monitoring" },
+    timestamp: { th: "เวลาข้อมูล:", en: "Timestamp:" },
+    live: { th: "LIVE", en: "LIVE" },
+    reconnecting: { th: "กำลังเชื่อมต่อใหม่", en: "Reconnecting" },
+    addEquipment: { th: "เพิ่มอุปกรณ์ MDB", en: "Add MDB equipment" },
+    addShort: { th: "+ เพิ่ม", en: "+ Add" },
+    editTopic: { th: "แก้ไข Topic", en: "Edit Topic" },
+    emptyTitle: { th: "ยังไม่มีข้อมูลอุปกรณ์ MDB", en: "No MDB equipment yet" },
+    emptyLine1: { th: "สถานีนี้ยังไม่มีการติดตั้งอุปกรณ์ MDB", en: "This station has no MDB equipment installed" },
+    emptyLine2: { th: "กดปุ่มด้านล่างเพื่อเพิ่มข้อมูลการติดตั้ง", en: "Press the button below to add installation details" },
+    contactAdmin: { th: "ติดต่อ Admin หรือ Owner เพื่อเพิ่มข้อมูล", en: "Contact an Admin or Owner to add data" },
+} as const;
+const t = (k: keyof typeof T, lang: Lang) => T[k][lang];
 
 type HistoryRow = {
     timestamp: string; // ISO time
@@ -186,6 +203,7 @@ export default function MDBPage() {
     const [err2, setErr2] = useState<string | null>(null);
     const [peakPower, setPeakPower] = useState<{ PL1N_peak?: number, PL2N_peak?: number, PL3N_peak?: number } | null>(null);
 
+    const { lang } = useLanguage();
     const [openAddEquip, setOpenAddEquip] = useState(false);
     const [openEditEquip, setOpenEditEquip] = useState(false);
     const [editInit, setEditInit] = useState<{ topic: string; broker: string }>({ topic: "", broker: "" });
@@ -637,11 +655,11 @@ export default function MDBPage() {
                         </div>
                         <div>
                             <h2 className="tw-text-white tw-font-bold tw-text-base sm:tw-text-lg tw-tracking-tight">
-                                MDB Monitoring
+                                {t("pageTitle", lang)}
                             </h2>
                             {hasMdbData ? (
                                 <p className="tw-text-white/40 tw-text-[11px] sm:tw-text-xs tw-mt-0.5 tw-font-medium">
-                                    Timestamp: {formatThaiDateTime(MDB?.timeStamp as string)}
+                                    {t("timestamp", lang)} {formatThaiDateTime(MDB?.timeStamp as string)}
                                 </p>
                             ) : (
                                 <p className="tw-text-white/30 tw-text-[11px] sm:tw-text-xs tw-mt-0.5">
@@ -661,14 +679,14 @@ export default function MDBPage() {
                                     <span className="tw-relative tw-inline-flex tw-rounded-full tw-h-2 tw-w-2"
                                         style={{ background: '#34d399' }} />
                                 </span>
-                                <span className="tw-text-[11px] tw-font-semibold" style={{ color: '#34d399' }}>LIVE</span>
+                                <span className="tw-text-[11px] tw-font-semibold" style={{ color: '#34d399' }}>{t("live", lang)}</span>
                             </div>
                         )}
                         {err && hasMdbData && (
                             <div className="tw-hidden sm:tw-flex tw-items-center tw-gap-1.5 tw-px-3 tw-py-1.5 tw-rounded-full"
                                 style={{ background: 'rgba(239,68,68,0.15)' }}>
                                 <span className="tw-h-2 tw-w-2 tw-rounded-full" style={{ background: '#f87171' }} />
-                                <span className="tw-text-[11px] tw-font-semibold" style={{ color: '#f87171' }}>Reconnecting</span>
+                                <span className="tw-text-[11px] tw-font-semibold" style={{ color: '#f87171' }}>{t("reconnecting", lang)}</span>
                             </div>
                         )}
                         {canAddEquipment && (
@@ -676,12 +694,12 @@ export default function MDBPage() {
                                 className="tw-flex tw-items-center tw-gap-1.5 sm:tw-gap-2 tw-px-3 sm:tw-px-4 tw-py-2 sm:tw-py-2.5 tw-rounded-xl tw-text-xs sm:tw-text-sm tw-font-semibold tw-shadow-lg tw-transition-all tw-duration-200 hover:tw-scale-[1.03]"
                                 style={{ background: 'linear-gradient(135deg, #ffffff, #f1f5f9)', color: '#1e293b' }}>
                                 <PlusIcon className="tw-h-4 tw-w-4" />
-                                <span className="tw-hidden sm:tw-inline">เพิ่มอุปกรณ์ MDB</span>
-                                <span className="tw-inline sm:tw-hidden">+ เพิ่ม</span>
+                                <span className="tw-hidden sm:tw-inline">{t("addEquipment", lang)}</span>
+                                <span className="tw-inline sm:tw-hidden">{t("addShort", lang)}</span>
                             </button>
                         )}
                         {canEditEquipment && (
-                            <button onClick={handleOpenEdit} title="แก้ไข Topic" aria-label="แก้ไข Topic"
+                            <button onClick={handleOpenEdit} title={t("editTopic", lang)} aria-label={t("editTopic", lang)}
                                 className="tw-flex tw-items-center tw-justify-center tw-p-2 sm:tw-p-2.5 tw-rounded-xl tw-shadow-lg tw-transition-all tw-duration-200 hover:tw-scale-[1.03]"
                                 style={{ background: 'linear-gradient(135deg, #ffffff, #f1f5f9)', color: '#1e293b' }}>
                                 <PencilSquareIcon className="tw-h-4 tw-w-4" />
@@ -699,7 +717,7 @@ export default function MDBPage() {
                     {/* MDB Info — ใส่ border สีเทาอ่อนให้เข้ากับธีม */}
                     <Card className="tw-mb-6 tw-border tw-border-gray-200 tw-shadow-sm tw-rounded-2xl">
                         <CardBody className="tw-p-4 md:tw-p-6">
-                            <MDBInfo {...MDB} stationId={stationId} canManage={hasPermission} />
+                            <MDBInfo {...MDB} stationId={stationId} canManage={hasPermission} lang={lang} />
                         </CardBody>
                     </Card>
 
@@ -733,25 +751,25 @@ export default function MDBPage() {
                                 style={{ background: '#3b82f6' }} />
                         </div>
                         <h3 className="tw-text-gray-800 tw-font-bold tw-text-lg sm:tw-text-xl tw-tracking-tight tw-mb-2 tw-text-center">
-                            ยังไม่มีข้อมูลอุปกรณ์ MDB
+                            {t("emptyTitle", lang)}
                         </h3>
                         <p className="tw-text-gray-400 tw-text-sm tw-mb-8 tw-max-w-md tw-text-center tw-leading-relaxed">
-                            สถานีนี้ยังไม่มีการติดตั้งอุปกรณ์ MDB<br className="tw-hidden sm:tw-inline" />
-                            กดปุ่มด้านล่างเพื่อเพิ่มข้อมูลการติดตั้ง
+                            {t("emptyLine1", lang)}<br className="tw-hidden sm:tw-inline" />
+                            {t("emptyLine2", lang)}
                         </p>
                         {hasPermission && (
                             <button onClick={() => setOpenAddEquip(true)}
                                 className="tw-group tw-flex tw-items-center tw-gap-2.5 tw-px-6 tw-py-3 tw-rounded-xl tw-text-sm tw-font-semibold tw-text-white tw-shadow-lg tw-transition-all tw-duration-300 hover:tw-shadow-xl hover:tw-scale-[1.03]"
                                 style={{ background: 'linear-gradient(135deg, #1e293b, #334155)' }}>
                                 <PlusIcon className="tw-h-5 tw-w-5 tw-transition-transform tw-duration-300 group-hover:tw-rotate-90" />
-                                เพิ่มอุปกรณ์ MDB
+                                {t("addEquipment", lang)}
                             </button>
                         )}
                         {!hasPermission && (
                             <div className="tw-flex tw-items-center tw-gap-2 tw-px-4 tw-py-2.5 tw-rounded-xl"
                                 style={{ background: 'rgba(59,130,246,0.08)' }}>
                                 <span className="tw-text-sm">🔒</span>
-                                <span className="tw-text-xs tw-text-blue-600 tw-font-medium">ติดต่อ Admin หรือ Owner เพื่อเพิ่มข้อมูล</span>
+                                <span className="tw-text-xs tw-text-blue-600 tw-font-medium">{t("contactAdmin", lang)}</span>
                             </div>
                         )}
                     </div>

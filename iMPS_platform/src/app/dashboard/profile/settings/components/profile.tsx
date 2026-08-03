@@ -9,7 +9,27 @@ import {
 } from "@/components/MaterialTailwind";
 
 import { apiFetch } from "@/utils/api";
+import useLanguage, { type Lang } from "@/utils/useLanguage";
 
+// ===== Translations =====
+const T = {
+  title:        { th: "โปรไฟล์",              en: "Profile" },
+  subtitle:     { th: "ข้อมูลโปรไฟล์ของคุณ",   en: "Your profile information" },
+  loading:      { th: "กำลังโหลด…",            en: "Loading…" },
+  role:         { th: "สิทธิ์การใช้งาน",        en: "Role" },
+  username:     { th: "ชื่อผู้ใช้",             en: "Username" },
+  email:        { th: "อีเมล",                 en: "Email" },
+  phone:        { th: "เบอร์โทรศัพท์",          en: "Phone number" },
+  company:      { th: "บริษัท",                en: "Company" },
+  edit:         { th: "แก้ไข",                 en: "Edit" },
+  cancel:       { th: "ยกเลิก",                en: "Cancel" },
+  save:         { th: "บันทึก",                en: "Save" },
+  saving:       { th: "กำลังบันทึก...",         en: "Saving..." },
+  saveSuccess:  { th: "บันทึกสำเร็จ",           en: "Saved successfully" },
+  saveFailed:   { th: "บันทึกไม่สำเร็จ",        en: "Save failed" },
+} as const;
+
+const t = (k: keyof typeof T, lang: Lang) => T[k][lang];
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
@@ -23,6 +43,7 @@ type Profile = {
 };
 
 export default function BasicInfo() {
+  const { lang } = useLanguage();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -69,10 +90,10 @@ export default function BasicInfo() {
       const updated: Profile = await res.json();
       setP(updated);
       setEditing(false);
-      alert("บันทึกสำเร็จ");
+      alert(t("saveSuccess", lang));
     } catch (e: any) {
       console.error(e);
-      alert(`บันทึกไม่สำเร็จ: ${e.message || e}`);
+      alert(`${t("saveFailed", lang)}: ${e.message || e}`);
     } finally {
       setSaving(false);
     }
@@ -82,8 +103,8 @@ export default function BasicInfo() {
     return (
       <Card className="tw-mb-6 tw-border tw-border-blue-gray-100 tw-shadow-sm tw-rounded-xl">
         <CardHeader shadow={false} floated={false}>
-          <Typography variant="h5" color="blue-gray">Profile</Typography>
-          <Typography variant="small" className="!tw-text-blue-gray-500">กำลังโหลด…</Typography>
+          <Typography variant="h5" color="blue-gray">{t("title", lang)}</Typography>
+          <Typography variant="small" className="!tw-text-blue-gray-500">{t("loading", lang)}</Typography>
         </CardHeader>
       </Card>
     );
@@ -176,14 +197,14 @@ export default function BasicInfo() {
   return (
     <Card className="tw-scroll-mt-4 tw-border tw-border-blue-gray-100 tw-shadow-sm tw-rounded-xl tw-overflow-hidden" id="Profile">
       <CardHeader shadow={false} floated={false}>
-        <Typography variant="h5" color="blue-gray">Profile</Typography>
-        <Typography variant="small" className="!tw-text-blue-gray-500">ข้อมูลโปรไฟล์ของคุณ</Typography>
+        <Typography variant="h5" color="blue-gray">{t("title", lang)}</Typography>
+        <Typography variant="small" className="!tw-text-blue-gray-500">{t("subtitle", lang)}</Typography>
       </CardHeader>
 
       <CardBody className="tw-flex tw-flex-col">
         <div className="tw-grid tw-grid-cols-1 tw-gap-6">
           <Input
-            label="Role"
+            label={t("role", lang)}
             value={p?.role ?? ""}
             readOnly
             containerProps={{ className: "tw-w-full" }}
@@ -191,7 +212,7 @@ export default function BasicInfo() {
           />
 
           <Input
-            label="Username"
+            label={t("username", lang)}
             value={p?.username ?? ""}
             onChange={(e) => setP(prev => prev ? { ...prev, username: e.target.value } : prev)}
             readOnly={!editing || !canEditCompanyTel}
@@ -200,7 +221,7 @@ export default function BasicInfo() {
           />
 
           <Input
-            label="Email"
+            label={t("email", lang)}
             value={p?.email ?? ""}
             onChange={(e) => setP(prev => prev ? { ...prev, email: e.target.value } : prev)}
             readOnly={!editing || !canEditCompanyTel}
@@ -209,7 +230,7 @@ export default function BasicInfo() {
           />
 
           <Input
-            label="Phone number"
+            label={t("phone", lang)}
             value={p?.tel ?? ""}
             onChange={(e) => setP(prev => prev ? { ...prev, tel: e.target.value } : prev)}
             readOnly={!canEditCompanyTel}
@@ -218,9 +239,9 @@ export default function BasicInfo() {
           />
 
           <Input
-            label="Company"
+            label={t("company", lang)}
             value={p?.company ?? ""}
-            onChange={(e) => setP(prev => prev ? { ...prev, company: e.target.value } : prev)}  
+            onChange={(e) => setP(prev => prev ? { ...prev, company: e.target.value } : prev)}
             readOnly={!editing || !canEditUsernameEmail }
             containerProps={{ className: "tw-w-full" }}
             className={roClasses}
@@ -231,15 +252,15 @@ export default function BasicInfo() {
       <CardFooter className="tw-flex tw-items-center tw-justify-end tw-gap-3 tw-border-t tw-bg-white/60 tw-backdrop-blur-sm tw-mt-4">
         {!editing ? (
           <Button onClick={() => setEditing(true)} variant="outlined" color="gray" className="tw-px-6">
-            Edit
+            {t("edit", lang)}
           </Button>
         ) : (
           <>
             <Button onClick={() => setEditing(false)} variant="outlined" color="gray" className="tw-px-6">
-              Cancel
+              {t("cancel", lang)}
             </Button>
             <Button onClick={handleSave} variant="gradient" className="tw-px-6" disabled={saving}>
-              {saving ? "Saving..." : "Save"}
+              {saving ? t("saving", lang) : t("save", lang)}
             </Button>
           </>
         )}

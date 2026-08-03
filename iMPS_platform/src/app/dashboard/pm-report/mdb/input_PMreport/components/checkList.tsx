@@ -260,6 +260,10 @@ const T = {
     missingSummaryText: { th: "ยังไม่ได้กรอกข้อความสรุปผลการตรวจสอบ", en: "Summary text not filled" },
     missingSummaryStatus: { th: "ยังไม่ได้เลือกสถานะสรุปผล (Pass/Fail/N/A)", en: "Summary status not selected" },
     backToList: { th: "กลับไปหน้า List", en: "Back to List" },
+    loading: { th: "กำลังโหลดข้อมูล...", en: "Loading..." },
+    logoAlt: { th: "โลโก้บริษัท", en: "Company logo" },
+    photoPreviewAlt: { th: "ตัวอย่างรูป", en: "Photo preview" },
+    uploadFailedItem: { th: "ข้อ", en: "Item" },
 };
 
 const t = (key: keyof typeof T, lang: Lang): string => T[key][lang];
@@ -867,7 +871,7 @@ function PhotoMultiInput({ photos, setPhotos, max = 10, draftKey, qNo, lang, id 
                     {photos.map(p => (
                         <div key={p.id} className="tw-border tw-rounded-lg tw-overflow-hidden tw-bg-gray-100 tw-shadow-xs tw-flex tw-flex-col">
                             <div className="tw-relative tw-aspect-[4/3] tw-bg-gray-100">
-                                {p.preview && <img src={p.preview} alt="preview" className="tw-w-full tw-h-full tw-object-contain" />}
+                                {p.preview && <img src={p.preview} alt={t("photoPreviewAlt", lang)} className="tw-w-full tw-h-full tw-object-contain" />}
                                 <button onClick={() => { void handleRemove(p.id); }} className="tw-absolute tw-top-2 tw-right-2 tw-bg-red-500 tw-text-white tw-w-6 tw-h-6 tw-rounded-full tw-flex tw-items-center tw-justify-center tw-shadow-md hover:tw-bg-red-600 tw-transition-colors">×</button>
                             </div>
                         </div>
@@ -885,7 +889,7 @@ function SkippedNAItem({ label, remark, lang }: { label: string; remark?: string
                 <Typography className="tw-font-semibold tw-text-sm tw-text-gray-800">{label}</Typography>
                 <span className="tw-text-xs tw-text-amber-600 tw-font-medium">N/A</span>
             </div>
-            {remark && <Typography variant="small" className="tw-text-gray-600 tw-mt-1">{t("remarkLabel", "th")}: {remark}</Typography>}
+            {remark && <Typography variant="small" className="tw-text-gray-600 tw-mt-1">{t("remarkLabel", lang)}: {remark}</Typography>}
         </div>
     );
 }
@@ -1616,7 +1620,7 @@ export default function MDBPMForm() {
                         rows, m4: m4State, m5: m5State, m6: m6State, m7: m7State,
                         summary: summaryPre, dustFilterChanged, photoRefs: latestPhotoRefs
                     });
-                    const details = failures.map(f => `ข้อ ${f.group}: ${f.error}`).join("\n");
+                    const details = failures.map(f => `${t("uploadFailedItem", lang)} ${f.group}: ${f.error}`).join("\n");
                     alert(
                         `${lang === "th" ? "อัปโหลดรูปไม่สำเร็จ" : "Photo upload failed"} ${failures.length} ${lang === "th" ? "รูป" : "photos"}\n\n`
                         + `${lang === "th" ? "กดบันทึกอีกครั้งเพื่ออัปโหลดเฉพาะรูปที่ค้าง" : "Click save again to retry only the failed photos"}\n\n${details}`
@@ -1750,7 +1754,7 @@ export default function MDBPMForm() {
                         rows, m4: m4State, m5: m5State, m6: m6State, m7: m7State,
                         summary, summaryCheck, dustFilterChanged, photoRefs: latestPhotoRefs
                     });
-                    const details = failures.map(f => `ข้อ ${f.group}: ${f.error}`).join("\n");
+                    const details = failures.map(f => `${t("uploadFailedItem", lang)} ${f.group}: ${f.error}`).join("\n");
                     alert(
                         `${lang === "th" ? "อัปโหลดรูปไม่สำเร็จ" : "Photo upload failed"} ${failures.length}\n\n`
                         + `${lang === "th" ? "กดบันทึกอีกครั้งเพื่ออัปโหลดเฉพาะรูปที่ค้าง" : "Click save again to retry only the failed photos"}\n\n${details}`
@@ -2185,7 +2189,7 @@ export default function MDBPMForm() {
     // ==================== RENDER ====================
     return (
         <section className="tw-pb-24">
-            <LoadingOverlay show={pageLoading} text="กำลังโหลดข้อมูล..." />
+            <LoadingOverlay show={pageLoading} text={t("loading", lang)} />
             <LoadingOverlay
                 show={preUploadState.show}
                 text={lang === "th"
@@ -2222,7 +2226,7 @@ export default function MDBPMForm() {
                     <div className="tw-flex tw-flex-col tw-gap-4 md:tw-flex-row md:tw-items-start md:tw-justify-between md:tw-gap-6">
                         <div className="tw-flex tw-items-start tw-gap-3 md:tw-gap-4">
                             <div className="tw-relative tw-overflow-hidden tw-bg-white tw-rounded-md tw-shrink-0 tw-h-14 tw-w-[64px] sm:tw-h-16 sm:tw-w-[76px] md:tw-h-20 md:tw-w-[108px] lg:tw-h-24 lg:tw-w-[152px]">
-                                <Image src={LOGO_SRC} alt="Company logo" fill priority className="tw-object-contain tw-p-0" sizes="(min-width:1024px) 152px, (min-width:768px) 108px, (min-width:640px) 76px, 64px" />
+                                <Image src={LOGO_SRC} alt={t("logoAlt", lang)} fill priority className="tw-object-contain tw-p-0" sizes="(min-width:1024px) 152px, (min-width:768px) 108px, (min-width:640px) 76px, 64px" />
                             </div>
                             <div className="tw-min-w-0">
                                 <div className="tw-font-semibold tw-text-blue-gray-900 tw-text-sm sm:tw-text-base">{t("pageTitle", lang)}</div>

@@ -11,11 +11,13 @@ import { useSearchParams } from "next/navigation";
 import { apiFetch } from "@/utils/api"; // ← ปรับ path ตามโปรเจกต์
 import NoData from "@/app/dashboard/components/NoData";
 import BarProgress from "./components/BarProgress";
+import useLanguage from "@/utils/useLanguage";
 const POLL_INTERVAL_MS = 30_000;
 
 export default function SettingPage() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const { lang } = useLanguage();
   const searchParams = useSearchParams();
   const abortRef = useRef<AbortController | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -126,7 +128,7 @@ export default function SettingPage() {
               <svg className="tw-w-3.5 tw-h-3.5 tw-text-blue-gray-400" viewBox="0 0 20 20" fill="currentColor">
                 <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
               </svg>
-              <span className="tw-text-[11px] tw-font-medium tw-text-blue-gray-500">อัปเดตล่าสุด</span>
+              <span className="tw-text-[11px] tw-font-medium tw-text-blue-gray-500">{lang === "th" ? "อัปเดตล่าสุด" : "Last updated"}</span>
               <span className="tw-text-[11px] tw-font-bold tw-text-blue-gray-700 tw-tabular-nums">
                 {new Date(data.timestamp).toLocaleString("th-TH", { timeZone: "UTC" })}
               </span>

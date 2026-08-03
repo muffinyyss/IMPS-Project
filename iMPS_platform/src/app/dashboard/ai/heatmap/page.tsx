@@ -6,6 +6,27 @@ import { MODULES } from "../lib/constants";
 import { useAutoRefresh } from "../hooks/useAutoRefresh";
 import "../ai-theme.css";
 import { useStation } from "../hooks/useStation";
+import useLanguage, { type Lang } from "@/utils/useLanguage";
+
+// ==================== TRANSLATIONS ====================
+const T = {
+  totalStations: { th: "สถานีทั้งหมด", en: "Total Stations" },
+  avgHealth: { th: "สุขภาพเฉลี่ย", en: "Avg Health" },
+  normal: { th: "ปกติ ≥75%", en: "Normal ≥75%" },
+  warning: { th: "เฝ้าระวัง <75%", en: "Warning <75%" },
+  critical: { th: "วิกฤต <40%", en: "Critical <40%" },
+  system: { th: "ระบบ", en: "System" },
+  moduleHealth: { th: "สุขภาพโมดูล", en: "Module Health" },
+  stationHealthGrid: { th: "ตารางสุขภาพสถานี", en: "Station Health Grid" },
+  searchStation: { th: "🔍 ค้นหาสถานี...", en: "🔍 Search station..." },
+  updated: { th: "อัปเดต", en: "Updated" },
+  stationsUnit: { th: "สถานี", en: "stations" },
+  columnsUnit: { th: "คอลัมน์", en: "columns" },
+  loading: { th: "กำลังโหลด...", en: "Loading..." },
+  noData: { th: "ไม่มีข้อมูล", en: "No data" },
+  loadError: { th: "ไม่สามารถโหลดข้อมูล Heatmap ได้", en: "Failed to load Heatmap data" },
+} as const;
+const t = (k: keyof typeof T, lang: Lang) => T[k][lang];
 
 function hmColor(value: number | null): string {
   if (value == null) return "#e5e7eb";
@@ -20,7 +41,7 @@ function textColor(value: number | null): string { if (value == null) return "#9
 interface HeatmapStation { sn: string; name: string; province?: string; system_health: number | null; modules: Record<string, number | null>; }
 interface TooltipState { x: number; y: number; station: HeatmapStation; }
 
-function HeatmapTooltip({ tip }: { tip: TooltipState }) {
+function HeatmapTooltip({ tip, lang }: { tip: TooltipState; lang: Lang }) {
   return (
     <div className="tw-fixed tw-z-50 tw-pointer-events-none tw-rounded-2xl tw-shadow-2xl tw-min-w-[220px]"
       style={{ top: tip.y + 14, left: tip.x + 14, background: "#111827", border: "1px solid rgba(255,255,255,.1)" }}>
@@ -30,11 +51,11 @@ function HeatmapTooltip({ tip }: { tip: TooltipState }) {
       </div>
       <div className="tw-px-4 tw-py-3">
         <div className="tw-flex tw-items-center tw-gap-2 tw-mb-3">
-          <span className="tw-text-xs tw-text-white/40 tw-w-12">System</span>
+          <span className="tw-text-xs tw-text-white/40 tw-w-12">{t("system", lang)}</span>
           <div className="tw-flex-1 tw-h-1.5 tw-bg-white/10 tw-rounded-full tw-overflow-hidden"><div className="tw-h-full tw-rounded-full tw-transition-all" style={{ width: `${tip.station.system_health ?? 0}%`, background: hmColor(tip.station.system_health) }} /></div>
           <span className="tw-text-xs tw-font-bold tw-text-white tw-w-8 tw-text-right tw-font-mono">{tip.station.system_health ?? "—"}%</span>
         </div>
-        <div className="tw-text-[10px] tw-text-white/30 tw-uppercase tw-tracking-wider tw-mb-2">Module Health</div>
+        <div className="tw-text-[10px] tw-text-white/30 tw-uppercase tw-tracking-wider tw-mb-2">{t("moduleHealth", lang)}</div>
         <div className="tw-grid tw-grid-cols-7 tw-gap-1">
           {MODULES.map((mod) => { const v = tip.station.modules?.[mod.key] ?? null; return (<div key={mod.key} className="tw-flex tw-flex-col tw-items-center tw-gap-1"><div className="tw-w-7 tw-h-7 tw-rounded-lg tw-flex tw-items-center tw-justify-center tw-text-xs tw-font-bold" style={{ background: hmColor(v), color: textColor(v) }}>{v ?? "—"}</div><div className="tw-text-white/30" style={{ fontSize: 9 }}>M{mod.num}</div></div>); })}
         </div>
@@ -43,18 +64,18 @@ function HeatmapTooltip({ tip }: { tip: TooltipState }) {
   );
 }
 
-function KpiSummaryCards({ stats, total }: { stats: { avg: number; min: number; max: number; crit: number; warn: number; ok: number } | null; total: number; }) {
+function KpiSummaryCards({ stats, total, lang }: { stats: { avg: number; min: number; max: number; crit: number; warn: number; ok: number } | null; total: number; lang: Lang; }) {
   const cards = [
-    { label: "Total Stations", value: total, valueStyle: { color: "#fff" }, iconBg: "rgba(255,255,255,.10)", iconRing: "rgba(255,255,255,.15)", icon: <span className="tw-text-base">📍</span> },
-    { label: "Avg Health", value: stats ? `${stats.avg}%` : "—", valueStyle: { color: "#60a5fa" }, iconBg: "rgba(59,130,246,.15)", iconRing: "rgba(96,165,250,.25)", icon: <span className="tw-text-base">📊</span> },
-    { label: "Normal ≥75%", value: stats?.ok ?? "—", valueStyle: { color: "#34d399" }, iconBg: "rgba(16,185,129,.15)", iconRing: "rgba(52,211,153,.25)", icon: (<span className="tw-relative tw-flex tw-h-2.5 tw-w-2.5"><span className="tw-animate-ping tw-absolute tw-inline-flex tw-h-full tw-w-full tw-rounded-full tw-opacity-75" style={{ background: "#34d399" }} /><span className="tw-relative tw-inline-flex tw-rounded-full tw-h-2.5 tw-w-2.5" style={{ background: "#34d399" }} /></span>) },
-    { label: "Warning <75%", value: stats?.warn ?? "—", valueStyle: { color: "#fbbf24" }, iconBg: "rgba(234,179,8,.15)", iconRing: "rgba(251,191,36,.25)", icon: <span className="tw-text-base">⚠️</span> },
-    { label: "Critical <40%", value: stats?.crit ?? "—", valueStyle: { color: "#f87171" }, iconBg: "rgba(239,68,68,.15)", iconRing: "rgba(248,113,113,.25)", icon: <span className="tw-h-2.5 tw-w-2.5 tw-rounded-full tw-inline-block" style={{ background: "#f87171" }} /> },
+    { id: "total", label: t("totalStations", lang), value: total, valueStyle: { color: "#fff" }, iconBg: "rgba(255,255,255,.10)", iconRing: "rgba(255,255,255,.15)", icon: <span className="tw-text-base">📍</span> },
+    { id: "avg", label: t("avgHealth", lang), value: stats ? `${stats.avg}%` : "—", valueStyle: { color: "#60a5fa" }, iconBg: "rgba(59,130,246,.15)", iconRing: "rgba(96,165,250,.25)", icon: <span className="tw-text-base">📊</span> },
+    { id: "ok", label: t("normal", lang), value: stats?.ok ?? "—", valueStyle: { color: "#34d399" }, iconBg: "rgba(16,185,129,.15)", iconRing: "rgba(52,211,153,.25)", icon: (<span className="tw-relative tw-flex tw-h-2.5 tw-w-2.5"><span className="tw-animate-ping tw-absolute tw-inline-flex tw-h-full tw-w-full tw-rounded-full tw-opacity-75" style={{ background: "#34d399" }} /><span className="tw-relative tw-inline-flex tw-rounded-full tw-h-2.5 tw-w-2.5" style={{ background: "#34d399" }} /></span>) },
+    { id: "warn", label: t("warning", lang), value: stats?.warn ?? "—", valueStyle: { color: "#fbbf24" }, iconBg: "rgba(234,179,8,.15)", iconRing: "rgba(251,191,36,.25)", icon: <span className="tw-text-base">⚠️</span> },
+    { id: "crit", label: t("critical", lang), value: stats?.crit ?? "—", valueStyle: { color: "#f87171" }, iconBg: "rgba(239,68,68,.15)", iconRing: "rgba(248,113,113,.25)", icon: <span className="tw-h-2.5 tw-w-2.5 tw-rounded-full tw-inline-block" style={{ background: "#f87171" }} /> },
   ];
   return (
     <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 lg:tw-grid-cols-5 tw-gap-2.5 tw-mb-4 tw-flex-shrink-0">
       {cards.map((card) => (
-        <div key={card.label} className="tw-group tw-relative tw-overflow-hidden tw-rounded-2xl tw-bg-gradient-to-br tw-from-gray-900 tw-via-gray-800 tw-to-gray-900 tw-px-5 tw-py-4 tw-ring-1 tw-ring-white/10 tw-shadow-lg hover:tw-shadow-xl tw-transition-all tw-duration-300 hover:tw--translate-y-0.5">
+        <div key={card.id} className="tw-group tw-relative tw-overflow-hidden tw-rounded-2xl tw-bg-gradient-to-br tw-from-gray-900 tw-via-gray-800 tw-to-gray-900 tw-px-5 tw-py-4 tw-ring-1 tw-ring-white/10 tw-shadow-lg hover:tw-shadow-xl tw-transition-all tw-duration-300 hover:tw--translate-y-0.5">
           <div className="tw-absolute tw-inset-0 tw-opacity-[0.03] tw-pointer-events-none" style={{ backgroundImage: "radial-gradient(circle at 1px 1px, white 1px, transparent 0)", backgroundSize: "20px 20px" }} />
           <div className="tw-relative tw-z-10">
             <div className="tw-flex tw-items-center tw-gap-2 tw-mb-2"><div className="tw-h-8 tw-w-8 tw-rounded-xl tw-flex tw-items-center tw-justify-center tw-ring-1 tw-flex-shrink-0" style={{ background: card.iconBg, boxShadow: `0 0 0 1px ${card.iconRing}` }}>{card.icon}</div><span className="tw-text-[11px] tw-font-semibold tw-text-white/40 tw-uppercase tw-tracking-wider">{card.label}</span></div>
@@ -76,6 +97,7 @@ export default function HeatmapPage() {
   const { activeSn } = useStation();
   const { tick, countdown, refresh } = useAutoRefresh(120);
   const gridRef = useRef<HTMLDivElement>(null);
+  const { lang } = useLanguage();
 
   const loadData = useCallback(async () => {
     setLoading(true); setError(null);
@@ -89,7 +111,7 @@ export default function HeatmapPage() {
         return { sn: s.sn, name: s.name, province: s.province, system_health: sh, modules: mods };
       });
       setStations(mapped); setLastUpdate(new Date().toLocaleTimeString("th-TH"));
-    } catch { setError("ไม่สามารถโหลดข้อมูล Heatmap ได้"); }
+    } catch { setError("loadError"); }
     finally { setLoading(false); }
   }, []);
 
@@ -124,7 +146,7 @@ export default function HeatmapPage() {
       <div className="tw-bg-white tw-border-b tw-border-gray-100 tw-px-4 sm:tw-px-6 tw-py-2.5 tw-flex tw-items-center tw-justify-between tw-gap-3 tw-flex-shrink-0">
         <div className="tw-flex tw-items-center tw-gap-3">
           <input className="tw-px-3 tw-py-1.5 tw-text-xs tw-border tw-border-gray-200 tw-rounded-lg tw-outline-none focus:tw-border-gray-900 tw-bg-white tw-w-44 sm:tw-w-56"
-            placeholder="🔍 ค้นหาสถานี..." value={search} onChange={(e) => setSearch(e.target.value)} />
+            placeholder={t("searchStation", lang)} value={search} onChange={(e) => setSearch(e.target.value)} />
           {/* Gradient legend */}
           <div className="tw-hidden sm:tw-flex tw-items-center tw-gap-2">
             <span className="tw-text-xs tw-text-gray-400">0%</span>
@@ -134,25 +156,25 @@ export default function HeatmapPage() {
         </div>
         <div className="tw-flex tw-items-center tw-gap-2">
           <button onClick={refresh} className="tw-flex tw-items-center tw-gap-1.5 tw-px-3 tw-py-1.5 tw-text-xs tw-font-bold tw-bg-gray-900 hover:tw-bg-black tw-text-white tw-rounded-lg tw-transition-colors" style={{ fontFamily: "'JetBrains Mono', monospace" }}>↻ {countdown}s</button>
-          {lastUpdate && <span className="tw-text-xs tw-text-gray-400 tw-hidden sm:tw-inline">อัปเดต {lastUpdate}</span>}
+          {lastUpdate && <span className="tw-text-xs tw-text-gray-400 tw-hidden sm:tw-inline">{t("updated", lang)} {lastUpdate}</span>}
         </div>
       </div>
 
       <div className="tw-flex-1 tw-p-4 sm:tw-p-6 tw-overflow-auto">
-        {error && <div className="tw-mb-4 tw-p-4 tw-bg-red-50 tw-border tw-border-red-200 tw-rounded-xl tw-text-red-700 tw-text-sm">⚠ {error}</div>}
+        {error && <div className="tw-mb-4 tw-p-4 tw-bg-red-50 tw-border tw-border-red-200 tw-rounded-xl tw-text-red-700 tw-text-sm">⚠ {t(error as keyof typeof T, lang)}</div>}
 
-        <KpiSummaryCards stats={stats} total={filtered.length} />
+        <KpiSummaryCards stats={stats} total={filtered.length} lang={lang} />
 
         <div className="tw-bg-white tw-rounded-2xl tw-border tw-border-gray-100 tw-shadow-sm tw-overflow-hidden">
           <div className="tw-px-4 sm:tw-px-6 tw-py-4 tw-bg-gradient-to-r tw-from-white tw-to-blue-gray-50/30 tw-border-b tw-border-gray-100">
-            <div className="tw-text-sm tw-font-bold tw-text-gray-800 tw-uppercase tw-tracking-wide">Station Health Grid</div>
-            <div className="tw-text-xs tw-text-gray-400 tw-mt-0.5">{filtered.length} สถานี · {cols} คอลัมน์</div>
+            <div className="tw-text-sm tw-font-bold tw-text-gray-800 tw-uppercase tw-tracking-wide">{t("stationHealthGrid", lang)}</div>
+            <div className="tw-text-xs tw-text-gray-400 tw-mt-0.5">{filtered.length} {t("stationsUnit", lang)} · {cols} {t("columnsUnit", lang)}</div>
           </div>
           <div className="tw-p-3 sm:tw-p-4">
             {loading ? (
-              <div className="tw-flex tw-items-center tw-justify-center tw-h-64 tw-gap-3"><div className="tw-w-6 tw-h-6 tw-rounded-full tw-border-2 tw-border-gray-200 tw-border-t-gray-900 tw-animate-spin" /><span className="tw-text-sm tw-text-gray-400">กำลังโหลด...</span></div>
+              <div className="tw-flex tw-items-center tw-justify-center tw-h-64 tw-gap-3"><div className="tw-w-6 tw-h-6 tw-rounded-full tw-border-2 tw-border-gray-200 tw-border-t-gray-900 tw-animate-spin" /><span className="tw-text-sm tw-text-gray-400">{t("loading", lang)}</span></div>
             ) : filtered.length === 0 ? (
-              <div className="tw-flex tw-items-center tw-justify-center tw-h-64 tw-text-gray-400 tw-text-sm">{search ? `ไม่พบสถานีที่ค้นหา "${search}"` : "ไม่มีข้อมูล"}</div>
+              <div className="tw-flex tw-items-center tw-justify-center tw-h-64 tw-text-gray-400 tw-text-sm">{search ? (lang === "th" ? `ไม่พบสถานีที่ค้นหา "${search}"` : `No station found for "${search}"`) : t("noData", lang)}</div>
             ) : (
               <div ref={gridRef} className="tw-grid tw-gap-1.5" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }} onMouseMove={handleMouseMove}>
                 {filtered.map((station) => {
@@ -173,7 +195,7 @@ export default function HeatmapPage() {
           </div>
         </div>
       </div>
-      {tooltip && <HeatmapTooltip tip={tooltip} />}
+      {tooltip && <HeatmapTooltip tip={tooltip} lang={lang} />}
     </div>
   );
 }

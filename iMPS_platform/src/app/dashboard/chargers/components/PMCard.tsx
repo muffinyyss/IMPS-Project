@@ -94,6 +94,7 @@ export default function PMCard({ sn }: PMCardProps) {
         daysLeft: "เหลืออีก",
         loading: "กำลังโหลด…",
         error: "ข้อผิดพลาด",
+        fetchError: "ไม่สามารถโหลดข้อมูลได้",
         day: "วัน",
         days: "วัน",
       },
@@ -108,6 +109,7 @@ export default function PMCard({ sn }: PMCardProps) {
         daysLeft: "Days Left",
         loading: "Loading…",
         error: "Error",
+        fetchError: "Unable to load data",
         day: "day",
         days: "days",
       },
@@ -221,7 +223,7 @@ export default function PMCard({ sn }: PMCardProps) {
         }
       } catch (e: any) {
         if (e.name === "AbortError") return;
-        if (!aborted) setError(e?.message ?? "fetch error");
+        if (!aborted) setError(e?.message ?? t.fetchError);
       } finally {
         if (!aborted) setLoading(false);
       }
@@ -258,7 +260,11 @@ export default function PMCard({ sn }: PMCardProps) {
             <Typography className="tw-text-sm tw-text-blue-gray-600">
               {isActive ? t.active : t.inactive}
             </Typography>
-            <Switch checked={isActive} onChange={() => setIsActive(v => !v)} />
+            <Switch
+              checked={isActive}
+              onChange={() => setIsActive(v => !v)}
+              aria-label={t.preventiveMaintenance}
+            />
           </div>
         </div>
       </CardHeader>

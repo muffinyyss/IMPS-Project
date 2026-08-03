@@ -2,6 +2,7 @@
 
 import React from "react";
 import { Button } from "@material-tailwind/react";
+import useLanguage from "@/utils/useLanguage";
 
 interface ACFormActionsProps {
   onSave: () => void;
@@ -20,6 +21,7 @@ export default function ACFormActions({
   saving = false,
   isComplete = false, // ★ default เป็น false (ยังกรอกไม่ครบ)
 }: ACFormActionsProps) {
+  const { lang } = useLanguage();
   const isLoading = isSaving || saving;
   const isDisabled = isLoading || !isComplete;
 
@@ -36,7 +38,9 @@ export default function ACFormActions({
           onPointerEnterCapture={undefined}
           onPointerLeaveCapture={undefined}
         >
-          {isLoading ? "กำลังบันทึก..." : !isComplete ? "บันทึก" : "บันทึก"}
+          {isLoading
+            ? (lang === "th" ? "กำลังบันทึก..." : "Saving...")
+            : (lang === "th" ? "บันทึก" : "Save")}
         </Button>
       </div>
     </div>

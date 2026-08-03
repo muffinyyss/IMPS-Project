@@ -28,55 +28,78 @@ import { useStation } from "../hooks/useStation";
 import "../ai-theme.css";
 import M4AiDetectionTab from "./tabs/M4AiDetectionTab";
 import M5NetworkTreeTab from "./tabs/M5NetworkTreeTab";
+import useLanguage, { type Lang } from "@/utils/useLanguage";
+
+// ==================== TRANSLATIONS ====================
+const T = {
+  back: { th: "← กลับ", en: "← Back" },
+  selectStation: { th: "เลือกสถานี", en: "Select station" },
+  searchStation: { th: "🔍 ค้นหาสถานี...", en: "🔍 Search station..." },
+  noStationFound: { th: "ไม่พบสถานี", en: "No station found" },
+  updated: { th: "อัปเดต", en: "Updated" },
+  loading: { th: "กำลังโหลด...", en: "Loading..." },
+  weight: { th: "น้ำหนัก", en: "Weight" },
+  ruleBased: { th: "อิงกฎ (Rule-based)", en: "Rule-based" },
+  navDashboard: { th: "📊 แดชบอร์ด", en: "📊 Dashboard" },
+  navMonitor: { th: "📡 มอนิเตอร์สถานี", en: "📡 Station Monitor" },
+  navHistory: { th: "📈 ประวัติสุขภาพ", en: "📈 Health History" },
+  navHeatmap: { th: "🎯 ฮีตแมป", en: "🎯 Heatmap" },
+} as const;
+const tr = (k: keyof typeof T, lang: Lang) => T[k][lang];
+
+const noModuleData = (n: number, lang: Lang) =>
+  lang === "th" ? `ไม่มีข้อมูล Module ${n}` : `No data for Module ${n}`;
+const loadModuleError = (n: number, lang: Lang) =>
+  lang === "th" ? `ไม่สามารถโหลดข้อมูล Module ${n} ได้` : `Failed to load Module ${n} data`;
 
 // ── Tab config per module ─────────────────────────────────────────────────
-interface TabDef { key: string; label: string; }
+interface TabDef { key: string; label: { th: string; en: string }; }
 
 const MODULE_TABS: Record<number, TabDef[]> = {
   1: [
-    { key: "filter-health", label: "🌀 Filter Health" },
-    { key: "ai-prediction", label: "🧪 AI Prediction" },
-    { key: "history", label: "📈 Historical Graph" },
-    { key: "algorithms", label: "📖 Algorithms" },
+    { key: "filter-health", label: { th: "🌀 สุขภาพแผ่นกรอง", en: "🌀 Filter Health" } },
+    { key: "ai-prediction", label: { th: "🧪 การทำนายด้วย AI", en: "🧪 AI Prediction" } },
+    { key: "history", label: { th: "📈 กราฟย้อนหลัง", en: "📈 Historical Graph" } },
+    { key: "algorithms", label: { th: "📖 อัลกอริทึม", en: "📖 Algorithms" } },
   ],
   2: [
-    { key: "detection", label: "🔄 AI Detection & Health Tree" },
-    { key: "history", label: "📈 Historical Graph" },
-    { key: "algorithms", label: "📖 Algorithm Description" },
-    { key: "output", label: "📊 Detection Output" },
+    { key: "detection", label: { th: "🔄 การตรวจจับ AI และผังสุขภาพ", en: "🔄 AI Detection & Health Tree" } },
+    { key: "history", label: { th: "📈 กราฟย้อนหลัง", en: "📈 Historical Graph" } },
+    { key: "algorithms", label: { th: "📖 คำอธิบายอัลกอริทึม", en: "📖 Algorithm Description" } },
+    { key: "output", label: { th: "📊 ผลการตรวจจับ", en: "📊 Detection Output" } },
   ],
   3: [
-    { key: "detection", label: "📡 AI Detection & Health Tree" },
-    { key: "history", label: "📈 Historical Graph" },
-    { key: "algorithms", label: "📖 Algorithm Description" },
-    { key: "output", label: "📊 Detection Output" },
+    { key: "detection", label: { th: "📡 การตรวจจับ AI และผังสุขภาพ", en: "📡 AI Detection & Health Tree" } },
+    { key: "history", label: { th: "📈 กราฟย้อนหลัง", en: "📈 Historical Graph" } },
+    { key: "algorithms", label: { th: "📖 คำอธิบายอัลกอริทึม", en: "📖 Algorithm Description" } },
+    { key: "output", label: { th: "📊 ผลการตรวจจับ", en: "📊 Detection Output" } },
   ],
   4: [
-    { key: "live-monitor", label: "⚡ Live Monitor" },
-    { key: "ai-detection", label: "🤖 AI-Module Detection" },
-    { key: "rule-based", label: "🛰 Rule Based Algorithm" },
-    { key: "standards", label: "📚 Standards Reference" },
-    { key: "algorithms", label: "📜 Rule-Based Description" },
-    { key: "history", label: "📈 Historical Graph" },
-    { key: "output", label: "📊 Detection Output" },
+    { key: "live-monitor", label: { th: "⚡ มอนิเตอร์เรียลไทม์", en: "⚡ Live Monitor" } },
+    { key: "ai-detection", label: { th: "🤖 การตรวจจับด้วยโมดูล AI", en: "🤖 AI-Module Detection" } },
+    { key: "rule-based", label: { th: "🛰 อัลกอริทึมแบบอิงกฎ", en: "🛰 Rule Based Algorithm" } },
+    { key: "standards", label: { th: "📚 มาตรฐานอ้างอิง", en: "📚 Standards Reference" } },
+    { key: "algorithms", label: { th: "📜 คำอธิบายแบบอิงกฎ", en: "📜 Rule-Based Description" } },
+    { key: "history", label: { th: "📈 กราฟย้อนหลัง", en: "📈 Historical Graph" } },
+    { key: "output", label: { th: "📊 ผลการตรวจจับ", en: "📊 Detection Output" } },
   ],
   5: [
-    { key: "detection", label: "🌐 AI Detection & Network Tree" },
-    { key: "history", label: "📈 Historical Graph" },
-    { key: "algorithms", label: "📖 Algorithm Description" },
-    { key: "output", label: "📊 Detection Output" },
+    { key: "detection", label: { th: "🌐 การตรวจจับ AI และผังเครือข่าย", en: "🌐 AI Detection & Network Tree" } },
+    { key: "history", label: { th: "📈 กราฟย้อนหลัง", en: "📈 Historical Graph" } },
+    { key: "algorithms", label: { th: "📖 คำอธิบายอัลกอริทึม", en: "📖 Algorithm Description" } },
+    { key: "output", label: { th: "📊 ผลการตรวจจับ", en: "📊 Detection Output" } },
   ],
   6: [
-    { key: "rul-dashboard", label: "⏳ RUL Dashboard" },
-    { key: "component", label: "🔍 Component Detail" },
-    { key: "algorithms", label: "📖 Algorithm Description" },
-    { key: "output", label: "📊 Prediction Output" },
+    { key: "rul-dashboard", label: { th: "⏳ แดชบอร์ด RUL", en: "⏳ RUL Dashboard" } },
+    { key: "component", label: { th: "🔍 รายละเอียดชิ้นส่วน", en: "🔍 Component Detail" } },
+    { key: "algorithms", label: { th: "📖 คำอธิบายอัลกอริทึม", en: "📖 Algorithm Description" } },
+    { key: "output", label: { th: "📊 ผลการทำนาย", en: "📊 Prediction Output" } },
   ],
   7: [
-    { key: "state-monitor", label: "🔍 State Monitor" },
-    { key: "timeline", label: "📅 Timeline" },
-    { key: "failure", label: "⚠️ Failure Prediction" },
-    { key: "algorithms", label: "📖 Algorithm Description" },
+    { key: "state-monitor", label: { th: "🔍 มอนิเตอร์สถานะ", en: "🔍 State Monitor" } },
+    { key: "timeline", label: { th: "📅 ไทม์ไลน์", en: "📅 Timeline" } },
+    { key: "failure", label: { th: "⚠️ การทำนายความเสียหาย", en: "⚠️ Failure Prediction" } },
+    { key: "algorithms", label: { th: "📖 คำอธิบายอัลกอริทึม", en: "📖 Algorithm Description" } },
   ],
 };
 
@@ -136,9 +159,9 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 // ── Default detail views (filter-health / detection / ai-detection tabs) ──
-function DefaultDetailView({ data, modNum }: { data: ModuleResult; modNum: number }) {
+function DefaultDetailView({ data, modNum, lang }: { data: ModuleResult; modNum: number; lang: Lang }) {
   if (data.error) return (
-    <div className="tw-text-center tw-text-gray-400 tw-py-12 tw-text-sm">ไม่มีข้อมูล Module {modNum}</div>
+    <div className="tw-text-center tw-text-gray-400 tw-py-12 tw-text-sm">{noModuleData(modNum, lang)}</div>
   );
   const d = (data as any).data ?? {};
   const t = (data as any).telemetry ?? {};
@@ -214,7 +237,7 @@ function DefaultDetailView({ data, modNum }: { data: ModuleResult; modNum: numbe
 }
 
 // ── Tab content dispatcher ────────────────────────────────────────────────
-function TabContent({ tab, modNum, mod, data, countdown, isPaused, onTogglePause }: {
+function TabContent({ tab, modNum, mod, data, countdown, isPaused, onTogglePause, lang }: {
   tab: string;
   modNum: number;
   mod: ModuleConfig;
@@ -222,6 +245,7 @@ function TabContent({ tab, modNum, mod, data, countdown, isPaused, onTogglePause
   countdown: number;          // ← เพิ่ม
   isPaused: boolean;          // ← เพิ่ม
   onTogglePause: () => void;  // ← เพิ่ม
+  lang: Lang;
 }) {
   switch (tab) {
     case "history":
@@ -258,18 +282,18 @@ function TabContent({ tab, modNum, mod, data, countdown, isPaused, onTogglePause
     case "failure": return <M7FailurePredictionTab data={data} />;
 
     default:
-      return data ? <DefaultDetailView data={data} modNum={modNum} /> : null;
+      return data ? <DefaultDetailView data={data} modNum={modNum} lang={lang} /> : null;
   }
 }
 
 // ── Nav tabs (top navigation) ─────────────────────────────────────────────
-function NavTabs({ activeModNum }: { activeModNum: number }) {
+function NavTabs({ activeModNum, lang }: { activeModNum: number; lang: Lang }) {
   const router = useRouter();
   const mainTabs = [
-    { label: "📊 Dashboard", href: "/dashboard/ai" },
-    { label: "📡 Station Monitor", href: "/dashboard/ai/monitor" },
-    { label: "📈 Health History", href: "/dashboard/ai/history" },
-    { label: "🎯 Heatmap", href: "/dashboard/ai/heatmap" },
+    { label: tr("navDashboard", lang), href: "/dashboard/ai" },
+    { label: tr("navMonitor", lang), href: "/dashboard/ai/monitor" },
+    { label: tr("navHistory", lang), href: "/dashboard/ai/history" },
+    { label: tr("navHeatmap", lang), href: "/dashboard/ai/heatmap" },
   ];
   return (
     <div className="tw-bg-white tw-border-b tw-border-gray-100 tw-px-6">
@@ -297,8 +321,8 @@ function NavTabs({ activeModNum }: { activeModNum: number }) {
 }
 
 // ── Sub-tab bar ───────────────────────────────────────────────────────────
-function SubTabs({ tabs, activeTab, modNum, onTabChange }: {
-  tabs: TabDef[]; activeTab: string; modNum: number; onTabChange: (key: string) => void;
+function SubTabs({ tabs, activeTab, modNum, onTabChange, lang }: {
+  tabs: TabDef[]; activeTab: string; modNum: number; onTabChange: (key: string) => void; lang: Lang;
 }) {
   return (
     <div className="tw-bg-white tw-border-b tw-border-gray-100 tw-px-6 tw-flex tw-gap-1 tw-overflow-x-auto">
@@ -308,7 +332,7 @@ function SubTabs({ tabs, activeTab, modNum, onTabChange }: {
             ${t.key === activeTab
               ? "tw-border-purple-500 tw-text-purple-600"
               : "tw-border-transparent tw-text-gray-500 hover:tw-text-gray-700"}`}>
-          {t.label}
+          {t.label[lang]}
         </button>
       ))}
     </div>
@@ -341,6 +365,7 @@ export default function ModulePage() {
   const { activeSn, activeName, stations, switchStation } = useStation();
   const [stationOpen, setStationOpen] = useState(false);
   const [stationSearch, setStationSearch] = useState("");
+  const { lang } = useLanguage();
 
   const filteredStations = (Array.isArray(stations) ? stations : [])
     .filter((s) =>
@@ -367,7 +392,7 @@ export default function ModulePage() {
       setData(res);
       setLastUpdate(new Date().toLocaleTimeString("th-TH"));
     } catch {
-      setError(`ไม่สามารถโหลดข้อมูล Module ${mod.num} ได้`);
+      setError("loadError");
     } finally {
       setLoading(false);
     }
@@ -394,7 +419,7 @@ export default function ModulePage() {
           onClick={() => router.push("/dashboard/ai")}
           style={{ fontSize: ".8em", color: "var(--ai-dim)", background: "none", border: "none", cursor: "pointer", flexShrink: 0 }}
         >
-          ← กลับ
+          {tr("back", lang)}
         </button>
 
         <div style={{ width: 1, height: 20, background: "var(--ai-bdr)", flexShrink: 0 }} />
@@ -432,7 +457,7 @@ export default function ModulePage() {
           >
             <span>⚡</span>
             <div style={{ textAlign: "left" }}>
-              <div style={{ fontWeight: 700 }}>{activeSn || "เลือกสถานี"}</div>
+              <div style={{ fontWeight: 700 }}>{activeSn || tr("selectStation", lang)}</div>
               {activeName && (
                 <div style={{ fontSize: ".75em", color: "var(--ai-dim)" }}>{activeName}</div>
               )}
@@ -457,7 +482,7 @@ export default function ModulePage() {
                     fontSize: ".78em", outline: "none",
                     boxSizing: "border-box",
                   }}
-                  placeholder="🔍 ค้นหาสถานี..."
+                  placeholder={tr("searchStation", lang)}
                   value={stationSearch}
                   onChange={(e) => setStationSearch(e.target.value)}
                 />
@@ -465,7 +490,7 @@ export default function ModulePage() {
               <div style={{ maxHeight: 200, overflowY: "auto" }}>
                 {filteredStations.length === 0 ? (
                   <div style={{ padding: "16px", textAlign: "center", fontSize: ".72em", color: "var(--ai-dim)" }}>
-                    ไม่พบสถานี
+                    {tr("noStationFound", lang)}
                   </div>
                 ) : (
                   filteredStations.map((s) => (
@@ -511,7 +536,7 @@ export default function ModulePage() {
         {/* Right: refresh */}
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
           {lastUpdate && (
-            <span style={{ fontSize: ".65em", color: "var(--ai-dim)" }}>อัปเดต {lastUpdate}</span>
+            <span style={{ fontSize: ".65em", color: "var(--ai-dim)" }}>{tr("updated", lang)} {lastUpdate}</span>
           )}
           <button
             onClick={refresh}
@@ -527,7 +552,7 @@ export default function ModulePage() {
         </div>
       </div>
 
-      <NavTabs activeModNum={modNum} />
+      <NavTabs activeModNum={modNum} lang={lang} />
 
       {/* Module summary header */}
       <div className="tw-bg-white tw-border-b tw-border-gray-100 tw-px-6 tw-py-4">
@@ -549,7 +574,7 @@ export default function ModulePage() {
               )}
             </div>
             <div className="tw-flex tw-items-center tw-gap-2 tw-mb-2">
-              <div className="tw-text-xs tw-text-gray-400 tw-w-14">Weight</div>
+              <div className="tw-text-xs tw-text-gray-400 tw-w-14">{tr("weight", lang)}</div>
               <div className="tw-w-24 tw-h-1.5 tw-bg-gray-100 tw-rounded-full tw-overflow-hidden">
                 <div className="tw-h-full tw-rounded-full"
                   style={{ width: `${mod.weight * 100}%`, background: mod.color }} />
@@ -563,7 +588,7 @@ export default function ModulePage() {
                     {m}
                   </span>
                 ))
-                : <span className="tw-text-xs tw-text-gray-400">Rule-based</span>
+                : <span className="tw-text-xs tw-text-gray-400">{tr("ruleBased", lang)}</span>
               }
             </div>
           </div>
@@ -572,11 +597,11 @@ export default function ModulePage() {
 
       {error && (
         <div className="tw-mx-6 tw-mt-4 tw-p-4 tw-bg-red-50 tw-border tw-border-red-200
-                        tw-rounded-xl tw-text-red-700 tw-text-sm">⚠ {error}</div>
+                        tw-rounded-xl tw-text-red-700 tw-text-sm">⚠ {loadModuleError(mod.num, lang)}</div>
       )}
 
       {/* Sub-tab navigation */}
-      <SubTabs tabs={tabs} activeTab={activeTab} modNum={modNum} onTabChange={handleTabChange} />
+      <SubTabs tabs={tabs} activeTab={activeTab} modNum={modNum} onTabChange={handleTabChange} lang={lang} />
 
       {/* Tab content */}
       <div className="tw-p-6">
@@ -584,11 +609,12 @@ export default function ModulePage() {
           <div className="tw-flex tw-items-center tw-justify-center tw-h-40 tw-gap-3">
             <div className="tw-w-6 tw-h-6 tw-rounded-full tw-border-2 tw-border-gray-200
                             tw-border-t-blue-500 tw-animate-spin" />
-            <span className="tw-text-sm tw-text-gray-400">กำลังโหลด...</span>
+            <span className="tw-text-sm tw-text-gray-400">{tr("loading", lang)}</span>
           </div>
         ) : (
           <TabContent
             tab={activeTab} modNum={modNum} mod={mod} data={data}
+            lang={lang}
             countdown={countdown}
             isPaused={isPaused}
             onTogglePause={() => isPaused ? resume() : pause()}

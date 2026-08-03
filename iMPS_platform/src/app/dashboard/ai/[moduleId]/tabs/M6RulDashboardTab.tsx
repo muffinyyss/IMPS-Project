@@ -4,6 +4,7 @@ import { ModuleResult } from "../../lib/api";
 import { HealthGaugeSvg } from "../../components/ui";
 import { getHealthColor, getHealthLabel } from "../../lib/constants";
 import { AutoPredictPanel } from "./DetectionLayout";
+import useLanguage from "@/utils/useLanguage";
 
 interface Props {
   data: ModuleResult | null;
@@ -84,8 +85,9 @@ function CompCard({ name, pct, method, rated, isWeakest }: {
 }
 
 export default function M6RulDashboardTab({ data, countdown, isPaused, onTogglePause }: Props) {
+  const { lang } = useLanguage();
   if (!data || data.error) return (
-    <div style={{ padding: 40, textAlign: "center", color: "#718096", fontSize: ".8em" }}>ไม่มีข้อมูล RUL</div>
+    <div style={{ padding: 40, textAlign: "center", color: "#718096", fontSize: ".8em" }}>{lang === "th" ? "ไม่มีข้อมูล RUL" : "No RUL data"}</div>
   );
   const d = data as any;
   const comps = d.components ?? {};

@@ -3,6 +3,7 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { aiApi, ChartReadyResponse, RawDataResponse } from "../../lib/api";
 import { getHealthColor } from "../../lib/constants";
+import useLanguage, { type Lang } from "@/utils/useLanguage";
 import {
   AreaChart, Area, LineChart, Line,
   XAxis, YAxis, CartesianGrid, Tooltip,
@@ -10,6 +11,27 @@ import {
 } from "recharts";
 
 type Range = "daily" | "weekly" | "monthly";
+
+// ── Translations ──────────────────────────────────────────────────────────
+const T = {
+  historicalGraph:  { th: "กราฟย้อนหลัง",              en: "Historical Graph" },
+  inMemoryPolling:  { th: "ดึงข้อมูลเก็บในหน่วยความจำ", en: "In-memory polling" },
+  loadFailed:       { th: "ไม่สามารถโหลด Historical Data ได้", en: "Unable to load historical data" },
+  noData:           { th: "ไม่มีข้อมูล",                 en: "No data" },
+  refresh:          { th: "รีเฟรช",                     en: "Refresh" },
+  stateTimeline:    { th: "ไทม์ไลน์สถานะ (ในหน่วยความจำ สูงสุด 50 รายการ)", en: "State Timeline (in-memory, max 50 entries)" },
+  timelineNote:     { th: "Timeline จะหายเมื่อ refresh หน้า — ข้อมูลสะสมจาก polling ทุก 120 วินาที", en: "Timeline resets on page refresh — data accumulates from polling every 120 seconds" },
+  waitingPolling:   { th: "รอ polling data... (จะแสดงเมื่อมีข้อมูล)", en: "Waiting for polling data... (shown once data arrives)" },
+  activeConnected:  { th: "ทำงาน / เชื่อมต่อ",           en: "Active/Connected" },
+  inactiveOffline:  { th: "ไม่ทำงาน / ออฟไลน์",          en: "Inactive/Offline" },
+  dualAxisNote:     { th: "* กราฟนี้มี 2 Y-axis — ค่าซ้ายและขวาต่างหน่วยกัน", en: "* This chart has 2 Y-axes — left and right values use different units" },
+  statLast:         { th: "ล่าสุด",                     en: "Last" },
+  statMin:          { th: "ต่ำสุด",                     en: "Min" },
+  statMax:          { th: "สูงสุด",                     en: "Max" },
+  statAvg:          { th: "เฉลี่ย",                     en: "Avg" },
+} as const;
+
+const t = (k: keyof typeof T, lang: Lang) => T[k][lang];
 
 // ── Field group config ────────────────────────────────────────────────────
 interface FieldGroup {
@@ -102,8 +124,8 @@ function CustomTooltip({ active, payload, label }: any) {
 }
 
 // ── Stats card ────────────────────────────────────────────────────────────
-function FieldStats({ values, name, color, unit }: {
-  values: (number | null)[]; name: string; color: string; unit?: string;
+function FieldStats({ values, name, color, unit, lang }: {
+  values: (number | null)[]; name: string; color: string; unit?: string; lang: Lang;
 }) {
   const nums = values.filter((v): v is number => v != null);
   if (!nums.length) return null;
@@ -118,7 +140,7 @@ function FieldStats({ values, name, color, unit }: {
         <span className="tw-text-xs tw-font-medium tw-text-gray-600 tw-truncate">{name}</span>
       </div>
       <div className="tw-grid tw-grid-cols-4 tw-gap-1">
-        {[["Last", last], ["Min", min], ["Max", max], ["Avg", avg]].map(([l, v]) => (
+        {[[t("statLast", lang), last], [t("statMin", lang), min], [t("statMax", lang), max], [t("statAvg", lang), avg]].map(([l, v]) => (
           <div key={String(l)} className="tw-text-center">
             <div className="tw-text-xs tw-text-gray-400">{l}</div>
             <div className="tw-text-xs tw-font-semibold tw-text-gray-700">
@@ -227,12 +249,12 @@ const USL_STATE_COLORS: Record<number, string> = {
 
 interface M7Entry { ts: Date; val: number; name: string; }
 
-function M7GanttBar({ history, colorMap, title }: {
-  history: M7Entry[]; colorMap: Record<number, string>; title: string;
+function M7GanttBar({ history, colorMap, title, lang }: {
+  history: M7Entry[]; colorMap: Record<number, string>; title: string; lang: Lang;
 }) {
   if (!history.length) return (
     <div className="tw-text-center tw-text-gray-400 tw-text-xs tw-py-4">
-      รอ polling data... (จะแสดงเมื่อมีข้อมูล)
+      {t("waitingPolling", lang)}
     </div>
   );
   return (
@@ -272,6 +294,7 @@ const CBM_ZONES = [
 ];
 
 export default function HistoryTab({ modNum, modKey, modColor, modLabel }: Props) {
+  const { lang } = useLanguage();
   const groups = FIELD_GROUPS[modNum] ?? [];
   const [range, setRange]     = useState<Range>("daily");
   const [groupKey, setGroupKey] = useState(groups[0]?.key ?? "");
@@ -328,11 +351,11 @@ export default function HistoryTab({ modNum, modKey, modColor, modLabel }: Props
         });
       }
     } catch (e) {
-      setError("ไม่สามารถโหลด Historical Data ได้");
+      setError(t("loadFailed", lang));
     } finally {
       setLoading(false);
     }
-  }, [modNum, range, activeGroup?.key]);
+  }, [modNum, range, activeGroup?.key, lang]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -419,9 +442,9 @@ export default function HistoryTab({ modNum, modKey, modColor, modLabel }: Props
       {/* Controls */}
       <div className="tw-flex tw-items-start tw-justify-between tw-flex-wrap tw-gap-3">
         <div>
-          <div className="tw-text-sm tw-font-semibold tw-text-gray-700">📈 Historical Graph — {modLabel}</div>
+          <div className="tw-text-sm tw-font-semibold tw-text-gray-700">📈 {t("historicalGraph", lang)} — {modLabel}</div>
           <div className="tw-text-xs tw-text-gray-400 tw-mt-0.5">
-            {modNum <= 5 ? `API: /api/${modNum === 4 ? "" : `m${modNum}/`}historical` : modNum === 6 ? "API: /api/health/history" : "In-memory polling"}
+            {modNum <= 5 ? `API: /api/${modNum === 4 ? "" : `m${modNum}/`}historical` : modNum === 6 ? "API: /api/health/history" : t("inMemoryPolling", lang)}
           </div>
         </div>
         <div className="tw-flex tw-flex-wrap tw-gap-2 tw-items-center">
@@ -443,6 +466,8 @@ export default function HistoryTab({ modNum, modKey, modColor, modLabel }: Props
             </select>
           )}
           <button onClick={loadData}
+            title={t("refresh", lang)}
+            aria-label={t("refresh", lang)}
             className="tw-px-3 tw-py-1.5 tw-text-xs tw-border tw-border-gray-200 tw-rounded-lg hover:tw-bg-gray-50">
             ↻
           </button>
@@ -459,14 +484,14 @@ export default function HistoryTab({ modNum, modKey, modColor, modLabel }: Props
       {modNum === 7 && (
         <div className="tw-bg-white tw-rounded-2xl tw-border tw-border-gray-100 tw-shadow-sm tw-p-5">
           <div className="tw-text-xs tw-font-semibold tw-text-gray-400 tw-uppercase tw-tracking-wide tw-mb-4">
-            State Timeline (in-memory, max 50 entries)
+            {t("stateTimeline", lang)}
           </div>
           <div className="tw-flex tw-flex-col tw-gap-5">
-            <M7GanttBar history={m7IcpHistory} colorMap={ICP_STATE_COLORS} title="ICP State Timeline" />
-            <M7GanttBar history={m7UslHistory} colorMap={USL_STATE_COLORS} title="USLink State Timeline" />
+            <M7GanttBar history={m7IcpHistory} colorMap={ICP_STATE_COLORS} title="ICP State Timeline" lang={lang} />
+            <M7GanttBar history={m7UslHistory} colorMap={USL_STATE_COLORS} title="USLink State Timeline" lang={lang} />
           </div>
           <div className="tw-mt-3 tw-text-xs tw-text-amber-600 tw-bg-amber-50 tw-px-3 tw-py-2 tw-rounded-lg">
-            ⚠ Timeline จะหายเมื่อ refresh หน้า — ข้อมูลสะสมจาก polling ทุก 120 วินาที
+            ⚠ {t("timelineNote", lang)}
           </div>
         </div>
       )}
@@ -482,7 +507,7 @@ export default function HistoryTab({ modNum, modKey, modColor, modLabel }: Props
               <div className="tw-w-5 tw-h-5 tw-rounded-full tw-border-2 tw-border-gray-200 tw-border-t-blue-500 tw-animate-spin" />
             </div>
           ) : !rawData.length ? (
-            <div className="tw-text-center tw-text-gray-400 tw-py-8 tw-text-sm">ไม่มีข้อมูล</div>
+            <div className="tw-text-center tw-text-gray-400 tw-py-8 tw-text-sm">{t("noData", lang)}</div>
           ) : activeGroup?.key === "severity" ? (
             // Severity → Line chart
             <ResponsiveContainer width="100%" height={220}>
@@ -503,8 +528,8 @@ export default function HistoryTab({ modNum, modKey, modColor, modLabel }: Props
             // Device status → Gantt canvas
             <>
               <div className="tw-flex tw-items-center tw-gap-3 tw-mb-3 tw-text-xs">
-                <div className="tw-flex tw-items-center tw-gap-1"><div className="tw-w-3 tw-h-3 tw-rounded tw-bg-green-500" /><span className="tw-text-gray-600">Active/Connected</span></div>
-                <div className="tw-flex tw-items-center tw-gap-1"><div className="tw-w-3 tw-h-3 tw-rounded tw-bg-red-500" /><span className="tw-text-gray-600">Inactive/Offline</span></div>
+                <div className="tw-flex tw-items-center tw-gap-1"><div className="tw-w-3 tw-h-3 tw-rounded tw-bg-green-500" /><span className="tw-text-gray-600">{t("activeConnected", lang)}</span></div>
+                <div className="tw-flex tw-items-center tw-gap-1"><div className="tw-w-3 tw-h-3 tw-rounded tw-bg-red-500" /><span className="tw-text-gray-600">{t("inactiveOffline", lang)}</span></div>
               </div>
               <M5GanttChart data={rawData} fields={activeGroup?.fields ?? []} names={activeGroup?.names} />
             </>
@@ -523,7 +548,7 @@ export default function HistoryTab({ modNum, modKey, modColor, modLabel }: Props
               <div className="tw-w-5 tw-h-5 tw-rounded-full tw-border-2 tw-border-gray-200 tw-border-t-blue-500 tw-animate-spin" />
             </div>
           ) : !rechartsData.length ? (
-            <div className="tw-text-center tw-text-gray-400 tw-py-12 tw-text-sm">ไม่มีข้อมูล</div>
+            <div className="tw-text-center tw-text-gray-400 tw-py-12 tw-text-sm">{t("noData", lang)}</div>
           ) : (
             <>
               <ResponsiveContainer width="100%" height={260}>
@@ -563,7 +588,7 @@ export default function HistoryTab({ modNum, modKey, modColor, modLabel }: Props
               {/* dualAxis note */}
               {activeGroup?.dualAxis && (
                 <div className="tw-text-xs tw-text-gray-400 tw-mt-2">
-                  * กราฟนี้มี 2 Y-axis — ค่าซ้ายและขวาต่างหน่วยกัน
+                  {t("dualAxisNote", lang)}
                 </div>
               )}
             </>
@@ -578,7 +603,7 @@ export default function HistoryTab({ modNum, modKey, modColor, modLabel }: Props
             const vals = rechartsData.map((d) => d[ds.name] as number | null);
             return (
               <FieldStats key={ds.name} values={vals} name={ds.name}
-                color={ds.color} unit={activeGroup?.unit} />
+                color={ds.color} unit={activeGroup?.unit} lang={lang} />
             );
           })}
         </div>

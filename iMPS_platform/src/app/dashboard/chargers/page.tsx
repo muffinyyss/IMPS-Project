@@ -16,6 +16,7 @@ import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
 import StationDetailCard from "./components/stationDetailsCard";
 import { useSearchParams, useRouter } from "next/navigation";
 import { apiFetch } from "@/utils/api";
+import useLanguage from "@/utils/useLanguage";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
 
@@ -27,6 +28,7 @@ export default function ChargersPage() {
   const [stationId, setStationId] = useState<string | null>(null);
   const [sn, setSn] = useState<string | null>(null);
   const [pageLoading, setPageLoading] = useState(true);
+  const { lang } = useLanguage();
 
   const [stationDetail, setStationDetail] = useState<{
     station_id: string | null;
@@ -282,7 +284,7 @@ export default function ChargersPage() {
   return (
     // <div className="tw-mt-8 tw-mb-4 tw-mx-auto tw-px-4 sm:tw-px-6">
     <div className="tw-mt-4 tw-mb-4">
-      <LoadingOverlay show={pageLoading} text="กำลังโหลดข้อมูล..." />
+      <LoadingOverlay show={pageLoading} text={lang === "th" ? "กำลังโหลดข้อมูล..." : "Loading data..."} />
 
       <div className="tw-mt-4 tw-mb-4">
         <div className="tw-mt-6 tw-grid tw-grid-cols-1 lg:tw-grid-cols-3 lg:tw-gap-6 tw-gap-y-6">

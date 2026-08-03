@@ -3,6 +3,19 @@
 
 import React, { useEffect } from "react";
 import { Card, CardBody, Typography, Button } from "@/components/MaterialTailwind";
+import useLanguage, { type Lang } from "@/utils/useLanguage";
+
+const T = {
+  selectDateRange: { th: "เลือกช่วงวันที่", en: "Select Date Range" },
+  forAllCharts: { th: "สำหรับกราฟทั้งสามด้านล่าง", en: "For all three charts below" },
+  startDate: { th: "วันที่เริ่มต้น", en: "Start date" },
+  endDate: { th: "วันที่สิ้นสุด", en: "End date" },
+  apply: { th: "ตกลง", en: "Apply" },
+  invalidRange: { th: "Start date ต้องไม่มากกว่า End date", en: "Start date must not be after End date" },
+  applyRange: { th: "นำช่วงวันที่ไปใช้", en: "Apply the selected date range" },
+} as const;
+
+const t = (k: keyof typeof T, lang: Lang) => T[k][lang];
 
 type Props = {
   startDate: string;         // YYYY-MM-DD
@@ -20,11 +33,12 @@ export default function DateRangePicker({
   endDate,
   onStartChange,
   onEndChange,
-  title = "Select Date Range",
-  subtitle = "For all three charts below",
+  title,
+  subtitle,
   maxEndDate,
   onApply,
 }: Props) {
+  const { lang } = useLanguage();
   // คำนวณวันนี้และเมื่อวาน
   const today = new Date();
   const yesterday = new Date();
@@ -67,17 +81,17 @@ export default function DateRangePicker({
       <CardBody className="tw-flex tw-flex-col md:tw-flex-row md:tw-items-end md:tw-justify-between tw-gap-3">
         <div>
           <Typography variant="h6" color="blue-gray">
-            {title}
+            {title ?? t("selectDateRange", lang)}
           </Typography>
           <Typography variant="small" color="gray" className="tw-opacity-70">
-            {subtitle}
+            {subtitle ?? t("forAllCharts", lang)}
           </Typography>
         </div>
 
         {/* กล่องคอนโทรลด้านขวา */}
         <div className="tw-flex tw-flex-col sm:tw-flex-row tw-gap-3 sm:tw-items-end">
           <label className="tw-flex tw-flex-col tw-text-sm">
-            <span className="tw-mb-1 tw-text-blue-gray-700">Start date</span>
+            <span className="tw-mb-1 tw-text-blue-gray-700">{t("startDate", lang)}</span>
             <input
               type="date"
               className="tw-rounded-md tw-border tw-border-blue-gray-200 tw-px-3 tw-py-2 focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-blue-500"
@@ -89,7 +103,7 @@ export default function DateRangePicker({
           </label>
 
           <label className="tw-flex tw-flex-col tw-text-sm">
-            <span className="tw-mb-1 tw-text-blue-gray-700">End date</span>
+            <span className="tw-mb-1 tw-text-blue-gray-700">{t("endDate", lang)}</span>
             <input
               type="date"
               className="tw-rounded-md tw-border tw-border-blue-gray-200 tw-px-3 tw-py-2 focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-blue-500"
@@ -106,7 +120,7 @@ export default function DateRangePicker({
             type="button"
             onClick={onApply}
             disabled={invalid}
-            title={invalid ? "Start date ต้องไม่มากกว่า End date" : "นำช่วงวันที่ไปใช้"}
+            title={invalid ? t("invalidRange", lang) : t("applyRange", lang)}
             variant="filled"
             color="blue-gray"
             className="
@@ -120,7 +134,7 @@ export default function DateRangePicker({
               sm:tw-self-end
             "
           >
-            Apply
+            {t("apply", lang)}
           </Button>
         </div>
       </CardBody>

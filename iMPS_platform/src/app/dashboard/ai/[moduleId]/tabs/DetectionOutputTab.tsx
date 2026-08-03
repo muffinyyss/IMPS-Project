@@ -2,6 +2,26 @@
 import React, { useState } from "react";
 import { ModuleResult } from "../../lib/api";
 import { getHealthColor, getHealthLabel } from "../../lib/constants";
+import useLanguage, { type Lang } from "@/utils/useLanguage";
+
+// ── Translations (UI chrome only — never metric names or model output) ────
+const T = {
+  loading:       { th: "กำลังโหลด...",       en: "Loading..." },
+  noModuleData:  { th: "ไม่มีข้อมูล Module",  en: "No data for Module" },
+  healthScore:   { th: "คะแนนสุขภาพ",         en: "Health Score" },
+  grade:         { th: "เกรด",               en: "Grade" },
+  source:        { th: "แหล่งข้อมูล",         en: "Source" },
+  processing:    { th: "เวลาประมวลผล",        en: "Processing" },
+  zoneGood:      { th: "ดี",                 en: "Good" },
+  zoneMonitor:   { th: "เฝ้าระวัง",           en: "Monitor" },
+  zoneInspect:   { th: "ตรวจสอบ",            en: "Inspect" },
+  zoneRepair:    { th: "ซ่อมบำรุง",           en: "Repair" },
+  detectionOut:  { th: "ผลการตรวจจับ",        en: "Detection Output" },
+  breakdown:     { th: "สรุปผล",             en: "Breakdown" },
+  rawJson:       { th: "Raw JSON",           en: "Raw JSON" },
+} as const;
+
+const t = (k: keyof typeof T, lang: Lang) => T[k][lang];
 
 interface Props { data: ModuleResult | null; modNum: number; modColor: string; 
   countdown?: number;
@@ -245,13 +265,14 @@ function M7Output({ d }: { d: any }) {
 
 // ── Main ──────────────────────────────────────────────────────────────────
 export default function DetectionOutputTab({ data, modNum, modColor }: Props) {
+  const { lang } = useLanguage();
   const [showRaw, setShowRaw] = useState(false);
 
   if (!data) return (
-    <div style={{ padding:40, textAlign:"center", color:"#94a3b8", fontSize:".8em" }}>กำลังโหลด...</div>
+    <div style={{ padding:40, textAlign:"center", color:"#94a3b8", fontSize:".8em" }}>{t("loading", lang)}</div>
   );
   if (data.error) return (
-    <div style={{ padding:40, textAlign:"center", color:"#94a3b8", fontSize:".8em" }}>ไม่มีข้อมูล Module {modNum}</div>
+    <div style={{ padding:40, textAlign:"center", color:"#94a3b8", fontSize:".8em" }}>{t("noModuleData", lang)} {modNum}</div>
   );
 
   const health = data.health ?? null;
@@ -263,10 +284,10 @@ export default function DetectionOutputTab({ data, modNum, modColor }: Props) {
       {/* KPI row */}
       <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:10 }}>
         {[
-          { l:"Health Score", v: health!=null?`${health}%`:"—",  c:getHealthColor(health) },
-          { l:"Grade",        v: grade,                           c:getHealthColor(health) },
-          { l:"Source",       v: (data as any).source??"mongodb", c:"#0284c7" },
-          { l:"Processing",   v: (data as any)._processing_ms!=null?`${(data as any)._processing_ms}ms`:"—", c:"#718096" },
+          { l:t("healthScore", lang), v: health!=null?`${health}%`:"—",  c:getHealthColor(health) },
+          { l:t("grade", lang),       v: grade,                           c:getHealthColor(health) },
+          { l:t("source", lang),      v: (data as any).source??"mongodb", c:"#0284c7" },
+          { l:t("processing", lang),  v: (data as any)._processing_ms!=null?`${(data as any)._processing_ms}ms`:"—", c:"#718096" },
         ].map((item) => (
           <div key={item.l} style={{ background:"#fff", borderRadius:10, border:"1px solid #e2e8f0", padding:"12px 14px", textAlign:"center" }}>
             <div style={{ fontSize:".55em", color:"#94a3b8", fontWeight:600, textTransform:"uppercase", letterSpacing:"1px", marginBottom:4 }}>{item.l}</div>
@@ -279,14 +300,14 @@ export default function DetectionOutputTab({ data, modNum, modColor }: Props) {
       {health != null && (
         <div style={{ background:"#fff", borderRadius:10, border:"1px solid #e2e8f0", padding:"12px 16px" }}>
           <div style={{ display:"flex", justifyContent:"space-between", fontSize:".62em", marginBottom:6 }}>
-            <span style={{ color:"#718096", fontWeight:600 }}>Health Score</span>
+            <span style={{ color:"#718096", fontWeight:600 }}>{t("healthScore", lang)}</span>
             <span style={{ color:getHealthColor(health), fontWeight:700 }}>{getHealthLabel(health)}</span>
           </div>
           <div style={{ height:8, background:"#f1f5f9", borderRadius:4, overflow:"hidden" }}>
             <div style={{ width:`${health}%`, height:"100%", background:getHealthColor(health), borderRadius:4, transition:"width .8s" }} />
           </div>
           <div style={{ display:"flex", gap:12, marginTop:6, fontSize:".55em", flexWrap:"wrap" }}>
-            {[{v:80,c:"#22c55e",l:"Good"},{v:60,c:"#eab308",l:"Monitor"},{v:40,c:"#f97316",l:"Inspect"},{v:0,c:"#ef4444",l:"Repair"}].map((z) => (
+            {[{v:80,c:"#22c55e",l:t("zoneGood", lang)},{v:60,c:"#eab308",l:t("zoneMonitor", lang)},{v:40,c:"#f97316",l:t("zoneInspect", lang)},{v:0,c:"#ef4444",l:t("zoneRepair", lang)}].map((z) => (
               <span key={z.v} style={{ display:"flex", alignItems:"center", gap:3 }}>
                 <span style={{ width:6,height:6,borderRadius:"50%",background:z.c,display:"inline-block" }} />
                 <span style={{ color:"#94a3b8" }}>≥{z.v}% {z.l}</span>
@@ -300,7 +321,7 @@ export default function DetectionOutputTab({ data, modNum, modColor }: Props) {
       <div style={{ background:"#fff", borderRadius:12, border:"1px solid #e2e8f0", padding:"16px 20px" }}>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
           <div style={{ fontSize:".62em", fontWeight:700, color:"#718096", textTransform:"uppercase", letterSpacing:"2px" }}>
-            M{modNum} — Detection Output
+            M{modNum} — {t("detectionOut", lang)}
           </div>
           <div style={{ display:"flex", alignItems:"center", gap:8 }}>
             {data._result_ts && (
@@ -312,7 +333,7 @@ export default function DetectionOutputTab({ data, modNum, modColor }: Props) {
               onClick={() => setShowRaw(v => !v)}
               style={{ fontSize:".58em", padding:"3px 10px", borderRadius:6, border:"1px solid #e2e8f0", background:showRaw?"#f1f5f9":"#fff", cursor:"pointer", color:"#64748b" }}
             >
-              {showRaw ? "📊 Breakdown" : "{ } Raw JSON"}
+              {showRaw ? `📊 ${t("breakdown", lang)}` : `{ } ${t("rawJson", lang)}`}
             </button>
           </div>
         </div>

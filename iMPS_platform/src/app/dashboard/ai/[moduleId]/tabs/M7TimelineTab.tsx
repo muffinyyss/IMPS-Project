@@ -1,6 +1,7 @@
 "use client";
 import React, { useRef, useEffect, useState } from "react";
 import { ModuleResult } from "../../lib/api";
+import useLanguage from "@/utils/useLanguage";
 
 interface Props { 
   data: ModuleResult | null;
@@ -176,6 +177,7 @@ function SeqDiagram({ current }: { current:number|null }) {
 
 // ═══════════════════════════════════════════════════════════════════════════
 export default function M7TimelineTab({ data }: Props) {
+  const { lang } = useLanguage();
   const [icpHist, setIcpHist] = useState<TLEntry[]>([]);
   const [uslHist, setUslHist] = useState<TLEntry[]>([]);
 
@@ -209,7 +211,9 @@ export default function M7TimelineTab({ data }: Props) {
 
       {/* Warning */}
       <div style={{ padding:"10px 14px", borderRadius:10, marginBottom:14, background:"rgba(245,158,11,.06)", border:"1px solid rgba(245,158,11,.2)", fontSize:".72em", color:"#92400e" }}>
-        ⚠ Timeline เป็น in-memory buffer (max {M7_TL_MAX} entries) — ข้อมูลหายเมื่อ refresh หน้า · สะสมจาก polling ทุก 120 วินาที
+        {lang === "th"
+          ? `⚠ Timeline เป็น in-memory buffer (max ${M7_TL_MAX} entries) — ข้อมูลหายเมื่อ refresh หน้า · สะสมจาก polling ทุก 120 วินาที`
+          : `⚠ Timeline is an in-memory buffer (max ${M7_TL_MAX} entries) — data is lost on page refresh · accumulated from polling every 120 seconds`}
       </div>
 
       {/* Sequence flow */}

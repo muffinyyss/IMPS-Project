@@ -4,8 +4,22 @@ import React, { useState } from "react";
 import { Typography, Tooltip } from "@/components/MaterialTailwind";
 import { PowerIcon, PlusIcon, PencilSquareIcon } from "@heroicons/react/24/solid";
 import RelayTopicDialog from "./relay-topic-dialog";
+import { type Lang } from "@/utils/useLanguage";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
+
+// ==================== TRANSLATIONS ====================
+const T = {
+    editRelayTopic: { th: "แก้ไข Topic Relay", en: "Edit Relay Topic" },
+    addRelayTopic: { th: "เพิ่ม Topic Relay", en: "Add Relay Topic" },
+    confirmTitle: { th: "ยืนยันการสั่งงาน", en: "Confirm command" },
+    confirmPrefix: { th: "สั่ง", en: "Set" },
+    confirmMiddle: { th: "เป็น", en: "to" },
+    confirmSuffix: { th: "ใช่หรือไม่?", en: "?" },
+    cancel: { th: "ยกเลิก", en: "Cancel" },
+    confirm: { th: "ยืนยัน", en: "Confirm" },
+} as const;
+const t = (k: keyof typeof T, lang: Lang) => T[k][lang];
 
 export type MDBType = {
     tempc: number;
@@ -55,6 +69,7 @@ export type MDBType = {
     PL123N_peak?: number | string;
     stationId?: string | null;
     canManage?: boolean;
+    lang?: Lang;
 };
 
 const formatComma = (val: number | string | undefined) => {
@@ -99,7 +114,7 @@ export default function MDBInfo(props: MDBType) {
         main_breaker, breaker_charger,
         VL1N_loss, VL2N_loss, VL3N_loss, VL123_loss,
         PL1N_peak, PL2N_peak, PL3N_peak, PL123N_peak,
-        stationId, canManage = false,
+        stationId, canManage = false, lang = "th",
     } = props;
 
     const [openRelay, setOpenRelay] = useState(false);
@@ -208,8 +223,8 @@ export default function MDBInfo(props: MDBType) {
                 <div className="tw-relative tw-overflow-hidden tw-rounded-xl tw-px-4 tw-py-4 tw-border tw-border-gray-200 tw-bg-white tw-shadow-md hover:tw-shadow-lg tw-transition-all tw-duration-200">
                     {canManage && stationId && (
                         <button type="button" onClick={() => setOpenRelay(true)}
-                            title={hasAnyRelay ? "แก้ไข Topic Relay" : "เพิ่ม Topic Relay"}
-                            aria-label={hasAnyRelay ? "แก้ไข Topic Relay" : "เพิ่ม Topic Relay"}
+                            title={hasAnyRelay ? t("editRelayTopic", lang) : t("addRelayTopic", lang)}
+                            aria-label={hasAnyRelay ? t("editRelayTopic", lang) : t("addRelayTopic", lang)}
                             className="tw-absolute tw-top-1.5 tw-right-1.5 tw-z-10 tw-flex tw-items-center tw-justify-center tw-h-5 tw-w-5 tw-rounded-md tw-bg-gray-100 hover:tw-bg-gray-200 tw-text-gray-400 hover:tw-text-gray-600 tw-transition-all">
                             {hasAnyRelay
                                 ? <PencilSquareIcon className="tw-h-3 tw-w-3" />
@@ -365,6 +380,7 @@ export default function MDBInfo(props: MDBType) {
                 onClose={() => setOpenRelay(false)}
                 stationId={stationId ?? null}
                 initialTopic={relayCfg.topic}
+                lang={lang}
                 onSuccess={loadRelayCfg}
             />
 
@@ -383,28 +399,28 @@ export default function MDBInfo(props: MDBType) {
                                     <PowerIcon className="tw-h-4 tw-w-4 tw-text-blue-400" />
                                 </div>
                                 <Typography variant="h6" className="!tw-text-white !tw-font-bold !tw-text-sm">
-                                    ยืนยันการสั่งงาน
+                                    {t("confirmTitle", lang)}
                                 </Typography>
                             </div>
 
                             <div className="tw-px-4 tw-py-4 tw-text-center">
                                 <p className="tw-text-sm tw-text-gray-600">
-                                    สั่ง <span className="tw-font-semibold tw-text-gray-800">Main Breaker</span> เป็น{" "}
+                                    {t("confirmPrefix", lang)} <span className="tw-font-semibold tw-text-gray-800">Main Breaker</span> {t("confirmMiddle", lang)}{" "}
                                     <span className={`tw-font-black ${isOnAct ? "tw-text-green-600" : "tw-text-red-500"}`}>
                                         {isOnAct ? "ON" : "OFF"}
-                                    </span> ใช่หรือไม่?
+                                    </span> {t("confirmSuffix", lang)}
                                 </p>
                             </div>
 
                             <div className="tw-px-4 tw-py-3 tw-flex tw-gap-2 tw-justify-end tw-border-t tw-border-gray-200/80">
                                 <button type="button" onClick={() => setConfirmAction(null)}
                                     className="tw-rounded-lg tw-border tw-border-gray-300 tw-text-gray-600 hover:tw-bg-gray-50 tw-font-semibold tw-text-xs tw-px-4 tw-py-2 tw-transition-all">
-                                    ยกเลิก
+                                    {t("cancel", lang)}
                                 </button>
                                 <button type="button" onClick={handleConfirmBreaker}
                                     className="tw-rounded-lg tw-text-white tw-font-semibold tw-text-xs tw-px-5 tw-py-2 tw-shadow-lg hover:tw-shadow-xl tw-transition-all"
                                     style={{ background: 'linear-gradient(135deg, #1a1a1a, #2d2d2d)' }}>
-                                    ยืนยัน
+                                    {t("confirm", lang)}
                                 </button>
                             </div>
                         </div>

@@ -3,8 +3,30 @@
 import React from "react";
 import { PhoneIcon, EnvelopeIcon } from "@heroicons/react/24/outline";
 import { apiFetch } from "@/utils/api";
+import useLanguage, { type Lang } from "@/utils/useLanguage";
+
+const T = {
+    title: { th: "ติดต่อเรา", en: "Contact US" },
+    intro: {
+        th: "Lorem Ipsum เป็นข้อความจำลองของอุตสาหกรรมการพิมพ์และการเรียงพิมพ์ ซึ่งถูกใช้เป็นข้อความจำลองมาตรฐานของอุตสาหกรรมมาตั้งแต่ปี ค.ศ. 1500",
+        en: "Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry's standard dummy text ever since the 1500s",
+    },
+    sendUsAMessage: { th: "ส่งข้อความถึงเรา", en: "Send us a message" },
+    successMsg: { th: "ขอบคุณที่ติดต่อเรา! เราจะติดต่อกลับโดยเร็วที่สุด", en: "Thank you for contacting us! We will get back to you as soon as possible." },
+    errorMsg: { th: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง", en: "Something went wrong. Please try again." },
+    firstName: { th: "ชื่อ", en: "First name" },
+    lastName: { th: "นามสกุล", en: "Last name" },
+    email: { th: "อีเมล", en: "Email" },
+    phone: { th: "เบอร์โทรศัพท์", en: "Phone number" },
+    message: { th: "ข้อความ", en: "Message" },
+    sending: { th: "กำลังส่ง...", en: "Sending..." },
+    send: { th: "ส่ง", en: "Send" },
+} as const;
+
+const t = (k: keyof typeof T, lang: Lang) => T[k][lang];
 
 export default function ContactPage() {
+    const { lang } = useLanguage();
     const [form, setForm] = React.useState({
         firstName: "",
         lastName: "",
@@ -62,10 +84,9 @@ export default function ContactPage() {
                     {/* LEFT: Info */}
                     <aside className="tw-bg-yellow-500 tw-text-black">
                         <div className="tw-max-w-xl tw-px-6 md:tw-px-10 tw-py-14 md:tw-py-20">
-                            <h1 className="tw-text-3xl tw-font-extrabold">Contact US</h1>
+                            <h1 className="tw-text-3xl tw-font-extrabold">{t("title", lang)}</h1>
                             <p className="tw-mt-6 tw-leading-7 tw-text-black/80">
-                                Lorem Ipsum is simply dummy text of the printing and typesetting industry.
-                                Lorem Ipsum has been the industry&apos;s standard dummy text ever since the 1500s
+                                {t("intro", lang)}
                             </p>
 
                             <div className="tw-mt-10 tw-space-y-5">
@@ -84,17 +105,17 @@ export default function ContactPage() {
                     {/* RIGHT: Form */}
                     <section className="tw-bg-white">
                         <div className="tw-px-6 md:tw-px-10 tw-py-14 md:tw-py-20">
-                            <h2 className="tw-text-2xl tw-font-semibold">Send us a message</h2>
+                            <h2 className="tw-text-2xl tw-font-semibold">{t("sendUsAMessage", lang)}</h2>
 
                             {/* Status messages */}
                             {submitStatus === "success" && (
                                 <div className="tw-mt-4 tw-rounded-md tw-bg-green-50 tw-border tw-border-green-200 tw-px-4 tw-py-3 tw-text-green-800 tw-text-sm">
-                                    ขอบคุณที่ติดต่อเรา! เราจะติดต่อกลับโดยเร็วที่สุด
+                                    {t("successMsg", lang)}
                                 </div>
                             )}
                             {submitStatus === "error" && (
                                 <div className="tw-mt-4 tw-rounded-md tw-bg-red-50 tw-border tw-border-red-200 tw-px-4 tw-py-3 tw-text-red-800 tw-text-sm">
-                                    เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง
+                                    {t("errorMsg", lang)}
                                 </div>
                             )}
 
@@ -102,7 +123,7 @@ export default function ContactPage() {
                                 {/* First & Last name */}
                                 <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 tw-gap-6">
                                     <div>
-                                        <label className="tw-block tw-text-sm tw-font-medium tw-mb-2">First name</label>
+                                        <label className="tw-block tw-text-sm tw-font-medium tw-mb-2">{t("firstName", lang)}</label>
                                         <input
                                             name="firstName"
                                             value={form.firstName}
@@ -113,7 +134,7 @@ export default function ContactPage() {
                                         />
                                     </div>
                                     <div>
-                                        <label className="tw-block tw-text-sm tw-font-medium tw-mb-2">Last name</label>
+                                        <label className="tw-block tw-text-sm tw-font-medium tw-mb-2">{t("lastName", lang)}</label>
                                         <input
                                             name="lastName"
                                             value={form.lastName}
@@ -127,7 +148,7 @@ export default function ContactPage() {
 
                                 {/* Email */}
                                 <div>
-                                    <label className="tw-block tw-text-sm tw-font-medium tw-mb-2">Email</label>
+                                    <label className="tw-block tw-text-sm tw-font-medium tw-mb-2">{t("email", lang)}</label>
                                     <input
                                         type="email"
                                         name="email"
@@ -141,7 +162,7 @@ export default function ContactPage() {
 
                                 {/* Phone */}
                                 <div>
-                                    <label className="tw-block tw-text-sm tw-font-medium tw-mb-2">Phone number</label>
+                                    <label className="tw-block tw-text-sm tw-font-medium tw-mb-2">{t("phone", lang)}</label>
                                     <input
                                         type="tel"
                                         name="phone"
@@ -154,7 +175,7 @@ export default function ContactPage() {
 
                                 {/* Message */}
                                 <div>
-                                    <label className="tw-block tw-text-sm tw-font-medium tw-mb-2">Message</label>
+                                    <label className="tw-block tw-text-sm tw-font-medium tw-mb-2">{t("message", lang)}</label>
                                     <textarea
                                         name="message"
                                         value={form.message}
@@ -169,7 +190,7 @@ export default function ContactPage() {
                                         disabled={isSubmitting}
                                         className="tw-inline-flex tw-items-center tw-justify-center tw-rounded-md tw-bg-black tw-text-white tw-px-6 tw-py-3 tw-font-medium hover:tw-opacity-90 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed"
                                     >
-                                        {isSubmitting ? "Sending..." : "Send"}
+                                        {isSubmitting ? t("sending", lang) : t("send", lang)}
                                     </button>
                                 </div>
                             </form>

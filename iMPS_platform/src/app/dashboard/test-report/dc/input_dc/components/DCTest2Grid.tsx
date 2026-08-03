@@ -84,6 +84,8 @@ const translations = {
     deleteFile: "ลบไฟล์",
     fileTooltip: "แนบไฟล์เอกสารประกอบการทดสอบ",
     viewFile: "ดูไฟล์",
+    uploadFailed: "อัปโหลดไฟล์ไม่สำเร็จ",
+    deleteFailed: "ลบไฟล์ไม่สำเร็จ",
   },
   en: {
     testingChecklist: "Testing Checklist",
@@ -117,6 +119,8 @@ const translations = {
     deleteFile: "Delete",
     fileTooltip: "Attach document for this test",
     viewFile: "View",
+    uploadFailed: "File upload failed",
+    deleteFailed: "File delete failed",
   },
 };
 
@@ -1396,7 +1400,7 @@ const DCTest2Grid: React.FC<DCTestGridProps> = ({
 
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
-          throw new Error(err.detail || "Upload failed");
+          throw new Error(err.detail || t.uploadFailed);
         }
 
         const data = await res.json();
@@ -1421,7 +1425,7 @@ const DCTest2Grid: React.FC<DCTestGridProps> = ({
         onResultsChange?.(newResults);
       } catch (error) {
         console.error("File upload error:", error);
-        alert(error instanceof Error ? error.message : "อัปโหลดไฟล์ไม่สำเร็จ");
+        alert(error instanceof Error ? error.message : t.uploadFailed);
       }
     } else {
       // Local only (no API)
@@ -1476,11 +1480,11 @@ const DCTest2Grid: React.FC<DCTestGridProps> = ({
 
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
-          throw new Error(err.detail || "Delete failed");
+          throw new Error(err.detail || t.deleteFailed);
         }
       } catch (error) {
         console.error("File delete error:", error);
-        alert(error instanceof Error ? error.message : "ลบไฟล์ไม่สำเร็จ");
+        alert(error instanceof Error ? error.message : t.deleteFailed);
         return;
       }
     }

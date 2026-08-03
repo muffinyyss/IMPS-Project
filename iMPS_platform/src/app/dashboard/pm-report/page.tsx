@@ -11,6 +11,7 @@ import CCBTables from "@/app/dashboard/pm-report/ccb/list/components/ccb-table";
 import StationTables from "@/app/dashboard/pm-report/station/list/components/station-table";
 import CBBoxTables from "@/app/dashboard/pm-report/cb-box/list/components/cb-box-table";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import useLanguage from "@/utils/useLanguage";
 
 
 import { Tabs, TabsHeader, TabsBody, Tab, TabPanel } from "@material-tailwind/react";
@@ -46,6 +47,7 @@ export default function DataTablesPage() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const { lang } = useLanguage();
 
   // 🔒 อยู่โหมดฟอร์มเมื่อ ?view=form
   const isFormView = useMemo(() => searchParams.get("view") === "form", [searchParams]);
@@ -257,8 +259,8 @@ export default function DataTablesPage() {
         <button
           type="button"
           onClick={scrollToTop}
-          title="เลื่อนขึ้นสุด"
-          aria-label="Scroll to top"
+          title={lang === "th" ? "เลื่อนขึ้นสุด" : "Scroll to top"}
+          aria-label={lang === "th" ? "เลื่อนขึ้นสุด" : "Scroll to top"}
           className="tw-flex tw-items-center tw-justify-center tw-w-11 tw-h-11
                      tw-rounded-full tw-bg-gray-900 tw-text-white
                      tw-shadow-lg tw-shadow-gray-900/30
@@ -270,8 +272,8 @@ export default function DataTablesPage() {
         <button
           type="button"
           onClick={scrollToBottom}
-          title="เลื่อนลงสุด"
-          aria-label="Scroll to bottom"
+          title={lang === "th" ? "เลื่อนลงสุด" : "Scroll to bottom"}
+          aria-label={lang === "th" ? "เลื่อนลงสุด" : "Scroll to bottom"}
           className="tw-flex tw-items-center tw-justify-center tw-w-11 tw-h-11
                      tw-rounded-full tw-bg-gray-900 tw-text-white
                      tw-shadow-lg tw-shadow-gray-900/30

@@ -6,6 +6,31 @@ import {
   AutoPredictPanel, HealthSummaryBar, ModelNode,
   ConditionItem, DeviceLedNode, DetCard, DetTitle, ScoreBar,
 } from "./DetectionLayout";
+import useLanguage, { type Lang } from "@/utils/useLanguage";
+
+const T = {
+  loading: { th: "กำลังโหลด...", en: "Loading..." },
+  noDetectionView: { th: "ไม่มีมุมมองการตรวจจับสำหรับโมดูล", en: "No detection view for module" },
+  aiModelTree: { th: "🤖 ผังสถานะโมเดล AI", en: "🤖 AI Model Status Tree" },
+  conditionHealthTree: { th: "🏥 ผังสุขภาพ Condition (C01–C15)", en: "🏥 Condition Health Tree (C01–C15)" },
+  liveTelemetry: { th: "📡 ข้อมูลเรียลไทม์", en: "📡 Live Telemetry" },
+  earlyWarningTitle: { th: "ตรวจพบสัญญาณเตือนล่วงหน้า", en: "Early Warning Detected" },
+  earlyWarningDesc: {
+    th: "คาดการณ์ว่าอาจเกิดเหตุการณ์ออฟไลน์ล่วงหน้าประมาณ 2 นาที",
+    en: "Potential offline event predicted ~2 minutes ahead",
+  },
+  rootCauseAnalysis: { th: "🔍 วิเคราะห์สาเหตุหลัก", en: "🔍 Root Cause Analysis" },
+  online: { th: "ออนไลน์", en: "Online" },
+  deviceStatusGrid: { th: "📡 สถานะอุปกรณ์", en: "📡 Device Status Grid" },
+  conditionReference: { th: "📋 อ้างอิง Condition (C01–C15)", en: "📋 Condition Reference (C01–C15)" },
+  rootCause: { th: "🔍 สาเหตุหลัก", en: "🔍 Root Cause" },
+  severityScore: { th: "📊 คะแนนความรุนแรง", en: "📊 Severity Score" },
+  networkTopology: { th: "🌐 โครงสร้างเครือข่าย", en: "🌐 Network Topology" },
+  monitoringConditions: { th: "📋 Condition ที่เฝ้าระวัง", en: "📋 Monitoring Conditions" },
+  offline: { th: "ออฟไลน์", en: "Offline" },
+} as const;
+
+const t = (k: keyof typeof T, lang: Lang) => T[k][lang];
 
 interface Props {
   data: ModuleResult | null; modNum: number; modColor: string;
@@ -15,11 +40,12 @@ interface Props {
 }
 
 // ── M2 — Charger Filter Detection ────────────────────────────────────────
-function M2Content({ data, countdown, isPaused, onTogglePause }: {
+function M2Content({ data, countdown, isPaused, onTogglePause, lang }: {
   data: ModuleResult;
   countdown?: number;
   isPaused?: boolean;
   onTogglePause?: () => void;
+  lang: Lang;
 }) {
   const d = (data as any).data ?? {};
 
@@ -73,7 +99,7 @@ function M2Content({ data, countdown, isPaused, onTogglePause }: {
 
       {/* AI Models */}
       <DetCard accent="#0891b2">
-        <DetTitle>🤖 AI Model Status Tree</DetTitle>
+        <DetTitle>{t("aiModelTree", lang)}</DetTitle>
         {models.map((m) => (
           <ModelNode key={m.id} id={m.id} type={m.type} name={m.name} sub={m.sub}
             value={m.val != null ? m.val.toFixed(3) : "—"}
@@ -84,7 +110,7 @@ function M2Content({ data, countdown, isPaused, onTogglePause }: {
 
       {/* Conditions */}
       <DetCard accent="#0891b2">
-        <DetTitle>🏥 Condition Health Tree (C01–C15)</DetTitle>
+        <DetTitle>{t("conditionHealthTree", lang)}</DetTitle>
         {conditions.map((c) => {
           const st =
             c.threshold != null && c.val != null && Number(c.val) >= c.threshold
@@ -97,7 +123,7 @@ function M2Content({ data, countdown, isPaused, onTogglePause }: {
 
       {/* Telemetry */}
       <DetCard accent="#0891b2">
-        <DetTitle>📡 Live Telemetry</DetTitle>
+        <DetTitle>{t("liveTelemetry", lang)}</DetTitle>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(130px,1fr))", gap: 8 }}>
           {[1, 2, 3, 4, 5].map((i) => {
             const v = d[`power_module_temp${i}`];
@@ -134,11 +160,12 @@ function M2Content({ data, countdown, isPaused, onTogglePause }: {
 }
 
 // ── M3 — Charger Offline Detection ───────────────────────────────────────
-function M3Content({ data, countdown, isPaused, onTogglePause }: {
+function M3Content({ data, countdown, isPaused, onTogglePause, lang }: {
   data: ModuleResult;
   countdown?: number;
   isPaused?: boolean;
   onTogglePause?: () => void;
+  lang: Lang;
 }) {
   const d = (data as any).data ?? {};
   const rootCause = (data as any).root_cause ?? d.root_cause ?? "NORMAL";
@@ -199,9 +226,9 @@ function M3Content({ data, countdown, isPaused, onTogglePause }: {
         }}>
           <span style={{ fontSize: "1.3em" }}>⚠️</span>
           <div>
-            <div style={{ fontWeight: 700, color: "#dc2626" }}>Early Warning Detected</div>
+            <div style={{ fontWeight: 700, color: "#dc2626" }}>{t("earlyWarningTitle", lang)}</div>
             <div style={{ color: "var(--color-text-secondary,#718096)", fontSize: ".9em" }}>
-              Potential offline event predicted ~2 minutes ahead
+              {t("earlyWarningDesc", lang)}
             </div>
           </div>
         </div>
@@ -211,7 +238,7 @@ function M3Content({ data, countdown, isPaused, onTogglePause }: {
       <DetCard accent="#7c3aed">
         <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
           <div style={{ flex: 1 }}>
-            <DetTitle>🔍 Root Cause Analysis</DetTitle>
+            <DetTitle>{t("rootCauseAnalysis", lang)}</DetTitle>
             <div style={{
               fontFamily: "'JetBrains Mono', monospace",
               fontSize: "1.3em", fontWeight: 800,
@@ -220,7 +247,7 @@ function M3Content({ data, countdown, isPaused, onTogglePause }: {
           </div>
           <div style={{ textAlign: "center" }}>
             <div style={{ fontSize: ".58em", color: "var(--color-text-secondary,#718096)", marginBottom: 4 }}>
-              Online
+              {t("online", lang)}
             </div>
             <div style={{
               fontFamily: "'JetBrains Mono', monospace",
@@ -235,7 +262,7 @@ function M3Content({ data, countdown, isPaused, onTogglePause }: {
 
       {/* Device grid */}
       <DetCard accent="#7c3aed">
-        <DetTitle>📡 Device Status Grid</DetTitle>
+        <DetTitle>{t("deviceStatusGrid", lang)}</DetTitle>
         <div style={{
           display: "grid",
           gridTemplateColumns: "repeat(auto-fill,minmax(110px,1fr))",
@@ -252,7 +279,7 @@ function M3Content({ data, countdown, isPaused, onTogglePause }: {
 
       {/* Conditions */}
       <DetCard accent="#7c3aed">
-        <DetTitle>📋 Condition Reference (C01–C15)</DetTitle>
+        <DetTitle>{t("conditionReference", lang)}</DetTitle>
         {conditions.map((c) => {
           let st: "OK" | "WARN" | "CRIT" = "OK";
           if (c.id === "C15" && c.val != null && Number(c.val) < 30) st = "WARN";
@@ -265,11 +292,12 @@ function M3Content({ data, countdown, isPaused, onTogglePause }: {
 }
 
 // ── M5 — Network Problem ─────────────────────────────────────────────────
-function M5Content({ data, countdown, isPaused, onTogglePause }: {
+function M5Content({ data, countdown, isPaused, onTogglePause, lang }: {
   data: ModuleResult;
   countdown?: number;
   isPaused?: boolean;
   onTogglePause?: () => void;
+  lang: Lang;
 }) {
   const d = (data as any).data ?? {};
   const rootCause = (data as any).root_cause ?? d.root_cause ?? "NORMAL";
@@ -316,7 +344,7 @@ function M5Content({ data, countdown, isPaused, onTogglePause }: {
       <DetCard accent="#2563eb">
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           <div>
-            <DetTitle>🔍 Root Cause</DetTitle>
+            <DetTitle>{t("rootCause", lang)}</DetTitle>
             <div style={{
               fontFamily: "'JetBrains Mono', monospace",
               fontSize: "1.1em", fontWeight: 800,
@@ -324,7 +352,7 @@ function M5Content({ data, countdown, isPaused, onTogglePause }: {
             }}>{rootCause}</div>
           </div>
           <div>
-            <DetTitle>📊 Severity Score</DetTitle>
+            <DetTitle>{t("severityScore", lang)}</DetTitle>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <div style={{ flex: 1, height: 8, background: "var(--color-border-tertiary,#d0dae8)", borderRadius: 4, overflow: "hidden" }}>
                 <div style={{
@@ -339,9 +367,9 @@ function M5Content({ data, countdown, isPaused, onTogglePause }: {
               }}>{(severity * 100).toFixed(1)}%</span>
             </div>
             <div style={{ marginTop: 8, fontSize: ".62em", color: "var(--color-text-secondary,#718096)" }}>
-              <span style={{ color: "#22c55e", fontWeight: 700 }}>🟢 Online: {onlineCount}/6</span>
+              <span style={{ color: "#22c55e", fontWeight: 700 }}>🟢 {t("online", lang)}: {onlineCount}/6</span>
               {"  "}
-              <span style={{ color: "#ef4444", fontWeight: 700 }}>🔴 Offline: {6 - onlineCount}</span>
+              <span style={{ color: "#ef4444", fontWeight: 700 }}>🔴 {t("offline", lang)}: {6 - onlineCount}</span>
             </div>
           </div>
         </div>
@@ -349,7 +377,7 @@ function M5Content({ data, countdown, isPaused, onTogglePause }: {
 
       {/* Network topology */}
       <DetCard accent="#2563eb">
-        <DetTitle>🌐 Network Topology</DetTitle>
+        <DetTitle>{t("networkTopology", lang)}</DetTitle>
         <div style={{
           display: "grid",
           gridTemplateColumns: "repeat(auto-fill,minmax(100px,1fr))",
@@ -366,7 +394,7 @@ function M5Content({ data, countdown, isPaused, onTogglePause }: {
 
       {/* Conditions */}
       <DetCard accent="#2563eb">
-        <DetTitle>📋 Monitoring Conditions</DetTitle>
+        <DetTitle>{t("monitoringConditions", lang)}</DetTitle>
         {conditions.map((c) => {
           const st: "OK" | "WARN" | "CRIT" = isOffline(c.val as string) && c.val != null ? "CRIT" : "OK";
           return <ConditionItem key={c.id} id={c.id} name={c.name} type={c.type} status={st} />;
@@ -378,19 +406,21 @@ function M5Content({ data, countdown, isPaused, onTogglePause }: {
 
 // ── Main export ───────────────────────────────────────────────────────────
 export default function DetectionTab({ data, modNum, modColor, countdown, isPaused, onTogglePause }: Props) {
+  const { lang } = useLanguage();
+
   if (!data) return (
     <div style={{ padding: 40, textAlign: "center", color: "var(--color-text-secondary,#94a3b8)", fontSize: ".8em" }}>
-      กำลังโหลด...
+      {t("loading", lang)}
     </div>
   );
 
-  if (modNum === 2) return <M2Content data={data} countdown={countdown} isPaused={isPaused} onTogglePause={onTogglePause} />;
-  if (modNum === 3) return <M3Content data={data} countdown={countdown} isPaused={isPaused} onTogglePause={onTogglePause} />;
-  if (modNum === 5) return <M5Content data={data} countdown={countdown} isPaused={isPaused} onTogglePause={onTogglePause} />;
+  if (modNum === 2) return <M2Content data={data} countdown={countdown} isPaused={isPaused} onTogglePause={onTogglePause} lang={lang} />;
+  if (modNum === 3) return <M3Content data={data} countdown={countdown} isPaused={isPaused} onTogglePause={onTogglePause} lang={lang} />;
+  if (modNum === 5) return <M5Content data={data} countdown={countdown} isPaused={isPaused} onTogglePause={onTogglePause} lang={lang} />;
 
   return (
     <div style={{ padding: 40, textAlign: "center", color: "var(--color-text-secondary,#94a3b8)" }}>
-      No detection view for module {modNum}
+      {t("noDetectionView", lang)} {modNum}
     </div>
   );
 }

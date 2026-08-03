@@ -67,6 +67,8 @@ const T = {
   alertUploadError: { th: "เกิดข้อผิดพลาดระหว่างอัปโหลด", en: "Error during upload" },
   uploadPdf: { th: "อัปโหลด PDF", en: "Upload PDF" },
   preview: { th: "พรีวิว", en: "Preview" },
+  downloadPhotos: { th: "ดาวน์โหลดรูปภาพ", en: "Download Photos" },
+  loadingData: { th: "กำลังโหลดข้อมูล...", en: "Loading data..." },
 };
 
 const t = (key: keyof typeof T, lang: Lang): string => T[key][lang];
@@ -449,12 +451,12 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
               </a>
               {info.row.original.has_photos && (
                 <a
-                  aria-label="Download Photos"
+                  aria-label={t("downloadPhotos", lang)}
                   href={`${BASE}/ccbpmreport/${info.row.original.id}/photos/zip?station_id=${encodeURIComponent(stationId || "")}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="tw-inline-flex tw-items-center tw-justify-center tw-rounded-md tw-p-1.5 sm:tw-p-2 tw-text-green-600 hover:tw-text-green-800 hover:tw-bg-green-50 tw-transition-colors"
-                  title="Download Photos"
+                  title={t("downloadPhotos", lang)}
                 >
                   <PhotoIcon className="tw-h-5 tw-w-5 sm:tw-h-6 sm:tw-w-6" />
                 </a>
@@ -560,7 +562,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
 
   return (
     <>
-      <LoadingOverlay show={pageLoading} text="กำลังโหลดข้อมูล..." />
+      <LoadingOverlay show={pageLoading} text={t("loadingData", lang)} />
       {toast.show && (
         <div className="tw-fixed tw-top-4 tw-left-1/2 tw--translate-x-1/2 tw-z-[9999] tw-max-w-md tw-w-[calc(100%-2rem)]">
           <div className={`tw-flex tw-items-start tw-gap-3 tw-px-4 tw-py-3 tw-rounded-xl tw-shadow-2xl tw-border ${toast.type === "success" ? "tw-bg-green-50 tw-border-green-200" : toast.type === "error" ? "tw-bg-red-50 tw-border-red-200" : toast.type === "warning" ? "tw-bg-amber-50 tw-border-amber-200" : "tw-bg-blue-50 tw-border-blue-200"}`}>
