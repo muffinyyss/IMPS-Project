@@ -217,11 +217,13 @@ const WAITING_REPAIR_RESULTS = [
 ];
 
 const REPAIR_OPTIONS = [
+    { value: "WO - wait for scheduled", th: "WO - wait for scheduled", en: "WO - wait for scheduled" },
     { value: "WO - wait for material", th: "WO - wait for material", en: "WO - wait for material" },
     { value: "WO - wait for site condition", th: "WO - wait for site condition", en: "WO - wait for site condition" },
     // Show friendly label for approve-waiting WO while keeping value unchanged
     { value: "WO - wait for approve", th: "แก้ไขสำเร็จ", en: "Repair completed" },
 ] as const;
+const DEFAULT_REPAIR_RESULT = "WO - wait for scheduled";
 
 // รองรับข้อมูลเก่า: map ค่า repair_result เดิม (ก่อนเปลี่ยนชื่อ) → ค่าใหม่ ตอนโหลดใบเก่า
 const LEGACY_REPAIR_MAP: Record<string, string> = {
@@ -741,7 +743,7 @@ const INITIAL_JOB: Job = {
     corrective_actions: [{ text: "", beforeImages: [], afterImages: [] }],
     resolved_date: "",
     start_repair_date: "",
-    repair_result: "",
+    repair_result: DEFAULT_REPAIR_RESULT,
     preventive_action: [""],
     repaired_equipment: [],
     inprogress_remarks: "",
@@ -1375,6 +1377,7 @@ export default function CMInProgressForm() {
     const isAssignee =
         !!currentUsername.trim() &&
         assignees.some((a) => (a || "").trim().toLowerCase() === currentUsername.trim().toLowerCase());
+    const isEngineer = currentRole.trim().toLowerCase() === "engineer";
     const isCs = currentRole.trim().toLowerCase() === "cs";
     const isJobOwner =
         ["admin", "super_admin"].includes(currentRole.trim().toLowerCase()) ||
@@ -1384,12 +1387,12 @@ export default function CMInProgressForm() {
     // รองรับทั้ง Closed ใหม่และ Complete เดิมที่ยังอยู่ในฐานข้อมูล
     const isClosedStatus = job.status === "Closed" || job.status === "Complete";
     const isWaitForApprove = job.status.trim().toLowerCase() === "wait for approve";
-    // Wait for approve = ใบงานถูก freeze รอผลอนุมัติ แก้ไม่ได้ทุกคนรวมถึงเจ้าของ | Closed = ดูอย่างเดียวทุกคน | ไม่ใช่เจ้าของใบงาน = ดูอย่างเดียว
+    // Engineer สามารถตรวจ/แก้ข้อมูลส่วนซ่อมที่ Technician กรอกได้ รวมถึงตอน Wait for approve
     const viewOnly =
         isCs ||
         isClosedStatus ||
-        isWaitForApprove ||
-        !isJobOwner;
+        (isWaitForApprove && !isEngineer) ||
+        (!isEngineer && !isJobOwner);
 
     // อนุมัติปิดใบงาน (Wait for approve → Closed) — เฉพาะ admin/engineer และเฉพาะใบที่รออนุมัติอยู่จริง
     const isWoCloseApproval =
@@ -1399,6 +1402,29 @@ export default function CMInProgressForm() {
         isWoCloseApproval &&
         ["admin", "engineer"].includes(currentRole.trim().toLowerCase());
     const reviewerName = isClosedStatus ? approvedBy : currentUsername;
+
+    const approvalActions = canApprove ? (
+        <>
+            <Button
+                type="button"
+                onClick={() => { setRejectRemark(""); setRejectOpen(true); }}
+                disabled={approving || rejecting}
+                className="tw-flex tw-items-center tw-gap-2 tw-bg-red-600 hover:tw-bg-red-700 tw-text-white tw-font-semibold tw-text-base tw-px-8 tw-py-3 tw-rounded-xl hover:tw-shadow-xl hover:tw-shadow-red-500/30 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed tw-transition-all"
+            >
+                <ArrowUturnLeftIcon className="tw-w-5 tw-h-5" />
+                {lang === "th" ? "ตีกลับ" : "Reject"}
+            </Button>
+            <Button
+                type="button"
+                onClick={() => setApproveOpen(true)}
+                disabled={approving || rejecting}
+                className="tw-flex tw-items-center tw-gap-2 tw-bg-green-600 hover:tw-bg-green-700 tw-text-white tw-font-semibold tw-text-base tw-px-8 tw-py-3 tw-rounded-xl hover:tw-shadow-xl hover:tw-shadow-green-500/30 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed tw-transition-all"
+            >
+                <CheckCircleIcon className="tw-w-5 tw-h-5" />
+                {approving ? (lang === "th" ? "กำลังอนุมัติ..." : "Approving...") : (lang === "th" ? "อนุมัติ" : "Approve")}
+            </Button>
+        </>
+    ) : null;
 
     const currentTab = searchParams.get("tab") ?? "in-progress";
 
@@ -1468,7 +1494,7 @@ export default function CMInProgressForm() {
                     }))
                     : prev.corrective_actions,
                 repaired_equipment: pendingDraft.repaired_equipment || [],
-                repair_result: pendingDraft.repair_result || "",
+                repair_result: pendingDraft.repair_result || DEFAULT_REPAIR_RESULT,
                 preventive_action: pendingDraft.preventive_action?.length > 0
                     ? pendingDraft.preventive_action
                     : [""],
@@ -1689,16 +1715,6 @@ export default function CMInProgressForm() {
     // ไม่มีใน type Status เดิมเพราะสถานะนี้เพิ่งเพิ่มทีหลัง จึงเทียบด้วยข้อความ
     const isWaitForSchedule = job.status.trim().toLowerCase() === "wait for schedule";
 
-    // ผลหลังซ่อมที่เลือกได้รอบนี้ — ตัดอันที่เคยเลือกในรอบก่อน ๆ ออก
-    // "แก้ไขสำเร็จ" ไม่เคยถูกตัด เพราะเป็นทางเดียวที่จะปิดงานได้
-    const usedRepairResults = useMemo(
-        () => new Set(repairHistory.map(r => (r.repair_result || "").trim()).filter(Boolean)),
-        [repairHistory],
-    );
-    const availableRepairOptions = useMemo(
-        () => REPAIR_OPTIONS.filter(o => o.value === "WO - wait for approve" || !usedRepairResults.has(o.value)),
-        [usedRepairResults],
-    );
 
     // บันทึกความคืบหน้าใช้เกณฑ์ขั้นต่ำ: ต้องระบุอาการและสาเหตุ
     // (ไม่ใช้ canSave เพราะนั่นบังคับครบทุกช่องสำหรับ "ปิดงาน")
@@ -2041,12 +2057,13 @@ export default function CMInProgressForm() {
                     faulty_equipment: data.faulty_equipment ?? "",
                     // รอบใหม่: ประทับวันที่ตอนกดเข้าฟอร์มมากรอกรอบนี้เลย (ไม่รอให้เริ่มพิมพ์)
                     start_repair_date: waitingRoundArchived ? localTodayISO() : (data.start_repair_date || ""),
-                    problem_type: waitingRoundArchived ? [] : (Array.isArray(data.problem_type) ? data.problem_type : (data.problem_type ? [data.problem_type] : [])),
-                    problem_type_other: waitingRoundArchived ? "" : (data.problem_type_other ?? ""),
-                    cause: waitingRoundArchived ? [] : (Array.isArray(data.cause) ? data.cause : (data.cause ? [data.cause] : [])),
+                    // ปัญหา/สาเหตุ: รอบใหม่ใช้ค่าของรอบก่อนเป็นค่าเริ่มต้น (มักเป็นอาการเดิมที่ยังแก้ไม่จบ)
+                    problem_type: Array.isArray(data.problem_type) ? data.problem_type : (data.problem_type ? [data.problem_type] : []),
+                    problem_type_other: data.problem_type_other ?? "",
+                    cause: Array.isArray(data.cause) ? data.cause : (data.cause ? [data.cause] : []),
                     // ล้างให้ว่างเพื่อบังคับให้ช่างเลือกผลใหม่ — แต่ต้องจำค่าเดิมไว้ (originalRepairResultRef)
                     // ไม่งั้นพอกดบันทึกจะส่งค่าว่างไปทับ ทำให้ marker ที่ engineer ตั้งไว้หายจาก DB
-                    repair_result: waitingRoundArchived ? "" : (normalizeRepairResult(data.repair_result ?? "") === "WO - wait for scheduled" ? "" : normalizeRepairResult(data.repair_result ?? "")),
+                    repair_result: waitingRoundArchived ? DEFAULT_REPAIR_RESULT : (normalizeRepairResult(data.repair_result ?? "") || DEFAULT_REPAIR_RESULT),
                     inprogress_remarks: waitingRoundArchived ? "" : (data.inprogress_remarks ?? ""),
                     repair_result_remark: waitingRoundArchived ? "" : (data.repair_result_remark ?? ""),
                     resolved_date: data.resolved_date ? isoToDisplay(data.resolved_date) : "",
@@ -2961,8 +2978,7 @@ export default function CMInProgressForm() {
                                                     onChange={(e) => setJob(prev => ({ ...prev, repair_result: e.target.value }))}
                                                     className="tw-w-full md:tw-w-96 tw-h-12 tw-border tw-border-gray-200 tw-rounded-xl tw-px-4 tw-text-sm tw-font-medium tw-bg-white tw-text-gray-700 hover:tw-border-amber-400 focus:tw-outline-none focus:tw-ring-3 focus:tw-ring-amber-500/20 focus:tw-border-amber-500 tw-transition-all tw-cursor-pointer tw-flex-shrink-0"
                                                 >
-                                                    <option value="">{lang === "th" ? "-- เลือกผลหลังซ่อม --" : "-- Select repair result --"}</option>
-                                                    {availableRepairOptions.map((opt) => (
+                                                    {REPAIR_OPTIONS.map((opt) => (
                                                         <option key={opt.value} value={opt.value}>
                                                             {lang === "en" ? opt.en : opt.th}
                                                         </option>
@@ -3365,31 +3381,11 @@ export default function CMInProgressForm() {
                                     {lang === "th" ? "กลับ" : "Back"}
                                 </Button>
                                 {/* อนุมัติ / ตีกลับ — เห็นเฉพาะ admin/engineer และเฉพาะใบที่รออนุมัติ */}
-                                {canApprove && (
-                                    <>
-                                        <Button
-                                            type="button"
-                                            onClick={() => { setRejectRemark(""); setRejectOpen(true); }}
-                                            disabled={approving || rejecting}
-                                            className="tw-flex tw-items-center tw-gap-2 tw-bg-red-600 hover:tw-bg-red-700 tw-text-white tw-font-semibold tw-text-base tw-px-8 tw-py-3 tw-rounded-xl hover:tw-shadow-xl hover:tw-shadow-red-500/30 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed tw-transition-all"
-                                        >
-                                            <ArrowUturnLeftIcon className="tw-w-5 tw-h-5" />
-                                            {lang === "th" ? "ตีกลับ" : "Reject"}
-                                        </Button>
-                                        <Button
-                                            type="button"
-                                            onClick={() => setApproveOpen(true)}
-                                            disabled={approving || rejecting}
-                                            className="tw-flex tw-items-center tw-gap-2 tw-bg-green-600 hover:tw-bg-green-700 tw-text-white tw-font-semibold tw-text-base tw-px-8 tw-py-3 tw-rounded-xl hover:tw-shadow-xl hover:tw-shadow-green-500/30 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed tw-transition-all"
-                                        >
-                                            <CheckCircleIcon className="tw-w-5 tw-h-5" />
-                                            {approving ? (lang === "th" ? "กำลังอนุมัติ..." : "Approving...") : (lang === "th" ? "อนุมัติ" : "Approve")}
-                                        </Button>
-                                    </>
-                                )}
+                                {approvalActions}
                             </>
                         ) : (
                             <>
+                            {approvalActions}
                             {isWaitForSchedule && (
                                 <Button
                                     onClick={() => { void onFinalSave({ keepStatus: true }); }}

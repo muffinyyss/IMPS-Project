@@ -254,8 +254,9 @@ def me(current: UserClaims = Depends(get_current_user)):
         "id": str(u["_id"]),
         "username": u.get("username") or "",
         "email": u.get("email") or "",
-        # role ที่กำลังสวมอยู่ (effective/JWT) — สลับ role ผ่าน dropdown แล้วค่านี้เปลี่ยนตาม
-        "role": current.effective_role or (u.get("role") or ""),
+        # role สำหรับตรวจสิทธิ์ — super_admin ถูก normalize เป็น admin เพื่อให้ frontend ได้สิทธิ์เหมือน admin ทุกจุด
+        "role": current.role or (u.get("role") or ""),
+        "effective_role": current.effective_role or (u.get("role") or ""),
         "is_super_admin": current.is_super_admin,
         # role จริงใน DB (ตัวจริง) — ใช้เช็คว่าเป็น super admin ตัวจริงไหม (โชว์ dropdown)
         "true_role": u.get("role") or "",
@@ -665,13 +666,40 @@ def users_by_role(
     if (current.role or "").lower() not in ASSIGNER_ROLES:
         raise HTTPException(status_code=403, detail="forbidden")
 
+    query = {"role": role.strip().lower()}
+
+    # Engineer วางแผนได้เฉพาะช่างในบริษัทเดียวกัน
+    # อ่าน company ล่าสุดจาก DB เพื่อไม่ให้ JWT ที่เก่ากว่าข้อมูล profile ทำให้เห็นข้ามบริษัท
+    if (current.role or "").lower() == "engineer":
+        company = (current.company or "").strip()
+        if current.user_id:
+            try:
+                engineer_user = users_collection.find_one(
+                    {"_id": ObjectId(current.user_id)},
+                    {"company": 1},
+                )
+                company = (engineer_user or {}).get("company") or company
+            except Exception:
+                # ใช้ company จาก claims ต่อได้ กรณี user_id ใน token ไม่ใช่ ObjectId
+                pass
+
+        # Engineer ที่ไม่มี company จะไม่เห็น technician ใด ๆ
+        if not company:
+            return {"users": []}
+        query["company"] = company
+
     cursor = users_collection.find(
-        {"role": role.strip().lower()},
-        {"_id": 1, "username": 1, "email": 1},
+        query,
+        {"_id": 1, "username": 1, "email": 1, "company": 1},
     ).sort("username", 1)
     return {
         "users": [
-            {"id": str(u["_id"]), "username": u.get("username", ""), "email": u.get("email", "")}
+            {
+                "id": str(u["_id"]),
+                "username": u.get("username", ""),
+                "email": u.get("email", ""),
+                "company": u.get("company") or "",
+            }
             for u in cursor
         ]
     }
@@ -734,7 +762,7 @@ class addUsers(BaseModel):
     tel:str
     company_name:str
     station_id:Optional[Union[str, int, List[Union[str, int]]]] = None
-    role:str 
+    role: Literal["admin", "owner", "technician", "cs", "engineer"]
     ai_package: Optional[AiPackage] = None
 
 class UserOut(BaseModel):
@@ -813,7 +841,7 @@ class UserUpdate(BaseModel):
     email: EmailStr | None = None
     tel : str | None = None      # ใช้ "phone" ให้สอดคล้องเอกสารที่คุณมี
     company: str | None = None
-    role: str | None = None       # admin เท่านั้นที่แก้ได้
+    role: Literal["admin", "owner", "technician", "cs", "engineer"] | None = None  # admin เท่านั้นที่แก้ได้
     is_active: bool | None = None # admin เท่านั้นที่แก้ได้
     password: str | None = None   # จะถูกแฮชเสมอถ้ามีค่า
     station_id: Optional[List[str]] = None  # สำหรับ technician

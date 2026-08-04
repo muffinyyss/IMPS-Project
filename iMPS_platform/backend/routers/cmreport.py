@@ -1223,7 +1223,7 @@ async def cmreport_cs_approve(
 
 
 # ── engineer ตีกลับใบงานขั้นวางแผน (Wait for schedule) → กลับไปหา cs (Wait for approve/cs_approval)
-PLANNER_REJECT_ROLES: set[str] = {"admin", "engineer", "planner"}
+ENGINEER_REJECT_ROLES: set[str] = {"admin", "engineer"}
 
 
 @router.post("/cmreport/{report_id}/planner-reject")
@@ -1234,8 +1234,8 @@ async def cmreport_planner_reject(
     current: UserClaims = Depends(get_current_user),
 ):
     """engineer ตีกลับใบขั้นวางแผน → กลับไปหา cs ให้แก้ไข/ยกเลิก (พร้อมเหตุผล)"""
-    if (current.role or "").lower() not in PLANNER_REJECT_ROLES:
-        raise HTTPException(status_code=403, detail="Only engineer, planner or admin can reject")
+    if (current.role or "").lower() not in ENGINEER_REJECT_ROLES:
+        raise HTTPException(status_code=403, detail="Only engineer or admin can reject")
 
     remark = body.remark.strip()
     if not remark:
@@ -1320,8 +1320,8 @@ async def cmreport_cs_reject(
 
 
 # ── ยกเลิกใบงานที่ยังไม่ปิด → Cancelled (ไปแสดงใน tab Closed)
-#    engineer/planner/admin ยกเลิกตอนรีวิว/วางแผนได้
-PLANNER_CANCEL_ROLES: set[str] = {"admin", "engineer", "planner"}
+#    engineer/admin ยกเลิกตอนรีวิว/วางแผนได้
+ENGINEER_CANCEL_ROLES: set[str] = {"admin", "engineer"}
 
 
 class CMCancelIn(BaseModel):
@@ -1336,8 +1336,8 @@ async def cmreport_cancel(
     current: UserClaims = Depends(get_current_user),
 ):
     """ยกเลิกใบงานที่ยังไม่ปิด (ทุกสถานะยกเว้น complete/closed/cancelled) → Cancelled"""
-    if (current.role or "").lower() not in PLANNER_CANCEL_ROLES:
-        raise HTTPException(status_code=403, detail="Only engineer, planner or admin can cancel")
+    if (current.role or "").lower() not in ENGINEER_CANCEL_ROLES:
+        raise HTTPException(status_code=403, detail="Only engineer or admin can cancel")
 
     station_id = station_id.strip()
     coll = get_cmreport_collection_for(station_id)

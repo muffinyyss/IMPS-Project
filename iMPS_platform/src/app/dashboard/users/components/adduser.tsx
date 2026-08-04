@@ -25,7 +25,6 @@ const T = {
     roleAdmin: { th: "ผู้ดูแลระบบ", en: "Admin" },
     roleTechnician: { th: "ช่างเทคนิค", en: "Technician" },
     roleCS: { th: "CS", en: "CS" },
-    rolePlanner: { th: "ผู้วางแผน", en: "Planner" },
     roleEngineer: { th: "วิศวกร", en: "Engineer" },
 } as const;
 
@@ -214,7 +213,6 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
                                     <Option value="admin">{t("roleAdmin", lang)}</Option>
                                     <Option value="technician">{t("roleTechnician", lang)}</Option>
                                     <Option value="cs">{t("roleCS", lang)}</Option>
-                                    <Option value="planner">{t("rolePlanner", lang)}</Option>
                                     <Option value="engineer">{t("roleEngineer", lang)}</Option>
 
                                 </Select>
