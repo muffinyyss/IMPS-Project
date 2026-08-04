@@ -137,7 +137,7 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
   const canDelete = isSuperAdmin; // ลบถาวรได้เฉพาะ super admin (ซ่อนตอน impersonate role อื่น)
   const [deleteTarget, setDeleteTarget] = useState<TData | null>(null);
   const [deleting, setDeleting] = useState(false);
-  // engineer/planner (หรือ admin) ยกเลิกใบงานที่ยังไม่ปิด → Cancelled
+  // engineer (หรือ admin) ยกเลิกใบงานที่ยังไม่ปิด → Cancelled
   // หน้า In Progress list ไม่มีปุ่มยกเลิกด้านนอกแล้ว (จัดการยกเลิก/ตีกลับตั้งแต่ด่าน SR/วางแผน)
   const canCancel = false;
 

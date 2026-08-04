@@ -5,6 +5,12 @@ import {
   applyFilters,
   applySearch,
   groupCount,
+  groupCountMulti,
+  causeLabelsOf,
+  remedyCodesOf,
+  remedyDescriptionsOf,
+  toList,
+  EMPTY_FILTERS,
   STATUS_LABELS,
   CMRow,
   ActiveFilters,
@@ -35,9 +41,7 @@ function makeRow(overrides: Partial<CMRow> = {}): CMRow {
   };
 }
 
-const noFilters: ActiveFilters = {
-  status: null, equipment: null, severity: null, station: null, workStatus: null,
-};
+const noFilters: ActiveFilters = EMPTY_FILTERS;
 
 // ─── normalizeStatus ─────────────────────────────────────────────────────────
 
@@ -239,6 +243,138 @@ describe("applyFilters", () => {
   it('exclude "workStatus" skips that dimension', () => {
     const filters = { ...noFilters, workStatus: "completed" as const };
     expect(applyFilters([closedRow, openRow], filters, "workStatus")).toHaveLength(2);
+  });
+
+  // ── « All work order » = tout sauf le bucket "new" ──
+  it('workStatus "wo_all" keeps every row that left the new bucket', () => {
+    const spareRow = makeRow({ status: "WO wait for spare part" });
+    const filters = { ...noFilters, workStatus: "wo_all" as const };
+    const out = applyFilters([closedRow, openRow, spareRow], filters);
+    expect(out).toEqual([closedRow, spareRow]);
+  });
+
+  it('workStatus "wo_all" excludes plain new service requests', () => {
+    const filters = { ...noFilters, workStatus: "wo_all" as const };
+    expect(applyFilters([openRow], filters)).toHaveLength(0);
+  });
+
+  // ── cause / remedy (nouveaux donuts) ──
+  it("filters by cause label (code Maximo traduit)", () => {
+    const overheat = makeRow({ id: "o", cause: ["OVERHEAT"] });
+    const simcard = makeRow({ id: "s", cause: ["SIMCARDP"] });
+    const out = applyFilters([overheat, simcard], { ...noFilters, cause: "Overheat" });
+    expect(out.map((r) => r.id)).toEqual(["o"]);
+  });
+
+  it("keeps a row matching any of its causes", () => {
+    const multi = makeRow({ cause: ["OVERHEAT", "SIMCARDP"] });
+    expect(applyFilters([multi], { ...noFilters, cause: "SIM Card Problem" })).toHaveLength(1);
+  });
+
+  it("drops rows with no cause when a cause filter is active", () => {
+    expect(applyFilters([makeRow({ cause: [] })], { ...noFilters, cause: "Overheat" })).toHaveLength(0);
+  });
+
+  it("filters by remedy code", () => {
+    const replace = makeRow({ id: "r", repaired_equipment: ["REPLACE"] });
+    const reset = makeRow({ id: "x", repaired_equipment: ["RESET"] });
+    const out = applyFilters([replace, reset], { ...noFilters, remedy: "REPLACE" });
+    expect(out.map((r) => r.id)).toEqual(["r"]);
+  });
+
+  it('exclude "remedy" skips that dimension', () => {
+    const rows = [makeRow({ repaired_equipment: ["REPLACE"] }), makeRow({ repaired_equipment: ["RESET"] })];
+    expect(applyFilters(rows, { ...noFilters, remedy: "REPLACE" }, "remedy")).toHaveLength(2);
+  });
+});
+
+// ─── Champs multi-valeurs (cause / remedy) ───────────────────────────────────
+
+describe("toList", () => {
+  it("wraps a plain string (fiches anciennes)", () => {
+    expect(toList("OVERHEAT")).toEqual(["OVERHEAT"]);
+  });
+  it("trims and drops empty entries", () => {
+    expect(toList([" OVERHEAT ", "", "  "])).toEqual(["OVERHEAT"]);
+  });
+  it("returns [] for undefined / empty string", () => {
+    expect(toList(undefined)).toEqual([]);
+    expect(toList("   ")).toEqual([]);
+  });
+});
+
+describe("causeLabelsOf", () => {
+  it("translates Maximo cause codes to their description", () => {
+    expect(causeLabelsOf(makeRow({ cause: ["POWMODUL"] }))).toEqual(["Power Module Failed"]);
+  });
+  it("leaves unknown free text untouched", () => {
+    expect(causeLabelsOf(makeRow({ cause: "Ethernet cable cut" }))).toEqual(["Ethernet cable cut"]);
+  });
+  it("de-duplicates codes sharing one description", () => {
+    expect(causeLabelsOf(makeRow({ cause: ["OVERHEAT", "OVERHEAT"] }))).toEqual(["Overheat"]);
+  });
+});
+
+describe("remedyCodesOf", () => {
+  it("uppercases and de-duplicates", () => {
+    expect(remedyCodesOf(makeRow({ repaired_equipment: ["replace", "REPLACE", "reset"] })))
+      .toEqual(["REPLACE", "RESET"]);
+  });
+});
+
+describe("remedyDescriptionsOf", () => {
+  it("resolves the exact (fc, problem, cause, remedy) description", () => {
+    const row = makeRow({
+      faulty_equipment: "DCCHARFC", problem_type: ["POWERDRP"],
+      cause: ["POWMODUL"], repaired_equipment: ["REPLACE"],
+    });
+    expect(remedyDescriptionsOf(row, "REPLACE")).toEqual(["Replace (Power Module)"]);
+  });
+
+  it("falls back to (cause, remedy) when the problem code is missing", () => {
+    const row = makeRow({ faulty_equipment: "", problem_type: [], cause: ["CBPOWTRP"] });
+    expect(remedyDescriptionsOf(row, "RESET")).toEqual(["Reset (CB)"]);
+  });
+
+  it("returns one description per cause on a multi-cause work order", () => {
+    const row = makeRow({
+      faulty_equipment: "DCCHARFC", problem_type: ["UN2STCHG"],
+      cause: ["DCCTR1FC", "DCCTR2FC"],
+    });
+    expect(remedyDescriptionsOf(row, "REPLACE"))
+      .toEqual(["Replace (DC Contactor No.1)", "Replace (DC Contactor No.2)"]);
+  });
+
+  it("falls back to the short remedy label when nothing matches", () => {
+    const row = makeRow({ faulty_equipment: "charger_1", cause: "Ethernet" });
+    expect(remedyDescriptionsOf(row, "REPLACE")).toEqual(["Replace"]);
+  });
+
+  it("returns [] when no remedy code is given", () => {
+    expect(remedyDescriptionsOf(makeRow(), "")).toEqual([]);
+  });
+});
+
+describe("groupCountMulti", () => {
+  it("counts a row once per value it carries", () => {
+    const rows = [
+      makeRow({ cause: ["OVERHEAT", "SIMCARDP"] }),
+      makeRow({ cause: ["OVERHEAT"] }),
+    ];
+    const g = groupCountMulti(rows, causeLabelsOf);
+    expect(g.keys[0]).toBe("Overheat");
+    expect(g.vals[0]).toBe(2);
+    expect(g.vals[g.keys.indexOf("SIM Card Problem")]).toBe(1);
+  });
+
+  it("skips rows with no value (cause pas encore saisie)", () => {
+    const g = groupCountMulti([makeRow({ cause: [] })], causeLabelsOf);
+    expect(g.keys).toHaveLength(0);
+  });
+
+  it("caps the number of slices", () => {
+    const rows = Array.from({ length: 12 }, (_, i) => makeRow({ cause: [`CAUSE_${i}`] }));
+    expect(groupCountMulti(rows, causeLabelsOf, 5).keys).toHaveLength(5);
   });
 });
 

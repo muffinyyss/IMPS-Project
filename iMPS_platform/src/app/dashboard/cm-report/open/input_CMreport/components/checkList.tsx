@@ -1,10 +1,11 @@
 "use client";
 
 import React, { useMemo, useState, useEffect, useRef, useCallback } from "react";
-import { Button, Input, Textarea } from "@material-tailwind/react";
+import { Button, Input, Textarea, Tooltip } from "@material-tailwind/react";
 import Image from "next/image";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { ArrowLeftIcon, PhotoIcon, XMarkIcon, PlusIcon, CheckCircleIcon, ExclamationTriangleIcon } from "@heroicons/react/24/solid";
+import { InformationCircleIcon } from "@heroicons/react/24/outline";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
 import { draftKey as getDraftKey, saveDraftLocal, loadDraftLocal, clearDraftLocal, type CMDraftData } from "../lib/draft";
 import { putPhoto, getPhotosByDraftKey, delPhoto, delPhotosByDraftKey, createPreviewUrl, photoRefToFile, type PhotoRef } from "../lib/draftPhotos";
@@ -32,6 +33,10 @@ const T = {
     noChargersFound: { th: "ไม่พบ Charger", en: "No chargers found" },
     problemDetails: { th: "รายละเอียดปัญหา", en: "Problem Details" },
     severity: { th: "ความเร่งด่วน", en: "Urgency" },
+    severityTooltip: {
+        th: "Urgent - สถานีเกิดเหตุฉุกเฉิน สภาพการณ์ผิดมาตรฐาน\nHigh - สถานีไม่สามารถให้บริการได้\nMedium - สถานีให้บริการได้บางส่วน\nLow - ไม่กระทบกับการให้บริการ",
+        en: "Urgent - Emergency situation at the station; conditions are out of standard\nHigh - The station cannot provide service\nMedium - The station can provide partial service\nLow - No impact on service",
+    },
     severityPlaceholder: { th: "เลือก...", en: "Select..." },
     problemFound: { th: "ปัญหาที่พบ", en: "Problem Found" },
     jobStatus: { th: "สถานะงาน", en: "Job Status" },
@@ -123,7 +128,7 @@ type Severity = "" | "Low" | "Medium" | "High" | "Urgent";
 type Status = "" | "Open" | "In Progress" | "Wait for approve" | "Wait for schedule" | "Cancelled";
 
 // ช่างที่เลือกได้ในขั้นวางแผน (มาจาก GET /users/by-role?role=technician)
-type TechnicianOption = { id: string; username: string; email: string };
+type TechnicianOption = { id: string; username: string; email: string; company?: string };
 
 // สถานะรอที่ engineer เลือกได้ตอนวางแผน — ต้องตรงตัวกับ WO_SUBTABS ใน inprogress-table ที่ filter ด้วย string นี้
 // ("WO - wait for approve" ไม่อยู่ที่นี่ เพราะเกิดหลังซ่อมเสร็จ ไม่ใช่ตอนวางแผน)
@@ -506,6 +511,7 @@ export default function CMOpenForm() {
     const [reporterSignature, setReporterSignature] = useState("");
     const [currentUsername, setCurrentUsername] = useState("");
     const [userRole, setUserRole] = useState("");
+    const [currentCompany, setCurrentCompany] = useState("");
     const [saving, setSaving] = useState(false);
     const [chargers, setChargers] = useState<ChargerInfo[]>([]);
     const [loadingChargers, setLoadingChargers] = useState(false);
@@ -576,9 +582,9 @@ export default function CMOpenForm() {
     const isPlanningStage = statusLower === "wait for schedule";
     // ใบที่รอ head cs อนุมัติจริง ๆ (ยังไม่ถูกตีกลับ) — ใช้คุมปุ่มอนุมัติ/ตีกลับของ head cs
     const isCsPending = statusLower === "wait for approve" && stageLower === "cs_approval";
-    const canCancelRole = ["admin", "owner", "engineer", "planner"].includes(roleLower);
-    const canRejectRole = ["admin", "engineer", "planner"].includes(roleLower);
-    // ยกเลิกได้เฉพาะ admin/engineer/planner ตอนรีวิวหรือวางแผน — cs มีหน้าที่เปิดใบงานเท่านั้น
+    const canCancelRole = ["admin", "owner", "engineer"].includes(roleLower);
+    const canRejectRole = ["admin", "engineer"].includes(roleLower);
+    // ยกเลิกได้เฉพาะ admin/engineer ตอนรีวิวหรือวางแผน — cs มีหน้าที่เปิดใบงานเท่านั้น
     const showCancelBtn = isEdit && canCancelRole && (isCsStage || isPlanningStage);
     const showRejectBtn = isEdit && canRejectRole && isPlanningStage;
     // engineer (หรือ admin) ตีกลับ SR ด่าน cs ได้ — ไม่มีปุ่มอนุมัติแล้ว (engineer วางแผน/Assign SR ได้เลย)
@@ -798,7 +804,7 @@ export default function CMOpenForm() {
 
     useEffect(() => {
         let alive = true;
-        (async () => { try { const res = await apiFetch(`${API_BASE}/me`, { credentials: "include" }); if (res.ok) { const data = await res.json(); if (alive) { setCurrentUsername(data.username || ""); setUserRole(data.role || ""); if (!isEdit && !reported_by) setReportedBy(data.username || ""); } } } catch { } })();
+        (async () => { try { const res = await apiFetch(`${API_BASE}/me`, { credentials: "include" }); if (res.ok) { const data = await res.json(); if (alive) { setCurrentUsername(data.username || ""); setUserRole(data.role || ""); setCurrentCompany(data.company || ""); if (!isEdit && !reported_by) setReportedBy(data.username || ""); } } } catch { } })();
         return () => { alive = false; };
     }, [isEdit]);
 
@@ -809,11 +815,22 @@ export default function CMOpenForm() {
         (async () => {
             try {
                 const res = await apiFetch(`${API_BASE}/users/by-role?role=technician`, { credentials: "include" });
-                if (res.ok) { const data = await res.json(); if (alive) setTechnicians(data.users || []); }
+                if (res.ok) {
+                    const data = await res.json();
+                    if (alive) {
+                        const users: TechnicianOption[] = Array.isArray(data.users) ? data.users : [];
+                        const engineerCompany = currentCompany.trim().toLowerCase();
+                        setTechnicians(
+                            userRole.trim().toLowerCase() === "engineer"
+                                ? users.filter((user) => engineerCompany && (user.company || "").trim().toLowerCase() === engineerCompany)
+                                : users,
+                        );
+                    }
+                }
             } catch { if (alive) setTechnicians([]); }
         })();
         return () => { alive = false; };
-    }, [canPlan]);
+    }, [canPlan, currentCompany, userRole]);
 
     useEffect(() => {
         if (isEdit || !stationId) return; let alive = true;
@@ -1118,7 +1135,7 @@ export default function CMOpenForm() {
         }
     };
 
-    // ── ยกเลิกใบงาน (engineer/planner/admin ตอนรีวิวหรือวางแผน) → Cancelled (ไปแท็บ Closed) ──
+    // ── ยกเลิกใบงาน (engineer/admin ตอนรีวิวหรือวางแผน) → Cancelled (ไปแท็บ Closed) ──
     const handleCancelJob = async () => {
         if (!editId || !stationId) return;
         const remark = commentText.trim();
@@ -1328,7 +1345,23 @@ export default function CMOpenForm() {
 
                                 {/* Severity */}
                                 <div id="cm-severity">
-                                    <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-2">{t("severity", lang)} <span className="tw-text-red-500">*</span></label>
+                                    <div className="tw-flex tw-items-center tw-gap-1.5 tw-mb-2">
+                                        <label htmlFor="cm-severity-select" className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800">{t("severity", lang)} <span className="tw-text-red-500">*</span></label>
+                                        <Tooltip
+                                            content={
+                                                <div className="tw-w-72 tw-whitespace-normal tw-text-left tw-text-xs tw-leading-5">
+                                                    {t("severityTooltip", lang).split("\n").map((line, index) => (
+                                                        <div key={index}>{line}</div>
+                                                    ))}
+                                                </div>
+                                            }
+                                            placement="top"
+                                        >
+                                            <span tabIndex={0} aria-label={t("severityTooltip", lang)} className="tw-inline-flex tw-cursor-help tw-text-blue-gray-500 hover:tw-text-blue-600 focus:tw-text-blue-600">
+                                                <InformationCircleIcon className="tw-h-4 tw-w-4" />
+                                            </span>
+                                        </Tooltip>
+                                    </div>
                                     <div className="tw-relative">
                                         {severity && (
                                             <span className={`tw-absolute tw-left-3 tw-top-1/2 tw--translate-y-1/2 tw-w-1.5 tw-h-1.5 tw-rounded-full tw-pointer-events-none ${severity === "Urgent" ? "tw-bg-red-400" :
@@ -1338,6 +1371,7 @@ export default function CMOpenForm() {
                                                 }`} />
                                         )}
                                         <select
+                                            id="cm-severity-select"
                                             value={severity}
                                             disabled={fieldsLocked}
                                             onChange={e => setSeverity(e.target.value as Severity)}

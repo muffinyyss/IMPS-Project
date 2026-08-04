@@ -8,6 +8,7 @@ import InProgressTables from "@/app/dashboard/cm-report/inprogress/list/inprogre
 import ClosedTables from "@/app/dashboard/cm-report/closed/list/closed-table";
 import { Tabs, TabsHeader, TabsBody, Tab, TabPanel } from "@material-tailwind/react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { apiFetch } from "@/utils/api";
 
 type TabId = "Open" | "In Progress" | "Closed" | "Cancelled";
 type TabSlug = "open" | "in-progress" | "closed" | "cancelled";
@@ -37,6 +38,28 @@ export default function DataTablesPage() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const [currentRole, setCurrentRole] = useState("");
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const res = await apiFetch("/me", { credentials: "include" });
+        if (res.ok && alive) {
+          const data = await res.json();
+          setCurrentRole(data.role || "");
+        }
+      } catch {
+        // Keep the default tabs when the role cannot be loaded.
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  const isTechnician = currentRole.trim().toLowerCase() === "technician";
+  const visibleTabs = isTechnician
+    ? TABS.filter((tab) => tab.id === "In Progress" || tab.id === "Closed")
+    : TABS;
 
   // ใช้ state แทน useMemo เพื่อให้ sync กับ URL ได้ทันที
   const [active, setActive] = useState<TabId>(() => slugToTab(searchParams.get("tab")));
@@ -49,6 +72,19 @@ export default function DataTablesPage() {
       setActive(newActive);
     }
   }, [searchParams]);
+
+  // Technician ใช้เฉพาะแท็บ In Progress และ Closed
+  useEffect(() => {
+    if (!isTechnician) return;
+    const requestedTab = slugToTab(searchParams.get("tab"));
+    if (requestedTab === "In Progress" || requestedTab === "Closed") return;
+
+    setActive("In Progress");
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("tab", "in-progress");
+    params.delete("stage");
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  }, [isTechnician, pathname, router, searchParams]);
 
   // 🔒 อยู่โหมดฟอร์มเมื่อ ?view=form
   const isFormView = searchParams.get("view") === "form";
@@ -148,7 +184,7 @@ export default function DataTablesPage() {
       {/* Custom Tabs */}
       <div className={`tw-w-full tw-flex tw-justify-start tw-overflow-x-auto tw-scrollbar-hide ${isFormView ? "tw-pointer-events-none tw-opacity-60" : ""}`}>
         <div className="tw-inline-flex tw-items-center tw-gap-1 tw-p-1 tw-bg-gray-100 tw-rounded-xl tw-border tw-border-gray-200">
-          {TABS.map((tab) => {
+          {visibleTabs.map((tab) => {
             const isActive = active === tab.id;
             return (
               <button

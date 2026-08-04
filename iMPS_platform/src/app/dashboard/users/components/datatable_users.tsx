@@ -857,7 +857,6 @@ export default function SearchDataTables() {
                   <Option value="owner">owner</Option>
                   <Option value="technician">Technician</Option>
                   <Option value="cs">CS</Option>
-                  <Option value="planner">Planner</Option>
                   <Option value="engineer">Engineer</Option>
                 </Select>
 

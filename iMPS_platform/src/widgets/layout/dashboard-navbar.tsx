@@ -115,7 +115,7 @@ export function DashboardNavbar() {
 
   // ===== Super admin: dropdown สลับ role (impersonate) โดยไม่ต้อง login ใหม่ =====
   const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
-  const SWITCH_ROLES = ["super_admin", "admin", "owner", "cs", "engineer", "planner", "technician"];
+  const SWITCH_ROLES = ["super_admin", "admin", "owner", "cs", "engineer", "technician"];
   const [isSuperAdminReal, setIsSuperAdminReal] = useState(false);
   const [effectiveRole, setEffectiveRole] = useState<string>("");
   const [switching, setSwitching] = useState(false);
@@ -577,4 +577,4 @@ export function DashboardNavbar() {
   );
 }
 
-export default DashboardNavbar; 
+export default DashboardNavbar;
