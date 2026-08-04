@@ -322,6 +322,8 @@ async def _cm_items_for_station(station_id: str, station_name: str, status: str 
         "stage": 1, "reject_remark": 1,
         "reported_by": 1, "inspector": 1, "approved_by": 1, "faulty_equipment": 1, "severity": 1,
         "problem_details": 1, "location": 1, "job": 1, "repair_result": 1,
+        # analyse CM dashboard : cause / correction (codes Maximo)
+        "cause": 1, "problem_type": 1, "repaired_equipment": 1,
         "assignees": 1, "sched_start": 1, "sched_finish": 1,
         "repair_result_remark": 1, "maximo_ticket_id": 1, "createdAt": 1,
     }).sort([("createdAt", -1), ("_id", -1)])
@@ -352,6 +354,18 @@ async def _cm_items_for_station(station_id: str, station_name: str, status: str 
             return created.astimezone(th_tz).date().isoformat()
         return None
 
+    def as_list(*candidates) -> list[str]:
+        """Champs multi-valeurs (cause / problem_type / repaired_equipment) —
+        les fiches anciennes les stockent parfois en chaîne simple."""
+        for v in candidates:
+            if isinstance(v, list):
+                vals = [str(x).strip() for x in v if str(x or "").strip()]
+                if vals:
+                    return vals
+            elif isinstance(v, str) and v.strip():
+                return [v.strip()]
+        return []
+
     out = []
     for it in items_raw:
         job = it.get("job", {})
@@ -369,6 +383,10 @@ async def _cm_items_for_station(station_id: str, station_name: str, status: str 
             "stage": it.get("stage") or "",
             "reject_remark": it.get("reject_remark") or "",
             "faulty_equipment": it.get("faulty_equipment") or job.get("faulty_equipment") or "",
+            # codes Maximo exploités par le CM dashboard (cause / remedy)
+            "cause": as_list(it.get("cause"), job.get("cause")),
+            "problem_type": as_list(it.get("problem_type"), job.get("problem_type")),
+            "repaired_equipment": as_list(it.get("repaired_equipment"), job.get("repaired_equipment")),
             "problem_details": it.get("problem_details") or job.get("problem_details") or "",
             "severity": it.get("severity") or job.get("severity") or "",
             "location": it.get("location") or job.get("location") or "",

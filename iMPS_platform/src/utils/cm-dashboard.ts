@@ -1,3 +1,5 @@
+import { causeLabel, remedyLabel, remedyDescriptions } from "@/utils/cm-failure-codes";
+
 export type CMRow = {
   id: string;
   station_id: string;
@@ -7,7 +9,12 @@ export type CMRow = {
   reject_remark?: string;
   faulty_equipment: string;
   problem_details: string;
-  cause: string;
+  /** codes CAUSE Maximo — fiches anciennes : texte libre. Peut arriver en chaîne simple. */
+  cause: string | string[];
+  /** codes PROBLEM Maximo */
+  problem_type?: string | string[];
+  /** codes REMEDY Maximo (champ « การแก้ไข » du formulaire CM) */
+  repaired_equipment?: string | string[];
   severity: string;
   cm_date: string | null;
   reported_by: string;
@@ -24,8 +31,54 @@ export type ActiveFilters = {
   severity: string | null;
   station: string | null;
   /** กรองตาม bucket ของ KPI (คลิกการ์ด KPI ด้านบน) — ละเอียดกว่า status 3 กลุ่ม */
-  workStatus: WorkStatus | null;
+  workStatus: WorkStatusFilter | null;
+  /** libellé de cause (CAUSE DESCRIPTION) — clic sur le donut « Count of Cause of Issue » */
+  cause: string | null;
+  /** code REMEDY — clic sur le donut « Remedy » */
+  remedy: string | null;
 };
+
+export const EMPTY_FILTERS: ActiveFilters = {
+  status: null, equipment: null, severity: null, station: null,
+  workStatus: null, cause: null, remedy: null,
+};
+
+/** Champs multi-valeurs : le backend renvoie un tableau, les fiches anciennes une chaîne. */
+export function toList(v: string | string[] | undefined | null): string[] {
+  if (Array.isArray(v)) return v.map((x) => (x || "").trim()).filter(Boolean);
+  const s = (v || "").trim();
+  return s ? [s] : [];
+}
+
+/** Libellés de cause d'une fiche (codes Maximo traduits, texte libre laissé tel quel). */
+export function causeLabelsOf(r: CMRow): string[] {
+  const out: string[] = [];
+  for (const c of toList(r.cause)) {
+    const label = causeLabel(c);
+    if (label && !out.includes(label)) out.push(label);
+  }
+  return out;
+}
+
+/** Codes REMEDY d'une fiche (normalisés en majuscules). */
+export function remedyCodesOf(r: CMRow): string[] {
+  const out: string[] = [];
+  for (const c of toList(r.repaired_equipment)) {
+    const code = c.toUpperCase();
+    if (!out.includes(code)) out.push(code);
+  }
+  return out;
+}
+
+/** REMEDY DESCRIPTION(s) d'une fiche pour un code remedy donné. */
+export function remedyDescriptionsOf(r: CMRow, remedyCode: string): string[] {
+  return remedyDescriptions(
+    r.faulty_equipment || "",
+    toList(r.problem_type),
+    toList(r.cause),
+    remedyCode
+  );
+}
 
 export const STATUS_LABELS = {
   completed: "เสร็จสิ้น",
@@ -71,6 +124,12 @@ export type WorkStatus =
   | "wait_site_access"
   | "in_progress"
   | "completed";
+
+/**
+ * Filtre du bandeau KPI : soit un bucket précis, soit « wo_all » =
+ * tous les work orders, c.-à-d. toutes les SR sorties du bucket "new".
+ */
+export type WorkStatusFilter = WorkStatus | "wo_all";
 
 export function normalizeWorkStatus(s: string): WorkStatus {
   const v = (s || "").trim().toLowerCase().replace(/[-_\s]+/g, " ");
@@ -164,7 +223,14 @@ export function applyFilters(
       if ((r.station_name || r.station_id || "Unknown") !== filters.station) return false;
     }
     if (filters.workStatus && exclude !== "workStatus") {
-      if (normalizeWorkStatus(r.status) !== filters.workStatus) return false;
+      const ws = normalizeWorkStatus(r.status);
+      if (filters.workStatus === "wo_all" ? ws === "new" : ws !== filters.workStatus) return false;
+    }
+    if (filters.cause && exclude !== "cause") {
+      if (!causeLabelsOf(r).includes(filters.cause)) return false;
+    }
+    if (filters.remedy && exclude !== "remedy") {
+      if (!remedyCodesOf(r).includes(filters.remedy)) return false;
     }
     return true;
   });
@@ -176,7 +242,9 @@ export function applySearch(rows: CMRow[], q: string): CMRow[] {
   return rows.filter((r) =>
     [
       r.station_name, r.station_id, r.issue_id, r.faulty_equipment,
-      r.problem_details, r.severity, r.cause, r.inspector, r.reported_by, r.status,
+      r.problem_details, r.severity, r.inspector, r.reported_by, r.status,
+      ...causeLabelsOf(r),
+      ...remedyCodesOf(r).map(remedyLabel),
     ].some((v) => (v || "").toLowerCase().includes(lq))
   );
 }
@@ -191,5 +259,23 @@ export function groupCount(
     map[v] = (map[v] || 0) + 1;
   }
   const sorted = Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, 9);
+  return { keys: sorted.map((e) => e[0]), vals: sorted.map((e) => e[1]) };
+}
+
+/**
+ * Comptage sur un champ multi-valeurs : une fiche portant deux causes compte
+ * une fois dans chaque catégorie. Les fiches sans valeur (cause/correction pas
+ * encore saisie) ne sont pas comptées. `top` limite le nombre de tranches.
+ */
+export function groupCountMulti(
+  rows: CMRow[],
+  valuesOf: (r: CMRow) => string[],
+  top = 9
+): { keys: string[]; vals: number[] } {
+  const map: Record<string, number> = {};
+  for (const r of rows) {
+    for (const v of valuesOf(r)) map[v] = (map[v] || 0) + 1;
+  }
+  const sorted = Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, top);
   return { keys: sorted.map((e) => e[0]), vals: sorted.map((e) => e[1]) };
 }

@@ -7,10 +7,12 @@ import { Card, CardHeader, CardBody, Typography } from "@material-tailwind/react
 import { apiFetch } from "@/utils/api";
 import useLanguage from "@/utils/useLanguage";
 import {
-  CMRow, ActiveFilters, DateSel, STATUS_LABELS, WorkStatus,
+  CMRow, ActiveFilters, DateSel, STATUS_LABELS, WorkStatusFilter, EMPTY_FILTERS,
   normalizeStatus, normalizeWorkStatus, statusBadge, filterByDate, listYears,
-  weeksInMonth, applyFilters, applySearch, groupCount, groupByMonth,
+  weeksInMonth, applyFilters, applySearch, groupCount, groupCountMulti, groupByMonth,
+  causeLabelsOf, remedyCodesOf, remedyDescriptionsOf,
 } from "@/utils/cm-dashboard";
+import { remedyLabel, remedyCodeOfDescription } from "@/utils/cm-failure-codes";
 
 const Chart = dynamic(() => import("react-apexcharts"), { ssr: false });
 
@@ -18,8 +20,10 @@ const Chart = dynamic(() => import("react-apexcharts"), { ssr: false });
 
 // RAG semantics: completed=green, in_progress=orange (watch), open=red (action needed)
 const DONUT_COLORS = ["#22c55e", "#f97316", "#ef4444"];
-// Categorical palette for equipment — blue/cool family, no RAG meaning
+// Categorical palette for causes / equipment — blue/cool family, no RAG meaning
 const EQUIPMENT_COLORS = ["#3b82f6","#06b6d4","#8b5cf6","#0ea5e9","#a855f7","#14b8a6","#64748b","#6366f1","#0284c7","#7c3aed"];
+// Remedy = ce qui a été fait (pas un état) → famille chaude, distincte des causes
+const REMEDY_COLORS = ["#f59e0b","#ec4899","#f97316","#d946ef","#eab308","#fb7185","#c026d3","#f43f5e","#ca8a04","#e11d48"];
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 500;
 
@@ -55,6 +59,15 @@ function StatCard({ label, value, color, icon, dim, active, onClick }: {
         {icon}
       </div>
     </button>
+  );
+}
+
+// เมื่อไม่มีข้อมูลในช่วงที่เลือก — แสดงข้อความแทนกราฟเปล่า (สูงเท่ากราฟ แถวไม่ขยับ)
+function EmptyChart({ message, height = 260 }: { message: string; height?: number }) {
+  return (
+    <div style={{ height }} className="tw-flex tw-items-center tw-justify-center tw-text-sm tw-text-gray-400">
+      {message}
+    </div>
   );
 }
 
@@ -172,7 +185,7 @@ export default function CMDashboardPage() {
   const [monthSel, setMonthSel] = useState<DateSel>("all");
   const [weekSel, setWeekSel] = useState<DateSel>("all");
   const [stationFilter, setStationFilter] = useState<string>("All");
-  const [filters, setFilters] = useState<ActiveFilters>({ status: null, equipment: null, severity: null, station: null, workStatus: null });
+  const [filters, setFilters] = useState<ActiveFilters>(EMPTY_FILTERS);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
@@ -233,7 +246,7 @@ export default function CMDashboardPage() {
   }, []);
 
   const clearAll = () => {
-    setFilters({ status: null, equipment: null, severity: null, station: null, workStatus: null });
+    setFilters(EMPTY_FILTERS);
     setSearch("");
     setPage(0);
   };
@@ -287,9 +300,28 @@ export default function CMDashboardPage() {
   }, [srRows]);
   const successRate = srStats.total === 0 ? 0 : Math.round((srStats.completed / srStats.total) * 100);
 
-  // ── Equipment pie: ignores own equipment filter
-  const eqRows = useMemo(() => applyFilters(periodRows, filters, "equipment"), [periodRows, filters]);
-  const eqData = useMemo(() => groupCount(eqRows, "faulty_equipment"), [eqRows]);
+  // ── Cause donut (« Count of Cause of Issue ») : compte les CAUSE CODE des fiches CM,
+  //    une fiche à deux causes compte dans les deux tranches. Ignore son propre filtre.
+  const causeRows = useMemo(() => applyFilters(periodRows, filters, "cause"), [periodRows, filters]);
+  const causeData = useMemo(() => groupCountMulti(causeRows, causeLabelsOf), [causeRows]);
+
+  // ── Remedy donut : réparti par REMEDY CODE (Replace / Repair / Reset…). Ignore son propre filtre.
+  const remedyRows = useMemo(() => applyFilters(periodRows, filters, "remedy"), [periodRows, filters]);
+  const remedyData = useMemo(() => groupCountMulti(remedyRows, remedyCodesOf, 10), [remedyRows]);
+
+  // ── Bar de détail : REMEDY DESCRIPTION. Sans sélection il agrège toutes les catégories ;
+  //    un clic sur une tranche du donut le restreint à cette seule catégorie.
+  const activeRemedy = filters.remedy;
+  const remedyDetail = useMemo(() => {
+    const rows = applyFilters(periodRows, filters);
+    return groupCountMulti(
+      rows,
+      activeRemedy
+        ? (r) => remedyDescriptionsOf(r, activeRemedy)
+        : (r) => Array.from(new Set(remedyCodesOf(r).flatMap((code) => remedyDescriptionsOf(r, code)))),
+      10
+    );
+  }, [periodRows, filters, activeRemedy]);
 
   // ── Severity bar: ignores own severity filter
   const sevRows = useMemo(() => applyFilters(periodRows, filters, "severity"), [periodRows, filters]);
@@ -318,7 +350,9 @@ export default function CMDashboardPage() {
     // Completion rate = WO completed ÷ (Total SR − wait spare part − wait site access) × 100
     const denom = counts.total - counts.waitSparepart - counts.waitSiteAccess;
     const completionRate = denom > 0 ? Math.round((counts.completed / denom) * 100) : 0;
-    return { ...counts, completionRate };
+    // « All work order » = toutes les SR devenues des WO (tout sauf le bucket "new")
+    const allWo = counts.total - counts.newSr;
+    return { ...counts, allWo, completionRate };
   }, [kpiRows]);
 
   // ── Table: chart-filters + search + sort + paginate
@@ -353,6 +387,7 @@ export default function CMDashboardPage() {
       clickToFilter: "คลิกที่ส่วนของกราฟเพื่อกรอง",
       cancelHint: "(คลิกอีกครั้งเพื่อยกเลิก)",
       kpiTotalSR: "SR ทั้งหมด",
+      kpiAllWO: "WO ทั้งหมด",
       kpiNewSR: "SR ใหม่",
       kpiWaitManpower: "WO รอกำหนดการ",
       kpiWaitSparepart: "WO รออะไหล่",
@@ -374,6 +409,14 @@ export default function CMDashboardPage() {
       eqTitle: "Count of Cause of Issue",
       eqSubtitle: (n: number) => `Grand Total: ${n}`,
       sevTitle: "Severity Distribution",
+      s4Title: "การแก้ไข (Remedy Analysis)",
+      remedyTitle: "Count of Remedy",
+      remedySubtitle: (n: number) => `Grand Total: ${n}`,
+      remedyDetailTitle: (label: string) => `รายละเอียดการแก้ไข — ${label}`,
+      remedyAllLabel: "ทุกการแก้ไข",
+      remedyDetailHint: "คลิกที่ส่วนของกราฟวงกลมเพื่อกรองรายละเอียด",
+      remedyEmpty: "ยังไม่มีข้อมูลการแก้ไข",
+      noChartData: "ไม่มีข้อมูลในช่วงที่เลือก",
       s3Title: "สถานะรวมรายเดือน (Overall Status by Month)",
       barHint: "คลิกที่แท่งกราฟเพื่อเลือกเดือน",
       rowsPerPage: "แถวต่อหน้า",
@@ -408,6 +451,7 @@ export default function CMDashboardPage() {
       clickToFilter: "Click on the chart to filter",
       cancelHint: "(click again to cancel)",
       kpiTotalSR: "Total service requests",
+      kpiAllWO: "All work order",
       kpiNewSR: "New service requests",
       kpiWaitManpower: "WO wait for scheduled",
       kpiWaitSparepart: "WO wait for material",
@@ -429,6 +473,14 @@ export default function CMDashboardPage() {
       eqTitle: "Count of Cause of Issue",
       eqSubtitle: (n: number) => `Grand Total: ${n}`,
       sevTitle: "Severity Distribution",
+      s4Title: "Remedy Analysis",
+      remedyTitle: "Count of Remedy",
+      remedySubtitle: (n: number) => `Grand Total: ${n}`,
+      remedyDetailTitle: (label: string) => `Remedy detail — ${label}`,
+      remedyAllLabel: "All remedies",
+      remedyDetailHint: "Click a slice of the pie to filter the detail",
+      remedyEmpty: "No remedy recorded yet",
+      noChartData: "No data for the selected period",
       s3Title: "Overall Status by Month",
       barHint: "Click on a bar to select the month",
       rowsPerPage: "Rows per page",
@@ -466,11 +518,11 @@ export default function CMDashboardPage() {
   // การ์ด KPI — ws = bucket ที่คลิกแล้วกรอง, coarse = สถานะ 3 กลุ่มไว้หรี่การ์ดตอนกรองจาก donut
   type KpiCard = {
     label: string; value: number | string; color: string; icon: string;
-    ws?: WorkStatus; coarse?: string; clearsWorkStatus?: boolean;
+    ws?: WorkStatusFilter; coarse?: string; clearsWorkStatus?: boolean;
   };
   const kpiCards: KpiCard[] = [
     { label: t.kpiTotalSR, value: kpiStats.total, color: "linear-gradient(135deg,#3b82f6,#1d4ed8)", icon: "📋", clearsWorkStatus: true },
-    { label: t.kpiNewSR, value: kpiStats.newSr, color: "linear-gradient(135deg,#06b6d4,#0e7490)", icon: "🆕", ws: "new", coarse: STATUS_LABELS.open },
+    { label: t.kpiAllWO, value: kpiStats.allWo, color: "linear-gradient(135deg,#06b6d4,#0e7490)", icon: "🧾", ws: "wo_all" },
     { label: t.kpiWaitManpower, value: kpiStats.waitManpower, color: "linear-gradient(135deg,#f59e0b,#b45309)", icon: "📅", ws: "wait_manpower", coarse: STATUS_LABELS.open },
     { label: t.kpiWaitSparepart, value: kpiStats.waitSparepart, color: "linear-gradient(135deg,#f43f5e,#be123c)", icon: "🔩", ws: "wait_sparepart", coarse: STATUS_LABELS.open },
     { label: t.kpiWaitApprove, value: kpiStats.waitApprove, color: "linear-gradient(135deg,#8b5cf6,#6d28d9)", icon: "✍️", ws: "wait_approve", coarse: STATUS_LABELS.open },
@@ -480,7 +532,8 @@ export default function CMDashboardPage() {
   ];
 
   // ป้ายชื่อ bucket สำหรับ filter chip (คลิกการ์ด KPI)
-  const workStatusLabel: Record<WorkStatus, string> = {
+  const workStatusLabel: Record<WorkStatusFilter, string> = {
+    wo_all: t.kpiAllWO,
     new: t.kpiNewSR,
     wait_manpower: t.kpiWaitManpower,
     wait_sparepart: t.kpiWaitSparepart,
@@ -524,18 +577,18 @@ export default function CMDashboardPage() {
     tooltip: { y: { formatter: (v: number) => `${v} ${t.taskUnit}` } },
   }), [successRate, toggleFilter, t]);
 
-  const equipOptions = useMemo<ApexCharts.ApexOptions>(() => ({
+  const causeOptions = useMemo<ApexCharts.ApexOptions>(() => ({
     chart: {
       type: "donut",
       events: {
         dataPointSelection: (_e: any, _ctx: any, { dataPointIndex }: any) => {
-          const label = eqData.keys[dataPointIndex];
-          if (label) toggleFilter("equipment", label);
+          const label = causeData.keys[dataPointIndex];
+          if (label) toggleFilter("cause", label);
         },
       },
     },
     colors: EQUIPMENT_COLORS,
-    labels: eqData.keys.length ? eqData.keys : ["No data"],
+    labels: causeData.keys,
     legend: { show: true, position: "bottom", fontSize: "11px" },
     states: { active: { filter: { type: "darken", value: 0.7 } } },
     dataLabels: { enabled: false },
@@ -545,13 +598,72 @@ export default function CMDashboardPage() {
           size: "60%",
           labels: {
             show: true,
-            total: { show: true, label: "Grand Total", fontSize: "10px", formatter: () => String(eqData.vals.reduce((s, v) => s + v, 0)) },
+            total: { show: true, label: "Grand Total", fontSize: "10px", formatter: () => String(causeData.vals.reduce((s, v) => s + v, 0)) },
           },
         },
       },
     },
     tooltip: { y: { formatter: (v: number) => `${v} case${v !== 1 ? "s" : ""}` } },
-  }), [eqData, toggleFilter]);
+  }), [causeData, toggleFilter]);
+
+  // ── Remedy donut (REMEDY CODE) — clic = choisir le remède détaillé dans le bar chart
+  const remedyOptions = useMemo<ApexCharts.ApexOptions>(() => ({
+    chart: {
+      type: "donut",
+      events: {
+        dataPointSelection: (_e: any, _ctx: any, { dataPointIndex }: any) => {
+          const code = remedyData.keys[dataPointIndex];
+          if (code) toggleFilter("remedy", code);
+        },
+      },
+    },
+    colors: REMEDY_COLORS,
+    labels: remedyData.keys.map(remedyLabel),
+    legend: { show: true, position: "bottom", fontSize: "11px" },
+    states: { active: { filter: { type: "darken", value: 0.7 } } },
+    dataLabels: { enabled: false },
+    plotOptions: {
+      pie: {
+        donut: {
+          size: "60%",
+          labels: {
+            show: true,
+            total: { show: true, label: "Grand Total", fontSize: "10px", formatter: () => String(remedyData.vals.reduce((s, v) => s + v, 0)) },
+          },
+        },
+      },
+    },
+    tooltip: { y: { formatter: (v: number) => `${v} case${v !== 1 ? "s" : ""}` } },
+  }), [remedyData, toggleFilter]);
+
+  // ── Bar de détail : REMEDY DESCRIPTION (le composant remplacé / réparé / réinitialisé…)
+  const remedyDetailOptions = useMemo<ApexCharts.ApexOptions>(() => {
+    // des comptes de 1 ou 2 donneraient des graduations décimales (0.2, 0.4…) — on force des entiers
+    const maxVal = Math.max(1, ...remedyDetail.vals);
+    // même couleur que la tranche correspondante du donut — vue « toutes catégories »
+    // comprise, où chaque barre reprend la teinte de son remède
+    const colorOf = (code: string) => {
+      const i = remedyData.keys.indexOf(code);
+      return REMEDY_COLORS[(i >= 0 ? i : 0) % REMEDY_COLORS.length];
+    };
+    return ({
+      chart: { type: "bar", toolbar: { show: false } },
+      colors: activeRemedy
+        ? [colorOf(activeRemedy)]
+        : remedyDetail.keys.map((k) => colorOf(remedyCodeOfDescription(k))),
+      plotOptions: { bar: { horizontal: true, borderRadius: 4, distributed: !activeRemedy } },
+      xaxis: {
+        categories: remedyDetail.keys,
+        tickAmount: Math.min(5, maxVal),
+        labels: { formatter: (v: string) => String(Math.round(Number(v))), style: { fontSize: "11px" } },
+      },
+      yaxis: { labels: { maxWidth: 260, style: { fontSize: "11px" } } },
+      legend: { show: false },
+      dataLabels: { enabled: true },
+      grid: { borderColor: "#f1f5f9" },
+      tooltip: { y: { formatter: (v: number) => `${v} case${v !== 1 ? "s" : ""}` } },
+    });
+  }, [remedyDetail, remedyData, activeRemedy]);
 
   const sevOptions = useMemo<ApexCharts.ApexOptions>(() => {
     const sevColors = sevData.keys.map((k) => {
@@ -573,7 +685,12 @@ export default function CMDashboardPage() {
     },
     colors: sevColors.length ? sevColors : EQUIPMENT_COLORS,
     plotOptions: { bar: { horizontal: true, borderRadius: 4, distributed: true } },
-    xaxis: { categories: sevData.keys.length ? sevData.keys : ["No data"] },
+    xaxis: {
+      categories: sevData.keys,
+      // graduations entières — sinon 0.2 / 0.4… dès que les comptes tombent bas (filtres actifs)
+      tickAmount: Math.min(5, Math.max(1, ...sevData.vals)),
+      labels: { formatter: (v: string) => String(Math.round(Number(v))) },
+    },
     legend: { show: false },
     dataLabels: { enabled: true },
     grid: { borderColor: "#f1f5f9" },
@@ -597,6 +714,8 @@ export default function CMDashboardPage() {
     },
     colors: ["#ef4444", "#f97316", "#22c55e"],
     xaxis: { categories: t.monthsShort, labels: { rotate: 0, style: { fontSize: "12px" } } },
+    // compte de tickets = entier, jamais 0.5
+    yaxis: { labels: { formatter: (v: number) => String(Math.round(v)) } },
     legend: { position: "top" },
     dataLabels: { enabled: false },
     grid: { borderColor: "#f1f5f9" },
@@ -687,7 +806,10 @@ export default function CMDashboardPage() {
             label={c.label} value={c.value} color={c.color} icon={c.icon}
             active={c.ws !== undefined && filters.workStatus === c.ws}
             dim={
-              (filters.workStatus !== null && c.ws !== undefined && filters.workStatus !== c.ws) ||
+              // « All work order » englobe les autres buckets → on ne grise que
+              // lorsqu'un bucket précis est sélectionné, et jamais la carte englobante
+              (filters.workStatus !== null && filters.workStatus !== "wo_all" &&
+                c.ws !== undefined && c.ws !== "wo_all" && filters.workStatus !== c.ws) ||
               (filters.status !== null && c.coarse !== undefined && filters.status !== c.coarse)
             }
             onClick={
@@ -705,6 +827,8 @@ export default function CMDashboardPage() {
           <span className="tw-text-xs tw-font-medium tw-text-gray-500">{t.filterLabel}</span>
           {filters.status && <FilterChip label={`Status: ${displayStatus(filters.status)}`} lang={lang} onRemove={() => clearFilter("status")} />}
           {filters.workStatus && <FilterChip label={`KPI: ${workStatusLabel[filters.workStatus]}`} lang={lang} onRemove={() => clearFilter("workStatus")} />}
+          {filters.cause && <FilterChip label={`Cause: ${filters.cause}`} lang={lang} onRemove={() => clearFilter("cause")} />}
+          {filters.remedy && <FilterChip label={`Remedy: ${remedyLabel(filters.remedy)}`} lang={lang} onRemove={() => clearFilter("remedy")} />}
           {filters.equipment && <FilterChip label={`Equipment: ${filters.equipment}`} lang={lang} onRemove={() => clearFilter("equipment")} />}
           {filters.severity && <FilterChip label={`Severity: ${filters.severity}`} lang={lang} onRemove={() => clearFilter("severity")} />}
           {filters.station && <FilterChip label={`Station: ${filters.station}`} lang={lang} onRemove={() => clearFilter("station")} />}
@@ -761,11 +885,11 @@ export default function CMDashboardPage() {
         </div>
         <div className="tw-grid tw-grid-cols-1 tw-gap-6 lg:tw-grid-cols-2">
 
-          {/* Equipment pie */}
+          {/* Cause pie — CAUSE CODE des fiches CM */}
           <Card className="tw-relative tw-border tw-border-blue-gray-100 tw-shadow-sm">
-            {filters.equipment && (
+            {filters.cause && (
               <div className="tw-absolute tw-right-3 tw-top-3 tw-z-10 tw-rounded-full tw-bg-blue-50 tw-px-2 tw-py-0.5 tw-text-[10px] tw-font-bold tw-text-blue-600 tw-ring-1 tw-ring-blue-200">
-                🔍 {filters.equipment}
+                🔍 {filters.cause}
               </div>
             )}
             <CardHeader floated={false} shadow={false} className="tw-m-4 tw-mb-0">
@@ -773,16 +897,15 @@ export default function CMDashboardPage() {
                 {t.eqTitle}
               </Typography>
               <Typography variant="small" className="!tw-font-normal !tw-text-blue-gray-500">
-                {t.eqSubtitle(eqData.vals.reduce((s, v) => s + v, 0))}
+                {t.eqSubtitle(causeData.vals.reduce((s, v) => s + v, 0))}
               </Typography>
             </CardHeader>
             <CardBody className="!tw-px-4 !tw-pt-2 !tw-pb-4">
-              <Chart
-                type="donut"
-                options={equipOptions}
-                series={eqData.vals.length ? eqData.vals : [0]}
-                width="100%" height={260}
-              />
+              {causeData.vals.length === 0 ? (
+                <EmptyChart message={t.noChartData} />
+              ) : (
+                <Chart type="donut" options={causeOptions} series={causeData.vals} width="100%" height={260} />
+              )}
             </CardBody>
           </Card>
 
@@ -799,12 +922,69 @@ export default function CMDashboardPage() {
               </Typography>
             </CardHeader>
             <CardBody className="!tw-px-4 !tw-pt-2 !tw-pb-4">
-              <Chart
-                type="bar"
-                options={sevOptions}
-                series={[{ name: "Count", data: sevData.vals.length ? sevData.vals : [0] }]}
-                width="100%" height={260}
-              />
+              {sevData.vals.length === 0 ? (
+                <EmptyChart message={t.noChartData} />
+              ) : (
+                <Chart type="bar" options={sevOptions} series={[{ name: "Count", data: sevData.vals }]} width="100%" height={260} />
+              )}
+            </CardBody>
+          </Card>
+        </div>
+      </section>
+
+      {/* ── Section 2b: Remedy Analysis — pie par REMEDY CODE + détail REMEDY DESCRIPTION ── */}
+      <section className="tw-mb-6">
+        <div className="tw-mb-3 tw-flex tw-items-center tw-justify-between">
+          <h2 className="tw-text-base tw-font-semibold tw-text-gray-700">{t.s4Title}</h2>
+          <p className="tw-text-xs tw-text-gray-400">{t.remedyDetailHint}</p>
+        </div>
+        <div className="tw-grid tw-grid-cols-1 tw-gap-6 lg:tw-grid-cols-2">
+
+          {/* Remedy pie */}
+          <Card className="tw-relative tw-border tw-border-blue-gray-100 tw-shadow-sm">
+            {filters.remedy && (
+              <div className="tw-absolute tw-right-3 tw-top-3 tw-z-10 tw-rounded-full tw-bg-blue-50 tw-px-2 tw-py-0.5 tw-text-[10px] tw-font-bold tw-text-blue-600 tw-ring-1 tw-ring-blue-200">
+                🔍 {remedyLabel(filters.remedy)}
+              </div>
+            )}
+            <CardHeader floated={false} shadow={false} className="tw-m-4 tw-mb-0">
+              <Typography variant="h6" color="blue-gray">{t.remedyTitle}</Typography>
+              <Typography variant="small" className="!tw-font-normal !tw-text-blue-gray-500">
+                {t.remedySubtitle(remedyData.vals.reduce((s, v) => s + v, 0))}
+              </Typography>
+            </CardHeader>
+            <CardBody className="!tw-px-4 !tw-pt-2 !tw-pb-4">
+              {remedyData.vals.length === 0 ? (
+                <EmptyChart message={t.noChartData} />
+              ) : (
+                <Chart type="donut" options={remedyOptions} series={remedyData.vals} width="100%" height={260} />
+              )}
+            </CardBody>
+          </Card>
+
+          {/* Detail bar — composants concernés par le remède sélectionné */}
+          <Card className="tw-border tw-border-blue-gray-100 tw-shadow-sm">
+            <CardHeader floated={false} shadow={false} className="tw-m-4 tw-mb-0">
+              <Typography variant="h6" color="blue-gray">
+                {t.remedyDetailTitle(activeRemedy ? remedyLabel(activeRemedy) : t.remedyAllLabel)}
+              </Typography>
+              <Typography variant="small" className="!tw-font-normal !tw-text-blue-gray-500">
+                {t.remedySubtitle(remedyDetail.vals.reduce((s, v) => s + v, 0))}
+              </Typography>
+            </CardHeader>
+            <CardBody className="!tw-px-4 !tw-pt-2 !tw-pb-4">
+              {remedyDetail.keys.length === 0 ? (
+                <EmptyChart message={t.remedyEmpty} />
+              ) : (
+                // même hauteur que le donut à gauche — la rangée reste alignée quel que soit
+                // le nombre de composants
+                <Chart
+                  type="bar"
+                  options={remedyDetailOptions}
+                  series={[{ name: "Count", data: remedyDetail.vals }]}
+                  width="100%" height={260}
+                />
+              )}
             </CardBody>
           </Card>
         </div>
