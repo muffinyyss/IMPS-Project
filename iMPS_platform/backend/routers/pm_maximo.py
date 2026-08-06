@@ -36,7 +36,8 @@ PMSource = Literal["charger", "mdb", "ccb", "cbbox", "station"]
 MAXIMO_WEBHOOK_SECRET = os.getenv("MAXIMO_WEBHOOK_SECRET", "")
 
 # สถานะที่ถือว่า "ใบงานยังเปิดอยู่"
-OPEN_WO_STATUSES = {"WAPPR", "APPR", "INPRG", "WMATL", "WSCH"}
+# OPEN = ค่า default ของ IN06 (Maximo → iMPS), ที่เหลือเป็นสถานะมาตรฐานฝั่ง Maximo
+OPEN_WO_STATUSES = {"OPEN", "WAPPR", "APPR", "INPRG", "WMATL", "WSCH"}
 
 # ── PM type → tab ──
 # pm_type เป็นตัวชี้ว่าใบงานนี้เป็นของ tab ไหน (location อย่างเดียวแยกไม่ได้
@@ -103,6 +104,32 @@ def _locations_for(source: str, identifier: str) -> tuple[list[str], str]:
     ) or {}
     loc = st.get("maximo_location") or ""
     return ([loc] if loc else []), station_id
+
+
+def _station_scope(source: str, identifier: str) -> tuple[str, str]:
+    """
+    หา station_id + maximo location "ระดับสถานี" ของ tab/อุปกรณ์ที่กำลังดูอยู่
+
+    ใบงาน IN06 เปิดมาระดับสถานี — tab charger ที่ส่ง SN มา จึงต้อง map SN
+    กลับเป็นสถานีก่อน ไม่งั้นจะไปเทียบกับ location ของตู้ (คนละระดับกัน)
+
+    Returns: (station_id, station_location)
+    """
+    if source == "charger":
+        charger = charger_collection.find_one(
+            {"SN": identifier}, {"station_id": 1}
+        ) or {}
+        station_id = charger.get("station_id") or ""
+    else:
+        station_id = identifier
+
+    if not station_id:
+        return "", ""
+
+    st = station_collection.find_one(
+        {"station_id": station_id}, {"maximo_location": 1}
+    ) or {}
+    return station_id, (st.get("maximo_location") or "")
 
 
 def _resolve_owner(location: str) -> dict:
@@ -585,24 +612,53 @@ def _serialize_open(doc: dict) -> dict:
 
 @router.get("/maximo/pm/open")
 async def list_maximo_pm_open(
+    source: Optional[PMSource] = Query(None, description="tab ที่กำลังดูอยู่ใน PM report"),
+    identifier: Optional[str] = Query(
+        None, description="SN สำหรับ charger, station_id สำหรับ tab อื่น"
+    ),
     location: Optional[str] = Query(None, description="กรองตาม Maximo location"),
     station_id: Optional[str] = Query(None, description="กรองตาม station_id ของ iMPS"),
     only_open: bool = Query(True, description="เอาเฉพาะใบงานที่ยังเปิดอยู่"),
     limit: int = Query(50, ge=1, le=200),
     current: UserClaims = Depends(get_current_user),
 ):
-    """อ่านใบงาน PM ที่ Maximo เปิดเข้ามา (protected — ต้อง login)"""
-    q: dict[str, Any] = {}
+    """
+    อ่านใบงาน PM ที่ Maximo เปิดเข้ามาทาง IN06 (protected — ต้อง login)
+
+    กรองได้ 2 แบบ:
+      - source + identifier — ใช้จากหน้า PM report แต่ละ tab (charger ส่ง SN มา
+        ระบบจะ map กลับเป็นสถานีให้เอง เพราะใบงาน IN06 เป็นระดับสถานี)
+      - location / station_id — กรองตรง ๆ
+    ไม่ส่งอะไรมาเลย = เอาทุกใบ
+    """
+    and_clauses: list[dict[str, Any]] = []
+
+    if source and (identifier or "").strip():
+        sid, station_location = _station_scope(source, identifier.strip())
+        if not (sid or station_location):
+            # อุปกรณ์/สถานีนี้ยังผูกกับ Maximo ไม่ได้ — ไม่มีใบงานให้แสดง
+            return {"items": [], "total": 0}
+        # station_id ของ WO มาจาก reverse lookup ตอนรับเข้า ซึ่งจะว่างถ้าสถานี
+        # ยังไม่ได้ตั้ง maximo_location → เทียบ location ควบไว้ด้วยกันเหนียว
+        scope = [{"station_id": sid}] if sid else []
+        if station_location:
+            scope.append({"location": station_location})
+        and_clauses.append({"$or": scope})
+
     if location:
-        q["location"] = location.strip()
+        and_clauses.append({"location": location.strip()})
     if station_id:
-        q["station_id"] = station_id.strip()
+        and_clauses.append({"station_id": station_id.strip()})
     if only_open:
         # ใบงานที่ Maximo ไม่ได้ส่ง status มา ถือว่ายังเปิดอยู่
-        q["$or"] = [
-            {"status": {"$in": list(OPEN_WO_STATUSES)}},
-            {"status": {"$in": [None, ""]}},
-        ]
+        and_clauses.append({
+            "$or": [
+                {"status": {"$in": list(OPEN_WO_STATUSES)}},
+                {"status": {"$in": [None, ""]}},
+            ]
+        })
+
+    q: dict[str, Any] = {"$and": and_clauses} if and_clauses else {}
 
     cursor = _open_coll().find(q).sort([("pm_date", -1), ("_id", -1)]).limit(limit)
     docs = await cursor.to_list(length=limit)

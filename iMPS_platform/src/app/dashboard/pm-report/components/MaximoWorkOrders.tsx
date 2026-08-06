@@ -6,26 +6,41 @@ import { ArrowPathIcon } from "@heroicons/react/24/outline";
 import { apiFetch } from "@/utils/api";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
 
-const BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
-
 export type MaximoSource = "charger" | "mdb" | "ccb" | "cbbox" | "station";
 
+/** ใบงาน PM ที่ Maximo เปิดแล้วยิงเข้ามาทาง IN06 (POST /maximo/pm/open) */
 export type MaximoWorkOrder = {
-  // 3 ตัวหลักที่รับจาก Maximo
-  pm_type?: string | null;
+  // 5 field ตาม contract IN06
   location?: string | null;
   pm_date?: string | null;
-  source?: string | null;
-  // ข้อมูลประกอบ
   wonum?: string | null;
-  description?: string | null;
   status?: string | null;
-  worktype?: string | null;
-  targcompdate?: string | null;
+  company?: string | null;
+  description?: string | null;
+  // ที่ iMPS map ให้เอง
   station_id?: string | null;
   sn?: string | null;
   origin?: string | null;
+  selected_equipment?: EquipmentItem[] | null;
+  selected_at?: string | null;
+  selected_by?: string | null;
   receivedAt?: string | null;
+};
+
+export type EquipmentItem = {
+  type: string;              // charger / mdb / ccb / cbbox / station
+  sn?: string | null;        // เฉพาะ charger
+  location?: string | null;
+  label?: string | null;
+};
+
+type EquipmentChoices = {
+  wonum: string;
+  station_id?: string | null;
+  location?: string | null;
+  chargers: EquipmentItem[];
+  fixed: EquipmentItem[];
+  selected_equipment: EquipmentItem[];
 };
 
 type Props = {
@@ -41,20 +56,44 @@ const T = {
   loading: { th: "กำลังโหลด…", en: "Loading…" },
   empty: { th: "ยังไม่มีใบงานจาก Maximo", en: "No work orders from Maximo yet" },
   pmDate: { th: "วันที่ PM", en: "PM date" },
-  finish: { th: "สิ้นสุด", en: "Finish" },
   location: { th: "Location", en: "Location" },
   station: { th: "สถานี", en: "Station" },
+  company: { th: "บริษัท", en: "Company" },
   workOrder: { th: "WO", en: "WO" },
   selectedEquipment: { th: "อุปกรณ์ที่เลือกใน IMPS", en: "Selected equipment in IMPS" },
+  noneSelected: { th: "ยังไม่ได้เลือกอุปกรณ์", en: "No equipment selected yet" },
   pickEquipment: { th: "เลือกอุปกรณ์ที่จะ PM", en: "Choose equipment to PM" },
+  chargers: { th: "ตู้ชาร์จ", en: "Chargers" },
+  stationLevel: { th: "อุปกรณ์ระดับสถานี", en: "Station-level equipment" },
+  noChargers: { th: "ไม่พบตู้ชาร์จในสถานีนี้", en: "No chargers found in this station" },
   close: { th: "ปิด", en: "Close" },
   confirm: { th: "ยืนยัน", en: "Confirm" },
+  saving: { th: "กำลังบันทึก…", en: "Saving…" },
+  saved: { th: "บันทึกอุปกรณ์ที่จะ PM แล้ว", en: "Equipment selection saved" },
   error: { th: "โหลดใบงานจาก Maximo ไม่สำเร็จ", en: "Failed to load Maximo work orders" },
-  syncError: { th: "รีเฟรชใบงานจาก Maximo ไม่สำเร็จ", en: "Failed to refresh Maximo work orders" },
+  choicesError: { th: "โหลดรายการอุปกรณ์ไม่สำเร็จ", en: "Failed to load equipment list" },
+  saveError: { th: "บันทึกอุปกรณ์ที่จะ PM ไม่สำเร็จ", en: "Failed to save equipment selection" },
 } as const;
 
 function t(key: keyof typeof T, lang: Lang) {
   return T[key][lang === "en" ? "en" : "th"];
+}
+
+// ป้ายชื่ออุปกรณ์ระดับสถานี — ให้ตรงกับชื่อ tab ในหน้า PM report
+const FIXED_LABELS: Record<string, string> = {
+  mdb: "MDB",
+  ccb: "CCB",
+  cbbox: "CB_BOX",
+  station: "Station",
+};
+
+/** key ประจำอุปกรณ์ 1 ตัว — charger แยกด้วย sn, ที่เหลือใช้ type ตรง ๆ */
+function equipKey(e: EquipmentItem) {
+  return e.type === "charger" ? `charger:${e.sn ?? ""}` : e.type;
+}
+
+function equipLabel(e: EquipmentItem) {
+  return e.label || FIXED_LABELS[e.type] || e.sn || e.type;
 }
 
 // Same date formatting as the surrounding PM tables
@@ -75,73 +114,28 @@ function statusChipClass(status?: string | null) {
   if (s === "COMP" || s === "CLOSE" || s === "CLOSED")
     return "tw-bg-green-50 tw-text-green-700 tw-border-green-200";
   if (s === "INPRG") return "tw-bg-amber-50 tw-text-amber-700 tw-border-amber-200";
-  if (s === "APPR") return "tw-bg-blue-50 tw-text-blue-700 tw-border-blue-200";
+  if (s === "OPEN" || s === "APPR" || s === "WAPPR")
+    return "tw-bg-blue-50 tw-text-blue-700 tw-border-blue-200";
   if (s === "CAN" || s === "CANCELLED")
     return "tw-bg-red-50 tw-text-red-700 tw-border-red-200";
   return "tw-bg-blue-gray-50 tw-text-blue-gray-700 tw-border-blue-gray-200";
-}
-
-function buildDemoWorkOrders(source: MaximoSource, identifier?: string | null): MaximoWorkOrder[] {
-  const station = identifier?.trim() || "STATION-001";
-  const fallbackLocation =
-    source === "charger"
-      ? `PTG0001-EV-BTL01GU201`
-      : source === "mdb"
-        ? `PTG0001-EV-MDB-001`
-        : source === "ccb"
-          ? `PTG0001-EV-CCB-001`
-          : source === "cbbox"
-            ? `PTG0001-EV-CBBOX-001`
-            : `PTG0001-EV-STATION-001`;
-
-  return [
-    {
-      pm_type: source === "charger" ? "CG" : source === "mdb" ? "MB" : source === "ccb" ? "CC" : source === "cbbox" ? "CB" : "ST",
-      location: fallbackLocation,
-      pm_date: "2026-07-22",
-      source,
-      wonum: `WO-${source.toUpperCase()}-001`,
-      description: `ใบงาน PM จาก Maximo เปิดอยู่สำหรับ ${source.toUpperCase()} (${station})`,
-      status: "APPR",
-      worktype: "PM",
-      station_id: station,
-      origin: "demo",
-      receivedAt: new Date().toISOString(),
-    },
-  ];
-}
-
-function buildEquipmentChoices() {
-  return [
-    { id: "charger", label: "Charger" },
-    { id: "mdb", label: "MDB" },
-    { id: "ccb", label: "CCB" },
-    { id: "cb_box", label: "CB_BOX" },
-    { id: "station", label: "Station" },
-  ];
 }
 
 export default function MaximoWorkOrders({ source, identifier }: Props) {
   const { lang } = useLanguage();
   const [items, setItems] = useState<MaximoWorkOrder[]>([]);
   const [loading, setLoading] = useState(false);
-  const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string>("");
+  const [notice, setNotice] = useState<string>("");
+
+  // ── dialog เลือกอุปกรณ์ที่จะ PM ──
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedWo, setSelectedWo] = useState<MaximoWorkOrder | null>(null);
-  const [equipmentSelections, setEquipmentSelections] = useState<Record<string, boolean>>({});
-
-  const openSelectionDialog = (wo: MaximoWorkOrder) => {
-    setSelectedWo(wo);
-    setDialogOpen(true);
-  };
-
-  const toggleEquipment = (eqId: string) => {
-    setEquipmentSelections((prev) => ({
-      ...prev,
-      [eqId]: !prev[eqId],
-    }));
-  };
+  const [choices, setChoices] = useState<EquipmentChoices | null>(null);
+  const [choicesLoading, setChoicesLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [dialogError, setDialogError] = useState<string>("");
+  const [checked, setChecked] = useState<Record<string, boolean>>({});
 
   const load = useCallback(
     async (signal?: AbortSignal) => {
@@ -153,12 +147,20 @@ export default function MaximoWorkOrders({ source, identifier }: Props) {
       setLoading(true);
       setError("");
       try {
-        const demoItems = buildDemoWorkOrders(source, identifier);
-        setItems(demoItems);
-        return;
+        const url =
+          `/maximo/pm/open?source=${encodeURIComponent(source)}` +
+          `&identifier=${encodeURIComponent(identifier)}&only_open=true`;
+        const res = await apiFetch(url, { signal });
+        const j = await res.json().catch(() => ({} as any));
+        if (!res.ok) {
+          setItems([]);
+          setError(String(j?.detail || t("error", lang)));
+          return;
+        }
+        setItems(Array.isArray(j?.items) ? j.items : []);
       } catch (err: any) {
         if (err?.name === "AbortError") return;
-        console.error("maximo work-orders error:", err);
+        console.error("maximo pm open error:", err);
         setItems([]);
         setError(t("error", lang));
       } finally {
@@ -174,26 +176,83 @@ export default function MaximoWorkOrders({ source, identifier }: Props) {
     return () => ac.abort();
   }, [load]);
 
-  async function handleRefresh() {
-    if (!identifier || syncing) return;
-    setSyncing(true);
-    setError("");
+  async function openSelectionDialog(wo: MaximoWorkOrder) {
+    if (!wo.wonum) return;
+    setSelectedWo(wo);
+    setDialogOpen(true);
+    setDialogError("");
+    setChoices(null);
+    setChecked({});
+    setChoicesLoading(true);
     try {
-      const url =
-        `${BASE}/pm-maximo/sync?source=${encodeURIComponent(source)}` +
-        `&identifier=${encodeURIComponent(identifier)}`;
-      const res = await apiFetch(url, { method: "POST" });
+      const res = await apiFetch(
+        `/maximo/pm/${encodeURIComponent(wo.wonum)}/equipment-choices`
+      );
       const j = await res.json().catch(() => ({} as any));
       if (!res.ok) {
-        setError(String(j?.detail || t("syncError", lang)));
+        setDialogError(String(j?.detail || t("choicesError", lang)));
         return;
       }
+      const data: EquipmentChoices = {
+        wonum: j?.wonum ?? wo.wonum,
+        station_id: j?.station_id ?? null,
+        location: j?.location ?? null,
+        chargers: Array.isArray(j?.chargers) ? j.chargers : [],
+        fixed: Array.isArray(j?.fixed) ? j.fixed : [],
+        selected_equipment: Array.isArray(j?.selected_equipment) ? j.selected_equipment : [],
+      };
+      setChoices(data);
+      // ติ๊กของที่เคยเลือกไว้กลับมา
+      const preset: Record<string, boolean> = {};
+      data.selected_equipment.forEach((e) => { preset[equipKey(e)] = true; });
+      setChecked(preset);
+    } catch (err) {
+      console.error("maximo pm equipment-choices error:", err);
+      setDialogError(t("choicesError", lang));
+    } finally {
+      setChoicesLoading(false);
+    }
+  }
+
+  function toggle(key: string) {
+    setChecked((prev) => ({ ...prev, [key]: !prev[key] }));
+  }
+
+  async function handleSaveEquipment() {
+    if (!selectedWo?.wonum || !choices || saving) return;
+    const equipment = [...choices.chargers, ...choices.fixed]
+      .filter((e) => checked[equipKey(e)])
+      .map((e) => ({
+        type: e.type,
+        ...(e.sn ? { sn: e.sn } : {}),
+        ...(e.location ? { location: e.location } : {}),
+        ...(e.label ? { label: e.label } : {}),
+      }));
+
+    setSaving(true);
+    setDialogError("");
+    try {
+      const res = await apiFetch(
+        `/maximo/pm/${encodeURIComponent(selectedWo.wonum)}/equipment`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ equipment }),
+        }
+      );
+      const j = await res.json().catch(() => ({} as any));
+      if (!res.ok) {
+        setDialogError(String(j?.detail || t("saveError", lang)));
+        return;
+      }
+      setDialogOpen(false);
+      setNotice(t("saved", lang));
       await load();
     } catch (err) {
-      console.error("maximo sync error:", err);
-      setError(t("syncError", lang));
+      console.error("maximo pm set equipment error:", err);
+      setDialogError(t("saveError", lang));
     } finally {
-      setSyncing(false);
+      setSaving(false);
     }
   }
 
@@ -206,13 +265,13 @@ export default function MaximoWorkOrders({ source, identifier }: Props) {
         </Typography>
         <button
           type="button"
-          onClick={handleRefresh}
-          disabled={syncing || !identifier}
+          onClick={() => { setNotice(""); load(); }}
+          disabled={loading || !identifier}
           title={t("refresh", lang)}
           className="tw-inline-flex tw-items-center tw-gap-1.5 tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-px-2.5 tw-py-1.5 tw-text-xs tw-font-medium tw-text-blue-gray-700 hover:tw-bg-blue-gray-50 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed tw-transition-colors"
         >
-          <ArrowPathIcon className={`tw-w-4 tw-h-4 ${syncing ? "tw-animate-spin" : ""}`} />
-          {syncing ? t("refreshing", lang) : t("refresh", lang)}
+          <ArrowPathIcon className={`tw-w-4 tw-h-4 ${loading ? "tw-animate-spin" : ""}`} />
+          {loading ? t("refreshing", lang) : t("refresh", lang)}
         </button>
       </div>
 
@@ -221,6 +280,11 @@ export default function MaximoWorkOrders({ source, identifier }: Props) {
         {error && (
           <div className="tw-mb-3 tw-rounded-lg tw-border tw-border-red-200 tw-bg-red-50 tw-px-3 tw-py-2 tw-text-xs sm:tw-text-sm tw-text-red-700">
             {error}
+          </div>
+        )}
+        {notice && (
+          <div className="tw-mb-3 tw-rounded-lg tw-border tw-border-green-200 tw-bg-green-50 tw-px-3 tw-py-2 tw-text-xs sm:tw-text-sm tw-text-green-700">
+            {notice}
           </div>
         )}
 
@@ -234,78 +298,86 @@ export default function MaximoWorkOrders({ source, identifier }: Props) {
             {t("empty", lang)}
           </Typography>
         ) : (
-          <div className="tw-space-y-3">
-            <div className="tw-rounded-lg tw-bg-blue-gray-50 tw-px-3 tw-py-2 tw-text-[11px] sm:tw-text-xs tw-font-medium tw-text-blue-gray-700">
-              {t("selectedEquipment", lang)}: <span className="tw-font-semibold tw-text-blue-gray-900">{identifier || "-"}</span>
-            </div>
-
-            <ul className="tw-flex tw-flex-col tw-gap-2">
-              {items.map((wo, i) => {
-                const key = wo.wonum || `${wo.pm_type ?? ""}-${wo.location ?? ""}-${wo.pm_date ?? ""}`;
-                return (
-                  <li
-                    key={`${key}-${i}`}
-                    className="tw-rounded-xl tw-border tw-border-blue-gray-100 tw-bg-white tw-px-3 tw-py-2.5 hover:tw-bg-blue-gray-50/40 tw-transition-colors"
+          <ul className="tw-flex tw-flex-col tw-gap-2">
+            {items.map((wo, i) => {
+              const key = wo.wonum || `${wo.location ?? ""}-${wo.pm_date ?? ""}`;
+              const selected = wo.selected_equipment ?? [];
+              return (
+                <li
+                  key={`${key}-${i}`}
+                  className="tw-rounded-xl tw-border tw-border-blue-gray-100 tw-bg-white tw-px-3 tw-py-2.5 hover:tw-bg-blue-gray-50/40 tw-transition-colors"
+                >
+                  <button
+                    type="button"
+                    onClick={() => openSelectionDialog(wo)}
+                    disabled={!wo.wonum}
+                    className="tw-w-full tw-text-left disabled:tw-cursor-default"
                   >
-                    <button
-                      type="button"
-                      onClick={() => openSelectionDialog(wo)}
-                      className="tw-w-full tw-text-left"
-                    >
-                      <div className="tw-min-w-0 tw-flex-1">
-                        <div className="tw-flex tw-flex-wrap tw-items-center tw-gap-2">
-                          <Typography className="tw-text-sm sm:tw-text-base tw-font-semibold tw-text-blue-gray-900">
-                            {wo.wonum || wo.location || "-"}
-                          </Typography>
-                          {wo.pm_type && (
-                            <span className="tw-inline-flex tw-items-center tw-rounded-full tw-border tw-border-indigo-200 tw-bg-indigo-50 tw-px-2 tw-py-0.5 tw-text-[11px] tw-font-semibold tw-text-indigo-700">
-                              {wo.pm_type}
-                            </span>
-                          )}
-                          {wo.status && (
-                            <span
-                              className={`tw-inline-flex tw-items-center tw-rounded-full tw-border tw-px-2 tw-py-0.5 tw-text-[11px] tw-font-medium ${statusChipClass(
-                                wo.status
-                              )}`}
-                            >
-                              {wo.status}
-                            </span>
-                          )}
-                          {wo.worktype && (
-                            <span className="tw-inline-flex tw-items-center tw-rounded-full tw-border tw-border-blue-gray-200 tw-bg-blue-gray-50 tw-px-2 tw-py-0.5 tw-text-[11px] tw-font-medium tw-text-blue-gray-700">
-                              {wo.worktype}
-                            </span>
-                          )}
-                        </div>
-
-                        {wo.description && (
-                          <Typography className="tw-mt-1 tw-text-xs sm:tw-text-sm tw-text-blue-gray-600 tw-break-words">
-                            {wo.description}
-                          </Typography>
+                    <div className="tw-min-w-0 tw-flex-1">
+                      <div className="tw-flex tw-flex-wrap tw-items-center tw-gap-2">
+                        <Typography className="tw-text-sm sm:tw-text-base tw-font-semibold tw-text-blue-gray-900">
+                          {wo.wonum || wo.location || "-"}
+                        </Typography>
+                        {wo.status && (
+                          <span
+                            className={`tw-inline-flex tw-items-center tw-rounded-full tw-border tw-px-2 tw-py-0.5 tw-text-[11px] tw-font-medium ${statusChipClass(
+                              wo.status
+                            )}`}
+                          >
+                            {wo.status}
+                          </span>
                         )}
-
-                        <div className="tw-mt-1.5 tw-flex tw-flex-wrap tw-gap-x-4 tw-gap-y-1 tw-text-[11px] sm:tw-text-xs tw-text-blue-gray-500">
-                          <span>
-                            {t("workOrder", lang)}: {wo.wonum || "-"}
+                        {wo.company && (
+                          <span className="tw-inline-flex tw-items-center tw-rounded-full tw-border tw-border-blue-gray-200 tw-bg-blue-gray-50 tw-px-2 tw-py-0.5 tw-text-[11px] tw-font-medium tw-text-blue-gray-700">
+                            {wo.company}
                           </span>
-                          <span>
-                            {t("pmDate", lang)}: {formatDate(wo.pm_date, lang)}
-                          </span>
-                          {wo.targcompdate && (
-                            <span>
-                              {t("finish", lang)}: {formatDate(wo.targcompdate, lang)}
-                            </span>
-                          )}
-                          {wo.location && <span>{t("location", lang)}: {wo.location}</span>}
-                          {wo.station_id && <span>{t("station", lang)}: {wo.station_id}</span>}
-                        </div>
+                        )}
                       </div>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
+
+                      {wo.description && (
+                        <Typography className="tw-mt-1 tw-text-xs sm:tw-text-sm tw-text-blue-gray-600 tw-break-words">
+                          {wo.description}
+                        </Typography>
+                      )}
+
+                      <div className="tw-mt-1.5 tw-flex tw-flex-wrap tw-gap-x-4 tw-gap-y-1 tw-text-[11px] sm:tw-text-xs tw-text-blue-gray-500">
+                        <span>
+                          {t("workOrder", lang)}: {wo.wonum || "-"}
+                        </span>
+                        <span>
+                          {t("pmDate", lang)}: {formatDate(wo.pm_date, lang)}
+                        </span>
+                        {wo.location && <span>{t("location", lang)}: {wo.location}</span>}
+                        {wo.station_id && <span>{t("station", lang)}: {wo.station_id}</span>}
+                        {wo.company && <span>{t("company", lang)}: {wo.company}</span>}
+                      </div>
+
+                      {/* อุปกรณ์ที่เลือกจะ PM ในฝั่ง iMPS */}
+                      <div className="tw-mt-2 tw-flex tw-flex-wrap tw-items-center tw-gap-1.5">
+                        <span className="tw-text-[11px] tw-font-medium tw-text-blue-gray-500">
+                          {t("selectedEquipment", lang)}:
+                        </span>
+                        {selected.length === 0 ? (
+                          <span className="tw-text-[11px] tw-text-blue-gray-400">
+                            {t("noneSelected", lang)}
+                          </span>
+                        ) : (
+                          selected.map((e, k) => (
+                            <span
+                              key={`${equipKey(e)}-${k}`}
+                              className="tw-inline-flex tw-items-center tw-rounded-full tw-border tw-border-indigo-200 tw-bg-indigo-50 tw-px-2 tw-py-0.5 tw-text-[11px] tw-font-semibold tw-text-indigo-700"
+                            >
+                              {equipLabel(e)}
+                            </span>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
         )}
       </div>
 
@@ -313,42 +385,102 @@ export default function MaximoWorkOrders({ source, identifier }: Props) {
         <DialogHeader className="tw-text-sm sm:tw-text-base">
           {t("pickEquipment", lang)}
         </DialogHeader>
-        <DialogBody divider className="tw-space-y-3">
-          <div className="tw-rounded-lg tw-bg-blue-gray-50 tw-px-3 tw-py-2 tw-text-[11px] sm:tw-text-xs tw-font-medium tw-text-blue-gray-700">
-            {t("selectedEquipment", lang)}: <span className="tw-font-semibold tw-text-blue-gray-900">{identifier || "-"}</span>
-          </div>
-
-          <div className="tw-flex tw-flex-col tw-gap-2">
-            {buildEquipmentChoices().map((choice) => (
-              <label
-                key={choice.id}
-                className="tw-inline-flex tw-items-center tw-gap-2 tw-text-xs sm:tw-text-sm tw-text-blue-gray-700"
-              >
-                <input
-                  type="checkbox"
-                  checked={!!equipmentSelections[choice.id]}
-                  onChange={() => toggleEquipment(choice.id)}
-                  className="tw-h-4 tw-w-4 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500"
-                />
-                {choice.label}
-              </label>
-            ))}
-          </div>
-
+        <DialogBody divider className="tw-space-y-3 tw-max-h-[60vh] tw-overflow-y-auto">
           {selectedWo && (
-            <div className="tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-px-3 tw-py-2 tw-text-[11px] sm:tw-text-xs tw-text-blue-gray-600">
+            <div className="tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-blue-gray-50 tw-px-3 tw-py-2 tw-text-[11px] sm:tw-text-xs tw-text-blue-gray-700">
               <div><span className="tw-font-semibold">{t("workOrder", lang)}:</span> {selectedWo.wonum || "-"}</div>
               <div><span className="tw-font-semibold">{t("location", lang)}:</span> {selectedWo.location || "-"}</div>
               <div><span className="tw-font-semibold">{t("pmDate", lang)}:</span> {formatDate(selectedWo.pm_date, lang)}</div>
+              {selectedWo.company && (
+                <div><span className="tw-font-semibold">{t("company", lang)}:</span> {selectedWo.company}</div>
+              )}
             </div>
           )}
+
+          {dialogError && (
+            <div className="tw-rounded-lg tw-border tw-border-red-200 tw-bg-red-50 tw-px-3 tw-py-2 tw-text-xs tw-text-red-700">
+              {dialogError}
+            </div>
+          )}
+
+          {choicesLoading ? (
+            <div className="tw-flex tw-items-center tw-gap-2 tw-text-xs tw-text-blue-gray-500 tw-py-2">
+              <span className="tw-w-4 tw-h-4 tw-border-2 tw-border-blue-500 tw-border-t-transparent tw-rounded-full tw-animate-spin" />
+              {t("loading", lang)}
+            </div>
+          ) : choices ? (
+            <>
+              <div>
+                <Typography className="tw-mb-1.5 tw-text-[11px] sm:tw-text-xs tw-font-semibold tw-text-blue-gray-700">
+                  {t("chargers", lang)}
+                </Typography>
+                {choices.chargers.length === 0 ? (
+                  <Typography className="tw-text-[11px] tw-text-blue-gray-400">
+                    {t("noChargers", lang)}
+                  </Typography>
+                ) : (
+                  <div className="tw-flex tw-flex-col tw-gap-2">
+                    {choices.chargers.map((c) => {
+                      const k = equipKey(c);
+                      return (
+                        <label
+                          key={k}
+                          className="tw-inline-flex tw-items-center tw-gap-2 tw-text-xs sm:tw-text-sm tw-text-blue-gray-700"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={!!checked[k]}
+                            onChange={() => toggle(k)}
+                            className="tw-h-4 tw-w-4 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500"
+                          />
+                          <span>{equipLabel(c)}</span>
+                          {c.sn && (
+                            <span className="tw-text-[11px] tw-text-blue-gray-400">({c.sn})</span>
+                          )}
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <Typography className="tw-mb-1.5 tw-text-[11px] sm:tw-text-xs tw-font-semibold tw-text-blue-gray-700">
+                  {t("stationLevel", lang)}
+                </Typography>
+                <div className="tw-flex tw-flex-col tw-gap-2">
+                  {choices.fixed.map((f) => {
+                    const k = equipKey(f);
+                    return (
+                      <label
+                        key={k}
+                        className="tw-inline-flex tw-items-center tw-gap-2 tw-text-xs sm:tw-text-sm tw-text-blue-gray-700"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={!!checked[k]}
+                          onChange={() => toggle(k)}
+                          className="tw-h-4 tw-w-4 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500"
+                        />
+                        {equipLabel(f)}
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            </>
+          ) : null}
         </DialogBody>
         <DialogFooter className="tw-gap-2">
           <Button variant="text" color="gray" onClick={() => setDialogOpen(false)} className="tw-normal-case">
             {t("close", lang)}
           </Button>
-          <Button onClick={() => setDialogOpen(false)} className="tw-normal-case">
-            {t("confirm", lang)}
+          <Button
+            onClick={handleSaveEquipment}
+            disabled={saving || choicesLoading || !choices}
+            className="tw-normal-case"
+          >
+            {saving ? t("saving", lang) : t("confirm", lang)}
           </Button>
         </DialogFooter>
       </Dialog>

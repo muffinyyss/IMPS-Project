@@ -1347,7 +1347,7 @@ export function SearchDataTables() {
                                                 stationId={row.original.station_id}
                                                 reports={(pmReports.get(row.original.station_id) ?? []).filter((r) => r.pm_type === typeFilter && (pmDatePrefix === "" || String(r.pm_date ?? "").startsWith(pmDatePrefix)))}
                                                 isLoading={pmLoading.has(row.original.station_id)}
-                                                canDelete={me?.username === "Thatsawan Snongphan"}
+                                                canDelete={me?.role === "super_admin"}
                                                 onDelete={(report) => handleDeleteReport(report, row.original.station_id)}
                                             />
                                         )}

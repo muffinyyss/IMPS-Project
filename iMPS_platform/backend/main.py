@@ -14,15 +14,86 @@ email_watcher_task = None
 
 
 # ===== Lifespan =====
+async def _warm_maximo_master_data() -> None:
+    """
+    เตรียมตาราง failure code (IN04) + รายชื่อช่าง (IN08) ให้ dropdown ของฟอร์ม CM
+
+    ฟอร์มอ่านจาก cache ใน MongoDB อย่างเดียว ไม่ได้ยิง Maximo เอง — ที่นี่จึงเป็นจุด
+    เดียวที่ตัดสินว่า cache จะมีข้อมูลไหม ไล่ 3 ชั้น:
+      1) cache มีอยู่แล้ว (ปกติ — อยู่ข้าม restart) → ไม่ต้องทำอะไร
+      2) cache ว่าง → ดึงจาก Maximo
+      3) Maximo ล่มด้วย → เติมจากไฟล์ seed ที่ติดมากับ repo
+    ทั้งหมดห้าม throw — Maximo ล่มต้องไม่ทำให้ backend ขึ้นไม่ได้
+    """
+    import logging
+
+    from services import cm_maximo
+
+    log = logging.getLogger("startup")
+    need_seed = False
+
+    for name, coll, sync in (
+        ("failure codes", cm_maximo._failure_coll(), cm_maximo.sync_failure_codes),
+        ("labor list", cm_maximo._labor_coll(), cm_maximo.sync_labor),
+    ):
+        try:
+            if await coll.count_documents({}, limit=1):
+                continue
+            await sync()
+        except Exception as e:
+            log.warning(f"  ⚠️ warm Maximo {name} failed: {e}")
+            need_seed = True
+
+    if need_seed:
+        try:
+            await cm_maximo.restore_from_seed()
+        except Exception as e:
+            log.warning(f"  ⚠️ restore master data from seed failed: {e}")
+
+
+async def _refresh_maximo_master_data() -> None:
+    """
+    sync master data ซ้ำเป็นระยะ — ตารางฝั่ง Maximo เปลี่ยนแล้วระบบต้องตามทัน
+    โดยไม่ต้องรอ restart หรือรอคนกด refresh เอง
+
+    ล้มเหลวไม่กระทบอะไร cache เดิมยังอยู่ (sync_failure_codes กันการเขียนทับด้วย
+    ข้อมูลว่าง/ไม่ครบไว้แล้ว)
+    """
+    import asyncio
+    import logging
+    import os
+
+    from services import cm_maximo
+
+    log = logging.getLogger("startup")
+    hours = float(os.getenv("MAXIMO_MASTER_REFRESH_HOURS", "24"))
+    if hours <= 0:
+        return
+
+    while True:
+        await asyncio.sleep(hours * 3600)
+        for name, sync in (("failure codes", cm_maximo.sync_failure_codes),
+                           ("labor list", cm_maximo.sync_labor)):
+            try:
+                await sync()
+            except Exception as e:
+                log.warning(f"  ⚠️ refresh Maximo {name} failed: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    import asyncio
+
     app.state.errorDB = errorDB
     app.state.mongo_client = client
 
     start_watcher()
+    await _warm_maximo_master_data()
+    refresher = asyncio.create_task(_refresh_maximo_master_data())
 
     yield
 
+    refresher.cancel()
     await stop_watcher()
 
 
@@ -176,6 +247,7 @@ from routers.testreport_ac import router as testreport_ac_router
 from routers.notifications import router as notifications_router
 from routers.pm_all_stations import router as pm_all_stations_router
 from routers.pm_maximo import router as pm_maximo_router
+from routers.cm_maximo import router as cm_maximo_router
 
 app.include_router(users_router)
 app.include_router(stations_router)
@@ -195,3 +267,4 @@ app.include_router(testreport_ac_router)
 app.include_router(notifications_router)
 app.include_router(pm_all_stations_router)
 app.include_router(pm_maximo_router)
+app.include_router(cm_maximo_router)

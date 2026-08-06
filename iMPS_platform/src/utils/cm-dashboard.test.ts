@@ -1,6 +1,10 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import {
   normalizeStatus,
+  statusBadge,
+  isCancelled,
+  excludeCancelled,
+  workStatusOf,
   filterByPeriod,
   applyFilters,
   applySearch,
@@ -92,6 +96,94 @@ describe("normalizeStatus", () => {
 
   it('normalizes "IN-PROGRESS" with hyphens → in_progress', () => {
     expect(normalizeStatus("IN-PROGRESS")).toBe("in_progress");
+  });
+
+  it('maps "Cancelled" → cancelled (ไม่ใช่ open)', () => {
+    expect(normalizeStatus("Cancelled")).toBe("cancelled");
+  });
+
+  it("accepte les variantes canceled / cancel / ยกเลิก", () => {
+    expect(normalizeStatus("canceled")).toBe("cancelled");
+    expect(normalizeStatus("cancel")).toBe("cancelled");
+    expect(normalizeStatus("ยกเลิก")).toBe("cancelled");
+  });
+});
+
+// ─── Cancelled : exclu des graphes et des KPI ────────────────────────────────
+
+describe("cancelled rows", () => {
+  it("normalizeWorkStatus met les fiches annulées dans leur propre bucket", () => {
+    expect(normalizeWorkStatus("Cancelled")).toBe("cancelled");
+    expect(normalizeWorkStatus("Cancelled")).not.toBe("new");
+  });
+
+  it("excludeCancelled retire uniquement les fiches annulées", () => {
+    const rows = [
+      makeRow({ id: "a", status: "Open" }),
+      makeRow({ id: "b", status: "Cancelled" }),
+      makeRow({ id: "c", status: "Closed" }),
+    ];
+    expect(rows.map(isCancelled)).toEqual([false, true, false]);
+    expect(excludeCancelled(rows).map((r) => r.id)).toEqual(["a", "c"]);
+  });
+
+  it("groupByMonth ne compte pas les fiches annulées comme « open »", () => {
+    const rows = [
+      makeRow({ status: "Open", cm_date: `${thisYear}-01-10` }),
+      makeRow({ status: "Cancelled", cm_date: `${thisYear}-01-11` }),
+    ];
+    expect(groupByMonth(rows).open[0]).toBe(1);
+  });
+
+  it("le filtre « wo_all » exclut les fiches annulées", () => {
+    const rows = [
+      makeRow({ id: "a", status: "In Progress" }),
+      makeRow({ id: "b", status: "Cancelled" }),
+    ];
+    const kept = applyFilters(rows, { ...noFilters, workStatus: "wo_all" });
+    expect(kept.map((r) => r.id)).toEqual(["a"]);
+  });
+
+  it('statusBadge affiche « Cancelled » et non « Open »', () => {
+    expect(statusBadge("Cancelled").label).toBe("Cancelled");
+  });
+});
+
+// ─── workStatusOf : bucket KPI = status + repair_result ──────────────────────
+
+describe("workStatusOf", () => {
+  it('"Wait for schedule" = WO แล้ว ไม่ใช่ SR ใหม่', () => {
+    // head cs อนุมัติ → ใบกลายเป็น WO รอ engineer วางแผน ต้องนับใน "WO ทั้งหมด"
+    expect(workStatusOf(makeRow({ status: "Wait for schedule" }))).toBe("wait_manpower");
+    expect(workStatusOf(makeRow({ status: "Wait for schedule" }))).not.toBe("new");
+  });
+
+  it('"Open" ยังเป็น SR ใหม่', () => {
+    expect(workStatusOf(makeRow({ status: "Open" }))).toBe("new");
+  });
+
+  it("อ่านสถานะรอจาก repair_result (status เก็บไม่ได้)", () => {
+    expect(workStatusOf(makeRow({ status: "In Progress", repair_result: "WO - wait for material" }))).toBe("wait_sparepart");
+    expect(workStatusOf(makeRow({ status: "In Progress", repair_result: "WO - wait for site condition" }))).toBe("wait_site_access");
+    expect(workStatusOf(makeRow({ status: "In Progress", repair_result: "WO - wait for scheduled" }))).toBe("wait_manpower");
+  });
+
+  it("ใบที่ปิด/ยกเลิกแล้ว ไม่ถูกดึงกลับด้วยสถานะรอรอบเก่า", () => {
+    expect(workStatusOf(makeRow({ status: "Closed", repair_result: "WO - wait for material" }))).toBe("completed");
+    expect(workStatusOf(makeRow({ status: "Cancelled", repair_result: "WO - wait for material" }))).toBe("cancelled");
+  });
+
+  it("repair_result ที่ไม่ใช่สถานะรอ ให้ใช้ status ตามเดิม", () => {
+    expect(workStatusOf(makeRow({ status: "Wait for approve", repair_result: "แก้ไขสำเร็จ" }))).toBe("wait_approve");
+  });
+
+  it('« wo_all » นับ Wait for schedule เป็น WO', () => {
+    const rows = [
+      makeRow({ id: "a", status: "Open" }),
+      makeRow({ id: "b", status: "Wait for schedule" }),
+    ];
+    const kept = applyFilters(rows, { ...noFilters, workStatus: "wo_all" });
+    expect(kept.map((r) => r.id)).toEqual(["b"]);
   });
 });
 

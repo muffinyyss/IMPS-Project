@@ -22,6 +22,7 @@ import { Dialog, DialogHeader, DialogBody, DialogFooter } from "@material-tailwi
 import { useLanguage, type Lang } from "@/utils/useLanguage";
 import { apiFetch } from "@/utils/api";
 import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
+import { failureCodeLabel } from "@/app/dashboard/cm-report/lib/failureCode";
 
 // ==================== TRANSLATIONS ====================
 const T = {
@@ -426,7 +427,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
           position: isoDay,
           office: fileUrl,
           reported_by: it.reported_by || it.technician || "",
-          location: it.faulty_equipment || "",
+          location: failureCodeLabel(it.faulty_equipment),
           problem_details: it.problem_details || "",
           status: getStatusText(it) || "-",
           stage: it.stage || "",
@@ -451,7 +452,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
           position: isoDay,
           office: resolveFileHref(raw, apiBase),
           reported_by: it.reported_by || it.technician || "",
-          location: it.faulty_equipment || "",
+          location: failureCodeLabel(it.faulty_equipment),
           problem_details: it.problem_details || "",
           status: getStatusText(it) || "-",
         };

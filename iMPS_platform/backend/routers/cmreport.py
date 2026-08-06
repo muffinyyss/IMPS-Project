@@ -15,6 +15,7 @@ from config import (
     station_collection, users_collection, _validate_station_id_th, th_tz,
 )
 from services.maximo import create_sr as maximo_create_sr          # ← A) เพิ่ม
+from services import cm_maximo                                     # interface IN01–IN09
 import inspect                                                     # ← รองรับทั้ง sync/async
 
 ALLOWED_EXTS = {"jpg", "jpeg", "png", "webp", "gif", "pdf", "heic", "heif"}
@@ -246,6 +247,7 @@ async def cmreport_list(
         "repair_result": 1,
         "repair_result_remark": 1,
         "maximo_ticket_id": 1,                                     # ← C) เพิ่ม
+        "maximo_wonum": 1,
         "createdAt": 1
     }).sort(
         [("createdAt", -1), ("_id", -1)]
@@ -294,6 +296,7 @@ async def cmreport_list(
             "repair_result": it.get("repair_result") or job.get("repair_result") or "",
             "repair_result_remark": it.get("repair_result_remark") or "",
             "maximo_ticket_id": it.get("maximo_ticket_id") or "",  # ← C) เพิ่ม
+            "maximo_wonum": it.get("maximo_wonum") or "",
             "createdAt": _ensure_utc_iso(it.get("createdAt")),
             "file_url": url_by_day.get(it.get("cm_date") or "", ""),
         })
@@ -325,7 +328,7 @@ async def _cm_items_for_station(station_id: str, station_name: str, status: str 
         # analyse CM dashboard : cause / correction (codes Maximo)
         "cause": 1, "problem_type": 1, "repaired_equipment": 1,
         "assignees": 1, "sched_start": 1, "sched_finish": 1,
-        "repair_result_remark": 1, "maximo_ticket_id": 1, "createdAt": 1,
+        "repair_result_remark": 1, "maximo_ticket_id": 1, "maximo_wonum": 1, "createdAt": 1,
     }).sort([("createdAt", -1), ("_id", -1)])
     items_raw = await cursor.to_list(length=10_000)
 
@@ -396,6 +399,7 @@ async def _cm_items_for_station(station_id: str, station_name: str, status: str 
             "repair_result": it.get("repair_result") or job.get("repair_result") or "",
             "repair_result_remark": it.get("repair_result_remark") or "",
             "maximo_ticket_id": it.get("maximo_ticket_id") or "",
+            "maximo_wonum": it.get("maximo_wonum") or "",
             "createdAt": _ensure_utc_iso(it.get("createdAt")),
             "file_url": url_by_day.get(it.get("cm_date") or "", ""),
         })
@@ -462,6 +466,30 @@ def _safe_name(name: str) -> str:
 
 def _ext(fname: str) -> str:
     return (fname.rsplit(".",1)[-1].lower() if "." in fname else "")
+
+
+async def _assert_can_edit_cm(coll, oid, station_id: str, current: UserClaims) -> dict:
+    """
+    สิทธิ์แก้ข้อมูลใบงาน (ใช้ร่วมกับ PATCH /status):
+    admin/owner/engineer แก้ได้ตามด่านของตัวเอง — cs แก้ได้เฉพาะใบที่ตัวเองเปิดและยังอยู่ด่าน cs
+    (เคสถูก engineer ตีกลับมาให้แก้)
+    """
+    doc = await coll.find_one(
+        {"_id": oid, "station_id": station_id},
+        {"reported_by": 1, "status": 1, "stage": 1},
+    )
+    if not doc:
+        raise HTTPException(status_code=404, detail="Report not found")
+    if (current.role or "").lower() != "cs":
+        return doc
+
+    cur_status = str(doc.get("status") or "").strip().lower()
+    cur_stage = str(doc.get("stage") or "").strip().lower()
+    at_cs_stage = cur_status == "open" or (cur_status == "wait for approve" and cur_stage == "cs_approval")
+    is_reporter = (doc.get("reported_by") or "").strip().lower() == (current.username or "").strip().lower()
+    if not (is_reporter and at_cs_stage):
+        raise HTTPException(status_code=403, detail="CS can only edit their own work order while it is awaiting review")
+    return doc
 
 @router.post("/cmreport/{report_id}/photos")
 async def cmreport_upload_photos(
@@ -536,10 +564,10 @@ async def cmreport_upload_photos(
     )
 
     return {
-        "ok": True, 
-        "count": len(saved), 
-        "group": group, 
-        "phase": phase, 
+        "ok": True,
+        "count": len(saved),
+        "group": group,
+        "phase": phase,
         "files": [
             {
                 **s, 
@@ -548,6 +576,55 @@ async def cmreport_upload_photos(
             for s in saved
         ]
     }
+
+
+@router.delete("/cmreport/{report_id}/photos")
+async def cmreport_delete_photo(
+    report_id: str,
+    station_id: str = Query(...),
+    group: str = Query(...),
+    url: str = Query(..., description="url ของรูปที่จะลบ (ค่าเดียวกับที่เก็บใน photos_{phase})"),
+    phase: str = Query("problem"),
+    current: UserClaims = Depends(get_current_user),
+):
+    """ลบรูปทีละใบออกจากใบงาน — ใช้ตอนแก้ไขใบที่ถูกตีกลับ (รูปเดิมผิดต้องเปลี่ยน)"""
+    assert_station_access(current, station_id)
+
+    if phase not in ("problem", "repair"):
+        raise HTTPException(status_code=400, detail="phase must be 'problem' or 'repair'")
+    if not re.fullmatch(r"[a-z][a-z0-9_]*", group):
+        raise HTTPException(status_code=400, detail="Bad group key")
+
+    coll = get_cmreport_collection_for(station_id)
+    try:
+        oid = ObjectId(report_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bad report_id")
+
+    await _assert_can_edit_cm(coll, oid, station_id, current)
+
+    photo_field = f"photos_{phase}"
+    res = await coll.update_one(
+        {"_id": oid, "station_id": station_id},
+        {"$pull": {f"{photo_field}.{group}": {"url": url}},
+         "$set": {"updatedAt": datetime.now(timezone.utc)}},
+    )
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Report not found")
+
+    # ลบไฟล์จริงด้วย — จำกัดให้อยู่ใต้โฟลเดอร์ของใบงานนี้เท่านั้น กัน path traversal จาก url ที่ส่งมา
+    try:
+        base = (pathlib.Path(UPLOADS_ROOT) / "cm" / station_id / report_id).resolve()
+        rel = url.split(f"/uploads/cm/{station_id}/{report_id}/", 1)
+        if len(rel) == 2:
+            target = (base / rel[1]).resolve()
+            if target.is_file() and target.is_relative_to(base):
+                target.unlink()
+    except Exception as e:
+        import logging
+        logging.getLogger("cmreport").warning(f"delete photo file failed: {e}")
+
+    return {"ok": True}
 
 
 @router.post("/cmreport/{report_id}/finalize")
@@ -905,6 +982,9 @@ async def cmreport_detail_path(
         "status": doc.get("status") or nested_job.get("status") or "",
         "stage": doc.get("stage") or nested_job.get("stage") or "",
         "maximo_ticket_id": doc.get("maximo_ticket_id") or "",     # ← D) เพิ่ม
+        # เลขใบสั่งงาน Maximo (IN01) — ได้มาตอน engineer วางแผน
+        "maximo_wonum": doc.get("maximo_wonum") or "",
+        "maximo_location": doc.get("maximo_location") or "",
         
         # flat fields จาก Open
         "faulty_equipment": doc.get("faulty_equipment") or "",
@@ -983,14 +1063,19 @@ ALLOWED_STATUS: set[str] = {
     "Wait for schedule", "Complete", "Closed", "Cancelled",
 }
 
+# ระหว่างรออนุมัติ ผลหลังซ่อมค้างเป็น WO placeholder ("WO - wait for approve")
+# พอ engineer อนุมัติปิดงานต้องกลายเป็น "แก้ไขสำเร็จ" ซึ่งเป็นค่าที่ฟอร์มใบงานปิดใช้จริง
+# ค่าที่ช่างระบุชัดเจนแล้ว (แก้ไขไม่สำเร็จ / ไม่พบปัญหา) ให้คงไว้ ไม่ทับ
+CM_CLOSED_REPAIR_RESULT = "แก้ไขสำเร็จ"
+CM_PENDING_REPAIR_RESULTS: list[str] = ["", "WO - wait for approve"]
+
 @router.patch("/cmreport/{report_id}/status")
 async def cmreport_update_status(
     report_id: str,
     body: CMStatusUpdateIn,
     current: UserClaims = Depends(get_current_user),
 ):
-    if (current.role or "").lower() == "cs":
-        raise HTTPException(status_code=403, detail="CS can only open new work orders")
+    role_lower = (current.role or "").lower()
 
     station_id = body.station_id.strip()
     if body.status not in ALLOWED_STATUS:
@@ -1002,6 +1087,16 @@ async def cmreport_update_status(
         oid = ObjectId(report_id)
     except Exception:
         raise HTTPException(status_code=400, detail="Bad report_id")
+
+    # cs เปิดใบงานเป็นหลัก — แก้ได้เฉพาะใบที่ตัวเองเปิดและยังอยู่ด่าน cs
+    # (เคส engineer ตีกลับมาให้แก้ ถ้าห้ามทั้งหมด ใบจะค้างไม่มีใครแก้ได้)
+    if role_lower == "cs":
+        cur_doc = await _assert_can_edit_cm(coll, oid, station_id, current)
+        # cs เลื่อนสถานะเองไม่ได้ — บังคับคงสถานะ/ด่านเดิมไว้เสมอ (แก้ข้อมูลอย่างเดียว)
+        body.status = cur_doc.get("status") or "Wait for approve"
+        if body.job is not None:
+            body.job.pop("status", None)
+            body.job["stage"] = cur_doc.get("stage") or "cs_approval"
 
     updates: Dict[str, Any] = {
         "status": body.status,
@@ -1048,6 +1143,25 @@ async def cmreport_update_status(
     if str(updates.get("status", "")).strip().lower() == "wait for approve" and "stage" not in updates:
         updates["stage"] = "close_approval"
 
+    # ปิดงานตรงจากฟอร์มซ่อม (engineer กรอกผลเอง = ไม่ต้องรออนุมัติ)
+    # — สิทธิ์และการประทับผู้อนุมัติต้องเหมือนเส้นทาง POST /approve
+    if str(updates.get("status", "")).strip().lower() == "closed":
+        if (current.role or "").lower() not in CM_APPROVE_ROLES:
+            raise HTTPException(status_code=403, detail="Only engineer or admin can close")
+        now = datetime.now(timezone.utc)
+        updates.setdefault("approved_by", current.username)
+        updates.setdefault("approved_at", now)
+
+        # ปิดงานแล้วผลหลังซ่อมต้องเป็นค่าจริง ไม่ใช่ WO placeholder ที่ใช้ตอนรออนุมัติ
+        repair_result = updates.get("repair_result")
+        if repair_result is None:
+            cur_doc = await coll.find_one(
+                {"_id": oid, "station_id": station_id}, {"repair_result": 1}
+            )
+            repair_result = (cur_doc or {}).get("repair_result")
+        if str(repair_result or "").strip() in CM_PENDING_REPAIR_RESULTS:
+            updates["repair_result"] = CM_CLOSED_REPAIR_RESULT
+
     updates["updatedAt"] = datetime.now(timezone.utc)
 
     res = await coll.update_one({"_id": oid, "station_id": station_id}, {"$set": updates})
@@ -1058,7 +1172,14 @@ async def cmreport_update_status(
     if updates.get("assignees"):
         grant_station_to_assignees(updates["assignees"], station_id)
 
-    return {"ok": True, "status": updates["status"]}
+    # ── ส่งต่อให้ Maximo (IN01 เปิด WO ตอนวางแผน / IN02 สถานะ / IN05+IN09 ตอนปิดงาน) ──
+    # อ่านใบงานหลังบันทึกเพื่อให้ข้อมูลที่ส่งไปตรงกับที่เก็บจริง
+    fresh = await coll.find_one({"_id": oid}) or {}
+    maximo_result = await cm_maximo.safe_sync_report(
+        coll, oid, fresh, memo=f"iMPS {fresh.get('issue_id') or ''} — {updates['status']}"
+    )
+
+    return {"ok": True, "status": updates["status"], "maximo": maximo_result}
 
 
 # ── ขั้นตอน Approve ตาม flow CM: ซ่อมเสร็จ → "Wait for approve" → engineer/admin อนุมัติ → "Closed"
@@ -1098,17 +1219,32 @@ async def cmreport_approve(
                 {"job.stage": {"$regex": "^cs_approval$", "$options": "i"}},
             ],
         },
-        {"$set": {
+        # ใช้ pipeline update เพราะต้องอ่านค่า repair_result เดิมมาตัดสินใจแบบ atomic
+        [{"$set": {
             "status": "Closed",
-            "approved_by": current.username,
+            # อนุมัติแล้ว = แก้ไขสำเร็จ (คงค่าที่ช่างระบุเองไว้ เช่น "แก้ไขไม่สำเร็จ" / "ไม่พบปัญหา")
+            "repair_result": {
+                "$cond": [
+                    {"$in": [{"$ifNull": ["$repair_result", ""]}, CM_PENDING_REPAIR_RESULTS]},
+                    CM_CLOSED_REPAIR_RESULT,
+                    "$repair_result",
+                ]
+            },
+            "approved_by": {"$literal": current.username},
             "approved_at": now,
             "updatedAt": now,
-        }},
+        }}],
     )
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Report not found or not in 'Wait for approve' status")
 
-    return {"ok": True, "status": "Closed"}
+    # ปิดงานแล้ว → ส่งสถานะ (IN02) + ผลวิเคราะห์ (IN05) + เวลาช่าง (IN09) เข้า Maximo
+    fresh = await coll.find_one({"_id": oid}) or {}
+    maximo_result = await cm_maximo.safe_sync_report(
+        coll, oid, fresh, memo=f"closed by {current.username}"
+    )
+
+    return {"ok": True, "status": "Closed", "maximo": maximo_result}
 
 
 class CMRejectIn(BaseModel):
@@ -1366,7 +1502,13 @@ async def cmreport_cancel(
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Report not found or already closed/cancelled")
 
-    return {"ok": True, "status": "Cancelled"}
+    # ยกเลิกใบที่เปิด WO ไว้แล้ว ต้องยกเลิกฝั่ง Maximo ตามไปด้วย (IN02 → CAN)
+    fresh = await coll.find_one({"_id": oid}) or {}
+    maximo_result = await cm_maximo.safe_sync_report(
+        coll, oid, fresh, memo=remark or f"cancelled by {current.username}"
+    )
+
+    return {"ok": True, "status": "Cancelled", "maximo": maximo_result}
 
 
 @router.delete("/cmreport/{report_id}")

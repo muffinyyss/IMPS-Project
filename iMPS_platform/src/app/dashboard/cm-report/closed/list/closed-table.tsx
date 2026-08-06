@@ -24,6 +24,7 @@ import { Dialog, DialogHeader, DialogBody, DialogFooter } from "@material-tailwi
 import { useLanguage, type Lang } from "@/utils/useLanguage";
 import { apiFetch } from "@/utils/api";
 import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
+import { failureCodeLabel } from "@/app/dashboard/cm-report/lib/failureCode";
 
 // ==================== TRANSLATIONS ====================
 const T = {
@@ -47,7 +48,7 @@ const T = {
   colDocName: { th: "ชื่อเอกสาร", en: "Document Name" },
   colIssueId: { th: "รหัสเอกสาร", en: "Issue ID" },
   colWo: { th: "เลขที่ WO", en: "WO No." },
-  colCmDate: { th: "วันที่แจ้ง", en: "Found Date" },
+  colCmDate: { th: "วัน/เวลาที่แจ้ง", en: "Found Date/Time" },
   colReportedBy: { th: "ผู้แจ้งปัญหา", en: "Reported By" },
   colRepairer: { th: "ผู้เข้าแก้ไข", en: "Repairer" },
   colInspector: { th: "ผู้ตรวจสอบ", en: "Inspector" },
@@ -109,6 +110,7 @@ type TData = {
   doc_name?: string;
   issue_id?: string;
   cm_date: string;
+  found_time?: string;
   position: string;
   office: string;
   reported_by?: string;
@@ -293,9 +295,11 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
     if (isPdfEndpoint) {
       const finalUrl = u;
       const withStation = appendParam(finalUrl, "station_id", stationId || "");
+      // เอกสาร PDF ออกตามภาษาที่ผู้ใช้เลือกอยู่ — ไม่ส่งไป backend จะ default เป็นไทยเสมอ
+      const withLang = appendParam(withStation, "lang", lang);
       return {
-        previewHref: appendParam(withStation, "dl", "0"),
-        downloadHref: appendParam(withStation, "dl", "1"),
+        previewHref: appendParam(withLang, "dl", "0"),
+        downloadHref: appendParam(withLang, "dl", "1"),
         isPdfEndpoint: true,
       };
     }
@@ -373,12 +377,13 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
           doc_name: it.doc_name || "",
           issue_id: it.issue_id || "",
           cm_date: isoDay,
+          found_time: it.found_time || "",
           position: isoDay,
           office: fileUrl,
           reported_by: it.reported_by || it.technician || "",
           repairer: it.inspector || "",
           inspector: it.approved_by || "",
-          location: it.faulty_equipment || "",
+          location: failureCodeLabel(it.faulty_equipment),
           problem_details: it.problem_details || "",
           status: getStatusText(it) || "-",
         };
@@ -397,12 +402,13 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
           doc_name: it.doc_name || "",
           issue_id: it.issue_id || "",
           cm_date: isoDay,
+          found_time: it.found_time || "",
           position: isoDay,
           office: resolveFileHref(raw, apiBase),
           reported_by: it.reported_by || it.technician || "",
           repairer: "",
           inspector: it.approved_by || it.inspector || "",
-          location: it.faulty_equipment || "",
+          location: failureCodeLabel(it.faulty_equipment),
           problem_details: it.problem_details || "",
           status: getStatusText(it) || "-",
         };
@@ -487,14 +493,17 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
       accessorFn: (row) => row.cm_date,
       id: "cm_date",
       header: () => t("colCmDate", lang),
-      cell: (info: CellContext<TData, unknown>) => (
-        <span className="tw-whitespace-nowrap">
-          {formatDate(info.getValue() as string, lang)}
-        </span>
-      ),
-      size: 120,
-      minSize: 100,
-      maxSize: 150,
+      cell: (info: CellContext<TData, unknown>) => {
+        const time = info.row.original.found_time || "";
+        return (
+          <span className="tw-whitespace-nowrap">
+            {formatDate(info.getValue() as string, lang)}{time ? ` ${time}` : ""}
+          </span>
+        );
+      },
+      size: 140,
+      minSize: 110,
+      maxSize: 180,
       meta: { headerAlign: "center", cellAlign: "center" },
     },
     {

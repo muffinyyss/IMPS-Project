@@ -15,6 +15,8 @@ export type CMRow = {
   problem_type?: string | string[];
   /** codes REMEDY Maximo (champ « การแก้ไข » du formulaire CM) */
   repaired_equipment?: string | string[];
+  /** สถานะรอ/ผลการซ่อมรอบล่าสุด — "WO - wait for material" ฯลฯ ใช้จัด bucket ของ KPI */
+  repair_result?: string;
   severity: string;
   cm_date: string | null;
   reported_by: string;
@@ -84,19 +86,32 @@ export const STATUS_LABELS = {
   completed: "เสร็จสิ้น",
   in_progress: "รอดำเนินการ",
   open: "รอจัดซื้อ",
+  cancelled: "ยกเลิก",
 } as const;
 
 export function normalizeStatus(s: string): keyof typeof STATUS_LABELS {
   const v = (s || "").trim().toLowerCase().replace(/[-_\s]+/g, " ");
   if (v === "complete" || v === "completed" || v === "closed" || v === "close") return "completed";
   if (v === "in progress" || v === "inprogress") return "in_progress";
+  // ใบที่ถูกยกเลิก — ต้องแยกจาก open ไม่งั้นจะถูกนับเป็นงานค้างทั้งที่ไม่มีใครต้องทำแล้ว
+  if (v === "cancelled" || v === "canceled" || v === "cancel" || v === "void" || v === "ยกเลิก") return "cancelled";
   return "open";
+}
+
+/** ใบที่ถูกยกเลิก = ไม่ใช่ภาระงานซ่อม → ตัดออกจากกราฟและ KPI ทุกตัว (ยังโชว์ในตาราง) */
+export function isCancelled(r: CMRow): boolean {
+  return normalizeStatus(r.status) === "cancelled";
+}
+
+export function excludeCancelled(rows: CMRow[]): CMRow[] {
+  return rows.filter((r) => !isCancelled(r));
 }
 
 export function statusBadge(status: string) {
   const s = normalizeStatus(status);
   if (s === "completed") return { bg: "#dcfce7", text: "#15803d", label: "Complete" };
   if (s === "in_progress") return { bg: "#fff7ed", text: "#ea580c", label: "In Progress" };
+  if (s === "cancelled") return { bg: "#f1f5f9", text: "#475569", label: "Cancelled" };
   return { bg: "#fee2e2", text: "#dc2626", label: "Open" };
 }
 
@@ -123,7 +138,9 @@ export type WorkStatus =
   | "wait_approve"
   | "wait_site_access"
   | "in_progress"
-  | "completed";
+  | "completed"
+  /** ยกเลิก — ไม่มีการ์ด KPI ของตัวเอง แต่ต้องมี bucket แยก ไม่งั้นจะไปตกถัง "new" */
+  | "cancelled";
 
 /**
  * Filtre du bandeau KPI : soit un bucket précis, soit « wo_all » =
@@ -133,15 +150,39 @@ export type WorkStatusFilter = WorkStatus | "wo_all";
 
 export function normalizeWorkStatus(s: string): WorkStatus {
   const v = (s || "").trim().toLowerCase().replace(/[-_\s]+/g, " ");
+  // เช็คก่อนทุกถัง — ใบยกเลิกไม่ใช่ทั้ง SR ใหม่และงานที่ทำเสร็จ
+  if (v.startsWith("cancel") || v === "void" || v.includes("ยกเลิก")) return "cancelled";
   if (v === "closed" || v === "close" || v.includes("complete") || v.includes("เสร็จ")) return "completed";
   // bucket wait_manpower ตอนนี้แทน "wait for scheduled" (เปลี่ยนชื่อจาก manpower) — คงชื่อ bucket เดิมไว้ กัน churn
-  // ใช้ "scheduled" (มี -d) จับ ไม่ชนกับ status "wait for schedule" (ไม่มี -d)
+  // ใช้ "scheduled" (มี -d) จับ ไม่ชนกับ status "wait for schedule" (ไม่มี -d) — ด่านนั้นจัดการใน workStatusOf()
   if (v.includes("scheduled") || v.includes("manpower") || v.includes("labor") || v.includes("labour") || v.includes("รอช่าง")) return "wait_manpower";
   if (v.includes("spare") || v.includes("material") || v.includes("matl") || v.includes("อะไหล่")) return "wait_sparepart";
   if (v.includes("approv") || v.includes("wappr") || v.includes("อนุมัติ")) return "wait_approve";
   if (v.includes("site access") || v.includes("site condition") || v.includes("access") || v.includes("condition") || v.includes("เข้าพื้นที่") || v.includes("เข้าไซต์")) return "wait_site_access";
   if (v === "in progress" || v === "inprogress" || v.includes("ดำเนินการ")) return "in_progress";
   return "new";
+}
+
+/**
+ * bucket ของ KPI สำหรับ 1 ใบงาน — ต้องดู 2 ฟิลด์:
+ *   • status        = ด่านของ workflow (Open → Wait for approve → Wait for schedule → In Progress → Closed)
+ *   • repair_result = สถานะรอที่ engineer/ช่างเลือก ("WO - wait for material" / "…site condition" / "…scheduled")
+ * สถานะรอไม่เคยถูกเขียนลง status (backend จำกัดด้วย ALLOWED_STATUS) — ถ้าดูแค่ status
+ * การ์ดรออะไหล่/รอเข้าพื้นที่/รอกำหนดการจะเป็น 0 ตลอด
+ */
+export function workStatusOf(r: CMRow): WorkStatus {
+  const byStatus = normalizeWorkStatus(r.status);
+  // ใบที่จบแล้ว/ยกเลิกแล้ว — สถานะรอของรอบก่อนไม่ใช่คิวปัจจุบันอีกต่อไป
+  if (byStatus === "completed" || byStatus === "cancelled") return byStatus;
+  const byResult = normalizeWorkStatus(r.repair_result || "");
+  if (byResult === "wait_manpower" || byResult === "wait_sparepart" || byResult === "wait_site_access") {
+    return byResult;
+  }
+  // status "Wait for schedule" = head cs อนุมัติแล้ว รอ engineer วางแผน → ขึ้นเป็น WO แล้ว
+  // (ฟอร์มเปลี่ยนเลขที่งานจาก SR เป็น WO ที่ด่านนี้) — normalizeWorkStatus จงใจไม่จับ
+  // เพราะเป็น mapper ของสตริงดิบที่ใช้กับ repair_result ด้วย จึงมาตัดสินที่ระดับใบงานตรงนี้แทน
+  if (r.status.trim().toLowerCase() === "wait for schedule") return "wait_manpower";
+  return byStatus;
 }
 
 // ─── Date helpers (year / month / week selectors) ────────────────────────────
@@ -187,7 +228,7 @@ export function filterByDate(rows: CMRow[], year: DateSel, month: DateSel, week:
   });
 }
 
-/** นับสถานะ 3 กลุ่มแยกตามเดือน (ม.ค.–ธ.ค.) สำหรับกราฟแท่งรายเดือน */
+/** นับสถานะ 3 กลุ่มแยกตามเดือน (ม.ค.–ธ.ค.) สำหรับกราฟแท่งรายเดือน — ใบที่ยกเลิกไม่นับ */
 export function groupByMonth(rows: CMRow[]): { open: number[]; inProgress: number[]; completed: number[] } {
   const open = Array(12).fill(0);
   const inProgress = Array(12).fill(0);
@@ -197,6 +238,7 @@ export function groupByMonth(rows: CMRow[]): { open: number[]; inProgress: numbe
     if (!d) continue;
     const m = d.getMonth();
     const s = normalizeStatus(r.status);
+    if (s === "cancelled") continue;
     if (s === "completed") completed[m]++;
     else if (s === "in_progress") inProgress[m]++;
     else open[m]++;
@@ -223,8 +265,10 @@ export function applyFilters(
       if ((r.station_name || r.station_id || "Unknown") !== filters.station) return false;
     }
     if (filters.workStatus && exclude !== "workStatus") {
-      const ws = normalizeWorkStatus(r.status);
-      if (filters.workStatus === "wo_all" ? ws === "new" : ws !== filters.workStatus) return false;
+      const ws = workStatusOf(r);
+      // wo_all = SR ที่กลายเป็น WO แล้วทั้งหมด — ตัดทั้งถัง "new" และใบที่ยกเลิกออก
+      const notWo = ws === "new" || ws === "cancelled";
+      if (filters.workStatus === "wo_all" ? notWo : ws !== filters.workStatus) return false;
     }
     if (filters.cause && exclude !== "cause") {
       if (!causeLabelsOf(r).includes(filters.cause)) return false;
