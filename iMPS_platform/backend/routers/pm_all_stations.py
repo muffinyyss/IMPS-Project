@@ -509,6 +509,11 @@ async def _delete_report_by_id(report_id: str, get_coll_fn, current) -> dict:
     ค้นหา report จาก _id ใน all SN collections แล้วลบ
     เนื่องจากไม่รู้ SN → scan ทุก collection ที่ได้จาก charger list
     """
+    # ลบถาวร = สิทธิ์ super admin เท่านั้น (admin ธรรมดาลบใบงานไม่ได้) — เหมือน DELETE /cmreport/{id}
+    if not getattr(current, "is_super_admin", False):
+        from fastapi import HTTPException
+        raise HTTPException(status_code=403, detail="Not allowed to delete")
+
     loop = asyncio.get_event_loop()
     try:
         oid = ObjectId(report_id)

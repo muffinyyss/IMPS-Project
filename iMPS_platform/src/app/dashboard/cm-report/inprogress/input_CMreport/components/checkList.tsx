@@ -8,6 +8,12 @@ import { ArrowLeftIcon, ArrowUturnLeftIcon, PhotoIcon, XMarkIcon, CheckCircleIco
 import { useLanguage, type Lang } from "@/utils/useLanguage";
 import CreatableSelect from "react-select/creatable";
 import { useDraft, type DraftData, type DraftImage, type DraftCorrectiveAction } from "../lib/draft";
+import { failureCodeLabel } from "@/app/dashboard/cm-report/lib/failureCode";
+import {
+    useMaximoFailureTree, maximoCodeLabel, failureClassRole, type SelectOption,
+    maximoProblemOptions, maximoCauseOptions, maximoRemedyOptions,
+} from "@/app/dashboard/cm-report/lib/maximo";
+import { cameFromDashboard, CM_DASHBOARD_ROUTE } from "@/app/dashboard/cm-report/lib/origin";
 
 // ==================== DEVICE NAME FORMATTER ====================
 function formatDeviceName(name: string): string {
@@ -243,12 +249,6 @@ const WO_WAITING_RESULTS = [
     "WO - wait for approve",
 ];
 
-const PROBLEM_TYPE_OPTIONS = [
-    { value: "Hardware", th: "Hardware (ฮาร์ดแวร์)", en: "Hardware" },
-    { value: "Software", th: "Software (ซอฟต์แวร์)", en: "Software" },
-    { value: "Network", th: "Network (เครือข่าย)", en: "Network" },
-    { value: "Other", th: "อื่นๆ", en: "Other" },
-] as const;
 
 // ตัวเลือกท้าย dropdown ปัญหา — แสดงเสมอทุก failure code
 const PROGRESS_REQUIRED_KEYS = ["problemType", "problemTypeOther", "cause"];
@@ -256,473 +256,15 @@ const PROGRESS_REQUIRED_KEYS = ["problemType", "problemTypeOther", "cause"];
 // เลือก "แก้ไขสำเร็จ" = ปิดงาน ต้องมีหลักฐานครบ
 const COMPLETED_REQUIRED_KEYS = ["problemType", "cause", "correctiveAction", "beforePhoto", "afterPhoto", "repairResult"];
 
+// "ไม่พบปัญหา" เป็นตัวเลือกของ iMPS เอง ไม่มีใน Maximo — ช่างต้องปิดใบงานได้
+// แม้ตรวจแล้วไม่เจออะไรผิดปกติ
 const NO_PROBLEM_OPTION = { value: "NOPROBLM", th: "ไม่พบปัญหา", en: "No Problem Found" } as const;
 
-// ตัวเลือก "ปัญหา" (Problem Description) ตาม FAILURECODE ของใบงาน (faulty_equipment)
-// failure code ที่ยังไม่มีลิสต์กำหนด จะ fallback ไปใช้ PROBLEM_TYPE_OPTIONS เดิม
-const PROBLEM_OPTIONS_BY_FAILURECODE: Record<string, { value: string; label: string }[]> = {
-    DCCHARFC: [
-        { value: "POWERDRP", label: "Power Drop" },
-        { value: "UN2STCHG", label: "Unable to Start Charging" },
-        { value: "SCRFREEZ", label: "The Screen Freezes" },
-        { value: "NOINTSIG", label: "No Internet Signal" },
-        { value: "DATATRAN", label: "Data Transmission" },
-        { value: "HMISCREE", label: "HMI Touch Screen" },
-        { value: "CONBOARD", label: "Control Board" },
-        { value: "BILLINGU", label: "Wrong Billing Unit" },
-        { value: "NOCONSTD", label: "Not Conform to Standard" },
-    ],
-    ACCHARFC: [
-        { value: "POWERDRP", label: "Power Drop" },
-        { value: "UN2STCHG", label: "Unable to Start Charging" },
-        { value: "SCRFREEZ", label: "The Screen Freezes" },
-        { value: "NOINTSIG", label: "No Internet Signal" },
-        { value: "DATATRAN", label: "Data Transmission" },
-        { value: "HMISCREE", label: "HMI Touch Screen" },
-        { value: "CONBOARD", label: "Control Board" },
-        { value: "BILLINGU", label: "Wrong Billing Unit" },
-    ],
-    STATFC: [
-        { value: "HVPROBLM", label: "HV Side" },
-        { value: "EVDBPROB", label: "EVDB" },
-        { value: "POWERMET", label: "Power Meter" },
-        { value: "FUSEPROB", label: "Fuse" },
-        { value: "PHPROTPB", label: "Phase Protection" },
-        { value: "RELAYPRO", label: "Relay" },
-        { value: "FANPROBL", label: "Fan" },
-        { value: "ROUTERPB", label: "Router" },
-        { value: "UPSSBPOB", label: "UPS Supply" },
-        { value: "NVRPROBL", label: "NVR" },
-        { value: "CCTVPROB", label: "CCTV" },
-        { value: "QRCDPROB", label: "QR Code" },
-        { value: "LIGTPROB", label: "Station Lighting" },
-        { value: "PARKPROB", label: "Parking Space" },
-        { value: "STRUPROB", label: "Structure" },
-        { value: "FIREEXPB", label: "Fire Extinguisher" },
-    ],
-};
+// ตัวเลือกของ dropdown ปัญหา/สาเหตุ/การแก้ไข มาจาก Maximo (IN04) อย่างเดียว
+// backend cache ตารางไว้ใน MongoDB ให้แล้ว ฟอร์มจึงไม่ได้ยิง Maximo เองทุกครั้ง
+const toOptions = (codes: { code: string; description: string }[] | null): SelectOption[] | null =>
+    codes?.length ? codes.map(c => ({ value: c.code, label: c.description || c.code })) : null;
 
-// ตัวเลือก "สาเหตุ" ตามปัญหา (problem_type) ที่เลือก
-// ปัญหาที่ยังไม่มีลิสต์กำหนด จะ fallback เป็นช่องกรอกข้อความเหมือนเดิม
-const CAUSE_OPTIONS_BY_PROBLEM: Record<string, { value: string; label: string }[]> = {
-    POWERDRP: [
-        { value: "OVERHEAT", label: "Overheat" },
-        { value: "POWMODUL", label: "Power Module Failed" },
-        { value: "PMCMFAIL", label: "Power Module Communication Fail" },
-        { value: "POWSUPPL", label: "Power Supply AC-DC 24Vdc Failed (Fan)" },
-        { value: "CBPOWTRP", label: "CB Power Module Trip" },
-        { value: "RCDPROTS", label: "RCD Leakage Protection System (Charger)" },
-    ],
-    UN2STCHG: [
-        { value: "DCCTR1FC", label: "DC Contactor No.1 Fail" },
-        { value: "DCCTR2FC", label: "DC Contactor No.2 Fail" },
-        { value: "DCCTR3FC", label: "DC Contactor No.3 Fail" },
-        { value: "DCCTR4FC", label: "DC Contactor No.4 Fail" },
-        { value: "DCCTR5FC", label: "DC Contactor No.5 Fail" },
-        { value: "DCCTR6FC", label: "DC Contactor No.6 Fail" },
-        { value: "ACCTR1FC", label: "AC Contactor No.1 Fail" },
-        { value: "ACCTR2FC", label: "AC Contactor No.2 Fail" },
-        { value: "ACCTR3FC", label: "AC Contactor No.3 Fail" },
-        { value: "IMD1FC", label: "Insulation Monitoring Divce Fail No.1" },
-        { value: "IMD2FC", label: "Insulation Monitoring Divce Fail No.2" },
-        { value: "CTL1FC", label: "Controller Fail No.1" },
-        { value: "CTL2FC", label: "Controller Fail No.2" },
-        { value: "EMERBUTP", label: "Emergency Button Pressed" },
-        { value: "CPCBMISS", label: "CP Cable is Missing" },
-    ],
-    SCRFREEZ: [
-        { value: "OVERHEAT", label: "Overheat" },
-    ],
-    NOINTSIG: [
-        { value: "SIMCARDP", label: "SIM Card Problem" },
-        { value: "CHSTARTC", label: "Charger Does Not Send StartTransaction" },
-        { value: "CHSTOPTC", label: "Charger Does Not Send StopTransaction" },
-        { value: "DISCONFR", label: "Disconnect Frequently" },
-    ],
-    DATATRAN: [
-        { value: "CONBOANC", label: "Control Board Cable is Not Connected" },
-    ],
-    HMISCREE: [
-        { value: "HMISCROF", label: "Touch Screen Off" },
-    ],
-    CONBOARD: [
-        { value: "CONBOAFA", label: "Control Board Failed" },
-    ],
-    BILLINGU: [
-        { value: "CONBOAFA", label: "Control Board Failed" },
-        { value: "METERFAI", label: "Power Meter Failed" },
-    ],
-    NOCONSTD: [
-        { value: "PECUTFAI", label: "PE Cut Test Failed" },
-        { value: "CPSHTFAI", label: "CP Short Test Failed" },
-    ],
-};
-
-// override สาเหตุแบบเจาะจงตาม FAILURECODE + ปัญหา (ใช้ก่อน CAUSE_OPTIONS_BY_PROBLEM)
-// เช่น ACCHARFC กับ DCCHARFC มีปัญหาชื่อเดียวกัน แต่สาเหตุต่างกัน
-const CAUSE_OPTIONS_BY_FC_PROBLEM: Record<string, Record<string, { value: string; label: string }[]>> = {
-    ACCHARFC: {
-        POWERDRP: [
-            { value: "POWBOAFA", label: "Power Board Failed" },
-        ],
-        UN2STCHG: [
-            { value: "EMERBUTP", label: "Emergency Button Pressed" },
-            { value: "CPCBMISS", label: "CP Cable is Missing" },
-        ],
-        SCRFREEZ: [
-            { value: "OVERHEAT", label: "Overheat" },
-        ],
-        NOINTSIG: [
-            { value: "SIMCARDP", label: "SIM Card Problem" },
-            { value: "CHSTARTC", label: "Charger Does Not Send StartTransaction" },
-            { value: "CHSTOPTC", label: "Charger Does Not Send StopTransaction" },
-            { value: "DISCONFR", label: "Disconnect Frequently" },
-        ],
-        DATATRAN: [
-            { value: "CONBOANC", label: "Control Board Cable is not Connected" },
-        ],
-        CONBOARD: [
-            { value: "CONBOAFA", label: "Control Board Failed" },
-        ],
-        BILLINGU: [
-            { value: "CONBOAFA", label: "Control Board Failed" },
-        ],
-    },
-    STATFC: {
-        HVPROBLM: [
-            { value: "HVFUSEDR", label: "HV Fuse Drop" },
-            { value: "GROUNDIN", label: "Grounding" },
-            { value: "MCBTRIPF", label: "MCB Trip" },
-            { value: "FUSELAMP", label: "Fuse or Pilot Lamp" },
-        ],
-        EVDBPROB: [
-            { value: "CUBUSBAR", label: "Copper Busbar Burnt" },
-            { value: "WATERENT", label: "There is Water Entering." },
-            { value: "MCCBTRIP", label: "MCCB Trip" },
-            { value: "MCBTRIPF", label: "MCB Trip" },
-            { value: "RCDTRIPF", label: "RCD Trip" },
-        ],
-        POWERMET: [
-            { value: "METERFAI", label: "Power Meter Failed" },
-        ],
-        FUSEPROB: [
-            { value: "FUSESURG", label: "Fuse Surge Protection" },
-            { value: "FUSEPHAS", label: "Fuse Phase Protection" },
-            { value: "FUSELAMP", label: "Fuse or Pilot Lamp" },
-        ],
-        PHPROTPB: [
-            { value: "PHASEALT", label: "Phase Alternation" },
-            { value: "OVERVOLT", label: "Over Voltage" },
-            { value: "UNDEVOLT", label: "Under Voltage" },
-            { value: "INCVMISS", label: "Incoming Voltage is Missing" },
-        ],
-        RELAYPRO: [
-            { value: "RELAYFAI", label: "Relay Failed" },
-        ],
-        FANPROBL: [
-            { value: "EXHTFANF", label: "Exhaust Fan Failed" },
-        ],
-        ROUTERPB: [
-            { value: "ROUTFAIL", label: "Router Failed" },
-        ],
-        UPSSBPOB: [
-            { value: "UPSFAILU", label: "UPS Failed" },
-        ],
-        NVRPROBL: [
-            { value: "NVRFAILE", label: "NVR Failed" },
-        ],
-        CCTVPROB: [
-            { value: "CCTVFAIL", label: "CCTV Failed" },
-        ],
-        QRCDPROB: [
-            { value: "QRCDFAIL", label: "QR Code Failed" },
-        ],
-        LIGTPROB: [
-            { value: "LIGTFAIL", label: "Lighting Failed" },
-        ],
-        PARKPROB: [
-            { value: "PRKPAINT", label: "Peeling Paint" },
-        ],
-        STRUPROB: [
-            { value: "STRUDAMA", label: "Structure Damaged" },
-        ],
-        FIREEXPB: [
-            { value: "GUAGUNOV", label: "Gauge Undered/Overed" },
-        ],
-    },
-};
-
-// ตัวเลือก "การแก้ไข" ตาม FAILURECODE + ปัญหา + สาเหตุ (คีย์ = "fc:problem:cause")
-// combo ที่ยังไม่มีลิสต์ จะ fallback ไปใช้รายการอุปกรณ์ภายใน (devices) เหมือนเดิม
-const CORRECTION_OPTIONS_BY_FC_PROBLEM_CAUSE: Record<string, { value: string; label: string }[]> = {
-    "DCCHARFC:POWERDRP:OVERHEAT": [
-        { value: "REPLACE", label: "Replace (Filter)" },
-    ],
-    "DCCHARFC:POWERDRP:POWMODUL": [
-        { value: "REPLACE", label: "Replace (Power Module)" },
-    ],
-    "DCCHARFC:POWERDRP:PMCMFAIL": [
-        { value: "REPLACE", label: "Replace (Power Module)" },
-        { value: "RECHECK", label: "Recheck (Power Module)" },
-        { value: "REPAIR", label: "Repair (Power Module)" },
-    ],
-    "DCCHARFC:POWERDRP:POWSUPPL": [
-        { value: "REPLACE", label: "Replace (Power Supply)" },
-    ],
-    "DCCHARFC:POWERDRP:CBPOWTRP": [
-        { value: "REPLACE", label: "Replace (CB)" },
-        { value: "RESET", label: "Reset (CB)" },
-    ],
-    "DCCHARFC:POWERDRP:RCDPROTS": [
-        { value: "REPLACE", label: "Replace (RCD)" },
-        { value: "RESET", label: "Reset (RCD)" },
-    ],
-    "DCCHARFC:UN2STCHG:DCCTR1FC": [
-        { value: "REPLACE", label: "Replace (DC Contactor No.1)" },
-        { value: "RECHECK", label: "Recheck (DC Contactor No.1)" },
-        { value: "REPAIR", label: "Repair (DC Contactor No.1)" },
-    ],
-    "DCCHARFC:UN2STCHG:DCCTR2FC": [
-        { value: "REPLACE", label: "Replace (DC Contactor No.2)" },
-        { value: "RECHECK", label: "Recheck (DC Contactor No.2)" },
-        { value: "REPAIR", label: "Repair (DC Contactor No.2)" },
-    ],
-    "DCCHARFC:UN2STCHG:DCCTR3FC": [
-        { value: "REPLACE", label: "Replace (DC Contactor No.3)" },
-        { value: "RECHECK", label: "Recheck (DC Contactor No.3)" },
-        { value: "REPAIR", label: "Repair (DC Contactor No.3)" },
-    ],
-    "DCCHARFC:UN2STCHG:DCCTR4FC": [
-        { value: "REPLACE", label: "Replace (DC Contactor No.4)" },
-        { value: "RECHECK", label: "Recheck (DC Contactor No.4)" },
-        { value: "REPAIR", label: "Repair (DC Contactor No.4)" },
-    ],
-    "DCCHARFC:UN2STCHG:DCCTR5FC": [
-        { value: "REPLACE", label: "Replace (DC Contactor No.5)" },
-        { value: "RECHECK", label: "Recheck (DC Contactor No.5)" },
-        { value: "REPAIR", label: "Repair (DC Contactor No.5)" },
-    ],
-    "DCCHARFC:UN2STCHG:DCCTR6FC": [
-        { value: "REPLACE", label: "Replace (DC Contactor No.6)" },
-        { value: "RECHECK", label: "Recheck (DC Contactor No.6)" },
-        { value: "REPAIR", label: "Repair (DC Contactor No.6)" },
-    ],
-    "DCCHARFC:UN2STCHG:ACCTR1FC": [
-        { value: "REPLACE", label: "Replace (AC Contactor No.1)" },
-        { value: "RECHECK", label: "Recheck (AC Contactor No.1)" },
-        { value: "REPAIR", label: "Repair (AC Contactor No.1)" },
-    ],
-    "DCCHARFC:UN2STCHG:ACCTR2FC": [
-        { value: "REPLACE", label: "Replace (AC Contactor No.2)" },
-        { value: "RECHECK", label: "Recheck (AC Contactor No.2)" },
-        { value: "REPAIR", label: "Repair (AC Contactor No.2)" },
-    ],
-    "DCCHARFC:UN2STCHG:ACCTR3FC": [
-        { value: "REPLACE", label: "Replace (AC Contactor No.3)" },
-        { value: "RECHECK", label: "Recheck (AC Contactor No.3)" },
-        { value: "REPAIR", label: "Repair (AC Contactor No.3)" },
-    ],
-    "DCCHARFC:UN2STCHG:IMD1FC": [
-        { value: "REPLACE", label: "Replace (Insulation Monitoring Divce Fail No.1)" },
-        { value: "RECHECK", label: "Recheck (Insulation Monitoring Divce Fail No.1)" },
-        { value: "REPAIR", label: "Repair (Insulation Monitoring Divce Fail No.1)" },
-    ],
-    "DCCHARFC:UN2STCHG:IMD2FC": [
-        { value: "REPLACE", label: "Replace (Insulation Monitoring Divce Fail No.2)" },
-        { value: "RECHECK", label: "Recheck (Insulation Monitoring Divce Fail No.2)" },
-        { value: "REPAIR", label: "Repair (Insulation Monitoring Divce Fail No.2)" },
-    ],
-    "DCCHARFC:UN2STCHG:CTL1FC": [
-        { value: "REPLACE", label: "Replace (Controller No.1)" },
-        { value: "RECHECK", label: "Recheck (Controller No.1)" },
-        { value: "REPAIR", label: "Repair (Controller No.1)" },
-    ],
-    "DCCHARFC:UN2STCHG:CTL2FC": [
-        { value: "REPLACE", label: "Replace (Controller No.2)" },
-        { value: "RECHECK", label: "Recheck (Controller No.2)" },
-        { value: "REPAIR", label: "Repair (Controller No.2)" },
-    ],
-    "DCCHARFC:UN2STCHG:EMERBUTP": [
-        { value: "RESET", label: "Reset (Emergency)" },
-    ],
-    "DCCHARFC:UN2STCHG:CPCBMISS": [
-        { value: "REPLACE", label: "Replace (Charging Cable)" },
-    ],
-    "DCCHARFC:SCRFREEZ:OVERHEAT": [
-        { value: "REPLACE", label: "Replace (Filter)" },
-    ],
-    "DCCHARFC:NOINTSIG:SIMCARDP": [
-        { value: "REPLACE", label: "Replace (SIM)" },
-    ],
-    "DCCHARFC:NOINTSIG:CHSTARTC": [
-        { value: "REPLACE", label: "Replace (SIM)" },
-    ],
-    "DCCHARFC:NOINTSIG:CHSTOPTC": [
-        { value: "REPLACE", label: "Replace (SIM)" },
-    ],
-    "DCCHARFC:NOINTSIG:DISCONFR": [
-        { value: "REPLACE", label: "Replace (SIM)" },
-        { value: "REPLACE", label: "Replace (Router)" },
-    ],
-    "DCCHARFC:DATATRAN:CONBOANC": [
-        { value: "RECHECK", label: "Recheck (Cable)" },
-    ],
-    "DCCHARFC:HMISCREE:HMISCROF": [
-        { value: "REPLACE", label: "Replace (HMI Touch Screen Board)" },
-        { value: "RECHECK", label: "Recheck (HMI Touch Screen Board)" },
-        { value: "REPAIR", label: "Repair (HMI Touch Screen Board)" },
-        { value: "REBOOT", label: "Reboot (HMI Touch Screen Board)" },
-    ],
-    "DCCHARFC:CONBOARD:CONBOAFA": [
-        { value: "REPLACE", label: "Replace (Control Board)" },
-        { value: "UPDATEFW", label: "Update Firmware" },
-    ],
-    "DCCHARFC:BILLINGU:CONBOAFA": [
-        { value: "RESTORE", label: "Restore Charger" },
-        { value: "REPLACE", label: "Replace (Control Board)" },
-        { value: "REPLACE", label: "Replace (Power Meter)" },
-        { value: "RESTORE", label: "Restore (Power Meter)" },
-    ],
-    "DCCHARFC:NOCONSTD:PECUTFAI": [
-        { value: "NOTIFYMF", label: "Notify the Manufacturer" },
-    ],
-    "DCCHARFC:NOCONSTD:CPSHTFAI": [
-        { value: "NOTIFYMF", label: "Notify the Manufacturer" },
-    ],
-    // ── AC Charger Failure ──
-    "ACCHARFC:POWERDRP:POWBOAFA": [
-        { value: "REPLACE", label: "Replace (Power Board)" },
-    ],
-    "ACCHARFC:UN2STCHG:EMERBUTP": [
-        { value: "RESET", label: "Reset (Emergency)" },
-    ],
-    "ACCHARFC:UN2STCHG:CPCBMISS": [
-        { value: "REPLACE", label: "Replace (Charging Cable)" },
-    ],
-    "ACCHARFC:SCRFREEZ:OVERHEAT": [
-        { value: "REBOOT", label: "Reboot (Charger)" },
-    ],
-    "ACCHARFC:NOINTSIG:SIMCARDP": [
-        { value: "REPLACE", label: "Replace (SIM)" },
-    ],
-    "ACCHARFC:NOINTSIG:CHSTARTC": [
-        { value: "REPLACE", label: "Replace (SIM)" },
-    ],
-    "ACCHARFC:NOINTSIG:CHSTOPTC": [
-        { value: "REPLACE", label: "Replace (SIM)" },
-    ],
-    "ACCHARFC:NOINTSIG:DISCONFR": [
-        { value: "REPLACE", label: "Replace (SIM)" },
-        { value: "REPLACE", label: "Replace (Router)" },
-    ],
-    "ACCHARFC:DATATRAN:CONBOANC": [
-        { value: "RECHECK", label: "Recheck (Cable)" },
-    ],
-    "ACCHARFC:HMISCREE:HMISCROF": [
-        { value: "REPLACE", label: "Replace (HMI Touch Screen Board)" },
-    ],
-    "ACCHARFC:CONBOARD:CONBOAFA": [
-        { value: "REPLACE", label: "Replace (Control Board)" },
-        { value: "UPDATEFW", label: "Update Firmware" },
-    ],
-    "ACCHARFC:BILLINGU:CONBOAFA": [
-        { value: "RESTORE", label: "Restore Charger" },
-        { value: "REPLACE", label: "Replace (Control Board)" },
-    ],
-    // ── Station Failure ──
-    "STATFC:HVPROBLM:HVFUSEDR": [
-        { value: "REPLACE", label: "Replace (HV Fuse)" },
-    ],
-    "STATFC:HVPROBLM:GROUNDIN": [
-        { value: "FIX", label: "Fix (Grounding)" },
-    ],
-    "STATFC:HVPROBLM:MCBTRIPF": [
-        { value: "RESET", label: "Reset (MCB)" },
-        { value: "REPLACE", label: "Replace (MCB)" },
-    ],
-    "STATFC:HVPROBLM:FUSELAMP": [
-        { value: "REPLACE", label: "Replace (Fuse or Lamp)" },
-    ],
-    "STATFC:EVDBPROB:CUBUSBAR": [
-        { value: "REPLACE", label: "Replace (Busbar)" },
-    ],
-    "STATFC:EVDBPROB:WATERENT": [
-        { value: "FIX", label: "Fix (Sealing)" },
-    ],
-    "STATFC:EVDBPROB:MCCBTRIP": [
-        { value: "RESET", label: "Reset (MCCB)" },
-        { value: "REPLACE", label: "Replace (MCCB)" },
-    ],
-    "STATFC:EVDBPROB:MCBTRIPF": [
-        { value: "RESET", label: "Reset (MCB)" },
-        { value: "REPLACE", label: "Replace (MCB)" },
-    ],
-    "STATFC:EVDBPROB:RCDTRIPF": [
-        { value: "RESET", label: "Reset (RCD)" },
-        { value: "REPLACE", label: "Replace (RCD)" },
-    ],
-    "STATFC:POWERMET:METERFAI": [
-        { value: "REPLACE", label: "Replace (Power Meter)" },
-        { value: "REPLACE", label: "Replace (CT)" },
-    ],
-    "STATFC:FUSEPROB:FUSESURG": [
-        { value: "REPLACE", label: "Replace (Fuse)" },
-    ],
-    "STATFC:FUSEPROB:FUSEPHAS": [
-        { value: "REPLACE", label: "Replace (Fuse)" },
-    ],
-    "STATFC:FUSEPROB:FUSELAMP": [
-        { value: "REPLACE", label: "Replace (Fuse or Lamp)" },
-    ],
-    "STATFC:PHPROTPB:PHASEALT": [
-        { value: "FIX", label: "Fix (Phase Sequence)" },
-    ],
-    "STATFC:PHPROTPB:OVERVOLT": [
-        { value: "RECHECK", label: "Recheck (Voltage)" },
-        { value: "ADJUST", label: "Adjust (Protection Setting)" },
-    ],
-    "STATFC:PHPROTPB:UNDEVOLT": [
-        { value: "RECHECK", label: "Recheck (Voltage)" },
-        { value: "ADJUST", label: "Adjust (Protection Setting)" },
-    ],
-    "STATFC:PHPROTPB:INCVMISS": [
-        { value: "RECHECK", label: "Recheck (Voltage)" },
-    ],
-    "STATFC:RELAYPRO:RELAYFAI": [
-        { value: "REPLACE", label: "Replace (Relay)" },
-    ],
-    "STATFC:FANPROBL:EXHTFANF": [
-        { value: "REPLACE", label: "Replace (Fan)" },
-    ],
-    "STATFC:ROUTERPB:ROUTFAIL": [
-        { value: "REPLACE", label: "Replace (Router)" },
-        { value: "REBOOT", label: "Reboot (Router)" },
-    ],
-    "STATFC:UPSSBPOB:UPSFAILU": [
-        { value: "REPLACE", label: "Replace (UPS)" },
-    ],
-    "STATFC:NVRPROBL:NVRFAILE": [
-        { value: "REPLACE", label: "Replace (NVR)" },
-    ],
-    "STATFC:CCTVPROB:CCTVFAIL": [
-        { value: "REPLACE", label: "Replace (CCTV)" },
-    ],
-    "STATFC:QRCDPROB:QRCDFAIL": [
-        { value: "REPLACE", label: "Replace (QR Code)" },
-    ],
-    "STATFC:LIGTPROB:LIGTFAIL": [
-        { value: "REPLACE", label: "Replace (Lighting)" },
-    ],
-    "STATFC:PARKPROB:PRKPAINT": [
-        { value: "FIX", label: "Fix (Floor)" },
-    ],
-    "STATFC:STRUPROB:STRUDAMA": [
-        { value: "FIX", label: "Fix (Structure)" },
-    ],
-    "STATFC:FIREEXPB:GUAGUNOV": [
-        { value: "REPLACE", label: "Replace (Fire Extinguisher)" },
-    ],
-};
 
 const LOGO_SRC = "/img/logo_egat.png";
 const LIST_ROUTE = "/dashboard/cm-report";
@@ -859,27 +401,12 @@ function RowSelect({ values, options, onChange, resolveLabel, accent, placeholde
 }
 
 // ==================== VALIDATION CARD ====================
-// ผลซ่อมรอบก่อน ๆ — อ่านอย่างเดียว แสดงเหนือฟอร์มกรอกรอบใหม่
-// แปลงค่าที่เก็บใน DB (เช่น "POWMODUL") เป็นข้อความที่อ่านรู้เรื่อง
-// ต้องรวมทุกลิสต์ เพราะการ์ดประวัติไม่รู้ว่า failure code ตอนนั้นคืออะไร
-const PROBLEM_LABEL_BY_VALUE: Record<string, string> = (() => {
-    const m: Record<string, string> = {};
-    for (const list of Object.values(PROBLEM_OPTIONS_BY_FAILURECODE)) for (const o of list) m[o.value] = o.label;
-    for (const o of PROBLEM_TYPE_OPTIONS) m[o.value] = o.th;
-    m[NO_PROBLEM_OPTION.value] = NO_PROBLEM_OPTION.th;
-    return m;
-})();
-const CAUSE_LABEL_BY_VALUE: Record<string, string> = (() => {
-    const m: Record<string, string> = {};
-    for (const list of Object.values(CAUSE_OPTIONS_BY_PROBLEM)) for (const o of list) m[o.value] = o.label;
-    for (const byProblem of Object.values(CAUSE_OPTIONS_BY_FC_PROBLEM)) {
-        for (const list of Object.values(byProblem)) for (const o of list) m[o.value] = o.label;
-    }
-    return m;
-})();
-// ไม่เจอในลิสต์ = ค่าที่ผู้ใช้พิมพ์เอง หรือค่าเก่า → แสดงตามเดิม
-export const problemLabelOf = (v: string) => PROBLEM_LABEL_BY_VALUE[v] ?? v;
-export const causeLabelOf = (v: string) => CAUSE_LABEL_BY_VALUE[v] ?? v;
+// แปลงรหัสที่เก็บใน DB (เช่น "POWMODUL") เป็นข้อความที่อ่านรู้เรื่อง
+// การ์ดประวัติไม่รู้ว่า failure code ตอนนั้นคืออะไร จึงค้นจากทั้งต้นไม้ของ Maximo
+// รหัสที่ไม่รู้จัก (ค่าที่ผู้ใช้พิมพ์เอง / ใบงานเก่า) จะคืนค่าเดิมกลับไป
+export const problemLabelOf = (v: string) =>
+    v === NO_PROBLEM_OPTION.value ? NO_PROBLEM_OPTION.th : maximoCodeLabel(v);
+export const causeLabelOf = (v: string) => maximoCodeLabel(v);
 
 function RepairRoundCard({ round, index, lang }: { round: RepairRound; index: number; lang: Lang }) {
     const src = (u?: string) => (!u ? "" : u.startsWith("http") ? u : `${API_BASE}${u}`);
@@ -1097,21 +624,15 @@ function ProblemGroupBlock({ faultyEquipment, value, onChange, onRemove, onAddGr
     const effProblems = (isCauseOnly || isCorrectionOnly) ? mainProblem : value.problem_type;
     const effCauses = isCorrectionOnly ? mainCause : value.cause;
 
-    const failureProblemOptions = PROBLEM_OPTIONS_BY_FAILURECODE[faultyEquipment] ?? null;
+    const maximoTree = useMaximoFailureTree();
+    const failureProblemOptions = toOptions(maximoProblemOptions(maximoTree, faultyEquipment));
     const problemSelectOptions = [
         ...(failureProblemOptions ?? []),
         { value: NO_PROBLEM_OPTION.value, label: lang === "en" ? NO_PROBLEM_OPTION.en : NO_PROBLEM_OPTION.th },
     ];
     const resolveProblemLabel = (v: string) => problemSelectOptions.find(o => o.value === v)?.label ?? v;
 
-    const causeOptions = (() => {
-        const seen = new Set<string>(); const all: { value: string; label: string }[] = [];
-        for (const p of effProblems) {
-            const opts = CAUSE_OPTIONS_BY_FC_PROBLEM[faultyEquipment]?.[p] ?? CAUSE_OPTIONS_BY_PROBLEM[p];
-            if (opts) for (const o of opts) if (!seen.has(o.value)) { seen.add(o.value); all.push(o); }
-        }
-        return all.length ? all : null;
-    })();
+    const causeOptions = toOptions(maximoCauseOptions(maximoTree, faultyEquipment, effProblems));
     const resolveCauseLabel = (v: string) => causeOptions?.find(o => o.value === v)?.label ?? v;
     // ตัด "สาเหตุ" ที่ถูกเลือกไว้ในช่องอื่นออก (กันเลือกซ้ำ) — เก็บค่าของตัวเองไว้
     const causeOptionsAvail = causeOptions
@@ -1129,14 +650,8 @@ function ProblemGroupBlock({ faultyEquipment, value, onChange, onRemove, onAddGr
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [takenCauses.join(","), effProblems.join(","), faultyEquipment]);
 
-    const correctionOptions = (() => {
-        const seen = new Set<string>(); const all: { value: string; label: string }[] = [];
-        for (const p of effProblems) for (const c of effCauses) {
-            const opts = CORRECTION_OPTIONS_BY_FC_PROBLEM_CAUSE[`${faultyEquipment}:${p}:${c}`];
-            if (opts) for (const o of opts) if (!seen.has(o.value)) { seen.add(o.value); all.push(o); }
-        }
-        return all.length ? all : null;
-    })();
+    const correctionOptions = toOptions(
+        maximoRemedyOptions(maximoTree, faultyEquipment, effProblems, effCauses));
     const resolveCorrectionLabel = (v: string) => correctionOptions?.find(o => o.value === v)?.label ?? formatDeviceName(v);
     // ตัด "การแก้ไข" ที่ถูกเลือกไว้ในช่องอื่นออก (กันเลือกซ้ำ) — เก็บค่าของตัวเองไว้
     const correctionOptionsAvail = correctionOptions
@@ -1345,6 +860,8 @@ export default function CMInProgressForm() {
     // ประวัติผลซ่อมรอบก่อน ๆ (อ่านอย่างเดียว) — flat fields คือรอบที่กำลังกรอก
     const [repairHistory, setRepairHistory] = useState<RepairRound[]>([]);
     const [assignees, setAssignees] = useState<string[]>([]);   // ช่างที่ engineer มอบหมายตอนวางแผน
+    // ตาราง failure code จาก Maximo (IN04) — ผสมกับตารางในโค้ดเพื่อทำ dropdown ปัญหา→สาเหตุ→การแก้ไข
+    const maximoTree = useMaximoFailureTree();
     const [currentUsername, setCurrentUsername] = useState("");
     const [currentRole, setCurrentRole] = useState("");
     const [approvedBy, setApprovedBy] = useState("");
@@ -1387,11 +904,13 @@ export default function CMInProgressForm() {
     // รองรับทั้ง Closed ใหม่และ Complete เดิมที่ยังอยู่ในฐานข้อมูล
     const isClosedStatus = job.status === "Closed" || job.status === "Complete";
     const isWaitForApprove = job.status.trim().toLowerCase() === "wait for approve";
-    // Engineer สามารถตรวจ/แก้ข้อมูลส่วนซ่อมที่ Technician กรอกได้ รวมถึงตอน Wait for approve
+    // ด่านรออนุมัติ = หน้าตรวจงานอย่างเดียว มี 3 ปุ่ม: กลับ / ตีกลับ / อนุมัติ
+    // ผู้อนุมัติแก้ข้อมูลที่ช่างกรอกไม่ได้แล้ว — ด่านนี้ไม่มีปุ่มบันทึก ถ้าปล่อยให้พิมพ์ได้ข้อมูลจะหายเงียบตอนกดอนุมัติ
+    // (ต้องแก้ = ตีกลับพร้อมเหตุผลให้ช่างแก้)
     const viewOnly =
         isCs ||
         isClosedStatus ||
-        (isWaitForApprove && !isEngineer) ||
+        isWaitForApprove ||
         (!isEngineer && !isJobOwner);
 
     // อนุมัติปิดใบงาน (Wait for approve → Closed) — เฉพาะ admin/engineer และเฉพาะใบที่รออนุมัติอยู่จริง
@@ -1429,16 +948,17 @@ export default function CMInProgressForm() {
     const currentTab = searchParams.get("tab") ?? "in-progress";
 
     // ==================== NAVIGATION HELPERS ====================
+    // ปลายทางหลังจบ action ทุกแบบ (บันทึก/ปิดงาน/อนุมัติ/ตีกลับ/ย้อนกลับ)
+    // — เข้ามาจากหน้าไหนก็กลับหน้านั้น: จาก CM Dashboard → dashboard, จากตาราง list → แท็บที่เกี่ยวข้อง
     const buildListUrl = (targetTab?: string) => {
+        if (cameFromDashboard(searchParams)) return CM_DASHBOARD_ROUTE;
         const p = new URLSearchParams();
         if (stationId) p.set("station_id", stationId);
         p.set("tab", targetTab ?? currentTab);
         return `${LIST_ROUTE}?${p.toString()}`;
     };
 
-    const goBackToList = () => {
-        router.push(buildListUrl(currentTab));
-    };
+    const goBackToList = () => router.push(buildListUrl(currentTab));
 
     // ==================== DRAFT MANAGEMENT ====================
     const { status: draftStatus, hasDraft, saveNow: saveDraftNow, load: loadDraft, deleteDraft } = useDraft(
@@ -1737,11 +1257,17 @@ export default function CMInProgressForm() {
     // ซ่อมเสร็จ ("แก้ไขสำเร็จ/ไม่สำเร็จ" หรือ "ไม่พบปัญหา") หรือเลือก "WO - wait for approve"
     // → เข้าคิวรออนุมัติ (Wait for approve) ให้ engineer/admin กดปิดงาน | ติดตามผล/รออะไหล่ → In Progress
     const isClosing = isClosedResult || isNoProblem;
-    const targetStatus = isClosing || job.repair_result === "WO - wait for approve" ? "Wait for approve" : "In Progress";
-    const targetTab = "in-progress";
-    // ใบที่เข้าคิวรออนุมัติ = งานซ่อมจบแล้ว → ต้องมีวันที่แก้ไขเสร็จเสมอ
+    // engineer เป็นผู้อนุมัติปิดงานอยู่แล้ว — ถ้ากรอกผลซ่อมเองและเลือก "แก้ไขสำเร็จ"
+    // ก็ไม่ต้องเข้าคิวรออนุมัติ ปิดเป็น Closed ไปเลย (role อื่นยังต้องรอ engineer/admin อนุมัติ)
+    const isRepairSuccess = job.repair_result === "WO - wait for approve" || job.repair_result === "แก้ไขสำเร็จ";
+    const engineerAutoClose = isEngineer && isRepairSuccess;
+    const targetStatus = engineerAutoClose
+        ? "Closed"
+        : (isClosing || job.repair_result === "WO - wait for approve" ? "Wait for approve" : "In Progress");
+    const targetTab = targetStatus === "Closed" ? "closed" : "in-progress";
+    // ใบที่ซ่อมจบแล้ว (รออนุมัติ หรือปิดเลย) → ต้องมีวันที่แก้ไขเสร็จเสมอ
     // (ครอบคลุมทั้ง แก้ไขสำเร็จ/ไม่สำเร็จ, ไม่พบปัญหา และ WO - wait for approve)
-    const hasResolvedDate = targetStatus === "Wait for approve";
+    const hasResolvedDate = targetStatus === "Wait for approve" || targetStatus === "Closed";
 
     // ==================== HELPERS ====================
     const localTodayFormatted = () => { const d = new Date(); return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`; };
@@ -1961,7 +1487,9 @@ export default function CMInProgressForm() {
 
         (async () => {
             try {
-                const isChargerFailure = faultyEq.startsWith("charger_") || faultyEq === "DCCHARFC" || faultyEq === "ACCHARFC";
+                // บทบาทของ failure class มาจากตาราง Maximo (roles) ไม่ได้ผูกกับรหัสในโค้ด
+                const role = failureClassRole(maximoTree, faultyEq);
+                const isChargerFailure = faultyEq.startsWith("charger_") || role === "dc" || role === "ac";
                 if (isChargerFailure) {
                     // Charger → ดึง device-keys จาก SN ของ charger
                     let charger: ChargerInfo | undefined;
@@ -1973,8 +1501,8 @@ export default function CMInProgressForm() {
                             String(c.charger_id) === chargerId
                         );
                     } else {
-                        // failure code ระดับสถานี (DCCHARFC/ACCHARFC) → ใช้ charger ตัวแรกที่ตรงประเภท
-                        const wantType = faultyEq === "DCCHARFC" ? "DC" : "AC";
+                        // failure code ระดับสถานี → ใช้ charger ตัวแรกที่ตรงประเภท
+                        const wantType = role === "dc" ? "DC" : "AC";
                         charger = chargers.find(c => (c.chargerType || "DC").toUpperCase() === wantType) || chargers[0];
                     }
                     const sn = charger?.SN || charger?.sn;
@@ -1988,8 +1516,8 @@ export default function CMInProgressForm() {
                         if (alive) setDevices([]);
                     }
                 } else {
-                    // Non-charger → ใช้ข้อมูล static ที่ frontend (STATFC = station)
-                    const key = faultyEq === "STATFC" ? "station" : faultyEq.toLowerCase();
+                    // Non-charger → ใช้รายการอุปกรณ์ระดับสถานีที่ frontend
+                    const key = role === "station" ? "station" : faultyEq.toLowerCase();
                     const deviceList = NON_CHARGER_DEVICES[key] || [];
                     if (alive) setDevices(deviceList);
                 }
@@ -2000,7 +1528,7 @@ export default function CMInProgressForm() {
             }
         })();
         return () => { alive = false; };
-    }, [job.faulty_equipment, chargers, stationId]);
+    }, [job.faulty_equipment, chargers, stationId, maximoTree]);
 
     // Clear repaired_equipment เมื่อเปลี่ยนอุปกรณ์ที่พัง
     // const prevFaultyRef = useRef(job.faulty_equipment);
@@ -2021,7 +1549,7 @@ export default function CMInProgressForm() {
         prevFaultyRef.current = job.faulty_equipment;
         // ล้างเฉพาะตอน "ผู้ใช้เปลี่ยนอุปกรณ์" เท่านั้น — สองกรณีนี้ไม่ใช่:
         //   prev === null  → รอบ mount (job ยังเป็น INITIAL_JOB)
-        //   prev === ""    → server เพิ่งโหลดเสร็จ ("" -> "ACCHARFC") ซึ่งเดิมถูกนับเป็นการเปลี่ยน
+        //   prev === ""    → server เพิ่งโหลดเสร็จ ("" -> failure code) ซึ่งเดิมถูกนับเป็นการเปลี่ยน
         //                    ทำให้ repaired_equipment ที่โหลดมาถูกล้างทิ้งทุกครั้งที่เปิดใบ (และหายจาก DB ถ้าบันทึกซ้ำ)
         if (prev === null || prev === "") return;
         if (prev !== job.faulty_equipment) {
@@ -2280,11 +1808,8 @@ export default function CMInProgressForm() {
                 const j = await res.json().catch(() => ({}));
                 throw new Error(j?.detail || `HTTP ${res.status}`);
             }
-            // ปิดแล้วใบงานย้ายไปแท็บ Closed — กลับไปหน้า list ไม่ค้างอยู่ในฟอร์มที่ข้อมูลเก่า
-            const p = new URLSearchParams();
-            if (stationId) p.set("station_id", stationId);
-            p.set("tab", "closed");
-            router.push(`${LIST_ROUTE}?${p.toString()}`);
+            // ปิดแล้วใบงานย้ายไปแท็บ Closed — กลับไปหน้าที่กดเข้ามา ไม่ค้างอยู่ในฟอร์มที่ข้อมูลเก่า
+            router.push(buildListUrl("closed"));
         } catch (e: any) {
             alert((lang === "th" ? "อนุมัติไม่สำเร็จ: " : "Approve failed: ") + (e?.message ?? e));
             setApproving(false);
@@ -2311,11 +1836,8 @@ export default function CMInProgressForm() {
                 const j = await res.json().catch(() => ({}));
                 throw new Error(j?.detail || `HTTP ${res.status}`);
             }
-            // ใบงานกลับไปให้ช่างแก้ → กลับหน้า list ของ In Progress
-            const p = new URLSearchParams();
-            if (stationId) p.set("station_id", stationId);
-            p.set("tab", "in-progress");
-            router.push(`${LIST_ROUTE}?${p.toString()}`);
+            // ใบงานกลับไปให้ช่างแก้ → กลับหน้าที่กดเข้ามา
+            router.push(buildListUrl("in-progress"));
         } catch (e: any) {
             alert((lang === "th" ? "ตีกลับไม่สำเร็จ: " : "Reject failed: ") + (e?.message ?? e));
             setRejecting(false);
@@ -2550,10 +2072,7 @@ export default function CMInProgressForm() {
                 return;
             }
 
-            const p = new URLSearchParams();
-            if (stationId) p.set("station_id", stationId);
-            p.set("tab", targetTab);
-            router.push(`${LIST_ROUTE}?${p.toString()}`);
+            router.push(buildListUrl(targetTab));
         } catch (e: any) {
             alert(`${t("alertSaveFailed", lang)} ${e.message || e}`);
         }
@@ -2563,7 +2082,8 @@ export default function CMInProgressForm() {
     const severityColor = getSeverityColor(job.severity);
 
     // ชุดตัวเลือก "ปัญหา" ตาม FAILURECODE ของใบงาน (ถ้าไม่มีลิสต์กำหนด → ใช้ชุดเดิม) + "ไม่พบปัญหา"
-    const failureProblemOptions = PROBLEM_OPTIONS_BY_FAILURECODE[job.faulty_equipment] ?? null;
+    const failureProblemOptions = toOptions(
+        maximoProblemOptions(maximoTree, job.faulty_equipment));
     const problemSelectOptions = [
         ...(failureProblemOptions ?? []),
         { value: NO_PROBLEM_OPTION.value, label: lang === "en" ? NO_PROBLEM_OPTION.en : NO_PROBLEM_OPTION.th },
@@ -2572,15 +2092,8 @@ export default function CMInProgressForm() {
         problemSelectOptions.find(o => o.value === val)?.label ?? val;
 
     // ชุดตัวเลือก "สาเหตุ" — รวมจากทุกปัญหาที่เลือก (dedupe ตาม value)
-    const causeOptions = (() => {
-        const seen = new Set<string>();
-        const all: { value: string; label: string }[] = [];
-        for (const p of job.problem_type) {
-            const opts = CAUSE_OPTIONS_BY_FC_PROBLEM[job.faulty_equipment]?.[p] ?? CAUSE_OPTIONS_BY_PROBLEM[p];
-            if (opts) for (const o of opts) if (!seen.has(o.value)) { seen.add(o.value); all.push(o); }
-        }
-        return all.length ? all : null;
-    })();
+    const causeOptions = toOptions(
+        maximoCauseOptions(maximoTree, job.faulty_equipment, job.problem_type));
 
     // สาเหตุที่ถูกเลือกในบล็อกเพิ่มเติม — ตัดออกจากช่องสาเหตุหลัก (กันเลือกซ้ำ)
     const causesInGroups = extraGroups.flatMap(g => g.cause).filter(Boolean);
@@ -2615,17 +2128,8 @@ export default function CMInProgressForm() {
         causeOptions?.find(o => o.value === val)?.label ?? val;
 
     // ชุดตัวเลือก "การแก้ไข" — รวมจากทุก (ปัญหา × สาเหตุ) ที่เลือก (dedupe ตาม value)
-    const correctionOptions = (() => {
-        const seen = new Set<string>();
-        const all: { value: string; label: string }[] = [];
-        for (const p of job.problem_type) {
-            for (const c of job.cause) {
-                const opts = CORRECTION_OPTIONS_BY_FC_PROBLEM_CAUSE[`${job.faulty_equipment}:${p}:${c}`];
-                if (opts) for (const o of opts) if (!seen.has(o.value)) { seen.add(o.value); all.push(o); }
-            }
-        }
-        return all.length ? all : null;
-    })();
+    const correctionOptions = toOptions(
+        maximoRemedyOptions(maximoTree, job.faulty_equipment, job.problem_type, job.cause));
     const resolveCorrectionLabel = (val: string) =>
         correctionOptions?.find(o => o.value === val)?.label ?? formatDeviceName(val);
 
@@ -2840,9 +2344,17 @@ export default function CMInProgressForm() {
                                     >
                                         <option value="">{t("selectEquipmentPlaceholder", lang)}</option>
                                         <optgroup label={lang === "th" ? "รหัสความเสียหาย" : "Failure Code"}>
-                                            <option value="DCCHARFC">{lang === "th" ? "ตู้ชาร์จ DC ขัดข้อง" : "DC Charger Failure"}</option>
-                                            <option value="ACCHARFC">{lang === "th" ? "ตู้ชาร์จ AC ขัดข้อง" : "AC Charger Failure"}</option>
-                                            <option value="STATFC">{lang === "th" ? "สถานีขัดข้อง" : "Station Failure"}</option>
+                                            {maximoTree.classes.map(c => (
+                                                <option key={c.code} value={c.code}>{c.description || c.code}</option>
+                                            ))}
+                                            {/* ใบงานเก่าที่เก็บรหัสชุดเดิม — ต้องมี option ให้ค่าที่เลือกไว้ ไม่งั้น select โชว์ว่าง */}
+                                            {job.faulty_equipment
+                                                && !maximoTree.classes.some(c => c.code === job.faulty_equipment)
+                                                && !job.faulty_equipment.startsWith("charger_") && (
+                                                <option value={job.faulty_equipment}>
+                                                    {failureCodeLabel(job.faulty_equipment)}
+                                                </option>
+                                            )}
                                         </optgroup>
                                         {/* กลุ่มเดิม — ให้รายงานเก่าที่บันทึกเป็น charger_x / mdb / ccb ฯลฯ ยังแสดงผลได้ */}
                                         {chargers.length > 0 && (
@@ -3372,10 +2884,11 @@ export default function CMInProgressForm() {
                     {/* Actions */}
                     <div className="tw-flex tw-items-center tw-justify-end tw-gap-3 tw-pt-6 tw-border-t tw-border-gray-200">
                         {viewOnly ? (
+                            /* เรียงซ้าย→ขวา: กลับ · ตีกลับ · อนุมัติ */
                             <>
                                 <Button
                                     type="button"
-                                    onClick={() => router.back()}
+                                    onClick={goBackToList}
                                     className="tw-bg-blue-gray-700 hover:tw-bg-blue-gray-800 tw-text-white tw-font-semibold tw-text-base tw-px-8 tw-py-3 tw-rounded-xl hover:tw-shadow-xl tw-transition-all"
                                 >
                                     {lang === "th" ? "กลับ" : "Back"}
@@ -3400,12 +2913,12 @@ export default function CMInProgressForm() {
                             <Button
                                 onClick={() => { void onFinalSave(); }}
                                 disabled={saving || !canSave}
-                                className={`tw-text-white tw-font-semibold tw-text-base tw-px-8 tw-py-3 tw-rounded-xl hover:tw-shadow-xl disabled:tw-opacity-50 disabled:tw-cursor-not-allowed disabled:tw-shadow-none tw-transition-all tw-transform hover:tw-scale-[1.02] ${isClosing
+                                className={`tw-text-white tw-font-semibold tw-text-base tw-px-8 tw-py-3 tw-rounded-xl hover:tw-shadow-xl disabled:tw-opacity-50 disabled:tw-cursor-not-allowed disabled:tw-shadow-none tw-transition-all tw-transform hover:tw-scale-[1.02] ${isClosing || engineerAutoClose
                                     ? "tw-bg-gray-700 hover:tw-bg-red-800 hover:tw-shadow-red-500/30"
                                     : "tw-bg-amber-500 hover:tw-bg-amber-600 hover:tw-shadow-amber-500/30"
                                     }`}
                             >
-                                {saving ? t("saving", lang) : (isClosing ? t("closed", lang) : t("save", lang))}
+                                {saving ? t("saving", lang) : (isClosing || engineerAutoClose ? t("closed", lang) : t("save", lang))}
                             </Button>
                             )}
                             </>

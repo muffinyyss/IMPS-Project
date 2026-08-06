@@ -10,7 +10,10 @@ import { useLanguage, type Lang } from "@/utils/useLanguage";
 import { draftKey as getDraftKey, saveDraftLocal, loadDraftLocal, clearDraftLocal, type CMDraftData } from "../lib/draft";
 import { putPhoto, getPhotosByDraftKey, delPhoto, delPhotosByDraftKey, createPreviewUrl, photoRefToFile, type PhotoRef } from "../lib/draftPhotos";
 import { apiFetch } from "@/utils/api";
+import { useMaximoFailureTree, failureClassOptions } from "@/app/dashboard/cm-report/lib/maximo";
+import { failureCodeLabel } from "@/app/dashboard/cm-report/lib/failureCode";
 import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
+import { cameFromDashboard, CM_DASHBOARD_ROUTE } from "@/app/dashboard/cm-report/lib/origin";
 
 // ==================== TRANSLATIONS ====================
 const T = {
@@ -84,6 +87,10 @@ const T = {
     selectTechnician: { th: "เลือกช่าง...", en: "Select technician..." },
     addTechnician: { th: "เพิ่มช่าง", en: "Add technician" },
     noTechnicians: { th: "ไม่พบช่าง", en: "No technicians found" },
+    failureCodesLoading: {
+        th: "กำลังโหลดรายการจาก Maximo…",
+        en: "Loading failure codes from Maximo…",
+    },
     waitState: { th: "สถานะรอ", en: "Waiting On" },
     waitRemark: { th: "หมายเหตุ", en: "Remark" },
     waitRemarkPlaceholder: { th: "ระบุรายละเอียด เช่น วัสดุที่รอ / สภาพหน้างาน", en: "e.g. material awaited / site condition" },
@@ -111,6 +118,11 @@ const T = {
     // ═══ Maximo ═══
     maximoSrCreated: { th: "สร้าง Maximo SR สำเร็จ", en: "Maximo SR Created" },
     maximoSrFailed: { th: "ไม่สามารถสร้าง Maximo SR (บันทึก CM สำเร็จแล้ว)", en: "Maximo SR not created (CM saved)" },
+    maximoWoCreated: { th: "เปิดใบสั่งงานใน Maximo แล้ว เลขที่", en: "Maximo work order created:" },
+    maximoWoFailed: {
+        th: "บันทึกแผนสำเร็จ แต่เปิดใบสั่งงานใน Maximo ไม่สำเร็จ — สั่งยิงซ้ำได้จากหน้ารายละเอียดใบงาน",
+        en: "Plan saved, but the Maximo work order was not created — you can re-sync from the work order page.",
+    },
     savedSuccess: { th: "บันทึกสำเร็จ", en: "Saved successfully" },
     redirecting: { th: "กำลังกลับหน้ารายการ...", en: "Redirecting to list..." },
     optional: { th: "(ไม่บังคับ)", en: "(optional)" },
@@ -172,7 +184,7 @@ const normalizeWaitState = (v: string): (typeof WAIT_STATES)[number] => {
 };
 
 type ServerPhoto = { filename: string; size: number; url: string; remark?: string; uploadedAt?: string; location?: string; };
-type PhotoItem = { id: string; file: File; preview: string; ref?: PhotoRef; isServer?: boolean; serverUrl?: string; createdAt?: string; location?: string; };
+type PhotoItem = { id: string; file: File; preview: string; ref?: PhotoRef; isServer?: boolean; serverUrl?: string; serverGroup?: string; createdAt?: string; location?: string; };
 type ChargerInfo = { chargerNo?: number; charger_id?: string; charger_name?: string; SN?: string; sn?: string; chargerType?: string; };
 type StationPublic = { station_id: string; station_name: string; };
 type ValidationItem = { key: string; label: string; isValid: boolean; message: string; isRequired: boolean; scrollId?: string; };
@@ -441,7 +453,8 @@ function PhotoUpload({ photos_open, onAdd, onRemove, max, disabled, lang, id }: 
                             {photo.isServer && (
                                 <span className="tw-absolute tw-bottom-1 tw-left-1 tw-text-[10px] tw-bg-blue-500 tw-text-white tw-px-1.5 tw-py-0.5 tw-rounded">{t("photoSavedBadge", lang)}</span>
                             )}
-                            {!disabled && !photo.isServer && (
+                            {/* ลบได้ทั้งรูปที่เพิ่งแนบและรูปที่บันทึกไว้แล้ว — ใบที่ถูกตีกลับต้องเปลี่ยนรูปเดิมได้ */}
+                            {!disabled && (
                                 <button type="button" onClick={() => onRemove(photo.id)} className="tw-absolute tw-top-1 tw-right-1 tw-w-6 tw-h-6 tw-bg-red-500 tw-text-white tw-rounded-full tw-flex tw-items-center tw-justify-center hover:tw-bg-red-600 tw-shadow-md tw-transition-all">
                                     <XMarkIcon className="tw-w-3.5 tw-h-3.5" />
                                 </button>
@@ -514,6 +527,8 @@ export default function CMOpenForm() {
     const [currentCompany, setCurrentCompany] = useState("");
     const [saving, setSaving] = useState(false);
     const [chargers, setChargers] = useState<ChargerInfo[]>([]);
+    // ตาราง failure code จาก Maximo (IN04) — เป็นเจ้าของว่ามีอุปกรณ์/ปัญหาอะไรเลือกได้บ้าง
+    const maximoTree = useMaximoFailureTree();
     const [loadingChargers, setLoadingChargers] = useState(false);
     const [photos_open, setPhotosOpen] = useState<PhotoItem[]>([]);
     const [draftStatus, setDraftStatus] = useState<"idle" | "saving" | "saved">("idle");
@@ -524,6 +539,8 @@ export default function CMOpenForm() {
 
     // ═══ Maximo state ═══
     const [maximoTicketId, setMaximoTicketId] = useState<string | null>(null);
+    // เลขใบสั่งงานจริงฝั่ง Maximo (IN01) — ได้ตอนวางแผนเสร็จ ต่างจาก srWoNo ที่เป็นเลขของ iMPS เอง
+    const [maximoWonum, setMaximoWonum] = useState<string>("");
     const [showSuccessBanner, setShowSuccessBanner] = useState(false);
 
     const editId = searchParams.get("edit_id") ?? "";
@@ -537,12 +554,30 @@ export default function CMOpenForm() {
     // (engineer แก้ได้เฉพาะส่วนการวางแผน ซึ่งอยู่นอก fieldsLocked) — กันเคส impersonate ที่ isOwner เพี้ยนด้วย
     const isEngineer = userRole.trim().toLowerCase() === "engineer";
     const isCs = userRole.trim().toLowerCase() === "cs";
-    const canEditFields = isOwner && !isEngineer && !isCs;
     const isCancelled = status.trim().toLowerCase() === "cancelled";
+
+    // ── ด่านของใบงาน (ใช้คุมสิทธิ์แก้ไข/วางแผน + ปุ่มตีกลับ) ──
+    const roleLower = userRole.trim().toLowerCase();
+    const statusLower = isCancelled ? "cancelled" : String(status).trim().toLowerCase();
+    const stageLower = String(stage).trim().toLowerCase();
+    // ด่าน cs: เปิดใหม่รอ head cs อนุมัติ (Open เก่า/auto หรือ Wait for approve + cs_approval)
+    const isCsStage = statusLower === "open" || (statusLower === "wait for approve" && stageLower === "cs_approval");
+    // ด่านวางแผน: head cs อนุมัติแล้ว รอ engineer วางแผน
+    const isPlanningStage = statusLower === "wait for schedule";
+    // ใบที่รอ head cs อนุมัติจริง ๆ (ยังไม่ถูกตีกลับ) — ใช้คุมปุ่มอนุมัติ/ตีกลับของ head cs
+    const isCsPending = statusLower === "wait for approve" && stageLower === "cs_approval";
+    // ใบที่ถูกตีกลับแล้ว (มี reject_remark) = รอ cs ผู้เปิดแก้ไขก่อน ยังไม่ใช่คิวของ engineer
+    const isReturnedToCs = isCsStage && !!rejectedInfo.remark;
+
+    // คนเปิดใบงานแก้ข้อมูลได้ระหว่างใบยังอยู่ด่าน cs — รวม cs ที่ถูก engineer ตีกลับมาให้แก้
+    // (engineer แก้ได้เฉพาะส่วนวางแผน ซึ่งอยู่นอก fieldsLocked)
+    const canEditFields = isOwner && !isEngineer && (!isCs || isCsStage);
     const fieldsLocked = isEdit && (!canEditFields || isCancelled);
+
     // ขั้นวางแผน: engineer วางแผนตาม flow, admin/owner คุมภาพรวม — cs เปิดใบงานอย่างเดียว วางแผนไม่ได้
     // เห็นทั้งตอนเปิดใบใหม่และตอนเปิดใบเดิม (เปิดงาน + วางแผน รวดเดียวได้)
-    const canPlan = !isCancelled && ["admin", "owner", "engineer"].includes(userRole.toLowerCase());
+    // ใบที่ตีกลับให้ cs แก้ = ยังวางแผน/Assign ไม่ได้ จนกว่า cs จะแก้แล้วบันทึกกลับเข้าคิว
+    const canPlan = !isCancelled && !isReturnedToCs && ["admin", "owner", "engineer"].includes(roleLower);
     // สถานะรอที่เลือกได้ในรอบนี้ — ตัดสถานะที่เคยใช้ในรอบก่อน ๆ ออก จะได้ไม่วางแผนซ้ำสถานะเดิม
     // ถ้าใช้ครบทุกสถานะแล้ว ให้กลับไปใช้รายการเต็ม กัน dropdown ว่างจนกรอกต่อไม่ได้
     const usedWaitStates = useMemo(
@@ -572,25 +607,15 @@ export default function CMOpenForm() {
     const draftKey = useMemo(() => getDraftKey(stationId), [stationId]);
     const STATUS_OPTIONS: Status[] = ["Open", "In Progress"];
 
-    // ── ด่านของใบงาน (ใช้คุมปุ่ม Cancel/Reject) ──
-    const roleLower = userRole.trim().toLowerCase();
-    const statusLower = isCancelled ? "cancelled" : String(status).trim().toLowerCase();
-    const stageLower = String(stage).trim().toLowerCase();
-    // ด่าน cs: เปิดใหม่รอ head cs อนุมัติ (Open เก่า/auto หรือ Wait for approve + cs_approval)
-    const isCsStage = statusLower === "open" || (statusLower === "wait for approve" && stageLower === "cs_approval");
-    // ด่านวางแผน: head cs อนุมัติแล้ว รอ engineer วางแผน
-    const isPlanningStage = statusLower === "wait for schedule";
-    // ใบที่รอ head cs อนุมัติจริง ๆ (ยังไม่ถูกตีกลับ) — ใช้คุมปุ่มอนุมัติ/ตีกลับของ head cs
-    const isCsPending = statusLower === "wait for approve" && stageLower === "cs_approval";
     const canCancelRole = ["admin", "owner", "engineer"].includes(roleLower);
     const canRejectRole = ["admin", "engineer"].includes(roleLower);
     // ยกเลิกได้เฉพาะ admin/engineer ตอนรีวิวหรือวางแผน — cs มีหน้าที่เปิดใบงานเท่านั้น
-    const showCancelBtn = isEdit && canCancelRole && (isCsStage || isPlanningStage);
+    // ใบที่ตีกลับให้ cs แก้ = ยังไม่ใช่คิวของ engineer จึงยกเลิกไม่ได้จนกว่า cs จะแก้กลับมา
+    const showCancelBtn = isEdit && canCancelRole && (isCsStage || isPlanningStage) && !isReturnedToCs;
     const showRejectBtn = isEdit && canRejectRole && isPlanningStage;
     // engineer (หรือ admin) ตีกลับ SR ด่าน cs ได้ — ไม่มีปุ่มอนุมัติแล้ว (engineer วางแผน/Assign SR ได้เลย)
     // ใบที่ถูกตีกลับแล้ว (มี reject_remark) = รอ cs ผู้เปิดแก้ → กดตีกลับซ้ำไม่ได้จนกว่า cs จะบันทึกกลับ
     const canCsApprove = ["admin", "engineer"].includes(roleLower);
-    const isReturnedToCs = isCsStage && !!rejectedInfo.remark;
     const showCsRejectBtn = isEdit && canCsApprove && isCsPending && !isReturnedToCs;
 
     // เลขที่งาน — ก่อนอนุมัติเป็น SR (Service Request), หลังอนุมัติ (Wait for schedule ขึ้นไป) เป็น WO (Work Order)
@@ -606,15 +631,17 @@ export default function CMOpenForm() {
     useEffect(() => { if (!isEdit && !status) setStatus("Wait for approve"); }, [isEdit, status]);
     const headerLabel = useMemo(() => (isEdit ? t("headerEdit", lang) : t("headerAdd", lang)), [isEdit, lang]);
 
-    // FAILURECODE options — สถานีเป็น DC หรือ AC ดูจาก chargerType ของ charger ในสถานี
-    const failureCodeOptions = useMemo(() => {
-        const types = new Set(chargers.map(c => (c.chargerType || "DC").toUpperCase()));
-        const opts: { value: string; label: string }[] = [];
-        if (chargers.length === 0 || types.has("DC")) opts.push({ value: "DCCHARFC", label: "DC Charger Failure" });
-        if (types.has("AC")) opts.push({ value: "ACCHARFC", label: "AC Charger Failure" });
-        opts.push({ value: "STATFC", label: "Station Failure" });
-        return opts;
-    }, [chargers]);
+    // FAILURECODE options — รายการมาจาก Maximo (IN04) กรองตามชนิดตู้ที่สถานีนี้มีจริง
+    // สถานีที่ยังไม่มีข้อมูลตู้ ถือว่าเป็น DC ไว้ก่อนเหมือนเดิม
+    const hasDC = chargers.length === 0 || chargers.some(c => (c.chargerType || "DC").toUpperCase() === "DC");
+    const hasAC = chargers.some(c => (c.chargerType || "").toUpperCase() === "AC");
+    const failureCodeOptions = useMemo(
+        () => failureClassOptions(maximoTree, { hasDC, hasAC }) ?? [],
+        [maximoTree, hasDC, hasAC],
+    );
+    // ตารางยังโหลดไม่เสร็จ หรือ backend ยังไม่เคย sync จาก Maximo — บอกให้รู้
+    // แทนที่จะปล่อย dropdown ว่างเปล่าโดยไม่มีคำอธิบาย
+    const failureCodesUnavailable = failureCodeOptions.length === 0;
 
     // ==================== VALIDATION ====================
     const validations = useMemo<ValidationItem[]>(() => [
@@ -644,7 +671,10 @@ export default function CMOpenForm() {
     // หา current tab จาก URL
     const currentTab = searchParams.get("tab") ?? "open";
 
+    // ปลายทางหลังจบ action ทุกแบบ (บันทึก/Assign/ตีกลับ/ยกเลิก/ย้อนกลับ)
+    // — เข้ามาจากหน้าไหนก็กลับหน้านั้น: จาก CM Dashboard → dashboard, จากตาราง list → แท็บที่เกี่ยวข้อง
     const buildListUrl = (targetTab?: string) => {
+        if (cameFromDashboard(searchParams)) return CM_DASHBOARD_ROUTE;
         const p = new URLSearchParams();
         if (stationId) p.set("station_id", stationId);
         p.set("tab", targetTab ?? currentTab);
@@ -652,10 +682,7 @@ export default function CMOpenForm() {
         return `${LIST_ROUTE}?${p.toString()}`;
     };
 
-    // ฟังก์ชันสำหรับกลับไปหน้า list
-    const goBackToList = () => {
-        router.push(buildListUrl(currentTab));
-    };
+    const goBackToList = () => router.push(buildListUrl(currentTab));
 
     // ==================== PHOTO HANDLERS ====================
     // Pre-fetch GPS + reverse geocode ตอนเปิดหน้า เก็บ cache ไว้ใช้ตอนแนบรูปทันที
@@ -734,9 +761,31 @@ export default function CMOpenForm() {
     }, [photos_open.length, draftKey, isEdit, getGpsCached]);
 
     const handleRemovePhoto = useCallback(async (id: string) => {
-        await delPhoto(id);
-        setPhotosOpen(prev => { const target = prev.find(p => p.id === id); if (target?.preview) URL.revokeObjectURL(target.preview); return prev.filter(p => p.id !== id); });
-    }, []);
+        const target = photos_open.find(p => p.id === id);
+        // รูปที่บันทึกไว้แล้วต้องลบที่ server ด้วย ไม่งั้นกลับมาเปิดใบใหม่ก็ยังเห็นรูปเดิม
+        if (target?.isServer) {
+            if (!editId || !stationId || !target.serverUrl) return;
+            const q = new URLSearchParams({
+                station_id: stationId,
+                group: target.serverGroup || "cm_photos",
+                url: target.serverUrl,
+                phase: "problem",
+            });
+            try {
+                const res = await apiFetch(`${API_BASE}/cmreport/${encodeURIComponent(editId)}/photos?${q.toString()}`, {
+                    method: "DELETE",
+                    credentials: "include",
+                });
+                if (!res.ok) throw new Error(((await res.json().catch(() => ({}))) as any).detail || `HTTP ${res.status}`);
+            } catch (e: any) {
+                alert(`${t("alertSaveFailed", lang)} ${e.message || e}`);
+                return;
+            }
+        } else {
+            await delPhoto(id);
+        }
+        setPhotosOpen(prev => { const p = prev.find(x => x.id === id); if (p && !p.isServer && p.preview) URL.revokeObjectURL(p.preview); return prev.filter(x => x.id !== id); });
+    }, [photos_open, editId, stationId, lang]);
 
     useEffect(() => { return () => { photos_open.forEach(p => { if (p.preview) URL.revokeObjectURL(p.preview); }); }; }, []);
 
@@ -851,6 +900,20 @@ export default function CMOpenForm() {
                 }
                 const data = await res.json();
                 console.log("[Edit] Data received:", data);
+
+                // "Wait for approve" มี 2 ด่าน — ฟอร์มนี้ใช้ได้เฉพาะด่าน cs (cs_approval)
+                // ด่านปิดงาน (close_approval = ช่างกรอกผล "แก้ไขสำเร็จ" แล้วรออนุมัติ) ต้องไปฟอร์มผลการซ่อม
+                // ในแท็บ In Progress ไม่งั้นจะเห็นส่วน "วางแผนให้ engineer" ผิดด่าน
+                const loadedStatus = String(data.status ?? "").trim().toLowerCase();
+                const loadedStage = String(data.stage ?? "").trim().toLowerCase();
+                if (!isRePlan && loadedStatus === "wait for approve" && loadedStage !== "cs_approval") {
+                    const params = new URLSearchParams(searchParams.toString());
+                    params.set("tab", "in-progress");
+                    params.delete("planning");
+                    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+                    return;
+                }
+
                 const rawDate = data.found_date ?? "";
 
                 setDocName(data.doc_name ?? "");
@@ -918,6 +981,7 @@ export default function CMOpenForm() {
                 setWaitRemark(isRePlan ? "" : (data.repair_result_remark ?? ""));
 
                 // ═══ แสดง Maximo ticket ถ้ามี (edit mode) ═══
+                if (data.maximo_wonum) setMaximoWonum(data.maximo_wonum);
                 if (data.maximo_ticket_id) {
                     setMaximoTicketId(data.maximo_ticket_id);
                 }
@@ -934,6 +998,7 @@ export default function CMOpenForm() {
                                     preview: fullUrl,
                                     isServer: true,
                                     serverUrl: p.url,
+                                    serverGroup: group,
                                     createdAt: p.uploadedAt
                                         ? new Date(p.uploadedAt).toLocaleString("th-TH", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Bangkok" })
                                         : undefined,
@@ -978,6 +1043,24 @@ export default function CMOpenForm() {
         setUploadState({ show: true, total: newPhotos.length, completed: newPhotos.length });
     }
 
+    // ผลการยิงเข้า Maximo แนบมากับ response ของ PATCH /status — เปิด WO ไม่ผ่านต้องบอกให้รู้
+    // (บันทึกใบงานสำเร็จไปแล้ว ไม่ใช่ error ของการบันทึก จึงเตือนอย่างเดียวไม่ throw)
+    const reportMaximoResult = (maximo: any) => {
+        const in01 = maximo?.IN01;
+        if (!in01) return;
+        if (in01.ok && in01.wonum) {
+            setMaximoWonum(in01.wonum);
+            return;
+        }
+        if (in01.skipped) {
+            console.warn("[Maximo] skip create WO:", in01.reason);
+            return;
+        }
+        console.warn("[Maximo] create WO failed:", in01);
+        alert(`${t("maximoWoFailed", lang)}
+${in01.error ?? ""}`);
+    };
+
     const onFinalSave = async (nextStatus: string = "In Progress") => {
         if (!stationId) { alert(t("alertNoStationId", lang)); return; }
         if (!canSave && (!isEdit || isOwner)) return;
@@ -1014,6 +1097,15 @@ export default function CMOpenForm() {
                         planned_time: plannedTime || localNowHHMM(),
                         plan_history: planHistory,
                     };
+                } else if (canPlan && hasPlanInput) {
+                    // บันทึกแผนที่กรอกค้างไว้ (ยังไม่ Assign) — คง stage เดิมกัน backend re-stamp
+                    payload.job = {
+                        ...(payload.job ?? {}),
+                        sched_start: needsSchedule ? schedStart : "",
+                        sched_finish: needsSchedule ? schedFinish : "",
+                        assignees: needsSchedule ? pickedAssignees : [],
+                        stage,
+                    };
                 }
                 const res = await apiFetch(`${API_BASE}/cmreport/${encodeURIComponent(editId)}/status`, {
                     method: "PATCH",
@@ -1022,6 +1114,7 @@ export default function CMOpenForm() {
                     body: JSON.stringify(payload)
                 });
                 if (!res.ok) throw new Error((await res.json()).detail || `HTTP ${res.status}`);
+                reportMaximoResult((await res.json().catch(() => ({})))?.maximo);
 
                 if (isOwner) {
                     // อัปโหลดรูปที่เพิ่มใหม่ระหว่างแก้ไข
@@ -1087,6 +1180,7 @@ export default function CMOpenForm() {
                         body: JSON.stringify(planPayload),
                     });
                     if (!planRes.ok) throw new Error((await planRes.json()).detail || `HTTP ${planRes.status}`);
+                    reportMaximoResult((await planRes.json().catch(() => ({})))?.maximo);
                 }
 
                 // อัปโหลดรูป
@@ -1260,11 +1354,21 @@ export default function CMOpenForm() {
 
                     <hr className="tw-my-6 tw-border-blue-gray-100" />
 
-                    {/* ═══ Maximo Ticket Badge (แสดงใน edit mode ถ้ามี ticket) ═══ */}
-                    {isEdit && maximoTicketId && (
-                        <div className="tw-mb-4 tw-flex tw-items-center tw-gap-2 tw-px-4 tw-py-2.5 tw-rounded-lg tw-bg-blue-50 tw-border tw-border-blue-200">
-                            <span className="tw-text-sm tw-text-blue-700">🎫 Maximo SR:</span>
-                            <span className="tw-font-mono tw-font-bold tw-text-blue-900 tw-bg-blue-100 tw-px-2 tw-py-0.5 tw-rounded">{maximoTicketId}</span>
+                    {/* ═══ Maximo Badge (แสดงใน edit mode) — SR ตอนเปิดใบ, WO ตอนวางแผนเสร็จ ═══ */}
+                    {isEdit && (maximoTicketId || maximoWonum) && (
+                        <div className="tw-mb-4 tw-flex tw-flex-wrap tw-items-center tw-gap-x-4 tw-gap-y-2 tw-px-4 tw-py-2.5 tw-rounded-lg tw-bg-blue-50 tw-border tw-border-blue-200">
+                            {maximoTicketId && (
+                                <span className="tw-flex tw-items-center tw-gap-2">
+                                    <span className="tw-text-sm tw-text-blue-700">🎫 Maximo SR:</span>
+                                    <span className="tw-font-mono tw-font-bold tw-text-blue-900 tw-bg-blue-100 tw-px-2 tw-py-0.5 tw-rounded">{maximoTicketId}</span>
+                                </span>
+                            )}
+                            {maximoWonum && (
+                                <span className="tw-flex tw-items-center tw-gap-2">
+                                    <span className="tw-text-sm tw-text-blue-700">🧾 Maximo WO:</span>
+                                    <span className="tw-font-mono tw-font-bold tw-text-blue-900 tw-bg-blue-100 tw-px-2 tw-py-0.5 tw-rounded">{maximoWonum}</span>
+                                </span>
+                            )}
                         </div>
                     )}
 
@@ -1336,9 +1440,10 @@ export default function CMOpenForm() {
                                         {failureCodeOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                                         {/* ค่าเดิมของรายงานเก่าที่ไม่ใช่ failure code — ให้แสดงได้ตอน edit */}
                                         {faultyEquipment && !failureCodeOptions.some(o => o.value === faultyEquipment) && (
-                                            <option value={faultyEquipment}>{faultyEquipment}</option>
+                                            <option value={faultyEquipment}>{failureCodeLabel(faultyEquipment)}</option>
                                         )}
                                     </select>
+                                    {failureCodesUnavailable && <p className="tw-text-xs tw-text-blue-gray-400 tw-mt-2">{t("failureCodesLoading", lang)}</p>}
                                     {loadingChargers && <p className="tw-text-xs tw-text-blue-gray-400 tw-mt-2">{t("loadingChargers", lang)}</p>}
                                     {!loadingChargers && chargers.length === 0 && <p className="tw-text-xs tw-text-orange-600 tw-mt-2">{t("noChargersFound", lang)}</p>}
                                 </div>
@@ -1525,7 +1630,7 @@ export default function CMOpenForm() {
                             <Button variant="outlined" onClick={goBackToList} className="tw-border-blue-gray-200 tw-text-blue-gray-700 hover:tw-border-blue-gray-300">
                                 {t("backToList", lang)}
                             </Button>
-                            {/* ยกเลิกใบงาน (cs ยกเลิกใบตัวเอง / engineer ยกเลิกตอนวางแผน) — เรียงก่อนตีกลับ ให้ตรงกับหน้า head cs */}
+                            {/* ยกเลิกใบงาน — ซ่อนตอนใบถูกตีกลับรอ cs แก้ (ยังไม่ใช่คิวของ engineer) */}
                             {showCancelBtn && (
                                 <Button variant="outlined" onClick={() => openCommentModal("cancel")} disabled={saving} className="tw-border-amber-300 tw-text-amber-700 hover:tw-border-amber-400 hover:tw-bg-amber-50">
                                     {t("cancelJob", lang)}
@@ -1550,14 +1655,17 @@ export default function CMOpenForm() {
                                 </Button>
                             )}
                             {/* เปิดใบงานใหม่ — server ตั้งสถานะเป็น Wait for approve (cs_approval) */}
-                            {!isEdit && (
+                            {/* role ที่วางแผนได้ใช้ปุ่มหลักปุ่มเดียวด้านล่างแทน (บันทึก/Assign) จะได้ไม่มีปุ่มบันทึกซ้ำสองปุ่ม */}
+                            {!isEdit && !canPlan && (
                                 <Button onClick={() => onFinalSave("Wait for approve")} disabled={saving || showSuccessBanner || !canSave} className="tw-bg-gray-800 hover:!tw-bg-blue-600 tw-text-white hover:tw-shadow-lg hover:!tw-shadow-blue-500/30 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed disabled:tw-shadow-none">
                                     {saving ? t("saving", lang) : t("save", lang)}
                                 </Button>
                             )}
-                            {/* จบขั้นวางแผน → In Progress — needsSchedule = "Assign" (มอบช่าง+กำหนดวัน) / material,site condition = "บันทึก" (รอของ/รอหน้างาน) */}
+                            {/* ปุ่มหลักของขั้นวางแผน → In Progress — ต้องกรอกข้อมูลใบงาน + แผนให้ครบก่อนถึงกดได้
+                                needsSchedule = "Assign" (มอบช่าง+กำหนดวัน) / material,site condition = "บันทึก" (รอของ/รอหน้างาน) */}
                             {canPlan && (
-                                <Button onClick={() => openCommentModal("assign")} disabled={saving || showSuccessBanner || !canSubmitPlan || (!isEdit && !canSave)} className="tw-bg-amber-500 hover:tw-bg-amber-600 tw-text-white hover:tw-shadow-lg hover:tw-shadow-amber-500/30 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed disabled:tw-shadow-none">
+                                <Button onClick={() => openCommentModal("assign")} disabled={saving || showSuccessBanner || !canSubmitPlan || (!isEdit && !canSave)}
+                                    className="tw-bg-amber-500 hover:tw-bg-amber-600 tw-text-white hover:tw-shadow-lg hover:tw-shadow-amber-500/30 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed disabled:tw-shadow-none">
                                     {saving ? t("saving", lang) : (needsSchedule ? t("assign", lang) : t("save", lang))}
                                 </Button>
                             )}

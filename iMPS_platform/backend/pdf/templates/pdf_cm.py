@@ -2,7 +2,6 @@
 import os
 import re
 import math
-import base64
 
 from fpdf import FPDF, HTMLMixin
 from pathlib import Path
@@ -20,6 +19,13 @@ try:
     import requests
 except Exception:
     requests = None
+
+from .cm_codes import (
+    cause_label,
+    failure_code_label,
+    problem_label,
+    remedy_descriptions,
+)
 
 PDF_DEBUG = os.getenv("PDF_DEBUG") == "1"
 
@@ -47,8 +53,57 @@ SIG_H = 28
 SECTION_BAR_H = 5.5
 EDGE_ALIGN_FIX = (LINE_W_OUTER - LINE_W_INNER) / 2.0
 
+INFO_ROW_H = 6.5
+INFO_LABEL_W = 38.0
+TABLE_LINE_H = 4.0
+SECTION_BAR_BG = (235, 235, 235)
+SECTION_BAR_FG = (0, 0, 0)
+GRID_COLOR = (0, 0, 0)
+LABEL_COLOR = (0, 0, 0)
+TABLE_ZEBRA: Optional[Tuple[int, int, int]] = None
+
 # Title bar color (yellow) – ให้สีเดียวกับไฟล์ตัวอย่างอื่น
 TITLE_BG = (255, 230, 100)
+
+# -------------------- Styles --------------------
+# "form"     = ฟอร์มราชการ ตัวหนังสือเล็ก เส้นกรอบครบทุกช่อง ใส่ข้อมูลได้เยอะต่อหน้า
+# "readable" = เน้นอ่านง่าย ตัวใหญ่ขึ้น เส้นบางลง หัวข้อเข้ม แถวสลับสีในตาราง
+_STYLES: Dict[str, Dict[str, Any]] = {
+    "form": {
+        "PADDING_X": 2.0, "PADDING_Y": 0.5,
+        "FONT_MAIN": 11.0, "FONT_SMALL": 10.0, "FONT_TITLE": 13.0,
+        "LINE_H": 5.0, "SECTION_BAR_H": 5.5,
+        "INFO_ROW_H": 6.5, "INFO_LABEL_W": 38.0, "TABLE_LINE_H": 4.0,
+        "LINE_W_INNER": 0.22,
+        "SECTION_BAR_BG": (235, 235, 235), "SECTION_BAR_FG": (0, 0, 0),
+        "GRID_COLOR": (0, 0, 0), "LABEL_COLOR": (0, 0, 0),
+        "TABLE_ZEBRA": None,
+    },
+    "readable": {
+        "PADDING_X": 3.5, "PADDING_Y": 1.0,
+        "FONT_MAIN": 13.5, "FONT_SMALL": 12.0, "FONT_TITLE": 15.0,
+        "LINE_H": 6.2, "SECTION_BAR_H": 8.0,
+        "INFO_ROW_H": 9.0, "INFO_LABEL_W": 46.0, "TABLE_LINE_H": 5.2,
+        "LINE_W_INNER": 0.15,
+        # แถบหัวข้อเข้มตัวอักษรขาว — เป็นจุดพักสายตาให้กวาดหาหมวดได้เร็ว
+        "SECTION_BAR_BG": (55, 65, 81), "SECTION_BAR_FG": (255, 255, 255),
+        "GRID_COLOR": (170, 170, 170), "LABEL_COLOR": (90, 90, 90),
+        "TABLE_ZEBRA": (246, 247, 249),
+    },
+}
+DEFAULT_STYLE = "form"
+
+
+def _apply_style(name: str) -> str:
+    """ตั้งค่าคงที่ของ layout ตามสไตล์ที่เลือก
+
+    ใช้ตัวแปรระดับโมดูลเพราะฟังก์ชันวาดทุกตัวอ้างถึงค่าเหล่านี้โดยตรง
+    ปลอดภัยแม้รันใน event loop เพราะการสร้าง PDF เป็น CPU ล้วน ไม่มี await
+    คั่นกลาง จึงไม่มีทางที่สองคำขอจะสลับกันเขียนค่าระหว่างวาด
+    """
+    style = _STYLES.get(name) or _STYLES[DEFAULT_STYLE]
+    globals().update(style)
+    return name if name in _STYLES else DEFAULT_STYLE
 
 
 # -------------------- Utilities --------------------
@@ -85,24 +140,316 @@ def _parse_date_flex(s: str) -> Optional[datetime]:
     return None
 
 
-def _fmt_date_thai_full(val) -> str:
-    """แปลงวันที่เป็นรูปแบบ DD/MM/YYYY (ปีพุทธศักราช)"""
+def _fmt_date_full(val) -> str:
+    """วันที่รูปแบบ DD/MM/YYYY — ภาษาไทยใช้ปี พ.ศ. ภาษาอังกฤษใช้ ค.ศ."""
     if isinstance(val, (datetime, date)):
         d = datetime(val.year, val.month, val.day)
     else:
         d = _parse_date_flex(str(val)) if val is not None else None
     if not d:
         return str(val) if val else "-"
-    year_be = d.year + 543
-    return d.strftime(f"%d/%m/{year_be}")
+    year = d.year + 543 if _LANG == "th" else d.year
+    return d.strftime(f"%d/%m/{year}")
 
 
-def _fmt_date_time_thai(date_val, time_val) -> str:
-    """วันที่ (พ.ศ.) + เวลา HH:MM น. ถ้ามีเวลา"""
-    d = _fmt_date_thai_full(date_val)
+# ผลหลังซ่อม: ค่าที่เก็บใน DB ≠ ข้อความที่ผู้ใช้เห็นบนหน้าเว็บ
+# ต้อง map ให้ตรงกับ REPAIR_OPTIONS / LEGACY_REPAIR_MAP ใน checkList.tsx
+REPAIR_RESULT_LABELS: Dict[str, str] = {
+    "WO - wait for approve": "แก้ไขสำเร็จ",
+    # ค่าเก่าก่อนเปลี่ยนชื่อ — ใบงานเดิมยังถืออยู่
+    "WO - wait for manpower": "WO - wait for scheduled",
+    "WO - wait for spare part": "WO - wait for material",
+    "WO - wait for site access": "WO - wait for site condition",
+}
+
+
+def _fmt_repair_result(val) -> str:
+    """แปลงค่า repair_result ที่เก็บใน DB เป็นข้อความที่แสดงในเอกสาร"""
+    s = str(val or "").strip()
+    if not s:
+        return "-"
+    return REPAIR_RESULT_LABELS.get(s, s)
+
+
+def _fmt_round_datetime(date_val, time_val) -> str:
+    """วันที่ + เวลาของรอบการเข้าแก้ไข (เว้นว่างถ้าไม่มีข้อมูล)"""
+    d = _fmt_date_full(date_val)
+    d = "" if d in ("-", "") else d
+    t = str(time_val or "").strip()
+    return " ".join(p for p in (d, t) if p)
+
+
+def _as_code_list(val) -> List[str]:
+    """ฟิลด์รหัสเก็บได้ทั้ง list (เลือกหลายอัน) และ string เดี่ยว"""
+    if isinstance(val, list):
+        return [str(v).strip() for v in val if str(v or "").strip()]
+    s = str(val or "").strip()
+    return [s] if s else []
+
+
+def _join_labels(codes: List[str], to_label) -> str:
+    """แปลงรหัสทั้งชุดเป็นคำอธิบาย แล้วต่อเป็นบรรทัดเดียว"""
+    seen: List[str] = []
+    for c in codes:
+        label = to_label(c)
+        if label and label not in seen:
+            seen.append(label)
+    return ", ".join(seen)
+
+
+# -------------------- i18n --------------------
+# ภาษาเอกสารมาจาก query param ?lang= ที่หน้าเว็บส่งมาตามภาษาที่ผู้ใช้เลือก
+SUPPORTED_LANGS = ("th", "en")
+DEFAULT_LANG = "th"
+_LANG = DEFAULT_LANG
+
+T: Dict[str, Tuple[str, str]] = {
+    # --- หัวกระดาษ ---
+    "page": ("หน้า", "Page"),
+    "doc_no": ("เลขที่เอกสาร", "Document No."),
+    "doc_name": ("ชื่อเอกสาร", "Document Name"),
+    "org1": ("การไฟฟ้าฝ่ายผลิตแห่งประเทศไทย (กฟผ.)",
+             "Electricity Generating Authority of Thailand (EGAT)"),
+    "org2": ("เลขที่ 53 หมู่ 2 ถนนจรัญสนิทวงศ์ ตำบลบางกรวย อำเภอบางกรวย จังหวัดนนทบุรี 11130",
+             "53 Moo 2, Charan Sanitwong Rd., Bang Kruai, Bang Kruai, Nonthaburi 11130"),
+    "org3": ("ศูนย์บริการข้อมูล กฟผ. สายด่วน 1416", "EGAT Call Center 1416"),
+    # --- ชื่อหมวด ---
+    "sec1": ("ข้อมูลการแจ้ง", "Report Information"),
+    "sec2": ("รายละเอียดปัญหา", "Problem Details"),
+    "sec3": ("ประเภทและสาเหตุของปัญหา", "Problem Type and Cause"),
+    "sec4": ("การดำเนินการแก้ไข", "Corrective Action"),
+    "sec5": ("การป้องกันและผลการซ่อม", "Prevention and Repair Result"),
+    "people": ("ผู้เกี่ยวข้อง", "Personnel Involved"),
+    # --- ป้ายกำกับช่องข้อมูล ---
+    "found_date": ("วันที่แจ้ง", "Reported Date"),
+    "reported_by": ("ผู้แจ้ง", "Reported By"),
+    "sr_wo": ("เลขที่ SR/WO", "SR/WO No."),
+    "location": ("สถานที่", "Location"),
+    "wo_status": ("สถานะใบงาน", "Work Order Status"),
+    "faulty_equipment": ("อุปกรณ์ที่เสียหาย", "Faulty Equipment"),
+    "severity": ("ความเร่งด่วน", "Urgency"),
+    "problem_details": ("ปัญหาที่พบ", "Problem Found"),
+    "remarks": ("หมายเหตุ", "Remarks"),
+    "problem_photos": ("รูปภาพประกอบปัญหา", "Problem Photos"),
+    "problem": ("ปัญหา", "Problem"),
+    "cause": ("สาเหตุของปัญหา", "Cause"),
+    "start_repair": ("วันที่เริ่มแก้ไข", "Repair Started"),
+    "finish_repair": ("วันที่แก้ไขเสร็จ", "Repair Finished"),
+    "correction": ("การแก้ไข", "Correction"),
+    "inspector": ("ผู้ตรวจสอบ", "Inspector"),
+    "repair_result": ("ผลการซ่อม", "Repair Result"),
+    "inprogress_remarks": ("หมายเหตุระหว่างดำเนินการ", "In-progress Remarks"),
+    "preventive": ("วิธีป้องกันไม่ให้เกิดซ้ำ", "Preventive Action"),
+    "result_remarks": ("หมายเหตุผลการซ่อม", "Repair Result Remarks"),
+    "action_details": ("รายละเอียดการดำเนินการ", "Action Details"),
+    "photos_before": ("รูปภาพก่อนแก้ไข", "Photos Before Repair"),
+    "photos_after": ("รูปภาพหลังแก้ไข", "Photos After Repair"),
+    "repairer": ("ผู้ซ่อม", "Repaired By"),
+    # --- ตารางประวัติการเข้าแก้ไข ---
+    "history": ("ประวัติการเข้าแก้ไข", "Repair History"),
+    "round_no": ("ครั้งที่", "No."),
+    "round_start": ("วันที่เข้าแก้ไข", "Started"),
+    "round_finish": ("วันที่แก้ไขเสร็จ", "Finished"),
+    "round_result": ("ผลหลังซ่อม", "Result"),
+    "round_problem": ("ปัญหา / สาเหตุ", "Problem / Cause"),
+    "round_action": ("การแก้ไข / หมายเหตุ", "Action / Remarks"),
+    "round_before": ("รูปก่อนแก้ไข", "Before"),
+    "round_after": ("รูปหลังแก้ไข", "After"),
+    # --- ข้อความประกอบ ---
+    "action_no": ("การดำเนินการแก้ไขที่ {n}", "Corrective Action {n}"),
+    "round_label": ("ครั้งที่ {n}", "Round {n}"),
+    "date_prefix": ("วันที่ {d}", "Date {d}"),
+    "other": ("อื่นๆ: {v}", "Other: {v}"),
+    "time_suffix": (" น.", ""),
+}
+
+
+def _apply_lang(name: str) -> str:
+    """ตั้งภาษาเอกสาร — ใช้ตัวแปรระดับโมดูลด้วยเหตุผลเดียวกับ _apply_style
+    (สร้าง PDF เป็น CPU ล้วน ไม่มี await คั่น จึงไม่มีการสลับกันเขียนค่า)
+    """
+    global _LANG
+    _LANG = name if name in SUPPORTED_LANGS else DEFAULT_LANG
+    return _LANG
+
+
+def _t(key: str, **fmt) -> str:
+    """ข้อความตามภาษาเอกสารที่กำลังสร้าง"""
+    pair = T.get(key)
+    if not pair:
+        return key
+    text = pair[1] if _LANG == "en" else pair[0]
+    return text.format(**fmt) if fmt else text
+
+
+# ตัวเลือกแบบช่องติ๊ก — (ค่าที่เก็บใน DB, ข้อความ th, ข้อความ en)
+# ค่าใน DB ไม่แปล ใช้เป็นตัวเทียบว่าติ๊กช่องไหน
+_SEVERITY_CHOICES = [
+    ("Low", "ต่ำ", "Low"),
+    ("Medium", "ปานกลาง", "Medium"),
+    ("High", "สูง", "High"),
+    ("Urgent", "เร่งด่วน", "Urgent"),
+]
+_STATUS_CHOICES = [
+    ("Open", "เปิดงาน", "Open"),
+    ("In Progress", "ระหว่างดำเนินการ", "In Progress"),
+    ("Wait for approve", "รออนุมัติ", "Wait for Approve"),
+    ("Closed", "ปิดงาน", "Closed"),
+    ("Cancelled", "ยกเลิก", "Cancelled"),
+]
+# เทียบกับข้อความหลังแปลงด้วย _fmt_repair_result แล้ว (ไม่ใช่รหัส WO ดิบ)
+_REPAIR_RESULT_CHOICES = [
+    ("แก้ไขสำเร็จ", "แก้ไขสำเร็จ", "Repair Completed"),
+    ("แก้ไขไม่สำเร็จ", "แก้ไขไม่สำเร็จ", "Repair Failed"),
+    ("ไม่พบปัญหา", "ไม่พบปัญหา", "No Problem Found"),
+]
+
+
+def _choices(rows: List[Tuple[str, str, str]]) -> List[Tuple[str, str]]:
+    """คืน (ค่าใน DB, ข้อความตามภาษาปัจจุบัน)"""
+    return [(value, en if _LANG == "en" else th) for value, th, en in rows]
+
+
+def _localize_repair_result(text: str) -> str:
+    """แปลผลการซ่อมที่เป็นค่ามาตรฐาน — ค่าอื่น (ข้อความอิสระ/รหัส WO) คงไว้ตามเดิม"""
+    if _LANG != "en":
+        return text
+    for _, th, en in _REPAIR_RESULT_CHOICES:
+        if text == th:
+            return en
+    return text
+
+
+_THAI_DIGITS = str.maketrans("0123456789", "๐๑๒๓๔๕๖๗๘๙")
+
+
+def _num(n) -> str:
+    """ลำดับหัวข้อ — ภาษาไทยใช้เลขไทย ภาษาอังกฤษใช้เลขอารบิก
+    (ตัวเลขข้อมูลอย่างวันที่/เวลาใช้เลขอารบิกทั้งสองภาษาเพื่อให้อ่านง่าย)
+    """
+    s = str(n)
+    return s.translate(_THAI_DIGITS) if _LANG == "th" else s
+
+
+ROUND_TABLE_KEYS = [
+    "round_no", "round_start", "round_finish",
+    "round_result", "round_problem", "round_action",
+]
+# สัดส่วนความกว้างคอลัมน์ (สเกลตามความกว้างจริงตอนวาด)
+# คอลัมน์แรกกว้างพอให้ "ครั้งที่" อยู่บรรทัดเดียวแม้สไตล์ตัวใหญ่ ไม่งั้นหัวตารางสูงเก้งก้าง
+ROUND_TABLE_WIDTHS = [16.0, 27.0, 27.0, 33.0, 45.0, 42.0]
+
+
+def _round_table_row(rnd: Dict[str, Any], failure_code, index: int) -> List[str]:
+    """แปลงรอบการเข้าแก้ไข 1 รอบเป็น 1 แถวของตารางประวัติ
+
+    ข้อมูลชุดเดียวกับการ์ด "แก้ไขครั้งที่ N" บนหน้าเว็บ (RepairRoundCard)
+    """
+    problem_codes = _as_code_list(rnd.get("problem_type"))
+    cause_codes = _as_code_list(rnd.get("cause"))
+
+    problems = _join_labels(problem_codes, problem_label)
+    other = str(rnd.get("problem_type_other") or "").strip()
+    if other:
+        problems = ", ".join(p for p in (problems, other) if p)
+    causes = _join_labels(cause_codes, cause_label)
+    problem_cell = " / ".join(p for p in (problems, causes) if p)
+
+    remedy_labels: List[str] = []
+    for code in _as_code_list(rnd.get("repaired_equipment")):
+        # รอบย่อยไม่ได้เก็บ failure code ของตัวเอง — ใช้ของใบงานเป็นบริบท
+        for desc in remedy_descriptions(failure_code, problem_codes, cause_codes, code):
+            if desc not in remedy_labels:
+                remedy_labels.append(desc)
+    actions = [
+        str(a.get("text") or "").strip()
+        for a in (rnd.get("corrective_actions") or [])
+        if str(a.get("text") or "").strip()
+    ]
+    remark = str(rnd.get("repair_result_remark") or "").strip()
+    action_cell = " / ".join(p for p in (", ".join(remedy_labels), " ".join(actions), remark) if p)
+
+    result = rnd.get("repair_result")
+    # ข้อมูลเก่าเก็บเวลาปิดรอบไว้ที่ saved_* — ใช้เป็นตัวสำรองของ finish_*
+    return [
+        _num(index),
+        _fmt_round_datetime(rnd.get("start_repair_date"), rnd.get("start_repair_time")),
+        _fmt_round_datetime(
+            rnd.get("finish_date") or rnd.get("saved_date"),
+            rnd.get("finish_time") or rnd.get("saved_time"),
+        ),
+        _localize_repair_result(_fmt_repair_result(result)) if str(result or "").strip() else "",
+        problem_cell,
+        action_cell,
+    ]
+
+
+def _round_photos(rnd: Dict[str, Any], key: str) -> List[dict]:
+    """รวมรูปก่อน/หลังแก้ไขของทุก corrective action ในรอบนั้น"""
+    out: List[dict] = []
+    for a in rnd.get("corrective_actions") or []:
+        for im in a.get(key) or []:
+            if isinstance(im, dict) and im.get("url"):
+                out.append(im)
+    return out
+
+
+def _repair_history_parts(doc: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """แปลง repair_history เป็น parts ของหมวดการดำเนินการแก้ไข
+
+    รอบทั้งหมดรวมเป็นตารางเดียว (อ่านเทียบกันง่ายกว่าแยกเป็นบล็อก)
+    รูปก่อน/หลังของแต่ละรอบวาดต่อท้ายตาราง รอบที่ไม่มีข้อมูลเลยจะถูกข้าม
+    """
+    parts: List[Dict[str, Any]] = []
+    history = doc.get("repair_history") or []
+    if not isinstance(history, list):
+        return parts
+
+    failure_code = doc.get("faulty_equipment")
+    rows: List[List[str]] = []
+    photo_parts: List[Dict[str, Any]] = []
+
+    for i, rnd in enumerate(history, 1):
+        if not isinstance(rnd, dict):
+            continue
+        row = _round_table_row(rnd, failure_code, i)
+        before = _round_photos(rnd, "beforeImages")
+        after = _round_photos(rnd, "afterImages")
+        # ครั้งที่ (คอลัมน์แรก) มีค่าเสมอ จึงไม่นับเป็นข้อมูล
+        if not any(c for c in row[1:]) and not before and not after:
+            continue
+
+        rows.append(row)
+        for photos, title in ((before, _t("round_before")), (after, _t("round_after"))):
+            if photos:
+                photo_parts.append({
+                    "kind": "photo",
+                    "photos": photos[:6],
+                    "title": f"{title} ({_t('round_label', n=_num(i))})",
+                    "cols": 3,
+                    "img_h": 38,
+                })
+
+    if not rows:
+        return parts
+
+    parts.append({
+        "kind": "table",
+        "label": _t("history"),
+        "headers": [_t(k) for k in ROUND_TABLE_KEYS],
+        "widths": ROUND_TABLE_WIDTHS,
+        "rows": rows,
+    })
+    parts.extend(photo_parts)
+    return parts
+
+
+def _fmt_date_time(date_val, time_val) -> str:
+    """วันที่ + เวลา HH:MM (ภาษาไทยต่อท้ายด้วย "น.")"""
+    d = _fmt_date_full(date_val)
     t = str(time_val).strip() if time_val else ""
     if t and d and d != "-":
-        return f"{d} {t} น."
+        return f"{d} {t}{_t('time_suffix')}"
     return d
 
 
@@ -214,9 +561,12 @@ def _cell_text_in_box(
                             and pdf.get_string_width(current_indent + buf[:k]) <= inner_w
                         ):
                             k += 1
-                        lines.append(current_indent + buf[: k - 1])
+                        # กินอย่างน้อย 1 ตัวอักษรเสมอ — ถ้า metric ของฟอนต์เพี้ยน
+                        # (เช่น สระ/วรรณยุกต์ไทยกว้างเกินช่อง) k จะค้างที่ 1 แล้ววนไม่รู้จบ
+                        take = max(k - 1, 1)
+                        lines.append(current_indent + buf[:take])
                         first_line = False
-                        buf = buf[k - 1:]
+                        buf = buf[take:]
                     cur = ""
         if cur:
             current_indent = leading_spaces if first_line else hanging_indent
@@ -504,13 +854,15 @@ def _compute_info_row_heights(
     w: float,
     data: List[Tuple[str, str]],
     cols: int = 2,
-    label_w: float = 38,
-    row_h: float = 6.5,
+    label_w: Optional[float] = None,
+    row_h: Optional[float] = None,
 ) -> List[float]:
     """คำนวณความสูงจริงของแต่ละแถวใน info block — wrap value ถ้ายาวเกินช่อง"""
+    label_w = INFO_LABEL_W if label_w is None else label_w
+    row_h = INFO_ROW_H if row_h is None else row_h
     total_rows = math.ceil(len(data) / cols) if data else 0
     col_w = w / cols
-    line_h_value = 4.0
+    line_h_value = TABLE_LINE_H
     value_w = col_w - label_w - 2 * PADDING_X
 
     pdf.set_font(base_font, "", FONT_MAIN)
@@ -540,8 +892,8 @@ def _draw_info_block(
     w: float,
     data: List[Tuple[str, str]],
     cols: int = 2,
-    label_w: float = 38,
-    row_h: float = 6.5,
+    label_w: Optional[float] = None,
+    row_h: Optional[float] = None,
     draw_outer: bool = True,
 ) -> float:
     """วาด block ข้อมูลแบบ label | value มีกรอบและเส้นแบ่ง
@@ -550,9 +902,11 @@ def _draw_info_block(
     draw_outer → วาดกรอบรอบนอก (ปิดได้เมื่ออยู่ภายใน group box)
     แถวที่ value ยาวจะ wrap หลายบรรทัดและขยายความสูงเฉพาะแถวนั้น
     """
+    label_w = INFO_LABEL_W if label_w is None else label_w
+    row_h = INFO_ROW_H if row_h is None else row_h
     total_rows = math.ceil(len(data) / cols) if data else 0
     col_w = w / cols
-    line_h_value = 4.0
+    line_h_value = TABLE_LINE_H
     value_w = col_w - label_w - 2 * PADDING_X
 
     row_heights = _compute_info_row_heights(pdf, base_font, w, data, cols, label_w, row_h)
@@ -562,6 +916,7 @@ def _draw_info_block(
     box_h = row_y_offsets[-1]
 
     pdf.set_line_width(LINE_W_INNER)
+    pdf.set_draw_color(*GRID_COLOR)
     if draw_outer:
         pdf.rect(x, y, w, box_h)
 
@@ -590,8 +945,10 @@ def _draw_info_block(
         cy = y + row_y_offsets[r]
 
         pdf.set_font(base_font, "B", FONT_MAIN)
+        pdf.set_text_color(*LABEL_COLOR)
         pdf.set_xy(cx + PADDING_X, cy + (rh - LINE_H) / 2.0)
         pdf.cell(label_w - 2 * PADDING_X, LINE_H, str(label or ""), border=0, align="L")
+        pdf.set_text_color(0, 0, 0)
 
         pdf.set_font(base_font, "", FONT_MAIN)
         val_str = "-" if value in (None, "", "-") else str(value)
@@ -624,7 +981,7 @@ def _draw_text_block(
     """วาดกล่องพร้อม label ด้านบนและเนื้อหาด้านล่าง ปรับความสูงตามเนื้อหาอัตโนมัติ
     draw_outer → วาดกรอบรอบนอกของ content box (ปิดได้เมื่ออยู่ภายใน group box)
     """
-    label_h = 6.0
+    label_h = LINE_H + 1.0
     text_str = "-" if text in (None, "", "-") else str(text)
 
     # คำนวณความสูงเนื้อหา
@@ -632,13 +989,14 @@ def _draw_text_block(
     content_h = max(min_h, raw_h + 2 * PADDING_Y)
 
     pdf.set_line_width(LINE_W_INNER)
+    pdf.set_draw_color(*GRID_COLOR)
 
     # แถบ label
     pdf.set_fill_color(245, 245, 245)
     pdf.rect(x, y, w, label_h, style="FD")
-    pdf.set_xy(x + PADDING_X, y + 0.4)
+    pdf.set_xy(x + PADDING_X, y + (label_h - LINE_H) / 2.0)
     pdf.set_font(base_font, "B", FONT_MAIN)
-    pdf.cell(w - 2 * PADDING_X, label_h - 0.8, label, border=0, align="L")
+    pdf.cell(w - 2 * PADDING_X, LINE_H, label, border=0, align="L")
 
     # กล่องเนื้อหา
     pdf.set_font(base_font, "", FONT_MAIN)
@@ -649,6 +1007,223 @@ def _draw_text_block(
     )
 
     return y + label_h + content_h
+
+
+def _draw_section_bar(
+    pdf: FPDF, base_font: str, x: float, y: float, w: float,
+    number: str = "", title: str = "",
+) -> float:
+    """แถบหัวข้อหมวด — สีและตัวอักษรเปลี่ยนตามสไตล์ที่เลือก"""
+    pdf.set_line_width(LINE_W_INNER)
+    pdf.set_draw_color(*GRID_COLOR)
+    pdf.set_fill_color(*SECTION_BAR_BG)
+    pdf.rect(x, y, w, SECTION_BAR_H, style="FD")
+
+    text = f"  {number}. {title}" if number else f"  {title}"
+    pdf.set_xy(x + PADDING_X, y + (SECTION_BAR_H - LINE_H) / 2.0)
+    pdf.set_font(base_font, "B", FONT_MAIN)
+    pdf.set_text_color(*SECTION_BAR_FG)
+    pdf.cell(w - 2 * PADDING_X, LINE_H, text, border=0, align="L")
+    pdf.set_text_color(0, 0, 0)
+    return y + SECTION_BAR_H
+
+
+def _new_page_if_needed(pdf: FPDF, y: float, needed_h: float, pad: float = 4.0) -> float:
+    """ขึ้นหน้าใหม่ถ้าที่เหลือไม่พอ — กันหมวดถูกตัดครึ่งคาหน้า"""
+    if y + needed_h + pad > pdf.h - pdf.b_margin:
+        pdf.add_page()
+        return pdf.get_y() + 2
+    return y
+
+
+# -------------------- Choice row (ช่องติ๊กแบบฟอร์มกระดาษ) --------------------
+def _checkbox_size() -> float:
+    """ขนาดช่องติ๊กเทียบกับความสูงบรรทัด — สไตล์ตัวใหญ่ต้องได้ช่องใหญ่ตาม"""
+    return LINE_H * 0.62
+
+
+def _draw_checkbox(pdf: FPDF, x: float, y: float, checked: bool) -> None:
+    """ช่องติ๊กสี่เหลี่ยม — วาดเองด้วยเส้น ไม่พึ่งอักขระ ☐/☑ ที่ฟอนต์ไทยอาจไม่มี"""
+    s = _checkbox_size()
+    # ช่องติ๊กใช้เส้นดำเสมอ ไม่ตามสีเส้นตารางที่อาจจางจนมองไม่เห็น
+    pdf.set_draw_color(0, 0, 0)
+    pdf.set_line_width(LINE_W_INNER)
+    pdf.rect(x, y, s, s)
+    if checked:
+        pdf.set_line_width(0.45)
+        pdf.line(x + 0.6, y + 0.6, x + s - 0.6, y + s - 0.6)
+        pdf.line(x + s - 0.6, y + 0.6, x + 0.6, y + s - 0.6)
+        pdf.set_line_width(LINE_W_INNER)
+    pdf.set_draw_color(*GRID_COLOR)
+
+
+def _draw_choice_row(
+    pdf: FPDF,
+    base_font: str,
+    x: float,
+    y: float,
+    w: float,
+    label: str,
+    options: List[Tuple[str, str]],
+    selected,
+    label_w: Optional[float] = None,
+    row_h: Optional[float] = None,
+    draw_outer: bool = True,
+) -> float:
+    """แถว label | ตัวเลือกแบบติ๊ก
+
+    options: [(value, ข้อความที่แสดง), ...]
+    selected: ค่าที่เลือก (เทียบแบบไม่สนตัวพิมพ์)
+    ค่าที่ไม่อยู่ในตัวเลือก (ข้อมูลเก่า) จะพิมพ์ต่อท้ายเป็น "อื่นๆ: ..." เพื่อไม่ให้ข้อมูลหาย
+    """
+    label_w = INFO_LABEL_W if label_w is None else label_w
+    row_h = INFO_ROW_H if row_h is None else row_h
+    sel = str(selected or "").strip().lower()
+    known = {str(v).strip().lower() for v, _ in options}
+    extra = str(selected or "").strip() if sel and sel not in known else ""
+
+    pdf.set_line_width(LINE_W_INNER)
+    pdf.set_draw_color(*GRID_COLOR)
+    if draw_outer:
+        pdf.rect(x, y, w, row_h)
+    pdf.line(x + label_w, y, x + label_w, y + row_h)
+
+    pdf.set_font(base_font, "B", FONT_MAIN)
+    pdf.set_text_color(*LABEL_COLOR)
+    pdf.set_xy(x + PADDING_X, y + (row_h - LINE_H) / 2.0)
+    pdf.cell(label_w - 2 * PADDING_X, LINE_H, str(label or ""), border=0, align="L")
+    pdf.set_text_color(0, 0, 0)
+
+    pdf.set_font(base_font, "", FONT_MAIN)
+    cx = x + label_w + PADDING_X
+    cb = _checkbox_size()
+    box_y = y + (row_h - cb) / 2.0
+    text_y = y + (row_h - LINE_H) / 2.0
+    for value, text in options:
+        _draw_checkbox(pdf, cx, box_y, str(value).strip().lower() == sel)
+        cx += cb + 1.2
+        tw = pdf.get_string_width(text) + 4.0
+        pdf.set_xy(cx, text_y)
+        pdf.cell(tw, LINE_H, text, border=0, align="L")
+        cx += tw
+    if extra:
+        _draw_checkbox(pdf, cx, box_y, True)
+        cx += cb + 1.2
+        pdf.set_xy(cx, text_y)
+        pdf.cell(x + w - cx - PADDING_X, LINE_H, _t("other", v=extra), border=0, align="L")
+
+    return y + row_h
+
+
+# -------------------- Table (ตารางหัวคอลัมน์ + หลายแถว) --------------------
+def _table_geometry(
+    pdf: FPDF,
+    base_font: str,
+    w: float,
+    headers: List[str],
+    widths: List[float],
+    rows: List[List[str]],
+) -> Tuple[List[float], float, List[float]]:
+    """คืน (ความกว้างจริงต่อคอลัมน์, ความสูงหัวตาราง, ความสูงต่อแถว)"""
+    scale = w / sum(widths)
+    col_ws = [cw * scale for cw in widths]
+
+    pdf.set_font(base_font, "B", FONT_SMALL)
+    head_lines = 1
+    for text, cw in zip(headers, col_ws):
+        wrapped, _ = _split_lines(pdf, cw - 2 * PADDING_X, str(text or ""), TABLE_LINE_H)
+        head_lines = max(head_lines, len(wrapped))
+    head_h = head_lines * TABLE_LINE_H + 2.0
+
+    pdf.set_font(base_font, "", FONT_SMALL)
+    row_hs: List[float] = []
+    for row in rows:
+        lines = 1
+        for i, cell in enumerate(row):
+            cw = col_ws[i] if i < len(col_ws) else col_ws[-1]
+            wrapped, _ = _split_lines(pdf, cw - 2 * PADDING_X, str(cell or ""), TABLE_LINE_H)
+            lines = max(lines, len(wrapped))
+        row_hs.append(lines * TABLE_LINE_H + 2.0)
+    return col_ws, head_h, row_hs
+
+
+def _draw_table(
+    pdf: FPDF,
+    base_font: str,
+    x: float,
+    y: float,
+    w: float,
+    label: str,
+    headers: List[str],
+    widths: List[float],
+    rows: List[List[str]],
+    draw_outer: bool = True,
+) -> float:
+    """ตารางพร้อมแถบหัวข้อด้านบน — ความสูงแต่ละแถวยืดตามเนื้อหาที่ตัดบรรทัด"""
+    label_h = LINE_H + 1.0 if label else 0.0
+    col_ws, head_h, row_hs = _table_geometry(pdf, base_font, w, headers, widths, rows)
+    total_h = label_h + head_h + sum(row_hs)
+
+    pdf.set_line_width(LINE_W_INNER)
+    pdf.set_draw_color(*GRID_COLOR)
+
+    if label:
+        pdf.set_fill_color(245, 245, 245)
+        pdf.rect(x, y, w, label_h, style="FD")
+        pdf.set_xy(x + PADDING_X, y + (label_h - LINE_H) / 2.0)
+        pdf.set_font(base_font, "B", FONT_MAIN)
+        pdf.cell(w - 2 * PADDING_X, LINE_H, label, border=0, align="L")
+
+    top = y + label_h
+    body_h = head_h + sum(row_hs)
+    if draw_outer:
+        pdf.rect(x, top, w, body_h)
+
+    # แถวสลับสี — วาดก่อนเส้นและข้อความ ไม่งั้นพื้นจะทับ
+    if TABLE_ZEBRA:
+        cy = top + head_h
+        for i, rh in enumerate(row_hs):
+            if i % 2 == 1:
+                pdf.set_fill_color(*TABLE_ZEBRA)
+                pdf.rect(x, cy, w, rh, style="F")
+            cy += rh
+
+    # หัวตาราง
+    pdf.set_fill_color(238, 238, 238)
+    pdf.rect(x, top, w, head_h, style="FD")
+    pdf.set_font(base_font, "B", FONT_SMALL)
+    cx = x
+    for text, cw in zip(headers, col_ws):
+        _cell_text_in_box(
+            pdf, cx, top, cw, head_h, str(text or ""),
+            align="C", lh=TABLE_LINE_H, valign="middle", draw_border=False,
+        )
+        cx += cw
+
+    # เส้นแนวตั้งตลอดความสูงตาราง — สไตล์อ่านง่ายใช้แถวสลับสีแทน จะได้ไม่รกตา
+    if not TABLE_ZEBRA:
+        cx = x
+        for cw in col_ws[:-1]:
+            cx += cw
+            pdf.line(cx, top, cx, top + body_h)
+
+    # เนื้อตาราง
+    pdf.set_font(base_font, "", FONT_SMALL)
+    cy = top + head_h
+    for row, rh in zip(rows, row_hs):
+        pdf.line(x, cy, x + w, cy)
+        cx = x
+        for i, cw in enumerate(col_ws):
+            cell = str(row[i]) if i < len(row) else ""
+            _cell_text_in_box(
+                pdf, cx, cy, cw, rh, cell,
+                align="C" if i == 0 else "L", lh=TABLE_LINE_H,
+                valign="middle", draw_border=False,
+            )
+            cx += cw
+        cy += rh
+
+    return y + total_h
 
 
 # -------------------- Section group (รวมทุกส่วนในหมวดไว้ในกรอบเดียว) --------------------
@@ -662,13 +1237,13 @@ def _measure_part_height(
     if kind == "info":
         data = part.get("data") or []
         cols = int(part.get("cols", 2))
-        row_h = float(part.get("row_h", 6.5))
+        row_h = float(part.get("row_h", INFO_ROW_H))
         # ใช้ความสูงแบบ dynamic — แถวที่ value ยาวจะถูก wrap และสูงขึ้น
         base_font = getattr(pdf, "_base_font_name", "Arial")
         row_heights = _compute_info_row_heights(pdf, base_font, w, data, cols, 38, row_h)
         return sum(row_heights)
     if kind == "text":
-        label_h = 6.0
+        label_h = LINE_H + 1.0
         min_h = float(part.get("min_h", 10.0))
         text_str = str(part.get("text") or "-")
         _, raw_h = _split_lines(pdf, w - 2 * PADDING_X, text_str, LINE_H)
@@ -681,9 +1256,22 @@ def _measure_part_height(
         cols = int(part.get("cols", 3))
         img_h = float(part.get("img_h", 40.0))
         gap = float(part.get("gap", 2.0))
-        label_h = 6.0 if part.get("title") else 0
+        label_h = LINE_H + 1.0 if part.get("title") else 0
         rows = math.ceil(len(photos) / cols)
         return label_h + rows * img_h + (rows + 1) * gap
+    if kind == "choice":
+        return float(part.get("row_h", INFO_ROW_H))
+    if kind == "table":
+        rows = part.get("rows") or []
+        if not rows:
+            return 0
+        base_font = getattr(pdf, "_base_font_name", "Arial")
+        label_h = LINE_H + 1.0 if part.get("label") else 0.0
+        _, head_h, row_hs = _table_geometry(
+            pdf, base_font, w,
+            part.get("headers") or [], part.get("widths") or [], rows,
+        )
+        return label_h + head_h + sum(row_hs)
     return 0
 
 
@@ -712,28 +1300,34 @@ def _draw_section_group(
     total_h = SECTION_BAR_H + parts_h
 
     pdf.set_line_width(LINE_W_INNER)
+    pdf.set_draw_color(*GRID_COLOR)
 
     # กรอบใหญ่ครอบทั้งหมด
     pdf.rect(x, y, w, total_h)
 
     # Section bar (หัวข้อหมวด)
-    pdf.set_fill_color(235, 235, 235)
-    pdf.rect(x, y, w, SECTION_BAR_H, style="FD")
-    display_text = f"  {number}. {title}" if number else f"  {title}"
-    pdf.set_xy(x, y + 0.3)
-    pdf.set_font(base_font, "B", FONT_MAIN)
-    pdf.cell(w, SECTION_BAR_H, display_text, border=0, align="L")
+    _draw_section_bar(pdf, base_font, x, y, w, number, title)
 
     cy = y + SECTION_BAR_H
 
     for p in parts:
         kind = p.get("kind")
+        # เส้นคั่นระหว่าง part — แต่ละ part วาดเส้นแบ่งเฉพาะแถวของตัวเอง
+        # ถ้าไม่คั่นตรงนี้ แถวสุดท้ายของ part ก่อนหน้าจะดูเชื่อมกับแถวแรกของ part ถัดไป
+        if cy > y + SECTION_BAR_H:
+            if kind == "photo" and not (p.get("photos") or []):
+                continue
+            if kind == "table" and not (p.get("rows") or []):
+                continue
+            pdf.set_draw_color(*GRID_COLOR)
+            pdf.line(x, cy, x + w, cy)
+
         if kind == "info":
             cy = _draw_info_block(
                 pdf, base_font, x, cy, w,
                 p.get("data") or [],
                 cols=int(p.get("cols", 2)),
-                row_h=float(p.get("row_h", 6.5)),
+                row_h=float(p.get("row_h", INFO_ROW_H)),
                 draw_outer=False,
             )
         elif kind == "text":
@@ -755,6 +1349,25 @@ def _draw_section_group(
                 cols=int(p.get("cols", 3)),
                 img_h=float(p.get("img_h", 40.0)),
                 gap=float(p.get("gap", 2.0)),
+                draw_outer=False,
+            )
+        elif kind == "choice":
+            cy = _draw_choice_row(
+                pdf, base_font, x, cy, w,
+                str(p.get("label") or ""),
+                p.get("options") or [],
+                p.get("selected"),
+                row_h=float(p.get("row_h", INFO_ROW_H)),
+                draw_outer=False,
+            )
+        elif kind == "table":
+            rows = p.get("rows") or []
+            if not rows:
+                continue
+            cy = _draw_table(
+                pdf, base_font, x, cy, w,
+                str(p.get("label") or ""),
+                p.get("headers") or [], p.get("widths") or [], rows,
                 draw_outer=False,
             )
 
@@ -781,7 +1394,7 @@ def _draw_photo_grid(
     if not photos:
         return y
 
-    label_h = 6.0 if title else 0
+    label_h = LINE_H + 1.0 if title else 0
 
     img_w = (w - (cols + 1) * gap) / cols
     rows = math.ceil(len(photos) / cols)
@@ -795,19 +1408,21 @@ def _draw_photo_grid(
     if title:
         pdf.set_fill_color(245, 245, 245)
         pdf.rect(x, y, w, label_h, style="FD")
-        pdf.set_xy(x + PADDING_X, y + 0.4)
+        pdf.set_xy(x + PADDING_X, y + (label_h - LINE_H) / 2.0)
         pdf.set_font(base_font, "B", FONT_MAIN)
-        pdf.cell(w - 2 * PADDING_X, label_h - 0.8, title, border=0, align="L")
+        pdf.cell(w - 2 * PADDING_X, LINE_H, title, border=0, align="L")
 
     # กรอบ grid
     if draw_outer:
         pdf.rect(x, y + label_h, w, grid_h)
 
-    # วาดรูป
+    # วาดรูป — แถวที่ไม่เต็มคอลัมน์จะจัดกึ่งกลาง ไม่ให้รูปกองซ้ายแล้วเหลือที่ว่างข้างขวา
     for i, photo in enumerate(photos):
         r = i // cols
         c = i % cols
-        cx = x + gap + c * (img_w + gap)
+        in_row = min(cols, len(photos) - r * cols)
+        row_w = in_row * img_w + (in_row - 1) * gap
+        cx = x + (w - row_w) / 2.0 + c * (img_w + gap)
         cy = y + label_h + gap + r * (img_h + gap)
 
         url = (photo or {}).get("url", "")
@@ -815,7 +1430,28 @@ def _draw_photo_grid(
 
         if img_buf is not None:
             try:
-                pdf.image(img_buf, x=cx, y=cy, w=img_w, h=img_h, type="JPEG")
+                # คงสัดส่วนรูปแล้วจัดกึ่งกลางช่อง — ยัดเต็มช่องทำให้รูปยืดผิดส่วน
+                draw_w, draw_h = img_w, img_h
+                if Image is not None:
+                    try:
+                        img_buf.seek(0)
+                        iw, ih = Image.open(img_buf).size
+                        if iw and ih:
+                            scale = min(img_w / iw, img_h / ih)
+                            draw_w, draw_h = iw * scale, ih * scale
+                    except Exception:
+                        pass
+                    finally:
+                        img_buf.seek(0)
+                pdf.set_draw_color(200, 200, 200)
+                pdf.rect(cx, cy, img_w, img_h)
+                pdf.set_draw_color(0, 0, 0)
+                pdf.image(
+                    img_buf,
+                    x=cx + (img_w - draw_w) / 2.0,
+                    y=cy + (img_h - draw_h) / 2.0,
+                    w=draw_w, h=draw_h, type="JPEG",
+                )
             except Exception as e:
                 _log(f"[IMG] place error: {e}")
                 _draw_placeholder(pdf, base_font, cx, cy, img_w, img_h)
@@ -836,107 +1472,62 @@ def _draw_placeholder(pdf: FPDF, base_font: str, x: float, y: float, w: float, h
     pdf.set_text_color(0, 0, 0)
 
 
-# -------------------- Signature block --------------------
-def _decode_data_url_image(data_url) -> Optional[BytesIO]:
-    """แปลง dataURL (data:image/png;base64,...) เป็น BytesIO สำหรับ pdf.image()"""
-    if not data_url or not isinstance(data_url, str) or "," not in data_url:
-        return None
-    try:
-        b64 = data_url.split(",", 1)[1]
-        return BytesIO(base64.b64decode(b64))
-    except Exception:
-        return None
-
-
-def _draw_signature_block(
+# -------------------- People block (ผู้เกี่ยวข้อง) --------------------
+def _draw_people_block(
     pdf: FPDF,
     base_font: str,
     x: float,
     y: float,
     w: float,
-    date_text: str = "",
-    labels: Optional[List[str]] = None,
-    signatures: Optional[List[Optional[str]]] = None,
-    names: Optional[List[Optional[str]]] = None,
-    dates: Optional[List[Optional[str]]] = None,
+    people: List[Tuple[str, str, str]],
 ) -> float:
-    """วาดช่องลายเซ็นท้ายเอกสาร 3 ช่อง
-    - signatures[i]: dataURL รูปลายเซ็น (ฝังในกล่อง)
-    - names[i]:      ชื่อในวงเล็บ (ถ้าไม่มีจะเว้นว่างให้เขียนมือ)
-    - dates[i]:      วันที่ต่อช่อง (ถ้าไม่มีใช้ date_text)
-    """
-    if labels is None:
-        labels = ["ผู้แจ้ง", "ผู้ซ่อม", "ผู้ตรวจสอบ"]
-    col_w = w / len(labels)
+    """ตารางผู้เกี่ยวข้องท้ายเอกสาร — (บทบาท, ชื่อ, วันที่)
 
-    row_h_header = 5.0
-    row_h_sig = 14.0
-    row_h_name = 5.0
-    row_h_date = 5.0
-    total_h = row_h_header + row_h_sig + row_h_name + row_h_date
+    ใบงานปิดในระบบอยู่แล้ว จึงไม่มีช่องเซ็นชื่อ ใช้ชื่อผู้ทำรายการจริงแทน
+    """
+    if not people:
+        return y
+
+    col_w = w / len(people)
+    row_h_header = LINE_H + 1.0
+    row_h_name = LINE_H + 1.6
+    row_h_date = LINE_H + 1.0
+    total_h = row_h_header + row_h_name + row_h_date
 
     pdf.set_line_width(LINE_W_INNER)
+    pdf.set_draw_color(*GRID_COLOR)
 
-    # Header สีเหลือง
-    pdf.set_fill_color(*TITLE_BG)
+    # หัวคอลัมน์ — เทาชุดเดียวกับหัวตารางอื่น (เหลืองสงวนไว้ให้ชื่อเอกสารอย่างเดียว)
+    pdf.set_fill_color(238, 238, 238)
     pdf.set_font(base_font, "B", FONT_MAIN)
-    for i, label in enumerate(labels):
+    for i, (role, _, _) in enumerate(people):
         cx = x + i * col_w
         pdf.rect(cx, y, col_w, row_h_header, style="FD")
-        pdf.set_xy(cx, y + 0.3)
-        pdf.cell(col_w, row_h_header - 0.6, label, border=0, align="C")
+        pdf.set_xy(cx, y + (row_h_header - LINE_H) / 2.0)
+        pdf.cell(col_w, LINE_H, role, border=0, align="C")
 
-    # กล่องลายเซ็น + วาดรูปลายเซ็นถ้ามี (จัดกึ่งกลาง คงสัดส่วน)
+    # แถวชื่อ — ตัวหนา เพราะเป็นข้อมูลหลักของบล็อกนี้
     cy = y + row_h_header
-    pad = 1.5
-    for i in range(len(labels)):
-        cx = x + i * col_w
-        pdf.rect(cx, cy, col_w, row_h_sig)
-        sig = signatures[i] if signatures and i < len(signatures) else None
-        bio = _decode_data_url_image(sig)
-        if bio is not None:
-            try:
-                box_w = col_w - 2 * pad
-                box_h = row_h_sig - 2 * pad
-                draw_w, draw_h = box_w, box_h
-                if Image is not None:
-                    try:
-                        bio.seek(0)
-                        im = Image.open(bio)
-                        iw, ih = im.size
-                        if iw and ih:
-                            scale = min(box_w / iw, box_h / ih)
-                            draw_w = iw * scale
-                            draw_h = ih * scale
-                    except Exception:
-                        pass
-                    finally:
-                        bio.seek(0)
-                ix = cx + (col_w - draw_w) / 2
-                iy = cy + (row_h_sig - draw_h) / 2
-                pdf.image(bio, x=ix, y=iy, w=draw_w, h=draw_h)
-            except Exception:
-                pass
-
-    # แถวชื่อ (มีชื่อ → ใส่ในวงเล็บ, ไม่มี → เว้นว่างให้เขียนมือ)
-    cy += row_h_sig
-    pdf.set_font(base_font, "", FONT_MAIN)
-    for i in range(len(labels)):
+    pdf.set_font(base_font, "B", FONT_MAIN)
+    for i, (_, name, _) in enumerate(people):
         cx = x + i * col_w
         pdf.rect(cx, cy, col_w, row_h_name)
-        pdf.set_xy(cx, cy)
-        name = (names[i] if names and i < len(names) and names[i] else "").strip()
-        name_text = f"( {name} )" if name else "(                                                     )"
-        pdf.cell(col_w, row_h_name, name_text, border=0, align="C")
+        _cell_text_in_box(
+            pdf, cx, cy, col_w, row_h_name, (name or "").strip() or "-",
+            align="C", lh=LINE_H, valign="middle", draw_border=False,
+        )
 
-    # แถววันที่ (มี dates ต่อช่อง → ใช้, ไม่มี → ใช้ date_text)
+    # แถววันที่
     cy += row_h_name
-    for i in range(len(labels)):
+    pdf.set_font(base_font, "", FONT_SMALL)
+    pdf.set_text_color(*LABEL_COLOR)
+    for i, (_, _, date_text) in enumerate(people):
         cx = x + i * col_w
         pdf.rect(cx, cy, col_w, row_h_date)
-        pdf.set_xy(cx, cy)
-        d = dates[i] if dates and i < len(dates) and dates[i] else date_text
-        pdf.cell(col_w, row_h_date, f"วันที่ :  {d}" if d else "วันที่ :", border=0, align="C")
+        d = (date_text or "").strip()
+        pdf.set_xy(cx, cy + (row_h_date - LINE_H) / 2.0)
+        pdf.cell(col_w, LINE_H, _t("date_prefix", d=d) if d else "-", border=0, align="C")
+    pdf.set_text_color(0, 0, 0)
 
     return y + total_h
 
@@ -952,15 +1543,11 @@ def _draw_action_block(
     action: dict,
 ) -> float:
     """วาดรายละเอียดการดำเนินการแก้ไข 1 ชุด (ข้อความ + รูปก่อน/หลัง)"""
-    # หัวข้อย่อย
-    pdf.set_font(base_font, "B", FONT_MAIN)
-    pdf.set_line_width(LINE_W_INNER)
-    pdf.set_xy(x, y)
-    pdf.cell(w, LINE_H + 1, f"การดำเนินการแก้ไขที่ {idx}", border=0, align="L")
-    y += LINE_H + 1.5
+    # แถบหัวข้อย่อยมีพื้นและกรอบ ให้เป็นส่วนหนึ่งของฟอร์ม ไม่ใช่ข้อความลอย
+    y = _draw_section_bar(pdf, base_font, x, y, w, "", _t("action_no", n=_num(idx)))
 
     action_text = action.get("text", "") or "-"
-    y = _draw_text_block(pdf, base_font, x, y, w, "รายละเอียดการดำเนินการ", action_text, min_h=10)
+    y = _draw_text_block(pdf, base_font, x, y, w, _t("action_details"), action_text, min_h=10)
     y += 2
 
     before_imgs = action.get("beforeImages") or []
@@ -974,13 +1561,13 @@ def _draw_action_block(
         if before_imgs:
             max_y = max(max_y, _draw_photo_grid(
                 pdf, base_font, x, start_y, col_w, before_imgs,
-                title="รูปภาพก่อนแก้ไข", cols=2, img_h=38,
+                title=_t("photos_before"), cols=2, img_h=38,
             ))
 
         if after_imgs:
             max_y = max(max_y, _draw_photo_grid(
                 pdf, base_font, x + col_w + 4, start_y, col_w, after_imgs,
-                title="รูปภาพหลังแก้ไข", cols=2, img_h=38,
+                title=_t("photos_after"), cols=2, img_h=38,
             ))
 
         y = max_y
@@ -995,12 +1582,13 @@ class ReportPDF(HTML2PDF):
         self.issue_id = issue_id
         self._doc_name = doc_name
         self._base_font_name = "Arial"
-        self._label_page = "หน้า"
-        self._label_issue_id = "เลขที่เอกสาร"
-        self._label_doc_name = "ชื่อเอกสาร"
-        self._addr_line1 = "การไฟฟ้าฝ่ายผลิตแห่งประเทศไทย (กฟผ.)"
-        self._addr_line2 = "เลขที่ 53 หมู่ 2 ถนนจรัญสนิทวงศ์ ตำบลบางกรวย อำเภอบางกรวย จังหวัดนนทบุรี 11130"
-        self._addr_line3 = "ศูนย์บริการข้อมูล กฟผ. สายด่วน 1416"
+        # อ่านค่าตอน __init__ — ภาษาถูกตั้งไว้แล้วก่อนสร้าง PDF
+        self._label_page = _t("page")
+        self._label_issue_id = _t("doc_no")
+        self._label_doc_name = _t("doc_name")
+        self._addr_line1 = _t("org1")
+        self._addr_line2 = _t("org2")
+        self._addr_line3 = _t("org3")
 
     def header(self):
         _draw_header(
@@ -1018,8 +1606,16 @@ class ReportPDF(HTML2PDF):
 
 
 # -------------------- Main builder --------------------
-def make_cm_report_pdf_bytes(doc: dict) -> bytes:
-    """สร้าง PDF ใบแจ้งซ่อมบำรุง"""
+def make_cm_report_pdf_bytes(
+    doc: dict, style: str = DEFAULT_STYLE, lang: str = DEFAULT_LANG,
+) -> bytes:
+    """สร้าง PDF ใบแจ้งซ่อมบำรุง
+
+    style: "form" = ฟอร์มราชการ / "readable" = เน้นอ่านง่าย (ดู _STYLES)
+    lang:  "th" / "en" — ตามภาษาที่ผู้ใช้เลือกบนหน้าเว็บ
+    """
+    _apply_style(style)
+    _apply_lang(lang)
     issue_id = str(doc.get("issue_id", "-"))
     doc_name = str(doc.get("doc_name", "-"))
 
@@ -1047,17 +1643,29 @@ def make_cm_report_pdf_bytes(doc: dict) -> bytes:
 
     # ===== ส่วนที่ 1: ข้อมูลการแจ้ง =====
     y = _draw_section_group(
-        pdf, base_font, x0, y, page_w, "1", "ข้อมูลการแจ้ง",
+        pdf, base_font, x0, y, page_w, _num(1), _t("sec1"),
         parts=[
             {
                 "kind": "info",
                 "data": [
-                    ("วันที่แจ้ง", _fmt_date_time_thai(doc.get("found_date"), doc.get("found_time"))),
-                    ("ผู้แจ้ง", doc.get("reported_by", "-") or "-"),
-                    ("สถานที่", doc.get("location", "-") or "-"),
-                    ("สถานะ", doc.get("status", "-") or "-"),
+                    (_t("found_date"), _fmt_date_time(doc.get("found_date"), doc.get("found_time"))),
+                    (_t("reported_by"), doc.get("reported_by", "-") or "-"),
                 ],
                 "cols": 2,
+            },
+            {
+                "kind": "info",
+                "data": [
+                    (_t("sr_wo"), doc.get("maximo_ticket_id", "-") or "-"),
+                    (_t("location"), doc.get("location", "-") or "-"),
+                ],
+                "cols": 1,
+            },
+            {
+                "kind": "choice",
+                "label": _t("wo_status"),
+                "options": _choices(_STATUS_CHOICES),
+                "selected": doc.get("status"),
             },
         ],
     )
@@ -1067,15 +1675,18 @@ def make_cm_report_pdf_bytes(doc: dict) -> bytes:
     section2_parts: List[Dict[str, Any]] = [
         {
             "kind": "info",
-            "data": [
-                ("อุปกรณ์ที่เสียหาย", doc.get("faulty_equipment", "-") or "-"),
-                ("ความเร่งด่วน", doc.get("severity", "-") or "-"),
-            ],
-            "cols": 2,
+            "data": [(_t("faulty_equipment"), failure_code_label(doc.get("faulty_equipment")) or "-")],
+            "cols": 1,
+        },
+        {
+            "kind": "choice",
+            "label": _t("severity"),
+            "options": _choices(_SEVERITY_CHOICES),
+            "selected": doc.get("severity"),
         },
         {
             "kind": "text",
-            "label": "ปัญหาที่พบ",
+            "label": _t("problem_details"),
             "text": doc.get("problem_details", "-"),
             "min_h": 12,
         },
@@ -1084,7 +1695,7 @@ def make_cm_report_pdf_bytes(doc: dict) -> bytes:
     remarks_open = (doc.get("remarks_open") or "").strip()
     if remarks_open and remarks_open != "-":
         section2_parts.append({
-            "kind": "text", "label": "หมายเหตุ", "text": remarks_open, "min_h": 10,
+            "kind": "text", "label": _t("remarks"), "text": remarks_open, "min_h": 10,
         })
 
     photos_obj = doc.get("photos", {}) or doc.get("photos_problem", {}) or {}
@@ -1093,86 +1704,99 @@ def make_cm_report_pdf_bytes(doc: dict) -> bytes:
         section2_parts.append({
             "kind": "photo",
             "photos": cm_photos[:9],
-            "title": "รูปภาพประกอบปัญหา",
+            "title": _t("problem_photos"),
             "cols": 3,
             "img_h": 45,
         })
 
     y = _draw_section_group(
-        pdf, base_font, x0, y, page_w, "2", "รายละเอียดปัญหา",
+        pdf, base_font, x0, y, page_w, _num(2), _t("sec2"),
         parts=section2_parts,
     )
     y += 3
 
-    # ===== หน้าใหม่สำหรับส่วนแก้ไข =====
-    pdf.add_page()
-    y = pdf.get_y() + 2
-
     # ===== ส่วนที่ 3: ประเภทและสาเหตุของปัญหา =====
-    # problem_type อาจเป็น list (เลือกได้หลายอัน) หรือ string
-    pt_raw = doc.get("problem_type")
-    if isinstance(pt_raw, list):
-        problem_type_text = ", ".join(str(p) for p in pt_raw if p) or "-"
-    else:
-        problem_type_text = (pt_raw or "-") or "-"
+    # ฟิลด์เหล่านี้เก็บเป็นรหัส Maximo — เอกสารต้องแสดงคำอธิบาย ไม่ใช่รหัส
+    problem_codes = _as_code_list(doc.get("problem_type"))
+    cause_codes = _as_code_list(doc.get("cause"))
+
+    problem_type_text = _join_labels(problem_codes, problem_label) or "-"
     section3_parts: List[Dict[str, Any]] = [
         {
             "kind": "info",
-            "data": [("ปัญหา", problem_type_text)],
+            "data": [(_t("problem"), problem_type_text)],
             "cols": 1,
         },
     ]
-    # cause อาจเป็น list (เลือกได้หลายอัน) หรือ string
-    cause_raw = doc.get("cause")
-    if isinstance(cause_raw, list):
-        cause = ", ".join(str(c) for c in cause_raw if c)
-    else:
-        cause = (cause_raw or "").strip()
+    cause = _join_labels(cause_codes, cause_label)
     if cause and cause != "-":
         section3_parts.append({
-            "kind": "text", "label": "สาเหตุของปัญหา", "text": cause, "min_h": 10,
+            "kind": "info",
+            "data": [(_t("cause"), cause)],
+            "cols": 1,
         })
 
+    y = _new_page_if_needed(
+        pdf, y,
+        SECTION_BAR_H + sum(_measure_part_height(pdf, page_w, p) for p in section3_parts),
+    )
     y = _draw_section_group(
-        pdf, base_font, x0, y, page_w, "3", "ประเภทและสาเหตุของปัญหา",
+        pdf, base_font, x0, y, page_w, _num(3), _t("sec3"),
         parts=section3_parts,
     )
     y += 3
 
     # ===== ส่วนที่ 4: การดำเนินการแก้ไข =====
-    # แปลง repaired_equipment list → string
-    repaired_eq = doc.get("repaired_equipment", [])
-    if isinstance(repaired_eq, list):
-        repaired_eq_text = ", ".join(str(e) for e in repaired_eq if e) or "-"
-    else:
-        repaired_eq_text = str(repaired_eq) or "-"
+    # repaired_equipment เก็บ remedy code — คำอธิบายขึ้นกับบริบท (failure code + ปัญหา + สาเหตุ)
+    # เช่น REPLACE ของ POWBOAFA = "Replace (Power Board)" คนละเรื่องกับ REPLACE ของ OVERHEAT
+    failure_code = doc.get("faulty_equipment")
+    repaired_eq_labels: List[str] = []
+    for code in _as_code_list(doc.get("repaired_equipment")):
+        for desc in remedy_descriptions(failure_code, problem_codes, cause_codes, code):
+            if desc not in repaired_eq_labels:
+                repaired_eq_labels.append(desc)
+    repaired_eq_text = ", ".join(repaired_eq_labels) or "-"
 
     section4_parts: List[Dict[str, Any]] = [
         {
             "kind": "info",
             "data": [
-                ("วันที่เริ่มแก้ไข", _fmt_date_time_thai(doc.get("start_repair_date"), doc.get("start_repair_time"))),
-                ("วันที่แก้ไขเสร็จ", _fmt_date_time_thai(doc.get("resolved_date"), doc.get("resolved_time"))),
-                ("การแก้ไข", repaired_eq_text),
-                ("ผู้ตรวจสอบ", doc.get("inspector", "-") or "-"),
-                ("ผลการซ่อม", doc.get("repair_result", "-") or "-"),
-                ("", ""),
+                (_t("start_repair"), _fmt_date_time(doc.get("start_repair_date"), doc.get("start_repair_time"))),
+                (_t("finish_repair"), _fmt_date_time(doc.get("resolved_date"), doc.get("resolved_time"))),
+                (_t("correction"), repaired_eq_text),
+                (_t("inspector"), doc.get("inspector", "-") or "-"),
             ],
             "cols": 2,
         },
+        {
+            "kind": "choice",
+            "label": _t("repair_result"),
+            "options": _choices(_REPAIR_RESULT_CHOICES),
+            "selected": (
+                _fmt_repair_result(doc.get("repair_result"))
+                if str(doc.get("repair_result") or "").strip() else ""
+            ),
+        },
     ]
+
+    # รอบการเข้าแก้ไขก่อนหน้า (รอของ/รอหน้างาน) — ตารางด้านบนเก็บแค่รอบที่ปิดงาน
+    section4_parts.extend(_repair_history_parts(doc))
 
     inprogress_remarks = (doc.get("inprogress_remarks") or "").strip()
     if inprogress_remarks and inprogress_remarks != "-":
         section4_parts.append({
             "kind": "text",
-            "label": "หมายเหตุระหว่างดำเนินการ",
+            "label": _t("inprogress_remarks"),
             "text": inprogress_remarks,
             "min_h": 10,
         })
 
+    y = _new_page_if_needed(
+        pdf, y,
+        SECTION_BAR_H + sum(_measure_part_height(pdf, page_w, p) for p in section4_parts),
+    )
     y = _draw_section_group(
-        pdf, base_font, x0, y, page_w, "4", "การดำเนินการแก้ไข",
+        pdf, base_font, x0, y, page_w, _num(4), _t("sec4"),
         parts=section4_parts,
     )
     y += 3
@@ -1181,10 +1805,7 @@ def make_cm_report_pdf_bytes(doc: dict) -> bytes:
     corrective_actions = doc.get("corrective_actions") or []
     if corrective_actions:
         for idx, action in enumerate(corrective_actions, 1):
-            needed_h = 60
-            if y + needed_h > pdf.h - pdf.b_margin:
-                pdf.add_page()
-                y = pdf.get_y() + 2
+            y = _new_page_if_needed(pdf, y, 60)
             y = _draw_action_block(pdf, base_font, x0, y, page_w, idx, action)
 
     # ===== ส่วนที่ 5: การป้องกันและผลการซ่อม =====
@@ -1200,7 +1821,7 @@ def make_cm_report_pdf_bytes(doc: dict) -> bytes:
         if preventive_text:
             section5_parts.append({
                 "kind": "text",
-                "label": "วิธีป้องกันไม่ให้เกิดซ้ำ",
+                "label": _t("preventive"),
                 "text": preventive_text,
                 "min_h": 12,
             })
@@ -1209,58 +1830,57 @@ def make_cm_report_pdf_bytes(doc: dict) -> bytes:
     if repair_remark and repair_remark != "-":
         section5_parts.append({
             "kind": "text",
-            "label": "หมายเหตุผลการซ่อม",
+            "label": _t("result_remarks"),
             "text": repair_remark,
             "min_h": 10,
         })
 
     if section5_parts:
-        # ตรวจพื้นที่ก่อนวาด
-        needed_s5 = SECTION_BAR_H + sum(
-            _measure_part_height(pdf, page_w, p) for p in section5_parts
+        y = _new_page_if_needed(
+            pdf, y,
+            SECTION_BAR_H + sum(_measure_part_height(pdf, page_w, p) for p in section5_parts),
         )
-        if y + needed_s5 + 5 > pdf.h - pdf.b_margin:
-            pdf.add_page()
-            y = pdf.get_y() + 2
-
         y = _draw_section_group(
-            pdf, base_font, x0, y, page_w, "5", "การป้องกันและผลการซ่อม",
+            pdf, base_font, x0, y, page_w, _num(5), _t("sec5"),
             parts=section5_parts,
         )
         y += 3
 
-    # ===== ลายเซ็นท้ายเอกสาร =====
-    sig_total_h = 29 + 8  # header + sig rows + margin
-    if y + sig_total_h > pdf.h - pdf.b_margin:
-        pdf.add_page()
-        y = pdf.get_y() + 2
+    # ===== ผู้เกี่ยวข้อง (ไม่มีเลขหมวด — ไม่ใช่ช่องเซ็นแล้ว แค่แสดงชื่อคนที่ทำรายการ) =====
+    def _date_or_blank(*vals) -> str:
+        for v in vals:
+            if v:
+                d = _fmt_date_full(v)
+                if d != "-":
+                    return d
+        return ""
 
-    y += 3
-    pdf.set_font(base_font, "B", FONT_MAIN + 1)
-    pdf.set_xy(x0, y)
-    pdf.cell(page_w, LINE_H + 1, "ลายเซ็นผู้เกี่ยวข้อง", border=0, align="C")
-    y += LINE_H + 2
+    people: List[Tuple[str, str, str]] = [
+        (
+            _t("reported_by"),
+            (doc.get("reported_by") or "").strip(),
+            _date_or_blank(doc.get("found_date"), doc.get("cm_date")),
+        ),
+        (
+            _t("repairer"),
+            (doc.get("inspector") or "").strip(),
+            _date_or_blank(doc.get("resolved_date"), doc.get("start_repair_date"), doc.get("found_date")),
+        ),
+        (
+            _t("inspector"),
+            (doc.get("approved_by") or "").strip(),
+            _date_or_blank(doc.get("approved_at"), doc.get("approved_date")),
+        ),
+    ]
 
-    # วันที่ใต้ช่องผู้ซ่อม: แก้ไขเสร็จ → เริ่มแก้ไข → วันที่แจ้ง (กรณีไม่พบปัญหาจะไม่มี resolved_date)
-    repair_date_raw = doc.get("resolved_date") or doc.get("start_repair_date") or doc.get("found_date")
-    resolved_date_th = _fmt_date_thai_full(repair_date_raw)
-    resolved_date_text = resolved_date_th if resolved_date_th != "-" else ""
-    repairer_name = (doc.get("inspector") or "").strip()  # ผู้ซ่อม = ช่างที่ทำการซ่อม
-    reporter_name = (doc.get("reported_by") or "").strip()  # ผู้แจ้ง
-    found_date_th = _fmt_date_thai_full(doc.get("found_date") or doc.get("cm_date"))
-    found_date_text = found_date_th if found_date_th != "-" else ""
-    _draw_signature_block(
-        pdf, base_font, x0, y, page_w,
-        date_text=resolved_date_text,
-        labels=["ผู้แจ้ง", "ผู้ซ่อม", "ผู้ตรวจสอบ"],
-        signatures=[doc.get("reporter_signature"), doc.get("signature"), None],  # ผู้แจ้ง / ผู้ซ่อม
-        names=[reporter_name, repairer_name, None],      # ชื่อในวงเล็บ
-        dates=[found_date_text, resolved_date_text, None],  # ผู้แจ้ง=วันที่แจ้ง, ผู้ซ่อม=วันที่แก้ไขเสร็จ
-    )
+    people_h = (LINE_H + 1.0) * 2 + (LINE_H + 1.6)
+    y = _new_page_if_needed(pdf, y, SECTION_BAR_H + people_h)
+    y = _draw_section_bar(pdf, base_font, x0, y, page_w, "", _t("people"))
+    _draw_people_block(pdf, base_font, x0, y, page_w, people)
 
     return _output_pdf_bytes(pdf)
 
 
-def generate_pdf(data: dict, lang: str = "th") -> bytes:
+def generate_pdf(data: dict, lang: str = DEFAULT_LANG, style: str = DEFAULT_STYLE) -> bytes:
     """Public API สำหรับ pdf_routes"""
-    return make_cm_report_pdf_bytes(data)
+    return make_cm_report_pdf_bytes(data, style=style, lang=lang)

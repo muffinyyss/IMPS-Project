@@ -120,6 +120,7 @@ export default function DataTablesPage() {
     params.delete("stage"); // กันของเก่าค้าง
     params.delete("view");  // ออกจาก form mode
     params.delete("edit_id");
+    params.delete("from");  // สลับแท็บเอง = ไม่ได้อยู่ในเส้นทางที่มาจาก dashboard แล้ว
     router.push(`${pathname}?${params.toString()}`, { scroll: false });
   };
 

@@ -5,6 +5,7 @@ import { Button, Input, Textarea } from "@material-tailwind/react";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
+import { cameFromDashboard, CM_DASHBOARD_ROUTE } from "@/app/dashboard/cm-report/lib/origin";
 
 // ==================== TRANSLATIONS ====================
 const T = {
@@ -194,7 +195,9 @@ export default function CMForm() {
     type PhotoItem = { url: string; remark?: string; uploadedAt?: string };
     const [photos, setPhotos] = useState<Record<string, PhotoItem[]>>({});
 
+    // เข้ามาจากหน้าไหนก็กลับหน้านั้น — จาก CM Dashboard → dashboard, จากตาราง list → แท็บเดิม
     const buildListUrl = () => {
+        if (cameFromDashboard(searchParams)) return CM_DASHBOARD_ROUTE;
         const params = new URLSearchParams();
         if (stationId) params.set("station_id", stationId);
         const tab = (searchParams.get("tab") ?? "open"); // กลับแท็บเดิม (default = open)
@@ -536,7 +539,7 @@ export default function CMForm() {
         const evt = new CustomEvent("cmform:cancel", { cancelable: true });
         const wasPrevented = !window.dispatchEvent(evt); // false = มีคนเรียก preventDefault()
         if (!wasPrevented) {
-            router.replace(LIST_ROUTE);
+            router.replace(buildListUrl());
         }
     };
 

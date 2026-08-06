@@ -1,0 +1,2524 @@
+{
+ "classes": [
+  {
+   "code": "METER",
+   "description": "Meter",
+   "problems": [
+    {
+     "code": "FAILURE",
+     "description": "Value Mismatch",
+     "causes": [
+      {
+       "code": "CTVTFAIL",
+       "description": "CT VT Fail",
+       "remedies": [
+        {
+         "code": "REPLACEM",
+         "description": "Replace Material"
+        }
+       ]
+      },
+      {
+       "code": "BROKEN",
+       "description": "Equipment Broken",
+       "remedies": [
+        {
+         "code": "REPLACEM",
+         "description": "Replace Material"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "code": "COUNTER",
+   "description": "Counter",
+   "problems": [
+    {
+     "code": "NOCOUNT",
+     "description": "No Count",
+     "causes": [
+      {
+       "code": "BROKEN",
+       "description": "Equipment Broken",
+       "remedies": [
+        {
+         "code": "FIX",
+         "description": "Fix"
+        }
+       ]
+      },
+      {
+       "code": "ELECTRIC",
+       "description": "No Electric",
+       "remedies": [
+        {
+         "code": "RECHECK",
+         "description": "Recheck"
+        }
+       ]
+      },
+      {
+       "code": "TEST45",
+       "description": "TEST45",
+       "remedies": []
+      },
+      {
+       "code": "TPPP",
+       "description": "",
+       "remedies": []
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "code": "MIC",
+   "description": "12345-Microphone",
+   "problems": [
+    {
+     "code": "DIS",
+     "description": "Disconnect",
+     "causes": [
+      {
+       "code": "LOSTSIG",
+       "description": "Lost Signal",
+       "remedies": []
+      }
+     ]
+    },
+    {
+     "code": "TEST99",
+     "description": "Broken",
+     "causes": [
+      {
+       "code": "LOSTSIG",
+       "description": "Lost Signal",
+       "remedies": [
+        {
+         "code": "RECHECK",
+         "description": "Recheck"
+        }
+       ]
+      },
+      {
+       "code": "PARTBROK",
+       "description": "Part Broken",
+       "remedies": [
+        {
+         "code": "FIX",
+         "description": "Fix"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "code": "AOM",
+   "description": "597058-bank",
+   "problems": []
+  },
+  {
+   "code": "ACRASH",
+   "description": "599055-Airplane Crash",
+   "problems": [
+    {
+     "code": "DIS",
+     "description": "Disconnect",
+     "causes": [
+      {
+       "code": "NETFAIL",
+       "description": "Network Down",
+       "remedies": [
+        {
+         "code": "FIX",
+         "description": "Fix"
+        },
+        {
+         "code": "CHANGE",
+         "description": "Change Equipment"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "code": "BRK",
+     "description": "Broken",
+     "causes": [
+      {
+       "code": "PARTBROK",
+       "description": "Part Broken",
+       "remedies": [
+        {
+         "code": "FIX",
+         "description": "Fix"
+        },
+        {
+         "code": "REPLACEM",
+         "description": "Replace Material"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "code": "ELECTRIC",
+     "description": "No Electric",
+     "causes": [
+      {
+       "code": "SHCIR",
+       "description": "Short curcuit",
+       "remedies": [
+        {
+         "code": "FIX",
+         "description": "Fix"
+        },
+        {
+         "code": "RECHECK",
+         "description": "Recheck"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "code": "TM-SSR",
+   "description": "558796-Temperature sensor",
+   "problems": [
+    {
+     "code": "DIS",
+     "description": "Disconnect",
+     "causes": [
+      {
+       "code": "UNPLUG",
+       "description": "558796-Unplug",
+       "remedies": []
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "code": "UAT001",
+   "description": "UAT Failure Class",
+   "problems": [
+    {
+     "code": "UATPRB",
+     "description": "Problem",
+     "causes": [
+      {
+       "code": "UATCAUSE",
+       "description": "Cause",
+       "remedies": [
+        {
+         "code": "UATREMED",
+         "description": "Remedy"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "code": "LORATEST",
+   "description": "Lora Terminal",
+   "problems": [
+    {
+     "code": "DIS",
+     "description": "Disconnect",
+     "causes": [
+      {
+       "code": "NETFAIL",
+       "description": "Network Down",
+       "remedies": [
+        {
+         "code": "CHKNET",
+         "description": "Check Network Connection"
+        },
+        {
+         "code": "CHKELEC",
+         "description": "Check Power Line or Status Breaker"
+        }
+       ]
+      },
+      {
+       "code": "ELECTRIC",
+       "description": "No Electric",
+       "remedies": [
+        {
+         "code": "CHKELEC",
+         "description": "Check Power Line or Status Breaker"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "code": "INVERT",
+   "description": "INVERTER MIS006",
+   "problems": [
+    {
+     "code": "BROKEN",
+     "description": "Equipment Broken",
+     "causes": [
+      {
+       "code": "UATCAUSE",
+       "description": "Cause",
+       "remedies": [
+        {
+         "code": "CHANGE",
+         "description": "Change Equipment"
+        },
+        {
+         "code": "REPLACEM",
+         "description": "Replace Material"
+        }
+       ]
+      },
+      {
+       "code": "PARTBROK",
+       "description": "Part Broken",
+       "remedies": []
+      },
+      {
+       "code": "LOSTSIG",
+       "description": "Lost Signal",
+       "remedies": []
+      },
+      {
+       "code": "BROLOSIG",
+       "description": "Part Broken & Lost Signal",
+       "remedies": []
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "code": "STATION",
+   "description": "Station Failure",
+   "problems": [
+    {
+     "code": "RELAYPRO",
+     "description": "Relay",
+     "causes": [
+      {
+       "code": "RELAYFAI",
+       "description": "Relay Failed",
+       "remedies": [
+        {
+         "code": "REPLACE",
+         "description": "Replace"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "code": "POWERMET",
+     "description": "Power Meter",
+     "causes": [
+      {
+       "code": "METERFAI",
+       "description": "Power Meter Failed",
+       "remedies": [
+        {
+         "code": "REPLACE",
+         "description": "Replace"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "code": "EVDBPROB",
+     "description": "EVDB",
+     "causes": [
+      {
+       "code": "CUBUSBAR",
+       "description": "Copper Busbar Burnt",
+       "remedies": [
+        {
+         "code": "REPLACE",
+         "description": "Replace"
+        }
+       ]
+      },
+      {
+       "code": "WATERENT",
+       "description": "There is Water Entering.",
+       "remedies": [
+        {
+         "code": "FIX",
+         "description": "Fix"
+        }
+       ]
+      },
+      {
+       "code": "MCCBTRIP",
+       "description": "MCCB Trip",
+       "remedies": [
+        {
+         "code": "RESET",
+         "description": "Reset"
+        },
+        {
+         "code": "REPLACE",
+         "description": "Replace"
+        }
+       ]
+      },
+      {
+       "code": "MCBTRIPF",
+       "description": "MCB Trip",
+       "remedies": [
+        {
+         "code": "RESET",
+         "description": "Reset"
+        },
+        {
+         "code": "REPLACE",
+         "description": "Replace"
+        }
+       ]
+      },
+      {
+       "code": "RCDTRIPF",
+       "description": "RCD Trip",
+       "remedies": [
+        {
+         "code": "REPLACE",
+         "description": "Replace"
+        },
+        {
+         "code": "RESET",
+         "description": "Reset"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "code": "NVRPROBL",
+     "description": "NVR",
+     "causes": [
+      {
+       "code": "NVRFAILE",
+       "description": "NVR Failed",
+       "remedies": [
+        {
+         "code": "REPLACE",
+         "description": "Replace"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "code": "LIGTPROB",
+     "description": "Station Lighting",
+     "causes": [
+      {
+       "code": "LIGTFAIL",
+       "description": "Lighting Failed",
+       "remedies": [
+        {
+         "code": "REPLACE",
+         "description": "Replace"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "code": "FIREEXPB",
+     "description": "Fire Extinguisher",
+     "causes": [
+      {
+       "code": "GUAGUNOV",
+       "description": "Gauge Undered/Overed",
+       "remedies": [
+        {
+         "code": "REPLACE",
+         "description": "Replace"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "code": "HVPROBLM",
+     "description": "HV Side",
+     "causes": [
+      {
+       "code": "HVFUSEDR",
+       "description": "HV Fuse Drop",
+       "remedies": [
+        {
+         "code": "REPLACE",
+         "description": "Replace"
+        }
+       ]
+      },
+      {
+       "code": "GROUNDIN",
+       "description": "Grounding",
+       "remedies": [
+        {
+         "code": "FIX",
+         "description": "Fix"
+        }
+       ]
+      },
+      {
+       "code": "MCBTRIPF",
+       "description": "MCB Trip",
+       "remedies": [
+        {
+         "code": "RESET",
+         "description": "Reset"
+        },
+        {
+         "code": "REPLACE",
+         "description": "Replace"
+        }
+       ]
+      },
+      {
+       "code": "FUSELAMP",
+       "description": "Fuse or Pilot Lamp",
+       "remedies": [
+        {
+         "code": "REPLACE",
+         "description": "Replace"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "code": "PHPROTPB",
+     "description": "Phase Protection",
+     "causes": [
+      {
+       "code": "PHASEALT",
+       "description": "Phase Alternation",
+       "remedies": [
+        {
+         "code": "FIX",
+         "description": "Fix"
+        }
+       ]
+      },
+      {
+       "code": "OVERVOLT",
+       "description": "Over Voltage",
+       "remedies": [
+        {
+         "code": "RECHECK",
+         "description": "Recheck"
+        },
+        {
+         "code": "ADJUST",
+         "description": "Adjust"
+        }
+       ]
+      },
+      {
+       "code": "UNDEVOLT",
+       "description": "Under Voltage",
+       "remedies": [
+        {
+         "code": "ADJUST",
+         "description": "Adjust"
+        },
+        {
+         "code": "RECHECK",
+         "description": "Recheck"
+        }
+       ]
+      },
+      {
+       "code": "INCVMISS",
+       "description": "Incoming Voltage is Missing",
+       "remedies": [
+        {
+         "code": "RECHECK",
+         "description": "Recheck"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "code": "FANPROBL",
+     "description": "Fan",
+     "causes": [
+      {
+       "code": "EXHTFANF",
+       "description": "Exhaust Fan Failed",
+       "remedies": [
+        {
+         "code": "REPLACE",
+         "description": "Replace"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "code": "CCTVPROB",
+     "description": "CCTV",
+     "causes": [
+      {
+       "code": "CCTVFAIL",
+       "description": "CCTV Failed",
+       "remedies": [
+        {
+         "code": "REPLACE",
+         "description": "Replace"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "code": "PARKPROB",
+     "description": "Parking Space",
+     "causes": [
+      {
+       "code": "PRKPAINT",
+       "description": "Peeling Paint",
+       "remedies": [
+        {
+         "code": "FIX",
+         "description": "Fix"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "code": "STRUPROB",
+     "description": "Structure",
+     "causes": [
+      {
+       "code": "STRUDAMA",
+       "description": "Structure Damaged",
+       "remedies": [
+        {
+         "code": "FIX",
+         "description": "Fix"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "code": "FUSEPROB",
+     "description": "Fuse",
+     "causes": [
+      {
+       "code": "FUSESURG",
+       "description": "Fuse Surge Protection",
+       "remedies": [
+        {
+         "code": "REPLACE",
+         "description": "Replace"
+        }
+       ]
+      },
+      {
+       "code": "FUSEPHAS",
+       "description": "Fuse Phase Protection",
+       "remedies": [
+        {
+         "code": "REPLACE",
+         "description": "Replace"
+        }
+       ]
+      },
+      {
+       "code": "FUSELAMP",
+       "description": "Fuse or Pilot Lamp",
+       "remedies": [
+        {
+         "code": "REPLACE",
+         "description": "Replace"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "code": "ROUTERPB",
+     "description": "Router",
+     "causes": [
+      {
+       "code": "ROUTFAIL",
+       "description": "Router Failed",
+       "remedies": [
+        {
+         "code": "REPLACE",
+         "description": "Replace"
+        },
+        {
+         "code": "REBOOT",
+         "description": "Reboot"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "code": "UPSSBPOB",
+     "description": "UPS Supply",
+     "causes": [
+      {
+       "code": "UPSFAILU",
+       "description": "UPS Failed",
+       "remedies": [
+        {
+         "code": "REPLACE",
+         "description": "Replace"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "code": "QRCDPROB",
+     "description": "QR Code",
+     "causes": [
+      {
+       "code": "QRCDFAIL",
+       "description": "QR Code Failed",
+       "remedies": [
+        {
+         "code": "REPLACE",
+         "description": "Replace"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "code": "์NEW",
+   "description": "T05250-phone",
+   "problems": [
+    {
+     "code": "BRK",
+     "description": "Broken",
+     "causes": []
+    }
+   ]
+  },
+  {
+   "code": "ACCHARGER",
+   "description": "AC Charger Failure",
+   "problems": [
+    {
+     "code": "POWERDRP",
+     "description": "Power Drop",
+     "causes": [
+      {
+       "code": "POWBOAFA",
+       "description": "Power Board Failed",
+       "remedies": [
+        {
+         "code": "REPLACE",
+         "description": "Replace"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "code": "CONBOARD",
+     "description": "Control Board",
+     "causes": [
+      {
+       "code": "CONBOAFA",
+       "description": "Control Board Failed",
+       "remedies": [
+        {
+         "code": "REPLACE",
+         "description": "Replace"
+        },
+        {
+         "code": "UPDATEFW",
+         "description": "Update Firmware"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "code": "SCRFREEZ",
+     "description": "The Screen Freezes",
+     "causes": [
+      {
+       "code": "OVERHEAT",
+       "description": "Overheat",
+       "remedies": [
+        {
+         "code": "REBOOT",
+         "description": "Reboot"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "code": "NOINTSIG",
+     "description": "No Internet Signal",
+     "causes": [
+      {
+       "code": "SIMCARDP",
+       "description": "SIM Card Problem",
+       "remedies": [
+        {
+         "code": "REPLACE",
+         "description": "Replace"
+        }
+       ]
+      },
+      {
+       "code": "CHSTARTC",
+       "description": "Charger Does Not Send StartTransaction",
+       "remedies": [
+        {
+         "code": "REPLACE",
+         "description": "Replace"
+        }
+       ]
+      },
+      {
+       "code": "CHSTOPTC",
+       "description": "Charger Does Not Send StopTransaction",
+       "remedies": [
+        {
+         "code": "REPLACE",
+         "description": "Replace"
+        }
+       ]
+      },
+      {
+       "code": "DISCONFR",
+       "description": "Disconnect Frequently",
+       "remedies": [
+        {
+         "code": "REPLACE",
+         "description": "Replace"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "code": "DATATRAN",
+     "description": "Data Transmission",
+     "causes": [
+      {
+       "code": "CONBOANC",
+       "description": "Control Board Cable is Not Connected",
+       "remedies": [
+        {
+         "code": "RECHECK",
+         "description": "Recheck"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "code": "HMISCREE",
+     "description": "HMI Touch Screen",
+     "causes": [
+      {
+       "code": "HMISCROF",
+       "description": "Touch Screen Off",
+       "remedies": [
+        {
+         "code": "REPLACE",
+         "description": "Replace"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "code": "BILLINGU",
+     "description": "Wrong Billing Unit",
+     "causes": [
+      {
+       "code": "CONBOAFA",
+       "description": "Control Board Failed",
+       "remedies": [
+        {
+         "code": "RESTORE",
+         "description": "Restore Charger"
+        },
+        {
+         "code": "REPLACE",
+         "description": "Replace"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "code": "UN2STCHG",
+     "description": "Unable to Start Charging",
+     "causes": [
+      {
+       "code": "EMERBUTP",
+       "description": "Emergency Button Pressed",
+       "remedies": [
+        {
+         "code": "RESET",
+         "description": "Reset"
+        }
+       ]
+      },
+      {
+       "code": "CPCBMISS",
+       "description": "CP Cable is Missing",
+       "remedies": [
+        {
+         "code": "REPLACE",
+         "description": "Replace"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "code": "DCCHARG",
+   "description": "DC Charger Charging Gun",
+   "problems": [
+    {
+     "code": "UNCHBROK",
+     "description": "Uncharged & Broken",
+     "causes": []
+    },
+    {
+     "code": "UNCHARGE",
+     "description": "Uncharged",
+     "causes": [
+      {
+       "code": "TEST",
+       "description": "Test 1",
+       "remedies": [
+        {
+         "code": "TEST2",
+         "description": "Test 2"
+        }
+       ]
+      },
+      {
+       "code": "BROKEN",
+       "description": "Equipment Broken",
+       "remedies": [
+        {
+         "code": "TEST2",
+         "description": "Test 2"
+        },
+        {
+         "code": "CHANGE",
+         "description": "Change Equipment"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "code": "MCBBRK",
+   "description": "599015-MKVHUAHIN",
+   "problems": []
+  },
+  {
+   "code": "NCN",
+   "description": "T05252-New",
+   "problems": [
+    {
+     "code": "HUNGRY",
+     "description": "Hungry all the time",
+     "causes": [
+      {
+       "code": "TRAIN",
+       "description": "Training after lunch",
+       "remedies": [
+        {
+         "code": "EAT",
+         "description": "Find something to eat"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "code": "SLEEPY",
+     "description": "Sleepy all the time",
+     "causes": [
+      {
+       "code": "TRAIN1",
+       "description": "Training after lunch 1",
+       "remedies": [
+        {
+         "code": "SLEEP",
+         "description": "Have some sleep"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "code": "INV123X",
+   "description": "Training INV123X",
+   "problems": [
+    {
+     "code": "BUR",
+     "description": "Burn down",
+     "causes": []
+    },
+    {
+     "code": "SHCIR",
+     "description": "Short curcuit",
+     "causes": []
+    },
+    {
+     "code": "DIS",
+     "description": "Disconnect",
+     "causes": []
+    }
+   ]
+  },
+  {
+   "code": "UPS",
+   "description": "UPS",
+   "problems": [
+    {
+     "code": "DOWN",
+     "description": "down/offline",
+     "causes": [
+      {
+       "code": "ELECTRIC",
+       "description": "No Electric",
+       "remedies": [
+        {
+         "code": "CHKELEC",
+         "description": "Check Power Line or Status Breaker"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "code": "LOR",
+   "description": "05481-BBB",
+   "problems": [
+    {
+     "code": "DIS",
+     "description": "Disconnect",
+     "causes": [
+      {
+       "code": "NETFAIL",
+       "description": "Network Down",
+       "remedies": []
+      },
+      {
+       "code": "ELECTRIC",
+       "description": "No Electric",
+       "remedies": []
+      }
+     ]
+    },
+    {
+     "code": "TEST99",
+     "description": "Broken",
+     "causes": [
+      {
+       "code": "UATCAUSE",
+       "description": "Cause",
+       "remedies": []
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "code": "DCCHARGER",
+   "description": "DC Charger Failure",
+   "problems": [
+    {
+     "code": "BILLINGU",
+     "description": "Wrong Billing Unit",
+     "causes": [
+      {
+       "code": "CONBOAFA",
+       "description": "Control Board Failed",
+       "remedies": [
+        {
+         "code": "REPLACE",
+         "description": "Replace"
+        },
+        {
+         "code": "RESTORE",
+         "description": "Restore Charger"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "code": "DATATRAN",
+     "description": "Data Transmission",
+     "causes": [
+      {
+       "code": "CONBOANC",
+       "description": "Control Board Cable is Not Connected",
+       "remedies": [
+        {
+         "code": "RECHECK",
+         "description": "Recheck"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "code": "NOCONSTD",
+     "description": "Not Conform to Standard",
+     "causes": [
+      {
+       "code": "PECUTFAI",
+       "description": "PE Cut Test Failed",
+       "remedies": [
+        {
+         "code": "NOTIFYMF",
+         "description": "Notify the Manufacturer"
+        }
+       ]
+      },
+      {
+       "code": "CPSHTFAI",
+       "description": "CP Short Test Failed",
+       "remedies": [
+        {
+         "code": "NOTIFYMF",
+         "description": "Notify the Manufacturer"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "code": "UN2STCHG",
+     "description": "Unable to Start Charging",
+     "causes": [
+      {
+       "code": "DCCTR4FC",
+       "description": "DC Contactor No.4 Fail",
+       "remedies": [
+        {
+         "code": "REPLACE",
+         "description": "Replace"
+        },
+        {
+         "code": "RECHECK",
+         "description": "Recheck"
+        },
+        {
+         "code": "REPAIR",
+         "description": "Repair"
+        }
+       ]
+      },
+      {
+       "code": "DCCTR1FC",
+       "description": "DC Contactor No.1 Fail",
+       "remedies": [
+        {
+         "code": "REPLACE",
+         "description": "Replace"
+        },
+        {
+         "code": "RECHECK",
+         "description": "Recheck"
+        },
+        {
+         "code": "REPAIR",
+         "description": "Repair"
+        }
+       ]
+      },
+      {
+       "code": "DCCTR3FC",
+       "description": "DC Contactor No.3 Fail",
+       "remedies": [
+        {
+         "code": "REPAIR",
+         "description": "Repair"
+        },
+        {
+         "code": "REPLACE",
+         "description": "Replace"
+        },
+        {
+         "code": "RECHECK",
+         "description": "Recheck"
+        }
+       ]
+      },
+      {
+       "code": "DCCTR5FC",
+       "description": "DC Contactor No.5 Fail",
+       "remedies": [
+        {
+         "code": "REPLACE",
+         "description": "Replace"
+        },
+        {
+         "code": "RECHECK",
+         "description": "Recheck"
+        },
+        {
+         "code": "REPAIR",
+         "description": "Repair"
+        }
+       ]
+      },
+      {
+       "code": "DCCTR2FC",
+       "description": "DC Contactor No.2 Fail",
+       "remedies": [
+        {
+         "code": "REPAIR",
+         "description": "Repair"
+        },
+        {
+         "code": "REPLACE",
+         "description": "Replace"
+        },
+        {
+         "code": "RECHECK",
+         "description": "Recheck"
+        }
+       ]
+      },
+      {
+       "code": "DCCTR6FC",
+       "description": "DC Contactor No.6 Fail",
+       "remedies": [
+        {
+         "code": "REPLACE",
+         "description": "Replace"
+        },
+        {
+         "code": "RECHECK",
+         "description": "Recheck"
+        },
+        {
+         "code": "REPAIR",
+         "description": "Repair"
+        }
+       ]
+      },
+      {
+       "code": "ACCTR1FC",
+       "description": "AC Contactor No.1 Fail",
+       "remedies": [
+        {
+         "code": "REPLACE",
+         "description": "Replace"
+        },
+        {
+         "code": "RECHECK",
+         "description": "Recheck"
+        },
+        {
+         "code": "REPAIR",
+         "description": "Repair"
+        }
+       ]
+      },
+      {
+       "code": "ACCTR2FC",
+       "description": "AC Contactor No.2 Fail",
+       "remedies": [
+        {
+         "code": "REPLACE",
+         "description": "Replace"
+        },
+        {
+         "code": "RECHECK",
+         "description": "Recheck"
+        },
+        {
+         "code": "REPAIR",
+         "description": "Repair"
+        }
+       ]
+      },
+      {
+       "code": "ACCTR3FC",
+       "description": "AC Contactor No.3 Fail",
+       "remedies": [
+        {
+         "code": "RECHECK",
+         "description": "Recheck"
+        },
+        {
+         "code": "REPLACE",
+         "description": "Replace"
+        },
+        {
+         "code": "REPAIR",
+         "description": "Repair"
+        }
+       ]
+      },
+      {
+       "code": "IMD1FC",
+       "description": "Insulation Monitoring Divce Fail No.1",
+       "remedies": [
+        {
+         "code": "REPLACE",
+         "description": "Replace"
+        },
+        {
+         "code": "RECHECK",
+         "description": "Recheck"
+        },
+        {
+         "code": "REPAIR",
+         "description": "Repair"
+        }
+       ]
+      },
+      {
+       "code": "IMD2FC",
+       "description": "Insulation Monitoring Divce Fail No.2",
+       "remedies": [
+        {
+         "code": "REPLACE",
+         "description": "Replace"
+        },
+        {
+         "code": "RECHECK",
+         "description": "Recheck"
+        },
+        {
+         "code": "REPAIR",
+         "description": "Repair"
+        }
+       ]
+      },
+      {
+       "code": "CTL1FC",
+       "description": "Controller Fail No.1",
+       "remedies": [
+        {
+         "code": "REPLACE",
+         "description": "Replace"
+        },
+        {
+         "code": "RECHECK",
+         "description": "Recheck"
+        },
+        {
+         "code": "REPAIR",
+         "description": "Repair"
+        }
+       ]
+      },
+      {
+       "code": "CTL2FC",
+       "description": "Controller Fail No.2",
+       "remedies": [
+        {
+         "code": "REPLACE",
+         "description": "Replace"
+        },
+        {
+         "code": "RECHECK",
+         "description": "Recheck"
+        },
+        {
+         "code": "REPAIR",
+         "description": "Repair"
+        }
+       ]
+      },
+      {
+       "code": "EMERBUTP",
+       "description": "Emergency Button Pressed",
+       "remedies": [
+        {
+         "code": "RESET",
+         "description": "Reset"
+        }
+       ]
+      },
+      {
+       "code": "CPCBMISS",
+       "description": "CP Cable is Missing",
+       "remedies": [
+        {
+         "code": "REPLACE",
+         "description": "Replace"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "code": "SCRFREEZ",
+     "description": "The Screen Freezes",
+     "causes": [
+      {
+       "code": "OVERHEAT",
+       "description": "Overheat",
+       "remedies": [
+        {
+         "code": "REPLACE",
+         "description": "Replace"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "code": "NOINTSIG",
+     "description": "No Internet Signal",
+     "causes": [
+      {
+       "code": "SIMCARDP",
+       "description": "SIM Card Problem",
+       "remedies": [
+        {
+         "code": "REPLACE",
+         "description": "Replace"
+        }
+       ]
+      },
+      {
+       "code": "CHSTARTC",
+       "description": "Charger Does Not Send StartTransaction",
+       "remedies": [
+        {
+         "code": "REPLACE",
+         "description": "Replace"
+        }
+       ]
+      },
+      {
+       "code": "CHSTOPTC",
+       "description": "Charger Does Not Send StopTransaction",
+       "remedies": [
+        {
+         "code": "REPLACE",
+         "description": "Replace"
+        }
+       ]
+      },
+      {
+       "code": "DISCONFR",
+       "description": "Disconnect Frequently",
+       "remedies": [
+        {
+         "code": "REPLACE",
+         "description": "Replace"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "code": "CONBOARD",
+     "description": "Control Board",
+     "causes": [
+      {
+       "code": "CONBOAFA",
+       "description": "Control Board Failed",
+       "remedies": [
+        {
+         "code": "REPLACE",
+         "description": "Replace"
+        },
+        {
+         "code": "UPDATEFW",
+         "description": "Update Firmware"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "code": "POWERDRP",
+     "description": "Power Drop",
+     "causes": [
+      {
+       "code": "CBPOWTRP",
+       "description": "CB Power Module Trip",
+       "remedies": [
+        {
+         "code": "REPLACE",
+         "description": "Replace"
+        },
+        {
+         "code": "RESET",
+         "description": "Reset"
+        }
+       ]
+      },
+      {
+       "code": "POWMODUL",
+       "description": "Power Module Failed",
+       "remedies": [
+        {
+         "code": "REPLACE",
+         "description": "Replace"
+        }
+       ]
+      },
+      {
+       "code": "OVERHEAT",
+       "description": "Overheat",
+       "remedies": [
+        {
+         "code": "REPLACE",
+         "description": "Replace"
+        }
+       ]
+      },
+      {
+       "code": "PMCMFAIL",
+       "description": "Power Module Communication Fail",
+       "remedies": [
+        {
+         "code": "RECHECK",
+         "description": "Recheck"
+        },
+        {
+         "code": "REPAIR",
+         "description": "Repair"
+        },
+        {
+         "code": "REPLACE",
+         "description": "Replace"
+        }
+       ]
+      },
+      {
+       "code": "POWSUPPL",
+       "description": "Power Supply AC-DC 24Vdc Failed (Fan)",
+       "remedies": [
+        {
+         "code": "REPLACE",
+         "description": "Replace"
+        }
+       ]
+      },
+      {
+       "code": "RCDPROTS",
+       "description": "RCD Leakage Protection System (Charger)",
+       "remedies": [
+        {
+         "code": "REPLACE",
+         "description": "Replace"
+        },
+        {
+         "code": "RESET",
+         "description": "Reset"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "code": "HMISCREE",
+     "description": "HMI Touch Screen",
+     "causes": [
+      {
+       "code": "HMISCROF",
+       "description": "Touch Screen Off",
+       "remedies": [
+        {
+         "code": "REPLACE",
+         "description": "Replace"
+        },
+        {
+         "code": "REBOOT",
+         "description": "Reboot"
+        },
+        {
+         "code": "REPAIR",
+         "description": "Repair"
+        },
+        {
+         "code": "RECHECK",
+         "description": "Recheck"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "matrix": [
+  [
+   "METER",
+   "FAILURE",
+   "CTVTFAIL",
+   "REPLACEM"
+  ],
+  [
+   "METER",
+   "FAILURE",
+   "BROKEN",
+   "REPLACEM"
+  ],
+  [
+   "COUNTER",
+   "NOCOUNT",
+   "BROKEN",
+   "FIX"
+  ],
+  [
+   "COUNTER",
+   "NOCOUNT",
+   "ELECTRIC",
+   "RECHECK"
+  ],
+  [
+   "COUNTER",
+   "NOCOUNT",
+   "TEST45",
+   ""
+  ],
+  [
+   "COUNTER",
+   "NOCOUNT",
+   "TPPP",
+   ""
+  ],
+  [
+   "MIC",
+   "DIS",
+   "LOSTSIG",
+   ""
+  ],
+  [
+   "MIC",
+   "TEST99",
+   "LOSTSIG",
+   "RECHECK"
+  ],
+  [
+   "MIC",
+   "TEST99",
+   "PARTBROK",
+   "FIX"
+  ],
+  [
+   "ACRASH",
+   "DIS",
+   "NETFAIL",
+   "FIX"
+  ],
+  [
+   "ACRASH",
+   "DIS",
+   "NETFAIL",
+   "CHANGE"
+  ],
+  [
+   "ACRASH",
+   "BRK",
+   "PARTBROK",
+   "FIX"
+  ],
+  [
+   "ACRASH",
+   "BRK",
+   "PARTBROK",
+   "REPLACEM"
+  ],
+  [
+   "ACRASH",
+   "ELECTRIC",
+   "SHCIR",
+   "FIX"
+  ],
+  [
+   "ACRASH",
+   "ELECTRIC",
+   "SHCIR",
+   "RECHECK"
+  ],
+  [
+   "TM-SSR",
+   "DIS",
+   "UNPLUG",
+   ""
+  ],
+  [
+   "UAT001",
+   "UATPRB",
+   "UATCAUSE",
+   "UATREMED"
+  ],
+  [
+   "LORATEST",
+   "DIS",
+   "NETFAIL",
+   "CHKNET"
+  ],
+  [
+   "LORATEST",
+   "DIS",
+   "NETFAIL",
+   "CHKELEC"
+  ],
+  [
+   "LORATEST",
+   "DIS",
+   "ELECTRIC",
+   "CHKELEC"
+  ],
+  [
+   "INVERT",
+   "BROKEN",
+   "UATCAUSE",
+   "CHANGE"
+  ],
+  [
+   "INVERT",
+   "BROKEN",
+   "UATCAUSE",
+   "REPLACEM"
+  ],
+  [
+   "INVERT",
+   "BROKEN",
+   "PARTBROK",
+   ""
+  ],
+  [
+   "INVERT",
+   "BROKEN",
+   "LOSTSIG",
+   ""
+  ],
+  [
+   "INVERT",
+   "BROKEN",
+   "BROLOSIG",
+   ""
+  ],
+  [
+   "STATION",
+   "RELAYPRO",
+   "RELAYFAI",
+   "REPLACE"
+  ],
+  [
+   "STATION",
+   "POWERMET",
+   "METERFAI",
+   "REPLACE"
+  ],
+  [
+   "STATION",
+   "EVDBPROB",
+   "CUBUSBAR",
+   "REPLACE"
+  ],
+  [
+   "STATION",
+   "EVDBPROB",
+   "WATERENT",
+   "FIX"
+  ],
+  [
+   "STATION",
+   "EVDBPROB",
+   "MCCBTRIP",
+   "RESET"
+  ],
+  [
+   "STATION",
+   "EVDBPROB",
+   "MCCBTRIP",
+   "REPLACE"
+  ],
+  [
+   "STATION",
+   "EVDBPROB",
+   "MCBTRIPF",
+   "RESET"
+  ],
+  [
+   "STATION",
+   "EVDBPROB",
+   "MCBTRIPF",
+   "REPLACE"
+  ],
+  [
+   "STATION",
+   "EVDBPROB",
+   "RCDTRIPF",
+   "REPLACE"
+  ],
+  [
+   "STATION",
+   "EVDBPROB",
+   "RCDTRIPF",
+   "RESET"
+  ],
+  [
+   "STATION",
+   "NVRPROBL",
+   "NVRFAILE",
+   "REPLACE"
+  ],
+  [
+   "STATION",
+   "LIGTPROB",
+   "LIGTFAIL",
+   "REPLACE"
+  ],
+  [
+   "STATION",
+   "FIREEXPB",
+   "GUAGUNOV",
+   "REPLACE"
+  ],
+  [
+   "STATION",
+   "HVPROBLM",
+   "HVFUSEDR",
+   "REPLACE"
+  ],
+  [
+   "STATION",
+   "HVPROBLM",
+   "GROUNDIN",
+   "FIX"
+  ],
+  [
+   "STATION",
+   "HVPROBLM",
+   "MCBTRIPF",
+   "RESET"
+  ],
+  [
+   "STATION",
+   "HVPROBLM",
+   "MCBTRIPF",
+   "REPLACE"
+  ],
+  [
+   "STATION",
+   "HVPROBLM",
+   "FUSELAMP",
+   "REPLACE"
+  ],
+  [
+   "STATION",
+   "PHPROTPB",
+   "PHASEALT",
+   "FIX"
+  ],
+  [
+   "STATION",
+   "PHPROTPB",
+   "OVERVOLT",
+   "RECHECK"
+  ],
+  [
+   "STATION",
+   "PHPROTPB",
+   "OVERVOLT",
+   "ADJUST"
+  ],
+  [
+   "STATION",
+   "PHPROTPB",
+   "UNDEVOLT",
+   "ADJUST"
+  ],
+  [
+   "STATION",
+   "PHPROTPB",
+   "UNDEVOLT",
+   "RECHECK"
+  ],
+  [
+   "STATION",
+   "PHPROTPB",
+   "INCVMISS",
+   "RECHECK"
+  ],
+  [
+   "STATION",
+   "FANPROBL",
+   "EXHTFANF",
+   "REPLACE"
+  ],
+  [
+   "STATION",
+   "CCTVPROB",
+   "CCTVFAIL",
+   "REPLACE"
+  ],
+  [
+   "STATION",
+   "PARKPROB",
+   "PRKPAINT",
+   "FIX"
+  ],
+  [
+   "STATION",
+   "STRUPROB",
+   "STRUDAMA",
+   "FIX"
+  ],
+  [
+   "STATION",
+   "FUSEPROB",
+   "FUSESURG",
+   "REPLACE"
+  ],
+  [
+   "STATION",
+   "FUSEPROB",
+   "FUSEPHAS",
+   "REPLACE"
+  ],
+  [
+   "STATION",
+   "FUSEPROB",
+   "FUSELAMP",
+   "REPLACE"
+  ],
+  [
+   "STATION",
+   "ROUTERPB",
+   "ROUTFAIL",
+   "REPLACE"
+  ],
+  [
+   "STATION",
+   "ROUTERPB",
+   "ROUTFAIL",
+   "REBOOT"
+  ],
+  [
+   "STATION",
+   "UPSSBPOB",
+   "UPSFAILU",
+   "REPLACE"
+  ],
+  [
+   "STATION",
+   "QRCDPROB",
+   "QRCDFAIL",
+   "REPLACE"
+  ],
+  [
+   "์NEW",
+   "BRK",
+   "",
+   ""
+  ],
+  [
+   "ACCHARGER",
+   "POWERDRP",
+   "POWBOAFA",
+   "REPLACE"
+  ],
+  [
+   "ACCHARGER",
+   "CONBOARD",
+   "CONBOAFA",
+   "REPLACE"
+  ],
+  [
+   "ACCHARGER",
+   "CONBOARD",
+   "CONBOAFA",
+   "UPDATEFW"
+  ],
+  [
+   "ACCHARGER",
+   "SCRFREEZ",
+   "OVERHEAT",
+   "REBOOT"
+  ],
+  [
+   "ACCHARGER",
+   "NOINTSIG",
+   "SIMCARDP",
+   "REPLACE"
+  ],
+  [
+   "ACCHARGER",
+   "NOINTSIG",
+   "CHSTARTC",
+   "REPLACE"
+  ],
+  [
+   "ACCHARGER",
+   "NOINTSIG",
+   "CHSTOPTC",
+   "REPLACE"
+  ],
+  [
+   "ACCHARGER",
+   "NOINTSIG",
+   "DISCONFR",
+   "REPLACE"
+  ],
+  [
+   "ACCHARGER",
+   "DATATRAN",
+   "CONBOANC",
+   "RECHECK"
+  ],
+  [
+   "ACCHARGER",
+   "HMISCREE",
+   "HMISCROF",
+   "REPLACE"
+  ],
+  [
+   "ACCHARGER",
+   "BILLINGU",
+   "CONBOAFA",
+   "RESTORE"
+  ],
+  [
+   "ACCHARGER",
+   "BILLINGU",
+   "CONBOAFA",
+   "REPLACE"
+  ],
+  [
+   "ACCHARGER",
+   "UN2STCHG",
+   "EMERBUTP",
+   "RESET"
+  ],
+  [
+   "ACCHARGER",
+   "UN2STCHG",
+   "CPCBMISS",
+   "REPLACE"
+  ],
+  [
+   "DCCHARG",
+   "UNCHBROK",
+   "",
+   ""
+  ],
+  [
+   "DCCHARG",
+   "UNCHARGE",
+   "TEST",
+   "TEST2"
+  ],
+  [
+   "DCCHARG",
+   "UNCHARGE",
+   "BROKEN",
+   "TEST2"
+  ],
+  [
+   "DCCHARG",
+   "UNCHARGE",
+   "BROKEN",
+   "CHANGE"
+  ],
+  [
+   "NCN",
+   "HUNGRY",
+   "TRAIN",
+   "EAT"
+  ],
+  [
+   "NCN",
+   "SLEEPY",
+   "TRAIN1",
+   "SLEEP"
+  ],
+  [
+   "INV123X",
+   "BUR",
+   "",
+   ""
+  ],
+  [
+   "INV123X",
+   "SHCIR",
+   "",
+   ""
+  ],
+  [
+   "INV123X",
+   "DIS",
+   "",
+   ""
+  ],
+  [
+   "UPS",
+   "DOWN",
+   "ELECTRIC",
+   "CHKELEC"
+  ],
+  [
+   "LOR",
+   "DIS",
+   "NETFAIL",
+   ""
+  ],
+  [
+   "LOR",
+   "DIS",
+   "ELECTRIC",
+   ""
+  ],
+  [
+   "LOR",
+   "TEST99",
+   "UATCAUSE",
+   ""
+  ],
+  [
+   "DCCHARGER",
+   "BILLINGU",
+   "CONBOAFA",
+   "REPLACE"
+  ],
+  [
+   "DCCHARGER",
+   "BILLINGU",
+   "CONBOAFA",
+   "RESTORE"
+  ],
+  [
+   "DCCHARGER",
+   "DATATRAN",
+   "CONBOANC",
+   "RECHECK"
+  ],
+  [
+   "DCCHARGER",
+   "NOCONSTD",
+   "PECUTFAI",
+   "NOTIFYMF"
+  ],
+  [
+   "DCCHARGER",
+   "NOCONSTD",
+   "CPSHTFAI",
+   "NOTIFYMF"
+  ],
+  [
+   "DCCHARGER",
+   "UN2STCHG",
+   "DCCTR4FC",
+   "REPLACE"
+  ],
+  [
+   "DCCHARGER",
+   "UN2STCHG",
+   "DCCTR4FC",
+   "RECHECK"
+  ],
+  [
+   "DCCHARGER",
+   "UN2STCHG",
+   "DCCTR4FC",
+   "REPAIR"
+  ],
+  [
+   "DCCHARGER",
+   "UN2STCHG",
+   "DCCTR1FC",
+   "REPLACE"
+  ],
+  [
+   "DCCHARGER",
+   "UN2STCHG",
+   "DCCTR1FC",
+   "RECHECK"
+  ],
+  [
+   "DCCHARGER",
+   "UN2STCHG",
+   "DCCTR1FC",
+   "REPAIR"
+  ],
+  [
+   "DCCHARGER",
+   "UN2STCHG",
+   "DCCTR3FC",
+   "REPAIR"
+  ],
+  [
+   "DCCHARGER",
+   "UN2STCHG",
+   "DCCTR3FC",
+   "REPLACE"
+  ],
+  [
+   "DCCHARGER",
+   "UN2STCHG",
+   "DCCTR3FC",
+   "RECHECK"
+  ],
+  [
+   "DCCHARGER",
+   "UN2STCHG",
+   "DCCTR5FC",
+   "REPLACE"
+  ],
+  [
+   "DCCHARGER",
+   "UN2STCHG",
+   "DCCTR5FC",
+   "RECHECK"
+  ],
+  [
+   "DCCHARGER",
+   "UN2STCHG",
+   "DCCTR5FC",
+   "REPAIR"
+  ],
+  [
+   "DCCHARGER",
+   "UN2STCHG",
+   "DCCTR2FC",
+   "REPAIR"
+  ],
+  [
+   "DCCHARGER",
+   "UN2STCHG",
+   "DCCTR2FC",
+   "REPLACE"
+  ],
+  [
+   "DCCHARGER",
+   "UN2STCHG",
+   "DCCTR2FC",
+   "RECHECK"
+  ],
+  [
+   "DCCHARGER",
+   "UN2STCHG",
+   "DCCTR6FC",
+   "REPLACE"
+  ],
+  [
+   "DCCHARGER",
+   "UN2STCHG",
+   "DCCTR6FC",
+   "RECHECK"
+  ],
+  [
+   "DCCHARGER",
+   "UN2STCHG",
+   "DCCTR6FC",
+   "REPAIR"
+  ],
+  [
+   "DCCHARGER",
+   "UN2STCHG",
+   "ACCTR1FC",
+   "REPLACE"
+  ],
+  [
+   "DCCHARGER",
+   "UN2STCHG",
+   "ACCTR1FC",
+   "RECHECK"
+  ],
+  [
+   "DCCHARGER",
+   "UN2STCHG",
+   "ACCTR1FC",
+   "REPAIR"
+  ],
+  [
+   "DCCHARGER",
+   "UN2STCHG",
+   "ACCTR2FC",
+   "REPLACE"
+  ],
+  [
+   "DCCHARGER",
+   "UN2STCHG",
+   "ACCTR2FC",
+   "RECHECK"
+  ],
+  [
+   "DCCHARGER",
+   "UN2STCHG",
+   "ACCTR2FC",
+   "REPAIR"
+  ],
+  [
+   "DCCHARGER",
+   "UN2STCHG",
+   "ACCTR3FC",
+   "RECHECK"
+  ],
+  [
+   "DCCHARGER",
+   "UN2STCHG",
+   "ACCTR3FC",
+   "REPLACE"
+  ],
+  [
+   "DCCHARGER",
+   "UN2STCHG",
+   "ACCTR3FC",
+   "REPAIR"
+  ],
+  [
+   "DCCHARGER",
+   "UN2STCHG",
+   "IMD1FC",
+   "REPLACE"
+  ],
+  [
+   "DCCHARGER",
+   "UN2STCHG",
+   "IMD1FC",
+   "RECHECK"
+  ],
+  [
+   "DCCHARGER",
+   "UN2STCHG",
+   "IMD1FC",
+   "REPAIR"
+  ],
+  [
+   "DCCHARGER",
+   "UN2STCHG",
+   "IMD2FC",
+   "REPLACE"
+  ],
+  [
+   "DCCHARGER",
+   "UN2STCHG",
+   "IMD2FC",
+   "RECHECK"
+  ],
+  [
+   "DCCHARGER",
+   "UN2STCHG",
+   "IMD2FC",
+   "REPAIR"
+  ],
+  [
+   "DCCHARGER",
+   "UN2STCHG",
+   "CTL1FC",
+   "REPLACE"
+  ],
+  [
+   "DCCHARGER",
+   "UN2STCHG",
+   "CTL1FC",
+   "RECHECK"
+  ],
+  [
+   "DCCHARGER",
+   "UN2STCHG",
+   "CTL1FC",
+   "REPAIR"
+  ],
+  [
+   "DCCHARGER",
+   "UN2STCHG",
+   "CTL2FC",
+   "REPLACE"
+  ],
+  [
+   "DCCHARGER",
+   "UN2STCHG",
+   "CTL2FC",
+   "RECHECK"
+  ],
+  [
+   "DCCHARGER",
+   "UN2STCHG",
+   "CTL2FC",
+   "REPAIR"
+  ],
+  [
+   "DCCHARGER",
+   "UN2STCHG",
+   "EMERBUTP",
+   "RESET"
+  ],
+  [
+   "DCCHARGER",
+   "UN2STCHG",
+   "CPCBMISS",
+   "REPLACE"
+  ],
+  [
+   "DCCHARGER",
+   "SCRFREEZ",
+   "OVERHEAT",
+   "REPLACE"
+  ],
+  [
+   "DCCHARGER",
+   "NOINTSIG",
+   "SIMCARDP",
+   "REPLACE"
+  ],
+  [
+   "DCCHARGER",
+   "NOINTSIG",
+   "CHSTARTC",
+   "REPLACE"
+  ],
+  [
+   "DCCHARGER",
+   "NOINTSIG",
+   "CHSTOPTC",
+   "REPLACE"
+  ],
+  [
+   "DCCHARGER",
+   "NOINTSIG",
+   "DISCONFR",
+   "REPLACE"
+  ],
+  [
+   "DCCHARGER",
+   "CONBOARD",
+   "CONBOAFA",
+   "REPLACE"
+  ],
+  [
+   "DCCHARGER",
+   "CONBOARD",
+   "CONBOAFA",
+   "UPDATEFW"
+  ],
+  [
+   "DCCHARGER",
+   "POWERDRP",
+   "CBPOWTRP",
+   "REPLACE"
+  ],
+  [
+   "DCCHARGER",
+   "POWERDRP",
+   "CBPOWTRP",
+   "RESET"
+  ],
+  [
+   "DCCHARGER",
+   "POWERDRP",
+   "POWMODUL",
+   "REPLACE"
+  ],
+  [
+   "DCCHARGER",
+   "POWERDRP",
+   "OVERHEAT",
+   "REPLACE"
+  ],
+  [
+   "DCCHARGER",
+   "POWERDRP",
+   "PMCMFAIL",
+   "RECHECK"
+  ],
+  [
+   "DCCHARGER",
+   "POWERDRP",
+   "PMCMFAIL",
+   "REPAIR"
+  ],
+  [
+   "DCCHARGER",
+   "POWERDRP",
+   "PMCMFAIL",
+   "REPLACE"
+  ],
+  [
+   "DCCHARGER",
+   "POWERDRP",
+   "POWSUPPL",
+   "REPLACE"
+  ],
+  [
+   "DCCHARGER",
+   "POWERDRP",
+   "RCDPROTS",
+   "REPLACE"
+  ],
+  [
+   "DCCHARGER",
+   "POWERDRP",
+   "RCDPROTS",
+   "RESET"
+  ],
+  [
+   "DCCHARGER",
+   "HMISCREE",
+   "HMISCROF",
+   "REPLACE"
+  ],
+  [
+   "DCCHARGER",
+   "HMISCREE",
+   "HMISCROF",
+   "REBOOT"
+  ],
+  [
+   "DCCHARGER",
+   "HMISCREE",
+   "HMISCROF",
+   "REPAIR"
+  ],
+  [
+   "DCCHARGER",
+   "HMISCREE",
+   "HMISCROF",
+   "RECHECK"
+  ]
+ ],
+ "node_count": 314
+}

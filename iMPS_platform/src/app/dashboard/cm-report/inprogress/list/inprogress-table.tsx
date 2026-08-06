@@ -21,6 +21,7 @@ import { ChevronLeftIcon, ChevronRightIcon, ChevronUpDownIcon } from "@heroicons
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from "@material-tailwind/react";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
+import { failureCodeLabel } from "@/app/dashboard/cm-report/lib/failureCode";
 
 // ==================== TRANSLATIONS ====================
 const T = {
@@ -40,7 +41,7 @@ const T = {
   colIssueId: { th: "รหัสเอกสาร", en: "Issue ID" },
   colSr: { th: "เลขที่ SR", en: "SR No." },
   colWo: { th: "เลขที่ WO", en: "WO No." },
-  colFoundDate: { th: "วันที่แจ้ง", en: "Found Date" },
+  colFoundDate: { th: "วัน/เวลาที่แจ้ง", en: "Found Date/Time" },
   colReportedBy: { th: "ผู้แจ้งปัญหา", en: "Reported By" },
   colLocation: { th: "ตำแหน่งที่พบ", en: "Faulty Equipment" },
   colProblemDetails: { th: "ปัญหาที่พบ", en: "Problem Details" },
@@ -85,6 +86,7 @@ type TData = {
   doc_name?: string;
   issue_id?: string;
   cm_date: string;
+  found_time?: string;
   position: string;
   office: string;
   reported_by?: string;
@@ -325,12 +327,13 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
           doc_name: it.doc_name || "",
           issue_id: it.issue_id || "",
           cm_date: isoDay,
+          found_time: it.found_time || "",
           position: isoDay,
           office: fileUrl,
           reported_by: it.reported_by || "",
           inspector: it.inspector || "",
           repair_result: it.repair_result || "",
-          location: it.faulty_equipment || "",
+          location: failureCodeLabel(it.faulty_equipment),
           problem_details: it.problem_details || "",
           status: getStatusText(it) || "-",
           source: "cm" as const,
@@ -350,12 +353,13 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
           doc_name: it.doc_name || "",
           issue_id: it.issue_id || "",
           cm_date: isoDay,
+          found_time: it.found_time || "",
           position: isoDay,
           office: resolveFileHref(raw, apiBase),
           reported_by: it.reported_by || "",
           inspector: it.inspector || "",
           repair_result: it.repair_result || "",
-          location: it.faulty_equipment || "",
+          location: failureCodeLabel(it.faulty_equipment),
           problem_details: it.problem_details || "",
           status: getStatusText(it) || "-",
           source: "url" as const,
@@ -533,14 +537,17 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
       accessorFn: (row) => row.cm_date,
       id: "found_date",
       header: () => t("colFoundDate", lang),
-      cell: (info: CellContext<TData, unknown>) => (
-        <span className="tw-whitespace-nowrap">
-          {formatDate(info.getValue() as string, lang)}
-        </span>
-      ),
-      size: 120,
-      minSize: 100,
-      maxSize: 150,
+      cell: (info: CellContext<TData, unknown>) => {
+        const time = info.row.original.found_time || "";
+        return (
+          <span className="tw-whitespace-nowrap">
+            {formatDate(info.getValue() as string, lang)}{time ? ` ${time}` : ""}
+          </span>
+        );
+      },
+      size: 140,
+      minSize: 110,
+      maxSize: 180,
       meta: { headerAlign: "center", cellAlign: "center" },
     },
     {
