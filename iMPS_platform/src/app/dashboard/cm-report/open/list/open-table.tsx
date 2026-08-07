@@ -23,6 +23,7 @@ import { useLanguage, type Lang } from "@/utils/useLanguage";
 import { apiFetch } from "@/utils/api";
 import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
 import { failureCodeLabel } from "@/app/dashboard/cm-report/lib/failureCode";
+import { brandScopeOf, canOpenCmAtStation } from "@/utils/brandScope";
 
 // ==================== TRANSLATIONS ====================
 const T = {
@@ -65,6 +66,10 @@ const T = {
   loading: { th: "กำลังโหลด...", en: "Loading..." },
   noData: { th: "ไม่มีข้อมูล", en: "No data" },
   selectStationFirst: { th: "กรุณาเลือกสถานีจากแถบด้านบนก่อน", en: "Please select a station from the top bar first" },
+  brandBlocked: {
+    th: "บริษัทของคุณดูแลเฉพาะตู้บางยี่ห้อ — สถานีนี้ไม่ใช่ยี่ห้อดังกล่าว จึงเปิดใบงานไม่ได้",
+    en: "Your company only maintains certain charger brands — this station is a different brand, so you cannot open a work order",
+  },
   noFile: { th: "ไม่มีไฟล์", en: "No file" },
 
   // Dialog
@@ -263,7 +268,35 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
     return () => { alive = false; };
   }, [apiBase]);
 
+  // ── ยี่ห้อตู้ของสถานีที่เลือก — ใช้ตัดสินว่าเปิดใบงานที่นี่ได้ไหม (EDS ดูแลเฉพาะ FlexxFast)
+  //    เช็คตั้งแต่ตอนกดปุ่ม + เพิ่ม จะได้ไม่ปล่อยให้เข้าฟอร์มไปแล้วเจอทางตันตอนกดบันทึก
+  const [chargers, setChargers] = useState<{ brand?: string }[]>([]);
+  const [loadingChargers, setLoadingChargers] = useState(false);
 
+  useEffect(() => {
+    if (!stationId) { setChargers([]); return; }
+    let alive = true;
+    setLoadingChargers(true);
+    (async () => {
+      try {
+        const res = await apiFetch(`${apiBase}/chargers/${encodeURIComponent(stationId)}`, { credentials: "include" });
+        if (res.ok) {
+          const data = await res.json();
+          if (alive) setChargers(data.chargers || []);
+        }
+      } catch {
+        if (alive) setChargers([]);
+      } finally {
+        if (alive) setLoadingChargers(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, [apiBase, stationId]);
+
+  const brandScope = useMemo(() => brandScopeOf(userRole, me?.company ?? ""), [userRole, me?.company]);
+  // รอโหลดรายการตู้ให้เสร็จก่อนค่อยตัดสิน ไม่งั้นปุ่มจะกระพริบเป็น disabled ทุกครั้งที่เปลี่ยนสถานี
+  const brandBlocked = !!brandScope && !loadingChargers && !canOpenCmAtStation(chargers, brandScope);
+  const canAdd = !!stationId && !brandBlocked;
 
   const statusFromTab = (searchParams.get("status") ?? searchParams.get("tab") ?? "open").toLowerCase();
   const statusLabel = statusFromTab
@@ -907,16 +940,16 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
                 <Button
                   size="sm"
                   onClick={goAdd}
-                  disabled={!stationId}
+                  disabled={!canAdd}
                   className={`
                   tw-h-7 sm:tw-h-8 lg:tw-h-9 tw-rounded-xl tw-px-3 sm:tw-px-4 lg:tw-px-5
                   tw-flex tw-items-center tw-justify-center tw-font-semibold tw-tracking-wide
-                  ${!stationId
+                  ${!canAdd
                       ? "tw-bg-gray-300 tw-text-white tw-cursor-not-allowed"
                       : "tw-bg-gray-900 hover:tw-bg-black tw-text-white"}
                   tw-shadow-lg tw-transition-all
                 `}
-                  title={stationId ? "" : t("selectStationFirst", lang)}
+                  title={!stationId ? t("selectStationFirst", lang) : brandBlocked ? t("brandBlocked", lang) : ""}
                 >
                   <span className="tw-text-[11px] sm:tw-text-xs lg:tw-text-sm">{t("add", lang)}</span>
                 </Button>

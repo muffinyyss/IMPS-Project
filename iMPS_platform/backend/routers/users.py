@@ -22,6 +22,7 @@ from config import (
     SUPER_ADMIN_ROLE, SUPER_ADMIN_USERNAME, SWITCHABLE_ROLES,
 )
 from deps import UserClaims, get_current_user, get_user_station_ids
+from brand_scope import assert_charger_in_scope, brand_regex, brand_scope_of
 
 router = APIRouter()
 
@@ -30,6 +31,11 @@ def to_object_id_or_400(s: str) -> ObjectId:
         return ObjectId(s)
     except Exception:
         raise HTTPException(status_code=400, detail=f"Invalid ObjectId: {s}")
+
+def normalize_email(s: str | None) -> str:
+    """อีเมลไม่แยกตัวพิมพ์ใหญ่/เล็ก — ต้อง normalize ทั้งตอนเขียนและตอนค้นให้ตรงกัน
+    (เดิม add_users .lower() ฝั่งเดียว แต่ login ค้นแบบ exact → user ที่พิมพ์ตัวใหญ่ login ไม่ได้)"""
+    return (s or "").strip().lower()
 
 class LoginRequest(BaseModel):
     email: str
@@ -52,7 +58,7 @@ class AiPackage(BaseModel):
 @router.post("/login/")
 def login(body: LoginRequest, response: Response):
     user = users_collection.find_one(
-        {"email": body.email},
+        {"email": normalize_email(body.email)},
         {"_id": 1, "email": 1, "username": 1, "password": 1, "role": 1, "company": 1, "station_id": 1, "ai_package": 1},
     )
     # เช็ครหัสผ่านแบบกันพัง: ถ้า hash ใน DB เสีย/ว่าง/เป็น None/ไม่ใช่ bcrypt (เช่นถูก seed มาเป็น plaintext)
@@ -153,7 +159,7 @@ RESET_TOKEN_EXPIRE_MINUTES = 30
 @router.post("/forgot-password/")
 async def forgot_password(body: ForgotPasswordRequest):
     """ส่งอีเมลลิงก์ reset password (ตอบแบบ generic เสมอ — ไม่เปิดเผยว่ามี email ในระบบหรือไม่)"""
-    user = users_collection.find_one({"email": body.email}, {"_id": 1, "email": 1, "username": 1})
+    user = users_collection.find_one({"email": normalize_email(body.email)}, {"_id": 1, "email": 1, "username": 1})
     if user:
         token = secrets.token_urlsafe(32)
         users_collection.update_one(
@@ -183,7 +189,7 @@ async def forgot_password(body: ForgotPasswordRequest):
 @router.post("/reset-password/")
 def reset_password(body: ResetPasswordRequest):
     """ตั้งรหัสผ่านใหม่จาก token ที่ส่งไปทางอีเมล (token ใช้ได้ครั้งเดียว)"""
-    user = users_collection.find_one({"email": body.email}, {"_id": 1, "passwordReset": 1})
+    user = users_collection.find_one({"email": normalize_email(body.email)}, {"_id": 1, "passwordReset": 1})
     pr = (user or {}).get("passwordReset") or {}
     stored_token = pr.get("token") or ""
     expires_at = pr.get("expiresAt")
@@ -347,36 +353,20 @@ def switch_role(body: SwitchRoleIn, response: Response, current: UserClaims = De
 
 @router.get("/my-stations/detail")
 def my_stations_detail(current: UserClaims = Depends(get_current_user)):
+    """
+    สถานีที่ user เห็นได้ (ใช้เติม dropdown เลือกสถานีบนแถบบน)
+
+    ใช้ station_match_query ตัวเดียวกับหน้า EV Station และ /uploads — เดิมที่นี่เขียนกติกา
+    role ซ้ำอีกชุด พอเพิ่มการกรองตามยี่ห้อ (EDS = FlexxFast) สองชุดจะเพี้ยนออกจากกันทันที
+    """
+    from routers.stations import station_match_query
+
+    match_query = station_match_query(current)
+    if match_query is None:
+        return {"stations": []}
+
     proj = {"_id": 0, "station_id": 1, "station_name": 1}
-
-    # Admin/CS/Engineer → เห็นทุกสถานี
-    if current.role in ALL_STATIONS_ROLES:
-        docs = list(station_collection.find({}, proj))
-        return {"stations": docs}
-
-    # Technician → ดึง stations จาก station_id ใน user profile
-    if current.role == "technician":
-        # อ่านจาก DB ไม่ใช่ JWT — สถานีที่เพิ่งถูก assign ผ่านงาน CM ต้องเห็นทันที
-        station_ids = get_user_station_ids(current)
-        if not station_ids:
-            return {"stations": []}
-
-        # ค้นหา stations ที่มี station_id ตรงกับ station_ids ของ user
-        docs = list(station_collection.find(
-            {"station_id": {"$in": station_ids}},
-            proj
-        ))
-        return {"stations": docs}
-
-    # Owner/Other roles → หา station ที่เป็นของ user นี้ (รองรับทั้ง str และ ObjectId)
-    conds = [{"user_id": current.user_id}]
-    try:
-        conds.append({"user_id": ObjectId(current.user_id)})
-    except Exception:
-        pass
-
-    docs = list(station_collection.find({"$or": conds}, proj))
-    return {"stations": docs}
+    return {"stations": list(station_collection.find(match_query, proj))}
 
 @router.get("/station/info")
 def station_info(
@@ -425,18 +415,24 @@ def charger_info(
     current: UserClaims = Depends(get_current_user),
 ):
     query = {}
+    scope = brand_scope_of(current)
     if sn:
         query = {"SN": sn}
     elif station_id:
         query["station_id"] = station_id
+        # ค้นด้วย station_id ได้ตู้ตัวไหนก็ได้ในสถานี — สถานีที่ปนยี่ห้อต้องคัดตั้งแต่ query
+        # ไม่งั้นจะสุ่มได้ตู้ยี่ห้ออื่นแล้ว 403 ทั้งที่ตู้ที่ตัวเองดูแลก็มีอยู่
+        if scope:
+            query["brand"] = brand_regex(scope)
     else:
         raise HTTPException(status_code=400, detail="station_id or sn required")
-    
+
     doc = charger_collection.find_one(query, {"_id": 0})
-    
+
     if not doc:
         raise HTTPException(status_code=404, detail="Charger not found")
-    
+    assert_charger_in_scope(current, doc)
+
     station = station_collection.find_one(
         {"station_id": doc.get("station_id")},
         {"_id": 0, "station_name": 1}
@@ -718,8 +714,10 @@ async def create_users(users: register, current: UserClaims = Depends(get_curren
     if current.role != "admin":
         raise HTTPException(status_code=403, detail="forbidden")
 
+    email = normalize_email(users.email)
+
     # ✅ เช็ค email ซ้ำ
-    if users_collection.find_one({"email": users.email}):
+    if users_collection.find_one({"email": email}):
         raise HTTPException(status_code=400, detail="อีเมลนี้ถูกใช้งานแล้ว")
 
     # hash password
@@ -730,7 +728,7 @@ async def create_users(users: register, current: UserClaims = Depends(get_curren
     users_collection.insert_one(
     {
         "username" : users.username,
-        "email":users.email,
+        "email":email,
         "password":hashed_pw,
         "tel":users.tel,
         "refreshTokens": [],
@@ -739,7 +737,7 @@ async def create_users(users: register, current: UserClaims = Depends(get_curren
         "createdAt": now,
         "updatedAt": now,
     })
-    return {"username": users.username, "email": users.email}
+    return {"username": users.username, "email": email}
 
 
 @router.get("/all-users/")
@@ -779,7 +777,7 @@ def insert_users(body: addUsers, current: UserClaims = Depends(get_current_user)
     if current.role != "admin":
         raise HTTPException(status_code=403, detail="forbidden")
 
-    email = body.email.lower()
+    email = normalize_email(body.email)
     hashed = bcrypt.hashpw(body.password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
     station_ids: List[str] = []
@@ -894,6 +892,10 @@ def update_user(id: str, body: UserUpdate, current: UserClaims = Depends(get_cur
     if not payload:
         # raise HTTPException(status_code=400, detailฟแ="no permitted fields to update")
         raise HTTPException(status_code=400, detail="no permitted fields to update")
+
+    # ── normalize email ให้ตรงกับตอนสร้าง user (ไม่งั้นแก้อีเมลเป็นตัวใหญ่แล้ว login ไม่ได้)
+    if "email" in payload:
+        payload["email"] = normalize_email(payload["email"])
 
     # ── แฮชรหัสผ่านถ้ามี
     if "password" in payload:

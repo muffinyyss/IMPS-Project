@@ -18,6 +18,10 @@ from config import (
     CBM_DB, ALL_STATIONS_ROLES,
 )
 from deps import UserClaims, get_current_user, get_user_station_ids
+from brand_scope import (
+    brand_regex, assert_charger_in_scope, brand_scope_of, filter_chargers,
+    station_brand_clause,
+)
 from routers.pm_helpers import (
     UPLOADS_ROOT,
 )
@@ -659,8 +663,8 @@ def to_object_id_safe(s: str):
     except:
         return s
 
-def station_match_query(current: UserClaims) -> Optional[Dict[str, Any]]:
-    """match query ของ stations ตาม role — คืน None ถ้า user มองไม่เห็นสถานีเลย"""
+def _station_role_query(current: UserClaims) -> Optional[Dict[str, Any]]:
+    """match query ตาม role ล้วน ๆ (ยังไม่คิดเรื่องยี่ห้อ) — คืน None ถ้ามองไม่เห็นสถานีเลย"""
     # Admin/CS/Engineer → เห็นทุกสถานี
     if current.role in ALL_STATIONS_ROLES:
         return {}
@@ -678,6 +682,25 @@ def station_match_query(current: UserClaims) -> Optional[Dict[str, Any]]:
     }
 
 
+def station_match_query(current: UserClaims) -> Optional[Dict[str, Any]]:
+    """
+    match query ของ stations ตาม role + ยี่ห้อที่บริษัทดูแล — คืน None ถ้า user มองไม่เห็นสถานีเลย
+
+    เป็นจุดร่วมของทั้งระบบ: /all-stations/, availability และ uploads_access ใช้ตัวนี้ตัวเดียว
+    ยี่ห้อจึงถูกบังคับพร้อมกันทุกทาง ไม่ต้องไล่แก้ทีละ endpoint
+    """
+    base = _station_role_query(current)
+    if base is None:
+        return None
+    brand_clause = station_brand_clause(current)
+    if brand_clause is None:
+        return base
+    if not base:
+        return brand_clause
+    # ต้องใช้ $and — ทั้งสองฝั่งมีคีย์ station_id ได้ (technician) การ merge ตรง ๆ จะทับกัน
+    return {"$and": [base, brand_clause]}
+
+
 @router.get("/all-stations/")
 def get_all_stations(current: UserClaims = Depends(get_current_user)):
     match_query = station_match_query(current)
@@ -693,7 +716,9 @@ def get_all_stations(current: UserClaims = Depends(get_current_user)):
         chargers_cursor = charger_collection.find(
             {"station_id": {"$in": station_ids}}
         ).sort("chargerNo", 1)
-        for charger_doc in chargers_cursor:
+        # สถานีที่ปนยี่ห้อ: เห็นสถานีได้ แต่เหลือเฉพาะตู้ที่บริษัทตัวเองดูแล
+        scope = brand_scope_of(current)
+        for charger_doc in filter_chargers(chargers_cursor, scope):
             chargers_by_station.setdefault(charger_doc.get("station_id"), []).append(charger_doc)
 
     result = []
@@ -1226,11 +1251,12 @@ def delete_charger_images_batch(
 # GET /station/{station_id}
 # ---------------------------------------------------------
 @router.get("/station/{station_id}")
-def get_station(station_id: str):
+def get_station(station_id: str, current: UserClaims = Depends(get_current_user)):
     station = station_collection.find_one({"station_id": station_id})
     if not station:
         raise HTTPException(status_code=404, detail="Station not found")
     chargers = list(charger_collection.find({"station_id": station_id}).sort("chargerNo", 1))
+    chargers = filter_chargers(chargers, brand_scope_of(current))
     return format_station_with_chargers(station, chargers).dict()
 
 # ---------------------------------------------------------
@@ -1246,14 +1272,20 @@ def get_charger_info(
         raise HTTPException(status_code=400, detail="sn or station_id required")
 
     query = {}
+    scope = brand_scope_of(current)
     if sn:
         query["SN"] = sn
     elif station_id:
         query["station_id"] = station_id
+        # ค้นด้วย station_id ได้ตู้ตัวไหนก็ได้ในสถานี — สถานีที่ปนยี่ห้อต้องคัดตั้งแต่ query
+        # ไม่งั้นจะสุ่มได้ตู้ยี่ห้ออื่นแล้ว 403 ทั้งที่ตู้ที่ตัวเองดูแลก็มีอยู่
+        if scope:
+            query["brand"] = brand_regex(scope)
 
     doc = charger_collection.find_one(query)
     if not doc:
         raise HTTPException(status_code=404, detail="Charger not found")
+    assert_charger_in_scope(current, doc)
 
     # ดึง station_name
     station_name = "-"
@@ -1298,6 +1330,7 @@ def get_charger_by_sn(
     doc = charger_collection.find_one({"SN": SN})
     if not doc:
         raise HTTPException(status_code=404, detail="Charger not found")
+    assert_charger_in_scope(current, doc)
 
     hw = (doc.get("pipeline_config") or {}).get("hardware") or doc.get("hardware") or {}
 
@@ -1317,8 +1350,9 @@ def get_charger_by_sn(
 # GET /chargers/{station_id}
 # ---------------------------------------------------------
 @router.get("/chargers/{station_id}")
-def get_chargers_by_station(station_id: str):
+def get_chargers_by_station(station_id: str, current: UserClaims = Depends(get_current_user)):
     chargers = list(charger_collection.find({"station_id": station_id}).sort("chargerNo", 1))
+    chargers = filter_chargers(chargers, brand_scope_of(current))
     return {"chargers": [format_charger(c).dict() for c in chargers]}
 
 
@@ -1371,10 +1405,16 @@ async def get_station_availability_bulk(current: UserClaims = Depends(get_curren
     if not station_ids:
         return {"stations": {}}
 
+    charger_query: Dict[str, Any] = {"station_id": {"$in": station_ids}}
+    # สถานีที่ปนยี่ห้อ — นับเฉพาะหัวชาร์จของตู้ที่บริษัทตัวเองดูแล
+    scope = brand_scope_of(current)
+    if scope:
+        charger_query["brand"] = brand_regex(scope)
+
     pairs = [
         (c["station_id"], c["SN"].strip())
         for c in charger_collection.find(
-            {"station_id": {"$in": station_ids}}, {"_id": 0, "station_id": 1, "SN": 1}
+            charger_query, {"_id": 0, "station_id": 1, "SN": 1}
         )
         if c.get("SN") and c["SN"].strip() and c["SN"].strip() != "-"
     ]
@@ -1403,12 +1443,19 @@ async def get_station_availability_bulk(current: UserClaims = Depends(get_curren
 
 
 @router.get("/station-availability/{station_id}")
-async def get_station_availability(station_id: str):
+async def get_station_availability(
+    station_id: str,
+    current: UserClaims = Depends(get_current_user),
+):
     station = station_collection.find_one({"station_id": station_id})
     if not station:
         raise HTTPException(status_code=404, detail="Station not found")
 
-    chargers = list(charger_collection.find({"station_id": station_id}, {"SN": 1}))
+    charger_query: Dict[str, Any] = {"station_id": station_id}
+    scope = brand_scope_of(current)
+    if scope:
+        charger_query["brand"] = brand_regex(scope)
+    chargers = list(charger_collection.find(charger_query, {"SN": 1}))
 
     total = 0
     available = 0

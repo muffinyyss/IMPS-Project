@@ -22,6 +22,7 @@ import inspect                                                     # ← รอ�
 ALLOWED_EXTS = {"jpg", "jpeg", "png", "webp", "gif", "pdf", "heic", "heif"}
 MAX_FILE_MB = 20
 from deps import UserClaims, get_current_user
+from brand_scope import brand_scope_of
 from uploads_access import assert_station_access, assert_sn_access
 
 router = APIRouter()
@@ -210,27 +211,13 @@ def _assignee_scope(current: UserClaims) -> dict:
 # ==================== BRAND SCOPE (บริษัทผู้ดูแล ↔ ยี่ห้อตู้ชาร์จ) ====================
 # EDS ดูแลเฉพาะตู้ FlexxFast → พนักงาน EDS เห็นเฉพาะใบงานของตู้ยี่ห้อนี้
 # EGAT (และบริษัทอื่น) เห็นทุกใบ | admin/owner เห็นทุกใบเสมอ ไม่ว่าสังกัดไหน
-FLEXXFAST_BRAND = "flexxfast"
-BRAND_SCOPED_ROLES: set[str] = {"engineer", "technician", "cs"}
-# company (ตัวพิมพ์เล็ก) → ยี่ห้อที่บริษัทนั้นเห็นได้
-COMPANY_BRAND_SCOPE: dict[str, str] = {"eds": FLEXXFAST_BRAND}
+#
+# กติกา company → brand อยู่ที่ brand_scope.py ที่เดียว — ที่นี่มีแค่ส่วนที่เป็นของ CM
+# โดยเฉพาะ คือกฎ "ใบที่ไม่ระบุตู้" ซึ่งเข้มกว่าการดูตู้ทั่วไป
 # filter ที่ไม่มีทางแมตช์เอกสารไหน — ใช้ตอนพิสูจน์ยี่ห้อไม่ได้ (ไม่มีข้อมูลตู้)
 _MATCH_NOTHING: dict = {"_id": {"$in": []}}
 
 
-async def _brand_scope_of(current: UserClaims) -> str | None:
-    """ยี่ห้อที่ user คนนี้ถูกจำกัดให้เห็น — None = เห็นทุกยี่ห้อ"""
-    if (current.role or "").lower() not in BRAND_SCOPED_ROLES:
-        return None  # admin / owner / role อื่น — ไม่จำกัด
-    company = (current.company or "").strip()
-    if not company and current.user_id:
-        # JWT ออกก่อนที่ admin จะกรอก company ให้ — อ่านค่าล่าสุดจาก DB แทนที่จะปล่อยผ่าน
-        try:
-            u = await users_coll_async.find_one({"_id": ObjectId(current.user_id)}, {"company": 1})
-            company = str((u or {}).get("company") or "").strip()
-        except Exception:
-            company = ""
-    return COMPANY_BRAND_SCOPE.get(company.lower())
 
 
 def _charger_keys(doc: dict) -> set[str]:
@@ -250,7 +237,7 @@ async def _brand_clause_for_station(station_id: str, current: UserClaims) -> dic
     • ใบที่ไม่ระบุตู้ (failure code ระดับสถานี เช่น DCCHARGER) → เห็นเฉพาะสถานี
       ที่ตู้ทุกตู้เป็นยี่ห้อนั้น เพราะพิสูจน์ไม่ได้ว่าใบนี้เป็นของตู้ไหน
     """
-    brand = await _brand_scope_of(current)
+    brand = brand_scope_of(current)
     if not brand:
         return None
 
