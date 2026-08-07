@@ -133,6 +133,8 @@ export function filterByPeriod(rows: CMRow[], period: Period): CMRow[] {
 // จะถูกจับด้วย keyword เพื่อรองรับข้อมูลจาก Maximo ในอนาคต
 export type WorkStatus =
   | "new"
+  /** SR รอ head CS อนุมัติ (status "Wait for approve" + stage "cs_approval") — ยังไม่เป็น WO */
+  | "wait_cs_approve"
   | "wait_manpower"
   | "wait_sparepart"
   | "wait_approve"
@@ -174,6 +176,10 @@ export function workStatusOf(r: CMRow): WorkStatus {
   const byStatus = normalizeWorkStatus(r.status);
   // ใบที่จบแล้ว/ยกเลิกแล้ว — สถานะรอของรอบก่อนไม่ใช่คิวปัจจุบันอีกต่อไป
   if (byStatus === "completed" || byStatus === "cancelled") return byStatus;
+  // "Wait for approve" มี 2 ด่าน แยกกันด้วย stage — ด่าน cs คือ SR ที่รอ head CS อนุมัติ
+  // (ยังไม่เป็น WO) ส่วนด่าน close_approval คือ WO ที่ช่างซ่อมเสร็จแล้วรอปิดงาน
+  if (byStatus === "wait_approve"
+    && (r.stage || "").trim().toLowerCase() === "cs_approval") return "wait_cs_approve";
   const byResult = normalizeWorkStatus(r.repair_result || "");
   if (byResult === "wait_manpower" || byResult === "wait_sparepart" || byResult === "wait_site_access") {
     return byResult;
@@ -188,6 +194,7 @@ export function workStatusOf(r: CMRow): WorkStatus {
 /** สีป้ายสถานะละเอียด (8 bucket) — ใช้ในตารางใบงาน ให้ตรงกับสีการ์ด KPI ด้านบน */
 const WORK_STATUS_COLORS: Record<WorkStatus, { bg: string; text: string }> = {
   new: { bg: "#fee2e2", text: "#dc2626" },
+  wait_cs_approve: { bg: "#ffedd5", text: "#c2410c" },
   wait_approve: { bg: "#e0e7ff", text: "#4338ca" },
   wait_manpower: { bg: "#ffe4e6", text: "#e11d48" },
   wait_sparepart: { bg: "#fef3c7", text: "#b45309" },
@@ -288,8 +295,9 @@ export function applyFilters(
     }
     if (filters.workStatus && exclude !== "workStatus") {
       const ws = workStatusOf(r);
-      // wo_all = SR ที่กลายเป็น WO แล้วทั้งหมด — ตัดทั้งถัง "new" และใบที่ยกเลิกออก
-      const notWo = ws === "new" || ws === "cancelled";
+      // wo_all = SR ที่กลายเป็น WO แล้วทั้งหมด — ตัดถัง "new", SR ที่รอ head CS อนุมัติ
+      // (ยังไม่ขึ้นเป็น WO) และใบที่ยกเลิกออก
+      const notWo = ws === "new" || ws === "wait_cs_approve" || ws === "cancelled";
       if (filters.workStatus === "wo_all" ? notWo : ws !== filters.workStatus) return false;
     }
     if (filters.cause && exclude !== "cause") {
