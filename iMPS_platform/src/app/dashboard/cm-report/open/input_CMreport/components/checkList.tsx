@@ -588,6 +588,14 @@ export default function CMOpenForm() {
         const left = WAIT_STATES.filter(w => !usedWaitStates.has(w));
         return left.length ? left : [...WAIT_STATES];
     }, [usedWaitStates]);
+    // ค่าที่ถืออยู่ต้องมีใน dropdown เสมอ — ใบที่เคยใช้สถานะนี้ในรอบก่อนจะถูกกรองออกจากลิสต์
+    // แล้ว select จะโชว์ตัวเลือกแรกทั้งที่ค่าจริงเป็นอีกอัน (บันทึกไปคนละค่ากับที่เห็น)
+    const waitStateOptions = useMemo(
+        () => (waitState && !availableWaitStates.includes(waitState as any)
+            ? [waitState, ...availableWaitStates]
+            : availableWaitStates),
+        [availableWaitStates, waitState],
+    );
 
     // assignees = 1 แถว 1 ช่าง — แถวที่เพิ่งกด + จะยังเป็น "" จนกว่าจะเลือก
     const pickedAssignees = useMemo(() => assignees.filter(Boolean), [assignees]);
@@ -601,9 +609,11 @@ export default function CMOpenForm() {
     // "wait for scheduled" = ต้องกำหนดวันเริ่ม/เสร็จ + ช่าง | material/site condition = รอของ/รอหน้างาน ยังกำหนดไม่ได้ → กรอกแค่สถานะรอ กดบันทึกได้เลย
     const needsSchedule = waitState === "WO - wait for scheduled";
     // ต้องมีอย่างน้อย 1 แถว และทุกแถวต้องเลือกช่างแล้ว (กันแถวว่างที่กด + ทิ้งไว้) — เฉพาะเมื่อ needsSchedule
+    // สถานะรอที่ไม่ใช่ scheduled ต้องบอกเหตุผล — ฟอร์มผลการซ่อมบังคับหมายเหตุของสองสถานะนี้อยู่แล้ว
+    // ถ้าด่านวางแผนปล่อยว่างได้ ใบจะไปค้างอยู่ In Progress โดยไม่มีใครรู้ว่ารออะไร
     const canSubmitPlan = needsSchedule
         ? (!!schedStart && !!schedFinish && assignees.length > 0 && assignees.every(Boolean) && !schedRangeInvalid)
-        : true;
+        : !!waitRemark.trim();
     const draftKey = useMemo(() => getDraftKey(stationId), [stationId]);
     const STATUS_OPTIONS: Status[] = ["Open", "In Progress"];
 
@@ -1559,13 +1569,13 @@ ${in01.error ?? ""}`);
                                     <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-2">{t("waitState", lang)} <span className="tw-text-red-500">*</span></label>
                                     <select value={waitState} onChange={e => setWaitState(e.target.value)}
                                         className="tw-w-full tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-px-3 tw-py-2.5 tw-text-sm tw-text-blue-gray-800 focus:tw-outline-none focus:tw-border-blue-500">
-                                        {availableWaitStates.map(w => <option key={w} value={w}>{w}</option>)}
+                                        {waitStateOptions.map(w => <option key={w} value={w}>{w}</option>)}
                                     </select>
                                 </div>
                                 {/* หมายเหตุ — เฉพาะ material/site condition (อยู่ข้างๆ dropdown) */}
                                 {!needsSchedule && (
                                     <div>
-                                        <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-2">{t("waitRemark", lang)}</label>
+                                        <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-2">{t("waitRemark", lang)} <span className="tw-text-red-500">*</span></label>
                                         <input type="text" value={waitRemark} onChange={e => setWaitRemark(e.target.value)} placeholder={t("waitRemarkPlaceholder", lang)}
                                             className="tw-w-full tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-px-3 tw-py-2.5 tw-text-sm tw-text-blue-gray-800 focus:tw-outline-none focus:tw-border-blue-500" />
                                     </div>

@@ -8,7 +8,7 @@ import { apiFetch } from "@/utils/api";
 import useLanguage from "@/utils/useLanguage";
 import {
   CMRow, ActiveFilters, DateSel, STATUS_LABELS, WorkStatusFilter, EMPTY_FILTERS,
-  normalizeStatus, workStatusOf, statusBadge, filterByDate, listYears,
+  normalizeStatus, workStatusOf, workStatusBadge, filterByDate, listYears,
   excludeCancelled, isCancelled,
   weeksInMonth, applyFilters, applySearch, groupCount, groupCountMulti, groupByMonth,
   causeLabelsOf, remedyCodesOf, remedyDescriptionsOf,
@@ -233,6 +233,25 @@ export default function CMDashboardPage() {
 
   // ── Language ──────────────────────────────────────────────────────────────
   const { lang } = useLanguage();
+
+  // role CS เห็นหน้านี้ได้ แต่ให้เห็นเฉพาะตารางใบงาน — กราฟ/KPI วิเคราะห์ซ่อนไว้
+  const [userRole, setUserRole] = useState("");
+  const isCsOnly = userRole.trim().toLowerCase() === "cs";
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const res = await apiFetch(`/me`);
+        if (!res.ok) return;
+        const user = await res.json();
+        if (alive) setUserRole(user?.role ?? "");
+      } catch (err) {
+        console.error("fetch /me error:", err);
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -867,7 +886,8 @@ export default function CMDashboardPage() {
         </div>
       )}
 
-      {/* ── Section 1: Success Rate ── */}
+      {/* ── Section 1: Success Rate ── (role cs เห็นเฉพาะตารางใบงาน จึงซ่อนส่วนวิเคราะห์) */}
+      {!isCsOnly && (
       <section className="tw-mb-6">
         <div className="tw-mb-3 tw-flex tw-items-center tw-justify-between">
           <h2 className="tw-text-base tw-font-semibold tw-text-gray-700">
@@ -946,8 +966,10 @@ export default function CMDashboardPage() {
           </CardBody>
         </Card>
       </section>
+      )}
 
       {/* ── Section 2: Failure Mode ── */}
+      {!isCsOnly && (
       <section className="tw-mb-6">
         <div className="tw-mb-3 tw-flex tw-items-center tw-justify-between">
           <h2 className="tw-text-base tw-font-semibold tw-text-gray-700">{t.s2Title}</h2>
@@ -1001,8 +1023,10 @@ export default function CMDashboardPage() {
           </Card>
         </div>
       </section>
+      )}
 
       {/* ── Section 2b: Remedy Analysis — pie par REMEDY CODE + détail REMEDY DESCRIPTION ── */}
+      {!isCsOnly && (
       <section className="tw-mb-6">
         <div className="tw-mb-3 tw-flex tw-items-center tw-justify-between">
           <h2 className="tw-text-base tw-font-semibold tw-text-gray-700">{t.s4Title}</h2>
@@ -1059,8 +1083,10 @@ export default function CMDashboardPage() {
           </Card>
         </div>
       </section>
+      )}
 
       {/* ── Section 3: Overall Status by Month (แท่งซ้อนรายเดือน) ── */}
+      {!isCsOnly && (
       <section className="tw-mb-6">
         <div className="tw-mb-3 tw-flex tw-items-center tw-justify-between">
           <h2 className="tw-text-base tw-font-semibold tw-text-gray-700">{t.s3Title}</h2>
@@ -1081,6 +1107,7 @@ export default function CMDashboardPage() {
           </CardBody>
         </Card>
       </section>
+      )}
 
       {/* ── Section 4: Table ── */}
       <section>
@@ -1180,7 +1207,7 @@ export default function CMDashboardPage() {
                     </td>
                   </tr>
                 ) : tableRows.map((r, i) => {
-                  const badge = statusBadge(r.status);
+                  const badge = workStatusBadge(r);
                   return (
                     <tr
                       key={r.id}
@@ -1225,11 +1252,11 @@ export default function CMDashboardPage() {
                       </td>
                       <td className="tw-px-4 tw-py-3">
                         <button
-                          onClick={(e) => { e.stopPropagation(); toggleFilter("status", STATUS_LABELS[normalizeStatus(r.status)]); }}
-                          className="tw-rounded-full tw-px-2.5 tw-py-0.5 tw-text-xs tw-font-medium tw-transition-all hover:tw-opacity-80"
-                          style={{ background: badge.bg, color: badge.text, outline: filters.status ? `2px solid ${badge.text}` : "none" }}
+                          onClick={(e) => { e.stopPropagation(); toggleFilter("workStatus", badge.ws); }}
+                          className="tw-whitespace-nowrap tw-rounded-full tw-px-2.5 tw-py-0.5 tw-text-xs tw-font-medium tw-transition-all hover:tw-opacity-80"
+                          style={{ background: badge.bg, color: badge.text, outline: filters.workStatus === badge.ws ? `2px solid ${badge.text}` : "none" }}
                         >
-                          {badge.label}
+                          {workStatusLabel[badge.ws]}
                         </button>
                       </td>
                     </tr>

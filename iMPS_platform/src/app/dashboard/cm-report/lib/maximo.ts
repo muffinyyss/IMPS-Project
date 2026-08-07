@@ -262,3 +262,17 @@ export function maximoCodeLabel(code?: string | null): string {
   if (!labelIndex && treeCache) labelIndex = buildLabelIndex(treeCache);
   return labelIndex?.get(key) ?? key;
 }
+
+/**
+ * ค่านี้เป็นรหัสที่มีอยู่จริงในตาราง Maximo หรือไม่
+ *
+ * ใช้แยก "รหัสที่เลือกจาก dropdown" ออกจาก "ข้อความที่ผู้ใช้พิมพ์เอง" (CreatableSelect)
+ * ฟอร์มจะได้ล้างเฉพาะรหัสที่ค้างมาจากปัญหา/สาเหตุอื่น ไม่ไปลบค่าที่ผู้ใช้พิมพ์เองทิ้ง
+ * ตารางยังโหลดไม่เสร็จ → คืน false (ถือว่าไม่รู้จัก จึงเก็บค่าไว้ก่อน ปลอดภัยกว่าลบ)
+ */
+export function isMaximoCode(code?: string | null): boolean {
+  const key = (code || "").trim();
+  if (!key) return false;
+  if (!labelIndex && treeCache) labelIndex = buildLabelIndex(treeCache);
+  return !!labelIndex?.has(key);
+}

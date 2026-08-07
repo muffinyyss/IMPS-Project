@@ -1380,6 +1380,16 @@ export default function CMForm() {
                                                 <span className="tw-text-sm tw-text-blue-gray-800">{t(REPAIR_LABEL_KEY[opt], lang)}</span>
                                             </label>
                                         ))}
+                                        {/* ผลที่ไม่อยู่ในสี่ตัวเลือกนี้ (เช่น "ไม่พบปัญหา") ต้องแสดงด้วย
+                                            ไม่งั้นใบที่ปิดแล้วจะไม่มีอันไหนถูกติ๊กเลย = ดูไม่ออกว่าจบยังไง */}
+                                        {!!String(job.repair_result || "").trim()
+                                            && !(REPAIR_OPTIONS as readonly string[]).includes(String(job.repair_result)) && (
+                                                <label className="tw-inline-flex tw-items-center tw-gap-2 tw-select-none">
+                                                    <input type="radio" name="repair_result" disabled checked readOnly
+                                                        className="tw-h-4 tw-w-4 tw-border-blue-gray-300 focus:tw-ring-0 focus:tw-outline-none" />
+                                                    <span className="tw-text-sm tw-text-blue-gray-800">{job.repair_result}</span>
+                                                </label>
+                                            )}
                                     </div>
                                 </div>
 
