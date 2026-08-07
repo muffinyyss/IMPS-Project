@@ -277,6 +277,26 @@ async def _brand_clause_for_station(station_id: str, current: UserClaims) -> dic
     ]}
 
 
+async def _assert_can_open_cm(station_id: str, faulty_equipment: str, current: UserClaims) -> None:
+    """
+    เปิดใบงานได้เฉพาะตู้ยี่ห้อที่บริษัทตัวเองดูแล
+
+    ใช้เกณฑ์เดียวกับการมองเห็น — ไม่งั้นจะเปิดใบที่ตัวเองมองไม่เห็นทันทีหลังกดบันทึก
+    """
+    clause = await _brand_clause_for_station(station_id, current)
+    if clause is None:
+        return  # ไม่ถูกจำกัด หรือทั้งสถานีเป็นยี่ห้อที่ดูแลอยู่
+    allowed_keys = set()
+    if clause is not _MATCH_NOTHING:
+        allowed_keys = set((clause.get("$or") or [{}])[0].get("faulty_equipment", {}).get("$in") or [])
+    if (faulty_equipment or "").strip() in allowed_keys:
+        return
+    raise HTTPException(
+        status_code=403,
+        detail="เปิดใบงานได้เฉพาะตู้ยี่ห้อที่บริษัทของคุณดูแล (สถานีนี้ไม่ใช่)",
+    )
+
+
 def _merge_clause(mongo_filter: dict, clause: dict | None) -> dict:
     """รวมเงื่อนไขเพิ่มแบบไม่ชน $or ที่ filter หลักใช้อยู่ (status ใช้ $or)"""
     if clause:
@@ -907,6 +927,7 @@ async def _ensure_cm_indexes(coll):
 @router.post("/cmreport/submit")
 async def cmreport_submit(body: CMSubmitIn, current: UserClaims = Depends(get_current_user)):
     station_id = body.station_id.strip()
+    await _assert_can_open_cm(station_id, body.faulty_equipment, current)
 
     coll = get_cmreport_collection_for(station_id)
     await _ensure_cm_indexes(coll)

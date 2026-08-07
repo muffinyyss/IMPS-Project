@@ -14,6 +14,7 @@ import { useMaximoFailureTree, failureClassOptions } from "@/app/dashboard/cm-re
 import { failureCodeLabel } from "@/app/dashboard/cm-report/lib/failureCode";
 import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
 import { cameFromDashboard, CM_DASHBOARD_ROUTE } from "@/app/dashboard/cm-report/lib/origin";
+import { brandScopeOf, canOpenCmAtStation } from "@/utils/brandScope";
 
 // ==================== TRANSLATIONS ====================
 const T = {
@@ -185,7 +186,7 @@ const normalizeWaitState = (v: string): (typeof WAIT_STATES)[number] => {
 
 type ServerPhoto = { filename: string; size: number; url: string; remark?: string; uploadedAt?: string; location?: string; };
 type PhotoItem = { id: string; file: File; preview: string; ref?: PhotoRef; isServer?: boolean; serverUrl?: string; serverGroup?: string; createdAt?: string; location?: string; };
-type ChargerInfo = { chargerNo?: number; charger_id?: string; charger_name?: string; SN?: string; sn?: string; chargerType?: string; };
+type ChargerInfo = { chargerNo?: number; charger_id?: string; charger_name?: string; SN?: string; sn?: string; chargerType?: string; brand?: string; };
 type StationPublic = { station_id: string; station_name: string; };
 type ValidationItem = { key: string; label: string; isValid: boolean; message: string; isRequired: boolean; scrollId?: string; };
 
@@ -614,6 +615,12 @@ export default function CMOpenForm() {
     const canSubmitPlan = needsSchedule
         ? (!!schedStart && !!schedFinish && assignees.length > 0 && assignees.every(Boolean) && !schedRangeInvalid)
         : !!waitRemark.trim();
+    // บริษัทที่ดูแลเฉพาะบางยี่ห้อ (เช่น EDS = FlexxFast) เปิดใบงานได้เฉพาะสถานีของยี่ห้อนั้น
+    // backend เป็นคนบังคับจริง — ตรงนี้บอกล่วงหน้าไม่ให้กรอกจนจบแล้วเพิ่งโดนปฏิเสธ
+    const brandScope = useMemo(() => brandScopeOf(userRole, currentCompany), [userRole, currentCompany]);
+    // รอโหลดรายการตู้ให้เสร็จก่อนค่อยตัดสิน ไม่งั้นจะขึ้นแบนเนอร์แว้บนึงทุกครั้งที่เปิดหน้า
+    const brandBlocked = !!brandScope && !loadingChargers && !canOpenCmAtStation(chargers, brandScope);
+
     const draftKey = useMemo(() => getDraftKey(stationId), [stationId]);
     const STATUS_OPTIONS: Status[] = ["Open", "In Progress"];
 
@@ -1382,6 +1389,23 @@ ${in01.error ?? ""}`);
                         </div>
                     )}
 
+                    {/* ═══ สถานีนี้ไม่ใช่ยี่ห้อที่บริษัทตัวเองดูแล → เปิดใบงานไม่ได้ ═══ */}
+                    {!isEdit && brandBlocked && (
+                        <div className="tw-mb-4 tw-flex tw-items-start tw-gap-3 tw-px-4 tw-py-3 tw-rounded-lg tw-bg-amber-50 tw-border tw-border-amber-200">
+                            <ExclamationTriangleIcon className="tw-w-5 tw-h-5 tw-text-amber-500 tw-mt-0.5 tw-flex-shrink-0" />
+                            <div>
+                                <p className="tw-text-sm tw-font-semibold tw-text-amber-800">
+                                    {lang === "th" ? "เปิดใบงานที่สถานีนี้ไม่ได้" : "Cannot open a work order at this station"}
+                                </p>
+                                <p className="tw-text-sm tw-text-amber-700 tw-mt-0.5">
+                                    {lang === "th"
+                                        ? `${currentCompany || "บริษัทของคุณ"} ดูแลเฉพาะตู้ยี่ห้อ ${brandScope} — สถานีนี้ไม่ใช่ยี่ห้อดังกล่าว`
+                                        : `${currentCompany || "Your company"} only maintains ${brandScope} chargers — this station is a different brand`}
+                                </p>
+                            </div>
+                        </div>
+                    )}
+
                     {/* ═══ แจ้งเตือนใบงานถูกตีกลับจากผู้วางแผน (engineer) — โชว์ให้ CS แก้ ═══ */}
                     {isEdit && isCsStage && rejectedInfo.remark && (
                         <div className="tw-mb-4 tw-flex tw-items-start tw-gap-3 tw-px-4 tw-py-3 tw-rounded-lg tw-bg-red-50 tw-border tw-border-red-200">
@@ -1667,14 +1691,14 @@ ${in01.error ?? ""}`);
                             {/* เปิดใบงานใหม่ — server ตั้งสถานะเป็น Wait for approve (cs_approval) */}
                             {/* role ที่วางแผนได้ใช้ปุ่มหลักปุ่มเดียวด้านล่างแทน (บันทึก/Assign) จะได้ไม่มีปุ่มบันทึกซ้ำสองปุ่ม */}
                             {!isEdit && !canPlan && (
-                                <Button onClick={() => onFinalSave("Wait for approve")} disabled={saving || showSuccessBanner || !canSave} className="tw-bg-gray-800 hover:!tw-bg-blue-600 tw-text-white hover:tw-shadow-lg hover:!tw-shadow-blue-500/30 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed disabled:tw-shadow-none">
+                                <Button onClick={() => onFinalSave("Wait for approve")} disabled={saving || showSuccessBanner || !canSave || brandBlocked} className="tw-bg-gray-800 hover:!tw-bg-blue-600 tw-text-white hover:tw-shadow-lg hover:!tw-shadow-blue-500/30 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed disabled:tw-shadow-none">
                                     {saving ? t("saving", lang) : t("save", lang)}
                                 </Button>
                             )}
                             {/* ปุ่มหลักของขั้นวางแผน → In Progress — ต้องกรอกข้อมูลใบงาน + แผนให้ครบก่อนถึงกดได้
                                 needsSchedule = "Assign" (มอบช่าง+กำหนดวัน) / material,site condition = "บันทึก" (รอของ/รอหน้างาน) */}
                             {canPlan && (
-                                <Button onClick={() => openCommentModal("assign")} disabled={saving || showSuccessBanner || !canSubmitPlan || (!isEdit && !canSave)}
+                                <Button onClick={() => openCommentModal("assign")} disabled={saving || showSuccessBanner || !canSubmitPlan || (!isEdit && (!canSave || brandBlocked))}
                                     className="tw-bg-amber-500 hover:tw-bg-amber-600 tw-text-white hover:tw-shadow-lg hover:tw-shadow-amber-500/30 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed disabled:tw-shadow-none">
                                     {saving ? t("saving", lang) : (needsSchedule ? t("assign", lang) : t("save", lang))}
                                 </Button>

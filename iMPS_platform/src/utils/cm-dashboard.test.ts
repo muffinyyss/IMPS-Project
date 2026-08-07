@@ -158,6 +158,18 @@ describe("workStatusOf", () => {
     expect(workStatusOf(makeRow({ status: "Wait for schedule" }))).not.toBe("new");
   });
 
+  it('"Wait for approve" แยก 2 ด่านด้วย stage — SR (cs) กับ WO (ปิดงาน)', () => {
+    expect(workStatusOf(makeRow({ status: "Wait for approve", stage: "cs_approval" }))).toBe("wait_cs_approve");
+    expect(workStatusOf(makeRow({ status: "Wait for approve", stage: "close_approval" }))).toBe("wait_approve");
+    // ใบเก่าที่ไม่มี stage = ด่านปิดงาน (ตรงกับที่ backend ตีความตอนอนุมัติ)
+    expect(workStatusOf(makeRow({ status: "Wait for approve" }))).toBe("wait_approve");
+  });
+
+  it('SR ที่รอ head CS อนุมัติ ยังไม่นับเป็น WO', () => {
+    const rows = [makeRow({ status: "Wait for approve", stage: "cs_approval" })];
+    expect(applyFilters(rows, { ...EMPTY_FILTERS, workStatus: "wo_all" })).toHaveLength(0);
+  });
+
   it('"Open" ยังเป็น SR ใหม่', () => {
     expect(workStatusOf(makeRow({ status: "Open" }))).toBe("new");
   });

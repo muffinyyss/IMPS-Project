@@ -387,12 +387,13 @@ export default function CMDashboardPage() {
   const kpiStats = useMemo(() => {
     const counts = {
       total: kpiRows.length,
-      newSr: 0, waitManpower: 0, waitSparepart: 0, waitApprove: 0,
+      newSr: 0, waitCsApprove: 0, waitManpower: 0, waitSparepart: 0, waitApprove: 0,
       waitSiteAccess: 0, inProgress: 0, completed: 0,
     };
     for (const r of kpiRows) {
       const s = workStatusOf(r);
       if (s === "new") counts.newSr++;
+      else if (s === "wait_cs_approve") counts.waitCsApprove++;
       else if (s === "wait_manpower") counts.waitManpower++;
       else if (s === "wait_sparepart") counts.waitSparepart++;
       else if (s === "wait_approve") counts.waitApprove++;
@@ -404,7 +405,7 @@ export default function CMDashboardPage() {
     const denom = counts.total - counts.waitSparepart - counts.waitSiteAccess;
     const completionRate = denom > 0 ? Math.round((counts.completed / denom) * 100) : 0;
     // « All work order » = toutes les SR devenues des WO (tout sauf le bucket "new")
-    const allWo = counts.total - counts.newSr;
+    const allWo = counts.total - counts.newSr - counts.waitCsApprove;
     return { ...counts, allWo, completionRate };
   }, [kpiRows]);
 
@@ -445,6 +446,7 @@ export default function CMDashboardPage() {
       kpiWaitManpower: "WO รอกำหนดการ",
       kpiWaitSparepart: "WO รออะไหล่",
       kpiWaitApprove: "WO รออนุมัติ",
+      kpiCsWaitApprove: "SR รออนุมัติ",
       kpiCompleted: "WO เสร็จสิ้น",
       kpiWaitSiteAccess: "WO รอเข้าพื้นที่",
       kpiCancelled: "WO ยกเลิก",
@@ -511,6 +513,7 @@ export default function CMDashboardPage() {
       kpiWaitManpower: "WO wait for scheduled",
       kpiWaitSparepart: "WO wait for material",
       kpiWaitApprove: "WO wait for approve",
+      kpiCsWaitApprove: "SR wait for approve",
       kpiCompleted: "WO completed",
       kpiWaitSiteAccess: "WO wait for site condition",
       kpiCancelled: "WO cancelled",
@@ -605,6 +608,7 @@ export default function CMDashboardPage() {
     new: t.kpiNewSR,
     wait_manpower: t.kpiWaitManpower,
     wait_sparepart: t.kpiWaitSparepart,
+    wait_cs_approve: t.kpiCsWaitApprove,
     wait_approve: t.kpiWaitApprove,
     wait_site_access: t.kpiWaitSiteAccess,
     in_progress: t.statusLabel.in_progress,
