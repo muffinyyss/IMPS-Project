@@ -16,6 +16,7 @@ from bson import ObjectId
 
 from fastapi import HTTPException
 
+from brand_scope import assert_sn_in_scope, brand_scope_of, charger_in_scope
 from config import station_collection, charger_collection
 from deps import UserClaims
 from routers.stations import station_match_query
@@ -78,6 +79,8 @@ def assert_sn_access(current: UserClaims, sn: str) -> None:
     station_id = _station_id_for_sn(sn) if sn else None
     if not station_id or not user_can_access_station(current, station_id):
         raise HTTPException(status_code=403, detail="Forbidden station")
+    # สถานีผ่านแล้วไม่พอ — สถานีที่ปนยี่ห้อเข้าถึงได้ แต่ตู้ยี่ห้ออื่นในนั้นเข้าไม่ได้
+    assert_sn_in_scope(current, sn)
 
 
 def resolve_upload_path(rel_path: str) -> pathlib.Path:
@@ -105,12 +108,19 @@ def assert_upload_access(current: UserClaims, rel_path: str) -> None:
     if kind in DENIED_KINDS:
         raise HTTPException(status_code=403, detail="Forbidden")
 
+    # ไฟล์ที่ผูกกับตู้ตัวใดตัวหนึ่ง ต้องผ่านทั้งสิทธิ์สถานีและยี่ห้อที่บริษัทดูแล
+    charger_doc = None
     if kind in STATION_KINDS:
         station_id = owner
     elif kind in SN_KINDS:
         station_id = _station_id_for_sn(owner)
+        charger_doc = charger_collection.find_one({"SN": owner}, {"brand": 1})
     elif kind in CHARGER_ID_KINDS:
         station_id = _station_id_for_charger_id(owner)
+        try:
+            charger_doc = charger_collection.find_one({"_id": ObjectId(owner)}, {"brand": 1})
+        except Exception:
+            charger_doc = None
     else:
         # path รูปแบบใหม่ที่ยังไม่ได้ map — ยังต้องล็อกอิน แต่ผูกกับสถานีไม่ได้
         # log ไว้เพื่อให้เพิ่มเข้า map ทีหลัง อย่าปล่อยเงียบ
@@ -118,4 +128,7 @@ def assert_upload_access(current: UserClaims, rel_path: str) -> None:
         return
 
     if not station_id or not user_can_access_station(current, station_id):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    if charger_doc is not None and not charger_in_scope(charger_doc, brand_scope_of(current)):
         raise HTTPException(status_code=403, detail="Forbidden")
