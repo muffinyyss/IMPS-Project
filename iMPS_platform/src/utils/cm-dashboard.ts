@@ -185,6 +185,28 @@ export function workStatusOf(r: CMRow): WorkStatus {
   return byStatus;
 }
 
+/** สีป้ายสถานะละเอียด (8 bucket) — ใช้ในตารางใบงาน ให้ตรงกับสีการ์ด KPI ด้านบน */
+const WORK_STATUS_COLORS: Record<WorkStatus, { bg: string; text: string }> = {
+  new: { bg: "#fee2e2", text: "#dc2626" },
+  wait_approve: { bg: "#e0e7ff", text: "#4338ca" },
+  wait_manpower: { bg: "#ffe4e6", text: "#e11d48" },
+  wait_sparepart: { bg: "#fef3c7", text: "#b45309" },
+  wait_site_access: { bg: "#f3e8ff", text: "#7e22ce" },
+  in_progress: { bg: "#fff7ed", text: "#ea580c" },
+  completed: { bg: "#dcfce7", text: "#15803d" },
+  cancelled: { bg: "#f1f5f9", text: "#475569" },
+};
+
+/**
+ * ป้ายสถานะของ 1 ใบงานแบบละเอียด — แยก wait for schedule / material / site condition ออกจากกัน
+ * (statusBadge() เดิมยุบทั้งสามอันเป็น "Open" เพราะดูแค่ field status)
+ * label ปล่อยให้หน้าเพจใส่เอง เพื่อใช้ข้อความ i18n ชุดเดียวกับการ์ด KPI
+ */
+export function workStatusBadge(r: CMRow): { ws: WorkStatus; bg: string; text: string } {
+  const ws = workStatusOf(r);
+  return { ws, ...WORK_STATUS_COLORS[ws] };
+}
+
 // ─── Date helpers (year / month / week selectors) ────────────────────────────
 
 export type DateSel = number | "all";

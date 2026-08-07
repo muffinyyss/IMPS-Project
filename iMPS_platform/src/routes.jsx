@@ -59,7 +59,8 @@ const baseRoutes = [
         icon: <i className="fa fa-chart-pie" />,
         name: "CM Dashboard",
         path: "/dashboard/cm-dashboard",
-        allow: ["admin", "owner", "engineer"],
+        // cs เข้าได้ แต่หน้าเพจซ่อนส่วนวิเคราะห์ให้เหลือแค่ตารางใบงาน
+        allow: ["admin", "owner", "engineer", "cs"],
       },
       // {
       //   layout: "dashboard",

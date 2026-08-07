@@ -12,7 +12,8 @@ import re, json, uuid, pathlib, secrets, os
 from config import (
     normalize_pm_date, _ensure_utc_iso,
     CMReportDB, CMUrlDB, DCTestReportDB, DCUrlDB,
-    station_collection, users_collection, _validate_station_id_th, th_tz,
+    station_collection, users_collection, charger_coll_async, users_coll_async,
+    _validate_station_id_th, th_tz,
 )
 from services.maximo import create_sr as maximo_create_sr          # ← A) เพิ่ม
 from services import cm_maximo                                     # interface IN01–IN09
@@ -206,6 +207,83 @@ def _assignee_scope(current: UserClaims) -> dict:
     return {"assignees": current.username or "__no_assignee__"}
 
 
+# ==================== BRAND SCOPE (บริษัทผู้ดูแล ↔ ยี่ห้อตู้ชาร์จ) ====================
+# EDS ดูแลเฉพาะตู้ FlexxFast → พนักงาน EDS เห็นเฉพาะใบงานของตู้ยี่ห้อนี้
+# EGAT (และบริษัทอื่น) เห็นทุกใบ | admin/owner เห็นทุกใบเสมอ ไม่ว่าสังกัดไหน
+FLEXXFAST_BRAND = "flexxfast"
+BRAND_SCOPED_ROLES: set[str] = {"engineer", "technician", "cs"}
+# company (ตัวพิมพ์เล็ก) → ยี่ห้อที่บริษัทนั้นเห็นได้
+COMPANY_BRAND_SCOPE: dict[str, str] = {"eds": FLEXXFAST_BRAND}
+# filter ที่ไม่มีทางแมตช์เอกสารไหน — ใช้ตอนพิสูจน์ยี่ห้อไม่ได้ (ไม่มีข้อมูลตู้)
+_MATCH_NOTHING: dict = {"_id": {"$in": []}}
+
+
+async def _brand_scope_of(current: UserClaims) -> str | None:
+    """ยี่ห้อที่ user คนนี้ถูกจำกัดให้เห็น — None = เห็นทุกยี่ห้อ"""
+    if (current.role or "").lower() not in BRAND_SCOPED_ROLES:
+        return None  # admin / owner / role อื่น — ไม่จำกัด
+    company = (current.company or "").strip()
+    if not company and current.user_id:
+        # JWT ออกก่อนที่ admin จะกรอก company ให้ — อ่านค่าล่าสุดจาก DB แทนที่จะปล่อยผ่าน
+        try:
+            u = await users_coll_async.find_one({"_id": ObjectId(current.user_id)}, {"company": 1})
+            company = str((u or {}).get("company") or "").strip()
+        except Exception:
+            company = ""
+    return COMPANY_BRAND_SCOPE.get(company.lower())
+
+
+def _charger_keys(doc: dict) -> set[str]:
+    """ค่า faulty_equipment ที่หมายถึงตู้นี้ — ใบงานเก่าเก็บได้หลายรูปแบบ"""
+    keys = set()
+    for v in (doc.get("chargerNo"), doc.get("charger_id"), doc.get("charger_no")):
+        if v not in (None, ""):
+            keys.add(f"charger_{v}")
+    return keys
+
+
+async def _brand_clause_for_station(station_id: str, current: UserClaims) -> dict | None:
+    """
+    เงื่อนไขกรองใบงานของสถานีนี้ตามยี่ห้อตู้ — None = ไม่ต้องกรอง
+
+    • ใบที่ระบุตู้ (faulty_equipment = charger_N) → ดูยี่ห้อของตู้นั้นตรง ๆ
+    • ใบที่ไม่ระบุตู้ (failure code ระดับสถานี เช่น DCCHARGER) → เห็นเฉพาะสถานี
+      ที่ตู้ทุกตู้เป็นยี่ห้อนั้น เพราะพิสูจน์ไม่ได้ว่าใบนี้เป็นของตู้ไหน
+    """
+    brand = await _brand_scope_of(current)
+    if not brand:
+        return None
+
+    chargers = await charger_coll_async.find(
+        {"station_id": station_id},
+        {"brand": 1, "chargerNo": 1, "charger_id": 1, "charger_no": 1},
+    ).to_list(length=1000)
+    if not chargers:
+        return _MATCH_NOTHING  # ไม่มีข้อมูลตู้ = พิสูจน์ยี่ห้อไม่ได้
+
+    in_brand = [c for c in chargers if str(c.get("brand") or "").strip().lower() == brand]
+    if not in_brand:
+        return _MATCH_NOTHING
+    if len(in_brand) == len(chargers):
+        return None  # ทั้งสถานีเป็นยี่ห้อนี้ → เห็นได้ทุกใบ
+
+    keys = sorted({k for c in in_brand for k in _charger_keys(c)})
+    if not keys:
+        return _MATCH_NOTHING
+    # ใบเก่าเก็บ faulty_equipment ไว้ใต้ job — ต้องเช็คทั้งสองที่
+    return {"$or": [
+        {"faulty_equipment": {"$in": keys}},
+        {"job.faulty_equipment": {"$in": keys}},
+    ]}
+
+
+def _merge_clause(mongo_filter: dict, clause: dict | None) -> dict:
+    """รวมเงื่อนไขเพิ่มแบบไม่ชน $or ที่ filter หลักใช้อยู่ (status ใช้ $or)"""
+    if clause:
+        mongo_filter.setdefault("$and", []).append(clause)
+    return mongo_filter
+
+
 @router.get("/cmreport/list")
 async def cmreport_list(
     station_id: str = Query(...),
@@ -222,9 +300,10 @@ async def cmreport_list(
     if status and (conds := _status_or_conditions(status)):
         mongo_filter["$or"] = conds
     mongo_filter.update(_assignee_scope(current))
+    _merge_clause(mongo_filter, await _brand_clause_for_station(station_id, current))
 
     cursor = coll.find(mongo_filter, {
-        "_id": 1, 
+        "_id": 1,
         "doc_name": 1,
         "issue_id": 1,
         "cm_date": 1,
@@ -310,7 +389,8 @@ async def cmreport_list(
 
 
 async def _cm_items_for_station(station_id: str, station_name: str, status: str | None,
-                                scope: dict | None = None) -> list[dict]:
+                                scope: dict | None = None,
+                                current: UserClaims | None = None) -> list[dict]:
     """ดึง CM report ของสถานีเดียว (merge กับ CMUrl ด้วย cm_date) + ใส่ station info"""
     coll = get_cmreport_collection_for(station_id)
 
@@ -319,6 +399,8 @@ async def _cm_items_for_station(station_id: str, station_name: str, status: str 
         mongo_filter["$or"] = conds
     if scope:
         mongo_filter.update(scope)
+    if current is not None:
+        _merge_clause(mongo_filter, await _brand_clause_for_station(station_id, current))
 
     cursor = coll.find(mongo_filter, {
         "_id": 1, "doc_name": 1, "issue_id": 1, "cm_date": 1, "found_date": 1, "status": 1,
@@ -434,7 +516,7 @@ async def cmreport_list_all(
 
     scope = _assignee_scope(current)
     tasks = [
-        _cm_items_for_station(s["station_id"], s.get("station_name", "-"), status, scope)
+        _cm_items_for_station(s["station_id"], s.get("station_name", "-"), status, scope, current)
         for s in stations
         if s.get("station_id")
     ]
@@ -963,7 +1045,10 @@ async def cmreport_detail_path(
         raise HTTPException(status_code=400, detail="Bad report_id")
 
     # กันช่างเปิดใบของคนอื่นด้วยการยิง URL ตรง — ต้องกรองใน query ไม่ใช่แค่ซ่อนในตาราง
-    doc = await coll.find_one({"_id": oid, "station_id": station_id, **_assignee_scope(current)})
+    # (รวมถึงใบของตู้ยี่ห้อที่บริษัทตัวเองไม่ได้ดูแล)
+    detail_filter: dict = {"_id": oid, "station_id": station_id, **_assignee_scope(current)}
+    _merge_clause(detail_filter, await _brand_clause_for_station(station_id, current))
+    doc = await coll.find_one(detail_filter)
     if not doc:
         raise HTTPException(status_code=404, detail="Report not found")
 
@@ -1164,7 +1249,10 @@ async def cmreport_update_status(
 
     updates["updatedAt"] = datetime.now(timezone.utc)
 
-    res = await coll.update_one({"_id": oid, "station_id": station_id}, {"$set": updates})
+    # ใบของตู้ยี่ห้อที่บริษัทตัวเองไม่ได้ดูแล = มองไม่เห็น จึงต้องแก้ไม่ได้ด้วย (กันยิง API ตรง)
+    update_filter: dict = {"_id": oid, "station_id": station_id}
+    _merge_clause(update_filter, await _brand_clause_for_station(station_id, current))
+    res = await coll.update_one(update_filter, {"$set": updates})
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Report not found")
 
@@ -1203,8 +1291,7 @@ async def cmreport_approve(
         raise HTTPException(status_code=400, detail="Bad report_id")
 
     now = datetime.now(timezone.utc)
-    res = await coll.update_one(
-        {
+    approve_filter: dict = {
             "_id": oid,
             "station_id": station_id,
             # รองรับทั้งข้อมูลใหม่ที่เก็บ status แบบ flat และข้อมูลเก่าที่อยู่ใน job
@@ -1218,7 +1305,11 @@ async def cmreport_approve(
                 {"stage": {"$regex": "^cs_approval$", "$options": "i"}},
                 {"job.stage": {"$regex": "^cs_approval$", "$options": "i"}},
             ],
-        },
+    }
+    # engineer ของบริษัทที่ไม่ได้ดูแลยี่ห้อนี้ อนุมัติปิดใบไม่ได้ (มองไม่เห็นใบตั้งแต่แรก)
+    _merge_clause(approve_filter, await _brand_clause_for_station(station_id, current))
+    res = await coll.update_one(
+        approve_filter,
         # ใช้ pipeline update เพราะต้องอ่านค่า repair_result เดิมมาตัดสินใจแบบ atomic
         [{"$set": {
             "status": "Closed",
