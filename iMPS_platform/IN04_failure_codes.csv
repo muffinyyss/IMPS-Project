@@ -1,0 +1,158 @@
+﻿failure_class_code,failure_class_description,problem_code,problem_description,cause_code,cause_description,remedy_code,remedy_description
+METER,Meter,FAILURE,Value Mismatch,CTVTFAIL,CT VT Fail,REPLACEM,Replace Material
+METER,Meter,FAILURE,Value Mismatch,BROKEN,Equipment Broken,REPLACEM,Replace Material
+COUNTER,Counter,NOCOUNT,No Count,BROKEN,Equipment Broken,FIX,Fix
+COUNTER,Counter,NOCOUNT,No Count,ELECTRIC,No Electric,RECHECK,Recheck
+COUNTER,Counter,NOCOUNT,No Count,TEST45,TEST45,,
+COUNTER,Counter,NOCOUNT,No Count,TPPP,,,
+MIC,12345-Microphone,DIS,Disconnect,LOSTSIG,Lost Signal,,
+MIC,12345-Microphone,TEST99,Broken,LOSTSIG,Lost Signal,RECHECK,Recheck
+MIC,12345-Microphone,TEST99,Broken,PARTBROK,Part Broken,FIX,Fix
+AOM,597058-bank,,,,,,
+ACRASH,599055-Airplane Crash,DIS,Disconnect,NETFAIL,Network Down,FIX,Fix
+ACRASH,599055-Airplane Crash,DIS,Disconnect,NETFAIL,Network Down,CHANGE,Change Equipment
+ACRASH,599055-Airplane Crash,BRK,Broken,PARTBROK,Part Broken,FIX,Fix
+ACRASH,599055-Airplane Crash,BRK,Broken,PARTBROK,Part Broken,REPLACEM,Replace Material
+ACRASH,599055-Airplane Crash,ELECTRIC,No Electric,SHCIR,Short curcuit,FIX,Fix
+ACRASH,599055-Airplane Crash,ELECTRIC,No Electric,SHCIR,Short curcuit,RECHECK,Recheck
+TM-SSR,558796-Temperature sensor,DIS,Disconnect,UNPLUG,558796-Unplug,,
+UAT001,UAT Failure Class,UATPRB,Problem,UATCAUSE,Cause,UATREMED,Remedy
+LORATEST,Lora Terminal,DIS,Disconnect,NETFAIL,Network Down,CHKNET,Check Network Connection
+LORATEST,Lora Terminal,DIS,Disconnect,NETFAIL,Network Down,CHKELEC,Check Power Line or Status Breaker
+LORATEST,Lora Terminal,DIS,Disconnect,ELECTRIC,No Electric,CHKELEC,Check Power Line or Status Breaker
+INVERT,INVERTER MIS006,BROKEN,Equipment Broken,UATCAUSE,Cause,CHANGE,Change Equipment
+INVERT,INVERTER MIS006,BROKEN,Equipment Broken,UATCAUSE,Cause,REPLACEM,Replace Material
+INVERT,INVERTER MIS006,BROKEN,Equipment Broken,PARTBROK,Part Broken,,
+INVERT,INVERTER MIS006,BROKEN,Equipment Broken,LOSTSIG,Lost Signal,,
+INVERT,INVERTER MIS006,BROKEN,Equipment Broken,BROLOSIG,Part Broken & Lost Signal,,
+STATION,Station Failure,RELAYPRO,Relay,RELAYFAI,Relay Failed,REPLACE,Replace
+STATION,Station Failure,POWERMET,Power Meter,METERFAI,Power Meter Failed,REPLACE,Replace
+STATION,Station Failure,EVDBPROB,EVDB,CUBUSBAR,Copper Busbar Burnt,REPLACE,Replace
+STATION,Station Failure,EVDBPROB,EVDB,WATERENT,There is Water Entering.,FIX,Fix
+STATION,Station Failure,EVDBPROB,EVDB,MCCBTRIP,MCCB Trip,RESET,Reset
+STATION,Station Failure,EVDBPROB,EVDB,MCCBTRIP,MCCB Trip,REPLACE,Replace
+STATION,Station Failure,EVDBPROB,EVDB,MCBTRIPF,MCB Trip,RESET,Reset
+STATION,Station Failure,EVDBPROB,EVDB,MCBTRIPF,MCB Trip,REPLACE,Replace
+STATION,Station Failure,EVDBPROB,EVDB,RCDTRIPF,RCD Trip,REPLACE,Replace
+STATION,Station Failure,EVDBPROB,EVDB,RCDTRIPF,RCD Trip,RESET,Reset
+STATION,Station Failure,NVRPROBL,NVR,NVRFAILE,NVR Failed,REPLACE,Replace
+STATION,Station Failure,LIGTPROB,Station Lighting,LIGTFAIL,Lighting Failed,REPLACE,Replace
+STATION,Station Failure,FIREEXPB,Fire Extinguisher,GUAGUNOV,Gauge Undered/Overed,REPLACE,Replace
+STATION,Station Failure,HVPROBLM,HV Side,HVFUSEDR,HV Fuse Drop,REPLACE,Replace
+STATION,Station Failure,HVPROBLM,HV Side,GROUNDIN,Grounding,FIX,Fix
+STATION,Station Failure,HVPROBLM,HV Side,MCBTRIPF,MCB Trip,RESET,Reset
+STATION,Station Failure,HVPROBLM,HV Side,MCBTRIPF,MCB Trip,REPLACE,Replace
+STATION,Station Failure,HVPROBLM,HV Side,FUSELAMP,Fuse or Pilot Lamp,REPLACE,Replace
+STATION,Station Failure,PHPROTPB,Phase Protection,PHASEALT,Phase Alternation,FIX,Fix
+STATION,Station Failure,PHPROTPB,Phase Protection,OVERVOLT,Over Voltage,RECHECK,Recheck
+STATION,Station Failure,PHPROTPB,Phase Protection,OVERVOLT,Over Voltage,ADJUST,Adjust
+STATION,Station Failure,PHPROTPB,Phase Protection,UNDEVOLT,Under Voltage,ADJUST,Adjust
+STATION,Station Failure,PHPROTPB,Phase Protection,UNDEVOLT,Under Voltage,RECHECK,Recheck
+STATION,Station Failure,PHPROTPB,Phase Protection,INCVMISS,Incoming Voltage is Missing,RECHECK,Recheck
+STATION,Station Failure,FANPROBL,Fan,EXHTFANF,Exhaust Fan Failed,REPLACE,Replace
+STATION,Station Failure,CCTVPROB,CCTV,CCTVFAIL,CCTV Failed,REPLACE,Replace
+STATION,Station Failure,PARKPROB,Parking Space,PRKPAINT,Peeling Paint,FIX,Fix
+STATION,Station Failure,STRUPROB,Structure,STRUDAMA,Structure Damaged,FIX,Fix
+STATION,Station Failure,FUSEPROB,Fuse,FUSESURG,Fuse Surge Protection,REPLACE,Replace
+STATION,Station Failure,FUSEPROB,Fuse,FUSEPHAS,Fuse Phase Protection,REPLACE,Replace
+STATION,Station Failure,FUSEPROB,Fuse,FUSELAMP,Fuse or Pilot Lamp,REPLACE,Replace
+STATION,Station Failure,ROUTERPB,Router,ROUTFAIL,Router Failed,REPLACE,Replace
+STATION,Station Failure,ROUTERPB,Router,ROUTFAIL,Router Failed,REBOOT,Reboot
+STATION,Station Failure,UPSSBPOB,UPS Supply,UPSFAILU,UPS Failed,REPLACE,Replace
+STATION,Station Failure,QRCDPROB,QR Code,QRCDFAIL,QR Code Failed,REPLACE,Replace
+์NEW,T05250-phone,BRK,Broken,,,,
+ACCHARGER,AC Charger Failure,POWERDRP,Power Drop,POWBOAFA,Power Board Failed,REPLACE,Replace
+ACCHARGER,AC Charger Failure,CONBOARD,Control Board,CONBOAFA,Control Board Failed,REPLACE,Replace
+ACCHARGER,AC Charger Failure,CONBOARD,Control Board,CONBOAFA,Control Board Failed,UPDATEFW,Update Firmware
+ACCHARGER,AC Charger Failure,SCRFREEZ,The Screen Freezes,OVERHEAT,Overheat,REBOOT,Reboot
+ACCHARGER,AC Charger Failure,NOINTSIG,No Internet Signal,SIMCARDP,SIM Card Problem,REPLACE,Replace
+ACCHARGER,AC Charger Failure,NOINTSIG,No Internet Signal,CHSTARTC,Charger Does Not Send StartTransaction,REPLACE,Replace
+ACCHARGER,AC Charger Failure,NOINTSIG,No Internet Signal,CHSTOPTC,Charger Does Not Send StopTransaction,REPLACE,Replace
+ACCHARGER,AC Charger Failure,NOINTSIG,No Internet Signal,DISCONFR,Disconnect Frequently,REPLACE,Replace
+ACCHARGER,AC Charger Failure,DATATRAN,Data Transmission,CONBOANC,Control Board Cable is Not Connected,RECHECK,Recheck
+ACCHARGER,AC Charger Failure,HMISCREE,HMI Touch Screen,HMISCROF,Touch Screen Off,REPLACE,Replace
+ACCHARGER,AC Charger Failure,BILLINGU,Wrong Billing Unit,CONBOAFA,Control Board Failed,RESTORE,Restore Charger
+ACCHARGER,AC Charger Failure,BILLINGU,Wrong Billing Unit,CONBOAFA,Control Board Failed,REPLACE,Replace
+ACCHARGER,AC Charger Failure,UN2STCHG,Unable to Start Charging,EMERBUTP,Emergency Button Pressed,RESET,Reset
+ACCHARGER,AC Charger Failure,UN2STCHG,Unable to Start Charging,CPCBMISS,CP Cable is Missing,REPLACE,Replace
+DCCHARG,DC Charger Charging Gun,UNCHBROK,Uncharged & Broken,,,,
+DCCHARG,DC Charger Charging Gun,UNCHARGE,Uncharged,TEST,Test 1,TEST2,Test 2
+DCCHARG,DC Charger Charging Gun,UNCHARGE,Uncharged,BROKEN,Equipment Broken,TEST2,Test 2
+DCCHARG,DC Charger Charging Gun,UNCHARGE,Uncharged,BROKEN,Equipment Broken,CHANGE,Change Equipment
+MCBBRK,599015-MKVHUAHIN,,,,,,
+NCN,T05252-New,HUNGRY,Hungry all the time,TRAIN,Training after lunch,EAT,Find something to eat
+NCN,T05252-New,SLEEPY,Sleepy all the time,TRAIN1,Training after lunch 1,SLEEP,Have some sleep
+INV123X,Training INV123X,BUR,Burn down,,,,
+INV123X,Training INV123X,SHCIR,Short curcuit,,,,
+INV123X,Training INV123X,DIS,Disconnect,,,,
+UPS,UPS,DOWN,down/offline,ELECTRIC,No Electric,CHKELEC,Check Power Line or Status Breaker
+LOR,05481-BBB,DIS,Disconnect,NETFAIL,Network Down,,
+LOR,05481-BBB,DIS,Disconnect,ELECTRIC,No Electric,,
+LOR,05481-BBB,TEST99,Broken,UATCAUSE,Cause,,
+DCCHARGER,DC Charger Failure,BILLINGU,Wrong Billing Unit,CONBOAFA,Control Board Failed,REPLACE,Replace
+DCCHARGER,DC Charger Failure,BILLINGU,Wrong Billing Unit,CONBOAFA,Control Board Failed,RESTORE,Restore Charger
+DCCHARGER,DC Charger Failure,DATATRAN,Data Transmission,CONBOANC,Control Board Cable is Not Connected,RECHECK,Recheck
+DCCHARGER,DC Charger Failure,NOCONSTD,Not Conform to Standard,PECUTFAI,PE Cut Test Failed,NOTIFYMF,Notify the Manufacturer
+DCCHARGER,DC Charger Failure,NOCONSTD,Not Conform to Standard,CPSHTFAI,CP Short Test Failed,NOTIFYMF,Notify the Manufacturer
+DCCHARGER,DC Charger Failure,UN2STCHG,Unable to Start Charging,DCCTR4FC,DC Contactor No.4 Fail,REPLACE,Replace
+DCCHARGER,DC Charger Failure,UN2STCHG,Unable to Start Charging,DCCTR4FC,DC Contactor No.4 Fail,RECHECK,Recheck
+DCCHARGER,DC Charger Failure,UN2STCHG,Unable to Start Charging,DCCTR4FC,DC Contactor No.4 Fail,REPAIR,Repair
+DCCHARGER,DC Charger Failure,UN2STCHG,Unable to Start Charging,DCCTR1FC,DC Contactor No.1 Fail,REPLACE,Replace
+DCCHARGER,DC Charger Failure,UN2STCHG,Unable to Start Charging,DCCTR1FC,DC Contactor No.1 Fail,RECHECK,Recheck
+DCCHARGER,DC Charger Failure,UN2STCHG,Unable to Start Charging,DCCTR1FC,DC Contactor No.1 Fail,REPAIR,Repair
+DCCHARGER,DC Charger Failure,UN2STCHG,Unable to Start Charging,DCCTR3FC,DC Contactor No.3 Fail,REPAIR,Repair
+DCCHARGER,DC Charger Failure,UN2STCHG,Unable to Start Charging,DCCTR3FC,DC Contactor No.3 Fail,REPLACE,Replace
+DCCHARGER,DC Charger Failure,UN2STCHG,Unable to Start Charging,DCCTR3FC,DC Contactor No.3 Fail,RECHECK,Recheck
+DCCHARGER,DC Charger Failure,UN2STCHG,Unable to Start Charging,DCCTR5FC,DC Contactor No.5 Fail,REPLACE,Replace
+DCCHARGER,DC Charger Failure,UN2STCHG,Unable to Start Charging,DCCTR5FC,DC Contactor No.5 Fail,RECHECK,Recheck
+DCCHARGER,DC Charger Failure,UN2STCHG,Unable to Start Charging,DCCTR5FC,DC Contactor No.5 Fail,REPAIR,Repair
+DCCHARGER,DC Charger Failure,UN2STCHG,Unable to Start Charging,DCCTR2FC,DC Contactor No.2 Fail,REPAIR,Repair
+DCCHARGER,DC Charger Failure,UN2STCHG,Unable to Start Charging,DCCTR2FC,DC Contactor No.2 Fail,REPLACE,Replace
+DCCHARGER,DC Charger Failure,UN2STCHG,Unable to Start Charging,DCCTR2FC,DC Contactor No.2 Fail,RECHECK,Recheck
+DCCHARGER,DC Charger Failure,UN2STCHG,Unable to Start Charging,DCCTR6FC,DC Contactor No.6 Fail,REPLACE,Replace
+DCCHARGER,DC Charger Failure,UN2STCHG,Unable to Start Charging,DCCTR6FC,DC Contactor No.6 Fail,RECHECK,Recheck
+DCCHARGER,DC Charger Failure,UN2STCHG,Unable to Start Charging,DCCTR6FC,DC Contactor No.6 Fail,REPAIR,Repair
+DCCHARGER,DC Charger Failure,UN2STCHG,Unable to Start Charging,ACCTR1FC,AC Contactor No.1 Fail,REPLACE,Replace
+DCCHARGER,DC Charger Failure,UN2STCHG,Unable to Start Charging,ACCTR1FC,AC Contactor No.1 Fail,RECHECK,Recheck
+DCCHARGER,DC Charger Failure,UN2STCHG,Unable to Start Charging,ACCTR1FC,AC Contactor No.1 Fail,REPAIR,Repair
+DCCHARGER,DC Charger Failure,UN2STCHG,Unable to Start Charging,ACCTR2FC,AC Contactor No.2 Fail,REPLACE,Replace
+DCCHARGER,DC Charger Failure,UN2STCHG,Unable to Start Charging,ACCTR2FC,AC Contactor No.2 Fail,RECHECK,Recheck
+DCCHARGER,DC Charger Failure,UN2STCHG,Unable to Start Charging,ACCTR2FC,AC Contactor No.2 Fail,REPAIR,Repair
+DCCHARGER,DC Charger Failure,UN2STCHG,Unable to Start Charging,ACCTR3FC,AC Contactor No.3 Fail,RECHECK,Recheck
+DCCHARGER,DC Charger Failure,UN2STCHG,Unable to Start Charging,ACCTR3FC,AC Contactor No.3 Fail,REPLACE,Replace
+DCCHARGER,DC Charger Failure,UN2STCHG,Unable to Start Charging,ACCTR3FC,AC Contactor No.3 Fail,REPAIR,Repair
+DCCHARGER,DC Charger Failure,UN2STCHG,Unable to Start Charging,IMD1FC,Insulation Monitoring Divce Fail No.1,REPLACE,Replace
+DCCHARGER,DC Charger Failure,UN2STCHG,Unable to Start Charging,IMD1FC,Insulation Monitoring Divce Fail No.1,RECHECK,Recheck
+DCCHARGER,DC Charger Failure,UN2STCHG,Unable to Start Charging,IMD1FC,Insulation Monitoring Divce Fail No.1,REPAIR,Repair
+DCCHARGER,DC Charger Failure,UN2STCHG,Unable to Start Charging,IMD2FC,Insulation Monitoring Divce Fail No.2,REPLACE,Replace
+DCCHARGER,DC Charger Failure,UN2STCHG,Unable to Start Charging,IMD2FC,Insulation Monitoring Divce Fail No.2,RECHECK,Recheck
+DCCHARGER,DC Charger Failure,UN2STCHG,Unable to Start Charging,IMD2FC,Insulation Monitoring Divce Fail No.2,REPAIR,Repair
+DCCHARGER,DC Charger Failure,UN2STCHG,Unable to Start Charging,CTL1FC,Controller Fail No.1,REPLACE,Replace
+DCCHARGER,DC Charger Failure,UN2STCHG,Unable to Start Charging,CTL1FC,Controller Fail No.1,RECHECK,Recheck
+DCCHARGER,DC Charger Failure,UN2STCHG,Unable to Start Charging,CTL1FC,Controller Fail No.1,REPAIR,Repair
+DCCHARGER,DC Charger Failure,UN2STCHG,Unable to Start Charging,CTL2FC,Controller Fail No.2,REPLACE,Replace
+DCCHARGER,DC Charger Failure,UN2STCHG,Unable to Start Charging,CTL2FC,Controller Fail No.2,RECHECK,Recheck
+DCCHARGER,DC Charger Failure,UN2STCHG,Unable to Start Charging,CTL2FC,Controller Fail No.2,REPAIR,Repair
+DCCHARGER,DC Charger Failure,UN2STCHG,Unable to Start Charging,EMERBUTP,Emergency Button Pressed,RESET,Reset
+DCCHARGER,DC Charger Failure,UN2STCHG,Unable to Start Charging,CPCBMISS,CP Cable is Missing,REPLACE,Replace
+DCCHARGER,DC Charger Failure,SCRFREEZ,The Screen Freezes,OVERHEAT,Overheat,REPLACE,Replace
+DCCHARGER,DC Charger Failure,NOINTSIG,No Internet Signal,SIMCARDP,SIM Card Problem,REPLACE,Replace
+DCCHARGER,DC Charger Failure,NOINTSIG,No Internet Signal,CHSTARTC,Charger Does Not Send StartTransaction,REPLACE,Replace
+DCCHARGER,DC Charger Failure,NOINTSIG,No Internet Signal,CHSTOPTC,Charger Does Not Send StopTransaction,REPLACE,Replace
+DCCHARGER,DC Charger Failure,NOINTSIG,No Internet Signal,DISCONFR,Disconnect Frequently,REPLACE,Replace
+DCCHARGER,DC Charger Failure,CONBOARD,Control Board,CONBOAFA,Control Board Failed,REPLACE,Replace
+DCCHARGER,DC Charger Failure,CONBOARD,Control Board,CONBOAFA,Control Board Failed,UPDATEFW,Update Firmware
+DCCHARGER,DC Charger Failure,POWERDRP,Power Drop,CBPOWTRP,CB Power Module Trip,REPLACE,Replace
+DCCHARGER,DC Charger Failure,POWERDRP,Power Drop,CBPOWTRP,CB Power Module Trip,RESET,Reset
+DCCHARGER,DC Charger Failure,POWERDRP,Power Drop,POWMODUL,Power Module Failed,REPLACE,Replace
+DCCHARGER,DC Charger Failure,POWERDRP,Power Drop,OVERHEAT,Overheat,REPLACE,Replace
+DCCHARGER,DC Charger Failure,POWERDRP,Power Drop,PMCMFAIL,Power Module Communication Fail,RECHECK,Recheck
+DCCHARGER,DC Charger Failure,POWERDRP,Power Drop,PMCMFAIL,Power Module Communication Fail,REPAIR,Repair
+DCCHARGER,DC Charger Failure,POWERDRP,Power Drop,PMCMFAIL,Power Module Communication Fail,REPLACE,Replace
+DCCHARGER,DC Charger Failure,POWERDRP,Power Drop,POWSUPPL,Power Supply AC-DC 24Vdc Failed (Fan),REPLACE,Replace
+DCCHARGER,DC Charger Failure,POWERDRP,Power Drop,RCDPROTS,RCD Leakage Protection System (Charger),REPLACE,Replace
+DCCHARGER,DC Charger Failure,POWERDRP,Power Drop,RCDPROTS,RCD Leakage Protection System (Charger),RESET,Reset
+DCCHARGER,DC Charger Failure,HMISCREE,HMI Touch Screen,HMISCROF,Touch Screen Off,REPLACE,Replace
+DCCHARGER,DC Charger Failure,HMISCREE,HMI Touch Screen,HMISCROF,Touch Screen Off,REBOOT,Reboot
+DCCHARGER,DC Charger Failure,HMISCREE,HMI Touch Screen,HMISCROF,Touch Screen Off,REPAIR,Repair
+DCCHARGER,DC Charger Failure,HMISCREE,HMI Touch Screen,HMISCROF,Touch Screen Off,RECHECK,Recheck
