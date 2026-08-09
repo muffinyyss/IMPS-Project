@@ -4,10 +4,14 @@ from bson import ObjectId
 from bson.errors import InvalidId
 from main import client1 as pymongo_client
 from datetime import datetime
+import hashlib
+import json
 import os
 import pathlib
 import shutil
 from routers.pm_helpers import UPLOADS_ROOT
+from services import maximo
+from services.cm_maximo import build_failure_tree, maximo_failure_class
 
 # import template ทั้งหมด
 from .templates.pdf_charger import generate_pdf as pdf_charger
@@ -79,6 +83,25 @@ async def _add_cm_failure_label(data: dict, station_id: str) -> dict:
         # ให้ pdf_cm.py ใช้ mapping สำรองเดิมได้ แม้ cache Maximo จะอ่านไม่ได้
         pass
     return data
+
+
+async def _add_cm_maximo_failure_codes(data: dict) -> dict:
+    """Fetch the current IN04 tree and attach it to the transient PDF document."""
+    nodes = await maximo.query_failure_list()
+    tree = build_failure_tree(nodes)
+    if not tree.get("classes"):
+        raise RuntimeError("Maximo IN04 returned no failure-code classes")
+
+    fingerprint = hashlib.sha256(
+        json.dumps(tree, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    ).hexdigest()[:16]
+    raw_failure_class = data.get("faulty_equipment")
+    return {
+        **data,
+        "_maximo_failure_codes": tree,
+        "_maximo_failure_class": maximo_failure_class(raw_failure_class),
+        "_maximo_failure_codes_version": fingerprint,
+    }
 
 
 def _delete_report_photos(template: str, coll_key: str, report_id: str, coll) -> None:
@@ -226,14 +249,18 @@ async def export_pdf(
         raise HTTPException(status_code=404, detail="ไม่พบข้อมูลเอกสารนี้")
 
     if template == "cm":
+        # PDF labels must reflect the current Maximo IN04 data, not the old
+        # generated/static mapping or a stale cached PDF.
         data = await _add_cm_failure_label(data, coll_key)
+        data = await _add_cm_maximo_failure_codes(data)
 
     # เช็ค cache ก่อน gen
     # cm: ผูกชื่อ cache กับ updatedAt เพื่อให้ regenerate ทันทีเมื่อข้อมูลใบงานเปลี่ยน
     if template == "cm":
         ver = data.get("updatedAt") or data.get("createdAt") or ""
         ver_str = "".join(ch for ch in str(ver) if ch.isalnum())[:20] or "0"
-        cache_name = f"{id}_{lang}_{ver_str}_cm-v5.pdf"
+        maximo_ver = str(data.get("_maximo_failure_codes_version") or "0")
+        cache_name = f"{id}_{lang}_{ver_str}_{maximo_ver}_cm-v6.pdf"
     else:
         cache_name = f"{id}_{lang}.pdf"
     cache_path = pathlib.Path(UPLOADS_ROOT) / "pdf_cache" / (coll_key or "unknown") / cache_name

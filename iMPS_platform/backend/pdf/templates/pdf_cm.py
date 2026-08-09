@@ -218,10 +218,10 @@ T: Dict[str, Tuple[str, str]] = {
     # --- ชื่อหมวด ---
     "sec1": ("ข้อมูลการแจ้ง", "Report Information"),
     "sec2": ("รายละเอียดปัญหา", "Problem Details"),
-    "sec3": ("ปัญหาและสาเหตุ", "Problem and Cause"),
-    "sec3_repair": ("ปัญหาและการแก้ไข", "Problem & Correction"),
-    "sec4": ("การแก้ไข", "Corrective Actions"),
-    "sec4_inprogress": ("การแก้ไข", "Corrective Actions"),
+    "sec3": ("รายละเอียดปัญหาและสาเหตุ", "Problem and Cause Details"),
+    "sec3_repair": ("รายละเอียดปัญหาและการแก้ไข", "Problem and Correction Details"),
+    "sec4": ("รายละเอียดการแก้ไข", "Corrective Action Details"),
+    "sec4_inprogress": ("รายละเอียดการแก้ไข", "Corrective Action Details"),
     "sec5": ("ผลหลังซ่อม", "Repair Result"),
     "people": ("ผู้เกี่ยวข้อง", "Personnel Involved"),
     # --- ป้ายกำกับช่องข้อมูล ---
@@ -232,30 +232,30 @@ T: Dict[str, Tuple[str, str]] = {
     "wo_no": ("เลขที่ WO", "WO No."),
     "location": ("สถานที่", "Location"),
     "wo_status": ("สถานะงาน", "Job Status"),
-    "faulty_equipment": ("ตำแหน่งจุดที่มีความผิดปกติ", "Faulty Equipment / Location"),
-    "faulty_equipment_repair": ("อุปกรณ์ที่พัง", "Faulty Equipment"),
+    "faulty_equipment": ("ตำแหน่งอุปกรณ์ที่พบความผิดปกติ", "Faulty Equipment / Location"),
+    "faulty_equipment_repair": ("อุปกรณ์ที่ชำรุด", "Faulty Equipment"),
     "severity": ("ความเร่งด่วน", "Urgency"),
     "problem_details": ("รายละเอียดปัญหา", "Problem Details"),
-    "problem_found": ("ปัญหาที่พบ", "Problem Found"),
+    "problem_found": ("รายละเอียดปัญหาที่พบ", "Problem Found"),
     "details": ("รายละเอียด", "Details"),
     "remarks": ("หมายเหตุ", "Remarks"),
     "problem_photos": ("รูปภาพประกอบปัญหา", "Problem Photos"),
-    "problem": ("ปัญหา", "Problem Description"),
-    "cause": ("สาเหตุ", "Cause"),
+    "problem": ("รายละเอียดปัญหา", "Problem Description"),
+    "cause": ("สาเหตุของปัญหา", "Cause"),
     "start_repair": ("วันที่/เวลา เริ่มแก้ไข", "Repair Start Date/Time"),
     "finish_repair": ("วันที่/เวลา แก้ไขเสร็จ", "Repair Finish Date/Time"),
     "start_repair_inprogress": ("วันที่เริ่มแก้ไข", "Start Repair Date"),
     "finish_repair_inprogress": ("วันที่แก้ไขเสร็จ", "Completed Date"),
-    "correction": ("การแก้ไข", "Correction"),
+    "correction": ("รายละเอียดการแก้ไข", "Correction Details"),
     "inspector": ("ผู้ตรวจสอบ", "Inspector"),
-    "repair_result": ("ผลหลังซ่อม", "Repair Result"),
+    "repair_result": ("ผลการซ่อม", "Repair Result"),
     "inprogress_remarks": ("หมายเหตุระหว่างดำเนินการ", "In-progress Remarks"),
     "preventive": ("วิธีป้องกันไม่ให้เกิดซ้ำ", "Preventive Action"),
     "result_remarks": ("หมายเหตุผลหลังซ่อม", "Repair Result Remarks"),
-    "action_details": ("การดำเนินการแก้ไข", "Corrective Actions"),
-    "photos_before": ("รูปก่อนแก้ไข", "Before"),
-    "photos_after": ("รูปหลังแก้ไข", "After"),
-    "repairer": ("ผู้เข้าแก้ไข", "Repairer"),
+    "action_details": ("รายละเอียดการดำเนินการแก้ไข", "Corrective Action Details"),
+    "photos_before": ("ภาพถ่ายก่อนการแก้ไข", "Photographs Before Repair"),
+    "photos_after": ("ภาพถ่ายหลังการแก้ไข", "Photographs After Repair"),
+    "repairer": ("ผู้ดำเนินการแก้ไข", "Repair Technician"),
     "repair_info": ("ข้อมูลการซ่อม", "Repair Information"),
     "signature": ("ลายเซ็นผู้ซ่อม", "Technician Signature"),
     "cancel_reason": ("เหตุผลที่ยกเลิก", "Cancel Reason"),
@@ -395,7 +395,13 @@ ROUND_TABLE_KEYS = [
 ROUND_TABLE_WIDTHS = [16.0, 27.0, 27.0, 33.0, 45.0, 42.0]
 
 
-def _round_table_row(rnd: Dict[str, Any], failure_code, index: int) -> List[str]:
+def _round_table_row(
+    rnd: Dict[str, Any],
+    failure_code,
+    index: int,
+    failure_codes: Optional[Dict[str, Any]] = None,
+    failure_class_code: Any = None,
+) -> List[str]:
     """แปลงรอบการเข้าแก้ไข 1 รอบเป็น 1 แถวของตารางประวัติ
 
     ข้อมูลชุดเดียวกับการ์ด "แก้ไขครั้งที่ N" บนหน้าเว็บ (RepairRoundCard)
@@ -403,11 +409,17 @@ def _round_table_row(rnd: Dict[str, Any], failure_code, index: int) -> List[str]
     problem_codes = _as_code_list(rnd.get("problem_type"))
     cause_codes = _as_code_list(rnd.get("cause"))
 
-    problems = _join_labels(problem_codes, problem_label)
+    problems = _join_labels(
+        problem_codes,
+        lambda code: problem_label(code, failure_codes, failure_class_code),
+    )
     other = str(rnd.get("problem_type_other") or "").strip()
     if other:
         problems = ", ".join(p for p in (problems, other) if p)
-    causes = _join_labels(cause_codes, cause_label)
+    causes = _join_labels(
+        cause_codes,
+        lambda code: cause_label(code, failure_codes, failure_class_code),
+    )
     problem_cell = " / ".join(p for p in (problems, causes) if p)
 
     round_actions = rnd.get("corrective_actions") or []
@@ -415,7 +427,14 @@ def _round_table_row(rnd: Dict[str, Any], failure_code, index: int) -> List[str]
     remedy_labels: List[str] = []
     for code in _merge_pdf_codes_by_index(rnd.get("repaired_equipment"), round_action_codes):
         # รอบย่อยไม่ได้เก็บ failure code ของตัวเอง — ใช้ของใบงานเป็นบริบท
-        for desc in remedy_descriptions(failure_code, problem_codes, cause_codes, code):
+        for desc in remedy_descriptions(
+            failure_code,
+            problem_codes,
+            cause_codes,
+            code,
+            failure_codes,
+            failure_class_code,
+        ):
             remedy_labels.append(desc)
     actions = [
         str(a.get("text") or "").strip()
@@ -543,7 +562,25 @@ def _pdf_repaired_equipment(doc: Dict[str, Any]) -> List[str]:
     )
 
 
-def _repair_history_parts(doc: Dict[str, Any]) -> List[Dict[str, Any]]:
+def _pdf_codes_for_action_context(doc: Dict[str, Any], key: str) -> List[str]:
+    """Return problem/cause codes aligned to the action order when available."""
+    nested_job = doc.get("job") if isinstance(doc.get("job"), dict) else {}
+    current = doc.get(key) or nested_job.get(key)
+    history = doc.get("repair_history") or nested_job.get("repair_history") or []
+    history_rounds = [round_data for round_data in history if isinstance(round_data, dict)]
+    history_round = max(
+        history_rounds,
+        key=lambda round_data: len(round_data.get("corrective_actions") or []),
+        default={},
+    )
+    return _merge_pdf_codes_by_index(current, history_round.get(key))
+
+
+def _repair_history_parts(
+    doc: Dict[str, Any],
+    failure_codes: Optional[Dict[str, Any]] = None,
+    failure_class_code: Any = None,
+) -> List[Dict[str, Any]]:
     """แปลง repair_history เป็น parts ของหมวดการดำเนินการแก้ไข
 
     รอบทั้งหมดรวมเป็นตารางเดียว (อ่านเทียบกันง่ายกว่าแยกเป็นบล็อก)
@@ -561,7 +598,13 @@ def _repair_history_parts(doc: Dict[str, Any]) -> List[Dict[str, Any]]:
     for i, rnd in enumerate(history, 1):
         if not isinstance(rnd, dict):
             continue
-        row = _round_table_row(rnd, failure_code, i)
+        row = _round_table_row(
+            rnd,
+            failure_code,
+            i,
+            failure_codes,
+            failure_class_code,
+        )
         before = _round_photos(rnd, "beforeImages")
         after = _round_photos(rnd, "afterImages")
         # ครั้งที่ (คอลัมน์แรก) มีค่าเสมอ จึงไม่นับเป็นข้อมูล
@@ -1024,22 +1067,27 @@ def _compute_info_row_heights(
     line_h_value = TABLE_LINE_H
     value_w = col_w - label_w - 2 * PADDING_X
 
-    pdf.set_font(base_font, "", FONT_MAIN)
     row_heights: List[float] = []
     for r in range(total_rows):
-        max_lines = 1
+        max_value_h = line_h_value
+        max_label_h = LINE_H
         for c in range(cols):
             i = r * cols + c
             if i >= len(data):
                 continue
-            _, value = data[i]
+            label, value = data[i]
+
+            pdf.set_font(base_font, "B", FONT_MAIN)
+            label_lines, _ = _split_lines(
+                pdf, label_w - 2 * PADDING_X, str(label or ""), LINE_H,
+            )
+            max_label_h = max(max_label_h, len(label_lines) * LINE_H)
+
+            pdf.set_font(base_font, "", FONT_MAIN)
             val_str = "-" if value in (None, "", "-") else str(value)
             wrapped, _ = _split_lines(pdf, value_w, val_str, line_h_value)
-            max_lines = max(max_lines, len(wrapped))
-        if max_lines > 1:
-            row_heights.append(max(row_h, line_h_value * max_lines + 2.5))
-        else:
-            row_heights.append(row_h)
+            max_value_h = max(max_value_h, len(wrapped) * line_h_value)
+        row_heights.append(max(row_h, max_label_h + 2.5, max_value_h + 2.5))
     return row_heights
 
 
@@ -1105,8 +1153,23 @@ def _draw_info_block(
 
         pdf.set_font(base_font, "B", FONT_MAIN)
         pdf.set_text_color(*LABEL_COLOR)
-        pdf.set_xy(cx + PADDING_X, cy + (rh - LINE_H) / 2.0)
-        pdf.cell(label_w - 2 * PADDING_X, LINE_H, str(label or ""), border=0, align="L")
+        label_str = str(label or "")
+        label_lines, _ = _split_lines(
+            pdf, label_w - 2 * PADDING_X, label_str, LINE_H,
+        )
+        label_h = len(label_lines) * LINE_H
+        start_y = cy + max(PADDING_Y, (rh - label_h) / 2.0)
+        pdf.set_xy(cx + PADDING_X, start_y)
+        if len(label_lines) > 1:
+            pdf.multi_cell(
+                label_w - 2 * PADDING_X,
+                LINE_H,
+                label_str,
+                border=0,
+                align="L",
+            )
+        else:
+            pdf.cell(label_w - 2 * PADDING_X, LINE_H, label_str, border=0, align="L")
         pdf.set_text_color(0, 0, 0)
 
         pdf.set_font(base_font, "", FONT_MAIN)
@@ -1691,6 +1754,147 @@ def _draw_people_block(
 
 
 # -------------------- Corrective action block --------------------
+def _draw_action_details_group(
+    pdf: FPDF,
+    base_font: str,
+    x: float,
+    y: float,
+    w: float,
+    fields: List[Tuple[str, str, float]],
+) -> float:
+    """Draw the action fields as one box, with context fields in one row."""
+    label_h = LINE_H + 1.0
+    context_fields = fields[:-1]
+    detail_fields = fields[-1:]
+
+    pdf.set_font(base_font, "", FONT_MAIN)
+    context_cols = []
+    context_h = 0.0
+    if context_fields:
+        col_w = w / len(context_fields)
+        for label, text, min_h in context_fields:
+            text_str = "-" if text in (None, "", "-") else str(text)
+            _, raw_h = _split_lines(pdf, col_w - 2 * PADDING_X, text_str, LINE_H)
+            content_h = max(min_h, raw_h + 2 * PADDING_Y)
+            context_cols.append((label, text_str, content_h))
+        context_h = label_h + max(content_h for _, _, content_h in context_cols)
+
+    detail_rows = []
+    total_h = 0.0
+    for label, text, min_h in detail_fields:
+        text_str = "-" if text in (None, "", "-") else str(text)
+        _, raw_h = _split_lines(pdf, w - 2 * PADDING_X, text_str, LINE_H)
+        content_h = max(min_h, raw_h + 2 * PADDING_Y)
+        row_h = label_h + content_h
+        detail_rows.append((label, text_str, content_h, row_h))
+        total_h += row_h
+    total_h += context_h
+
+    pdf.set_line_width(LINE_W_INNER)
+    pdf.set_draw_color(*GRID_COLOR)
+
+    cy = y
+    if context_cols:
+        col_w = w / len(context_cols)
+        context_content_h = context_h - label_h
+        for i, (label, text_str, _) in enumerate(context_cols):
+            cx = x + i * col_w
+            pdf.set_fill_color(245, 245, 245)
+            pdf.rect(cx, cy, col_w, label_h, style="F")
+            pdf.set_xy(cx + PADDING_X, cy + (label_h - LINE_H) / 2.0)
+            pdf.set_font(base_font, "B", FONT_MAIN)
+            pdf.cell(col_w - 2 * PADDING_X, LINE_H, label, border=0, align="L")
+            pdf.line(cx, cy + label_h, cx + col_w, cy + label_h)
+            _cell_text_in_box(
+                pdf,
+                cx,
+                cy + label_h,
+                col_w,
+                context_content_h,
+                text_str,
+                align="L",
+                lh=LINE_H,
+                valign="top",
+                draw_border=False,
+            )
+            if i:
+                pdf.line(cx, cy, cx, cy + context_h)
+        cy += context_h
+
+    for label, text_str, content_h, row_h in detail_rows:
+        pdf.set_fill_color(245, 245, 245)
+        pdf.rect(x, cy, w, label_h, style="F")
+        pdf.set_xy(x + PADDING_X, cy + (label_h - LINE_H) / 2.0)
+        pdf.set_font(base_font, "B", FONT_MAIN)
+        pdf.cell(w - 2 * PADDING_X, LINE_H, label, border=0, align="L")
+        pdf.line(x, cy + label_h, x + w, cy + label_h)
+        _cell_text_in_box(
+            pdf,
+            x,
+            cy + label_h,
+            w,
+            content_h,
+            text_str,
+            align="L",
+            lh=LINE_H,
+            valign="top",
+            draw_border=False,
+        )
+        cy += row_h
+
+    pdf.rect(x, y, w, total_h)
+    return y + total_h
+
+
+def _measure_action_details_group_height(
+    pdf: FPDF,
+    base_font: str,
+    w: float,
+    fields: List[Tuple[str, str, float]],
+) -> float:
+    """Measure the combined action-details box before deciding page placement."""
+    label_h = LINE_H + 1.0
+    pdf.set_font(base_font, "", FONT_MAIN)
+    context_fields = fields[:-1]
+    detail_fields = fields[-1:]
+    total_h = 0.0
+
+    if context_fields:
+        col_w = w / len(context_fields)
+        context_content_h = 0.0
+        for _, text, min_h in context_fields:
+            text_str = "-" if text in (None, "", "-") else str(text)
+            _, raw_h = _split_lines(pdf, col_w - 2 * PADDING_X, text_str, LINE_H)
+            context_content_h = max(context_content_h, max(min_h, raw_h + 2 * PADDING_Y))
+        total_h += label_h + context_content_h
+
+    for _, text, min_h in detail_fields:
+        text_str = "-" if text in (None, "", "-") else str(text)
+        _, raw_h = _split_lines(pdf, w - 2 * PADDING_X, text_str, LINE_H)
+        total_h += label_h + max(min_h, raw_h + 2 * PADDING_Y)
+    return total_h
+
+
+def _measure_action_block_height(
+    pdf: FPDF,
+    base_font: str,
+    w: float,
+    fields: List[Tuple[str, str, float]],
+    action: dict,
+) -> float:
+    """Measure a complete action, including both photo grids."""
+    height = SECTION_BAR_H + _measure_action_details_group_height(pdf, base_font, w, fields) + 2
+    photo_heights = []
+    for photos in (action.get("beforeImages") or [], action.get("afterImages") or []):
+        if not photos:
+            continue
+        rows = math.ceil(len(photos) / 2)
+        photo_heights.append((LINE_H + 1.0) + rows * 38 + (rows + 1) * 2)
+    if photo_heights:
+        height += max(photo_heights)
+    return height + 3
+
+
 def _draw_action_block(
     pdf: FPDF,
     base_font: str,
@@ -1699,18 +1903,26 @@ def _draw_action_block(
     w: float,
     idx: int,
     action: dict,
+    problem_text: str = "",
+    cause_text: str = "",
     correction_text: str = "",
 ) -> float:
     """วาดรายละเอียดการดำเนินการแก้ไข 1 ชุด (ข้อความ + รูปก่อน/หลัง)"""
     # แถบหัวข้อย่อยมีพื้นและกรอบ ให้เป็นส่วนหนึ่งของฟอร์ม ไม่ใช่ข้อความลอย
-    y = _draw_section_bar(pdf, base_font, x, y, w, "", _t("action_no", n=_num(idx)))
-
-    if correction_text.strip():
-        y = _draw_text_block(pdf, base_font, x, y, w, _t("correction"), correction_text, min_h=8)
-        y += 2
+    # Action numbering is always Arabic numerals, including Thai-language PDFs.
+    y = _draw_section_bar(pdf, base_font, x, y, w, "", _t("action_no", n=str(idx)))
 
     action_text = action.get("text", "") or "-"
-    y = _draw_text_block(pdf, base_font, x, y, w, _t("action_details"), action_text, min_h=10)
+    fields: List[Tuple[str, str, float]] = []
+    if (problem_text or "").strip():
+        fields.append((_t("problem"), problem_text, 8))
+    if (cause_text or "").strip():
+        fields.append((_t("cause"), cause_text, 8))
+    if (correction_text or "").strip():
+        fields.append((_t("correction"), correction_text, 8))
+    fields.append((_t("action_details"), action_text, 10))
+
+    y = _draw_action_details_group(pdf, base_font, x, y, w, fields)
     y += 2
 
     before_imgs = action.get("beforeImages") or []
@@ -1786,6 +1998,10 @@ def make_cm_report_pdf_bytes(
         for key, value in nested_job.items():
             if key not in doc or doc.get(key) in (None, ""):
                 doc[key] = value
+    failure_codes = doc.get("_maximo_failure_codes")
+    failure_class_code = doc.get("_maximo_failure_class") or doc.get("faulty_equipment")
+    corrective_actions = _pdf_corrective_actions(doc)
+    multiple_actions = len(corrective_actions) > 1
     status_bucket = _cm_status_bucket(doc)
     is_repair_form = status_bucket == "in_progress"
     issue_id = str(doc.get("issue_id", "-"))
@@ -1888,8 +2104,12 @@ def make_cm_report_pdf_bytes(
             "data": [(
                 _t("faulty_equipment_repair" if is_repair_form else "faulty_equipment"),
                 _display_value(
-                    doc.get("faulty_equipment_label")
-                    or failure_code_label(doc.get("faulty_equipment"))
+                    failure_code_label(
+                        doc.get("faulty_equipment"),
+                        failure_codes,
+                        failure_class_code,
+                    )
+                    or doc.get("faulty_equipment_label")
                     or doc.get("faulty_equipment")
                 ),
             )],
@@ -1946,7 +2166,10 @@ def make_cm_report_pdf_bytes(
     problem_codes = _as_code_list(doc.get("problem_type"))
     cause_codes = _as_code_list(doc.get("cause"))
 
-    problem_type_text = _join_labels(problem_codes, problem_label) or "-"
+    problem_type_text = _join_labels(
+        problem_codes,
+        lambda code: problem_label(code, failure_codes, failure_class_code),
+    ) or "-"
     section3_parts: List[Dict[str, Any]] = [
         {
             "kind": "info",
@@ -1954,7 +2177,10 @@ def make_cm_report_pdf_bytes(
             "cols": 1,
         },
     ]
-    cause = _join_labels(cause_codes, cause_label)
+    cause = _join_labels(
+        cause_codes,
+        lambda code: cause_label(code, failure_codes, failure_class_code),
+    )
     if cause and cause != "-":
         section3_parts.append({
             "kind": "info",
@@ -1963,7 +2189,7 @@ def make_cm_report_pdf_bytes(
         })
 
     # ฟอร์ม Open ยังไม่มีช่องปัญหา/สาเหตุจากช่าง จึงไม่พิมพ์หมวดนี้จนกว่าจะมีข้อมูลจริง
-    if is_repair_form or problem_type_text != "-" or cause:
+    if (is_repair_form or problem_type_text != "-" or cause) and not multiple_actions:
         y = _new_page_if_needed(
             pdf, y,
             SECTION_BAR_H + sum(_measure_part_height(pdf, page_w, p) for p in section3_parts),
@@ -1979,12 +2205,6 @@ def make_cm_report_pdf_bytes(
     # repaired_equipment เก็บ remedy code — คำอธิบายขึ้นกับบริบท (failure code + ปัญหา + สาเหตุ)
     # เช่น REPLACE ของ POWBOAFA = "Replace (Power Board)" คนละเรื่องกับ REPLACE ของ OVERHEAT
     failure_code = doc.get("faulty_equipment")
-    repaired_eq_labels: List[str] = []
-    for code in _pdf_repaired_equipment(doc):
-        for desc in remedy_descriptions(failure_code, problem_codes, cause_codes, code):
-            repaired_eq_labels.append(desc)
-    repaired_eq_text = "\n".join(repaired_eq_labels) or "-"
-
     section4_parts: List[Dict[str, Any]] = []
     # Open ใช้ repair_result เป็น marker ของสถานะรอแผน (เช่น WO - wait for scheduled)
     # จึงไม่นับ marker นี้เป็นข้อมูลการซ่อมจนกว่าจะเข้า In Progress/Closed
@@ -2000,10 +2220,15 @@ def make_cm_report_pdf_bytes(
             "data": [
                 (_t("start_repair_inprogress" if is_repair_form else "start_repair"), _fmt_date_time(doc.get("start_repair_date"), doc.get("start_repair_time"))),
                 (_t("finish_repair_inprogress" if is_repair_form else "finish_repair"), _fmt_date_time(doc.get("resolved_date"), doc.get("resolved_time"))),
-                (_t("correction"), repaired_eq_text),
-                (_t("repairer"), _display_value(doc.get("inspector"))),
             ],
             "cols": 2,
+        })
+        section4_parts.append({
+            "kind": "info",
+            "data": [
+                (_t("repairer"), _display_value(doc.get("inspector"))),
+            ],
+            "cols": 1,
         })
         section4_parts.append({
             "kind": "choice",
@@ -2013,7 +2238,9 @@ def make_cm_report_pdf_bytes(
         })
 
         # รอบการเข้าแก้ไขก่อนหน้า (รอของ/รอหน้างาน) — ตารางด้านบนเก็บแค่รอบที่ปิดงาน
-        section4_parts.extend(_repair_history_parts(doc))
+        section4_parts.extend(
+            _repair_history_parts(doc, failure_codes, failure_class_code)
+        )
 
         inprogress_remarks = _display_value(doc.get("inprogress_remarks"), "")
         if inprogress_remarks:
@@ -2045,12 +2272,67 @@ def make_cm_report_pdf_bytes(
         y += 3
 
     # รายละเอียด corrective actions วาดแยกจากกรอบใหญ่ เพราะมีรูปก่อน/หลังที่ยืดหยุ่น
-    corrective_actions = _pdf_corrective_actions(doc)
     if corrective_actions:
+        action_codes = _pdf_repaired_equipment(doc)
+        action_problem_codes = _pdf_codes_for_action_context(doc, "problem_type")
+        action_cause_codes = _pdf_codes_for_action_context(doc, "cause")
+
         for idx, action in enumerate(corrective_actions, 1):
-            y = _new_page_if_needed(pdf, y, 60)
-            correction_text = repaired_eq_labels[idx - 1] if idx - 1 < len(repaired_eq_labels) else str(action.get("code") or "")
-            y = _draw_action_block(pdf, base_font, x0, y, page_w, idx, action, correction_text=correction_text)
+            action_problem = action_problem_codes[idx - 1] if idx - 1 < len(action_problem_codes) else ""
+            action_cause = action_cause_codes[idx - 1] if idx - 1 < len(action_cause_codes) else ""
+            context_problems = [action_problem] if action_problem else problem_codes
+            context_causes = [action_cause] if action_cause else cause_codes
+            problem_text = problem_label(
+                action_problem,
+                failure_codes,
+                failure_class_code,
+            ) if action_problem else _join_labels(
+                context_problems,
+                lambda code: problem_label(code, failure_codes, failure_class_code),
+            )
+            cause_text = cause_label(
+                action_cause,
+                failure_codes,
+                failure_class_code,
+            ) if action_cause else _join_labels(
+                context_causes,
+                lambda code: cause_label(code, failure_codes, failure_class_code),
+            )
+            correction_code = action_codes[idx - 1] if idx - 1 < len(action_codes) else str(action.get("code") or "")
+            correction_labels = remedy_descriptions(
+                failure_code,
+                context_problems,
+                context_causes,
+                correction_code,
+                failure_codes,
+                failure_class_code,
+            ) if correction_code else []
+            correction_text = "\n".join(correction_labels) or correction_code
+            action_fields: List[Tuple[str, str, float]] = []
+            if (problem_text or "").strip():
+                action_fields.append((_t("problem"), problem_text, 8))
+            if (cause_text or "").strip():
+                action_fields.append((_t("cause"), cause_text, 8))
+            if (correction_text or "").strip():
+                action_fields.append((_t("correction"), correction_text, 8))
+            action_fields.append((_t("action_details"), action.get("text", "") or "-", 10))
+            y = _new_page_if_needed(
+                pdf,
+                y,
+                _measure_action_block_height(pdf, base_font, page_w, action_fields, action),
+            )
+            y = _draw_action_block(
+                pdf,
+                base_font,
+                x0,
+                y,
+                page_w,
+                idx,
+                action,
+                problem_text=problem_text,
+                cause_text=cause_text,
+                correction_text=correction_text,
+            )
 
     # ===== ส่วนที่ 5: การป้องกันและผลการซ่อม =====
     section5_parts: List[Dict[str, Any]] = []
