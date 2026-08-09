@@ -15,8 +15,11 @@ import {
 } from "@/utils/cm-dashboard";
 import { remedyLabel, remedyCodeOfDescription } from "@/utils/cm-failure-codes";
 import { CM_ORIGIN_DASHBOARD } from "@/app/dashboard/cm-report/lib/origin";
+import { failureCodeLabel } from "@/app/dashboard/cm-report/lib/failureCode";
+import { failureClassOptions, useMaximoFailureTree } from "@/app/dashboard/cm-report/lib/maximo";
 import {
   CheckCircleIcon, ClockIcon, DocumentTextIcon,
+  DocumentArrowDownIcon,
   ExclamationTriangleIcon, ShoppingCartIcon, XCircleIcon,
 } from "@heroicons/react/24/outline";
 
@@ -32,14 +35,41 @@ const EQUIPMENT_COLORS = ["#3b82f6","#06b6d4","#8b5cf6","#0ea5e9","#a855f7","#14
 const REMEDY_COLORS = ["#f59e0b","#ec4899","#f97316","#d946ef","#eab308","#fb7185","#c026d3","#f43f5e","#ca8a04","#e11d48"];
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 500;
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+
+// ใบที่รออะไหล่/รอสภาพหน้างานและยังไม่มีช่าง ต้องเปิดฟอร์มวางแผนใหม่
+// WO - wait for scheduled มีแผน/ช่างแล้ว จึงเปิดฟอร์มกรอกผลซ่อมเหมือน technician
+const PLANNING_WAIT_RESULTS: string[] = [];
+const WAITING_ON_REPLAN_RESULTS = [
+  "WO - wait for material",
+  "WO - wait for spare part",
+  "WO - wait for site condition",
+  "WO - wait for site access",
+];
+const PLANNING_ROLES = ["admin", "owner", "engineer"];
+
+function hasAssignedTechnician(assignees?: string[]) {
+  return Array.isArray(assignees) && assignees.some((assignee) => !!assignee?.trim());
+}
+
+function isPlanningWait(value?: string, assignees?: string[]) {
+  const result = (value || "").trim();
+  if (PLANNING_WAIT_RESULTS.includes(result)) return true;
+  return WAITING_ON_REPLAN_RESULTS.includes(result) && !hasAssignedTechnician(assignees);
+}
 
 // สถานะ (raw) + stage → slug ของแท็บในหน้า CM Report (open / in-progress / closed)
 // "Wait for approve" มี 2 ด่าน ต้องแยกด้วย stage ไม่งั้นจะเปิดฟอร์มผิดใบ:
 //   • cs_approval   = cs เพิ่งเปิดเคส รอ head cs อนุมัติ        → แท็บ Open (ฟอร์มเปิดงาน/วางแผนให้ engineer)
 //   • close_approval = ช่างกรอกผลซ่อม "แก้ไขสำเร็จ" รออนุมัติปิดงาน → แท็บ In Progress (ฟอร์มผลการซ่อม)
 // ใบเก่าที่ไม่มี stage ให้ถือเป็นด่านปิดงาน — ตรงกับเงื่อนไขกรองของ open-table/inprogress-table
-function statusSlug(status: string, stage?: string): "open" | "in-progress" | "closed" | "cancelled" {
+function statusSlug(status: string, stage?: string, repairResult?: string): "open" | "in-progress" | "closed" | "cancelled" {
   const raw = (status || "").trim().toLowerCase();
+  const repair = (repairResult || "").trim().toLowerCase();
+  if (
+    raw === "wait for schedule" &&
+    ["wo - wait for scheduled", "wo - wait for manpower"].includes(repair)
+  ) return "in-progress";
   if (raw === "wait for approve") {
     return (stage || "").trim().toLowerCase() === "cs_approval" ? "open" : "in-progress";
   }
@@ -207,6 +237,27 @@ export default function CMDashboardPage() {
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
 
   const router = useRouter();
+  const [userRole, setUserRole] = useState("");
+  const maximoFailureTree = useMaximoFailureTree();
+  const faultyEquipmentLabels = useMemo(() => {
+    const labels = new Map<string, string>();
+    const options = failureClassOptions(maximoFailureTree, { hasDC: true, hasAC: true }) ?? [];
+    for (const option of options) {
+      labels.set(option.value, option.label);
+      labels.set(option.value.toUpperCase(), option.label);
+    }
+    return labels;
+  }, [maximoFailureTree]);
+  const faultyEquipmentLabel = useCallback((value?: string | null) => {
+    const code = (value || "").trim();
+    if (!code) return "";
+    return faultyEquipmentLabels.get(code) ??
+      faultyEquipmentLabels.get(code.toUpperCase()) ??
+      failureCodeLabel(code);
+  }, [faultyEquipmentLabels]);
+  const displayFaultyEquipment = useCallback((row: CMRow) => {
+    return row.faulty_equipment_label || faultyEquipmentLabel(row.faulty_equipment);
+  }, [faultyEquipmentLabel]);
 
   // คลิกแถวในตาราง → เปิดใบงาน CM ในหน้า CM Report (แท็บตามสถานะ) + โชว์ชื่อสถานีบน navbar แทน badge ตู้ชาร์จ
   const openReport = useCallback((r: CMRow) => {
@@ -218,15 +269,23 @@ export default function CMDashboardPage() {
     localStorage.removeItem("selected_charger_no");
     window.dispatchEvent(new CustomEvent("station:selected"));
     const params = new URLSearchParams({
-      tab: statusSlug(r.status, r.stage),
+      tab: statusSlug(r.status, r.stage, r.repair_result),
       station_id: r.station_id || "",
       view: "form",
       edit_id: r.id,
       // บอกฟอร์มว่าเข้ามาจากหน้านี้ → ปุ่มย้อนกลับพากลับมาที่ dashboard ไม่ใช่ตาราง CM Report
       from: CM_ORIGIN_DASHBOARD,
     });
+    // ให้การกดจาก CM Dashboard เหมือนการกดจาก In Progress:
+    // engineer/admin/owner ที่เปิดใบงานรอของหรือรอหน้างานต้องเข้าฟอร์มวางแผน
+    if (
+      isPlanningWait(r.repair_result, r.assignees) &&
+      PLANNING_ROLES.includes(userRole.trim().toLowerCase())
+    ) {
+      params.set("planning", "1");
+    }
     router.push(`/dashboard/cm-report?${params.toString()}`);
-  }, [router]);
+  }, [router, userRole]);
 
   // เคลียร์ charger ที่เลือกไว้ → sidenav กลับสู่เมนูปกติ (เหมือนหน้า Stations/PM-all)
   useEffect(() => { localStorage.removeItem("selected_sn"); localStorage.removeItem("selected_charger_no"); window.dispatchEvent(new CustomEvent("charger:deselected")); }, []);
@@ -234,9 +293,8 @@ export default function CMDashboardPage() {
   // ── Language ──────────────────────────────────────────────────────────────
   const { lang } = useLanguage();
 
-  // role CS เห็นหน้านี้ได้ แต่ให้เห็นเฉพาะตารางใบงาน — กราฟ/KPI วิเคราะห์ซ่อนไว้
-  const [userRole, setUserRole] = useState("");
-  const isCsOnly = userRole.trim().toLowerCase() === "cs";
+  // CS และ Technician เห็น CM Dashboard แบบรายการใบงานเท่านั้น — ซ่อนกราฟ/KPI วิเคราะห์
+  const isListOnlyRole = ["cs", "technician"].includes(userRole.trim().toLowerCase());
 
   useEffect(() => {
     let alive = true;
@@ -497,7 +555,7 @@ export default function CMDashboardPage() {
       quickInProgress: "รอดำเนินการ",
       quickComplete: "เสร็จสิ้น",
       quickCancelled: "ยกเลิก",
-      tableHeaders: ["#", "สถานี", "รหัสเอกสาร", "อุปกรณ์ที่ผิดปกติ", "ปัญหาที่พบ", "ความรุนแรง", "วันที่", "สถานะ"],
+      tableHeaders: ["#", "สถานี", "รหัสเอกสาร", "ผู้แจ้งปัญหา", "อุปกรณ์ที่ผิดปกติ", "ปัญหาที่พบ", "ความรุนแรง", "วันที่", "สถานะ"],
     },
     en: {
       pageTitle: "Corrective Maintenance (CM)",
@@ -564,7 +622,7 @@ export default function CMDashboardPage() {
       quickInProgress: "In Progress",
       quickComplete: "Complete",
       quickCancelled: "Cancelled",
-      tableHeaders: ["#", "Station", "Issue ID", "Faulty Equipment", "Problem Found", "Severity", "Date", "Status"],
+      tableHeaders: ["#", "Station", "Issue ID", "Reported By", "Faulty Equipment", "Problem Found", "Severity", "Date", "Status"],
     },
   }[lang]), [lang]);
 
@@ -890,8 +948,8 @@ export default function CMDashboardPage() {
         </div>
       )}
 
-      {/* ── Section 1: Success Rate ── (role cs เห็นเฉพาะตารางใบงาน จึงซ่อนส่วนวิเคราะห์) */}
-      {!isCsOnly && (
+      {/* ── Section 1: Success Rate ── (CS/Technician เห็นเฉพาะตารางใบงาน) */}
+      {!isListOnlyRole && (
       <section className="tw-mb-6">
         <div className="tw-mb-3 tw-flex tw-items-center tw-justify-between">
           <h2 className="tw-text-base tw-font-semibold tw-text-gray-700">
@@ -973,7 +1031,7 @@ export default function CMDashboardPage() {
       )}
 
       {/* ── Section 2: Failure Mode ── */}
-      {!isCsOnly && (
+      {!isListOnlyRole && (
       <section className="tw-mb-6">
         <div className="tw-mb-3 tw-flex tw-items-center tw-justify-between">
           <h2 className="tw-text-base tw-font-semibold tw-text-gray-700">{t.s2Title}</h2>
@@ -1030,7 +1088,7 @@ export default function CMDashboardPage() {
       )}
 
       {/* ── Section 2b: Remedy Analysis — pie par REMEDY CODE + détail REMEDY DESCRIPTION ── */}
-      {!isCsOnly && (
+      {!isListOnlyRole && (
       <section className="tw-mb-6">
         <div className="tw-mb-3 tw-flex tw-items-center tw-justify-between">
           <h2 className="tw-text-base tw-font-semibold tw-text-gray-700">{t.s4Title}</h2>
@@ -1090,7 +1148,7 @@ export default function CMDashboardPage() {
       )}
 
       {/* ── Section 3: Overall Status by Month (แท่งซ้อนรายเดือน) ── */}
-      {!isCsOnly && (
+      {!isListOnlyRole && (
       <section className="tw-mb-6">
         <div className="tw-mb-3 tw-flex tw-items-center tw-justify-between">
           <h2 className="tw-text-base tw-font-semibold tw-text-gray-700">{t.s3Title}</h2>
@@ -1195,23 +1253,25 @@ export default function CMDashboardPage() {
 
         <Card className="tw-overflow-hidden tw-border tw-border-blue-gray-100 tw-shadow-sm">
           <div className="tw-overflow-x-auto">
-            <table className="tw-w-full tw-min-w-[860px] tw-table-auto tw-text-left tw-text-sm">
+            <table className="tw-w-full tw-min-w-[980px] tw-table-auto tw-text-left tw-text-sm">
               <thead>
                 <tr className="tw-bg-gray-50 tw-text-xs tw-font-semibold tw-uppercase tw-tracking-wide tw-text-gray-500">
                   {t.tableHeaders.map((h) => (
                     <th key={h} className="tw-px-4 tw-py-3 tw-whitespace-nowrap">{h}</th>
                   ))}
+                  <th className="tw-px-4 tw-py-3 tw-whitespace-nowrap">PDF</th>
                 </tr>
               </thead>
               <tbody>
                 {tableRows.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="tw-p-8 tw-text-center tw-text-gray-400">
+                    <td colSpan={10} className="tw-p-8 tw-text-center tw-text-gray-400">
                       {t.noResults(search || undefined)}
                     </td>
                   </tr>
                 ) : tableRows.map((r, i) => {
                   const badge = workStatusBadge(r);
+                  const canOpenPdf = normalizeStatus(r.status) === "completed";
                   return (
                     <tr
                       key={r.id}
@@ -1222,6 +1282,7 @@ export default function CMDashboardPage() {
                       <td className="tw-px-4 tw-py-3 tw-text-gray-400">{page * pageSize + i + 1}</td>
                       <td className="tw-px-4 tw-py-3 tw-font-medium tw-text-gray-800">{r.station_name || r.station_id}</td>
                       <td className="tw-px-4 tw-py-3 tw-text-gray-600">{r.issue_id || "-"}</td>
+                      <td className="tw-px-4 tw-py-3 tw-text-gray-600">{r.reported_by || "-"}</td>
                       <td className="tw-px-4 tw-py-3">
                         <button
                           onClick={(e) => { e.stopPropagation(); r.faulty_equipment && toggleFilter("equipment", r.faulty_equipment); }}
@@ -1231,7 +1292,7 @@ export default function CMDashboardPage() {
                               : "tw-text-gray-600 hover:tw-bg-gray-100"
                           }`}
                         >
-                          {r.faulty_equipment || "-"}
+                          {displayFaultyEquipment(r) || "-"}
                         </button>
                       </td>
                       <td className="tw-px-4 tw-py-3 tw-text-gray-600">
@@ -1262,6 +1323,23 @@ export default function CMDashboardPage() {
                         >
                           {workStatusLabel[badge.ws]}
                         </button>
+                      </td>
+                      <td className="tw-px-4 tw-py-3 tw-text-center">
+                        {r.id && canOpenPdf ? (
+                          <a
+                            href={`${API_BASE}/pdf/cm/${encodeURIComponent(r.id)}/export?station_id=${encodeURIComponent(r.station_id || "")}&lang=${lang}&dl=0`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="tw-inline-flex tw-items-center tw-justify-center tw-rounded-lg tw-p-1.5 tw-text-red-600 hover:tw-bg-red-50 hover:tw-text-red-800"
+                            title="PDF"
+                            aria-label="PDF"
+                          >
+                            <DocumentArrowDownIcon className="tw-h-5 tw-w-5" />
+                          </a>
+                        ) : (
+                          <span className="tw-text-gray-300">-</span>
+                        )}
                       </td>
                     </tr>
                   );

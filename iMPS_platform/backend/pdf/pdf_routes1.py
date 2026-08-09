@@ -36,6 +36,51 @@ TEMPLATE_MAP = {
 PM_TEMPLATES_WITH_PHOTOS = {"charger", "mdb", "ccb", "cbbox", "station"}
 
 
+async def _add_cm_failure_label(data: dict, station_id: str) -> dict:
+    """แนบคำอธิบาย Faulty Equipment จาก cache Maximo ให้ template PDF ใช้แสดงผล"""
+    raw_code = str(data.get("faulty_equipment") or "").strip()
+    if not raw_code:
+        return data
+
+    aliases = {
+        "DCCHARFC": "DCCHARGER",
+        "ACCHARFC": "ACCHARGER",
+        "STATFC": "STATION",
+    }
+    wanted = aliases.get(raw_code.upper(), raw_code.upper())
+    try:
+        cached = pymongo_client["iMPS"]["maximo_failure_codes"].find_one(
+            {"_id": "failure_codes"}, {"classes": 1}
+        )
+        for failure_class in (cached or {}).get("classes") or []:
+            code = str(failure_class.get("code") or "").strip().upper()
+            if code == wanted:
+                label = str(failure_class.get("description") or "").strip()
+                if label:
+                    return {**data, "faulty_equipment_label": label}
+                break
+
+        if raw_code.lower().startswith("charger_"):
+            charger_cursor = pymongo_client["iMPS"]["charger"].find(
+                {"station_id": station_id},
+                {"chargerNo": 1, "charger_no": 1, "charger_id": 1, "charger_name": 1, "SN": 1, "sn": 1},
+            ).sort("chargerNo", 1)
+            for index, charger in enumerate(charger_cursor):
+                keys = {charger.get("chargerNo"), charger.get("charger_no"), charger.get("charger_id")}
+                wanted_keys = {f"charger_{str(key).strip().lower()}" for key in keys if key not in (None, "")}
+                if raw_code.lower() not in wanted_keys:
+                    continue
+                number = charger.get("chargerNo") or charger.get("charger_no") or index + 1
+                name = str(charger.get("charger_name") or f"Charger {number}").strip()
+                sn = str(charger.get("SN") or charger.get("sn") or "").strip()
+                label = f"{name} ({sn})" if sn else name
+                return {**data, "faulty_equipment_label": label}
+    except Exception:
+        # ให้ pdf_cm.py ใช้ mapping สำรองเดิมได้ แม้ cache Maximo จะอ่านไม่ได้
+        pass
+    return data
+
+
 def _delete_report_photos(template: str, coll_key: str, report_id: str, coll) -> None:
     """ลบรูปบน disk และ unset photos ใน MongoDB หลัง export PDF สำเร็จ"""
     if template not in PM_TEMPLATES_WITH_PHOTOS:
@@ -98,6 +143,9 @@ async def export_pdf_redirect(
     data = coll.find_one({"_id": oid})
     if not data:
         raise HTTPException(status_code=404, detail="ไม่พบข้อมูลเอกสารนี้")
+
+    if template == "cm":
+        data = await _add_cm_failure_label(data, coll_key)
 
     pm_templates = ["charger", "mdb", "ccb", "cbbox", "station", "cm", "dc", "ac"]
     if template in pm_templates:
@@ -177,12 +225,15 @@ async def export_pdf(
     if not data:
         raise HTTPException(status_code=404, detail="ไม่พบข้อมูลเอกสารนี้")
 
+    if template == "cm":
+        data = await _add_cm_failure_label(data, coll_key)
+
     # เช็ค cache ก่อน gen
     # cm: ผูกชื่อ cache กับ updatedAt เพื่อให้ regenerate ทันทีเมื่อข้อมูลใบงานเปลี่ยน
     if template == "cm":
         ver = data.get("updatedAt") or data.get("createdAt") or ""
         ver_str = "".join(ch for ch in str(ver) if ch.isalnum())[:20] or "0"
-        cache_name = f"{id}_{lang}_{ver_str}.pdf"
+        cache_name = f"{id}_{lang}_{ver_str}_cm-v5.pdf"
     else:
         cache_name = f"{id}_{lang}.pdf"
     cache_path = pathlib.Path(UPLOADS_ROOT) / "pdf_cache" / (coll_key or "unknown") / cache_name

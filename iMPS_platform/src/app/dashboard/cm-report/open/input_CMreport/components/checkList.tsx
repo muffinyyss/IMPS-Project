@@ -579,24 +579,8 @@ export default function CMOpenForm() {
     // เห็นทั้งตอนเปิดใบใหม่และตอนเปิดใบเดิม (เปิดงาน + วางแผน รวดเดียวได้)
     // ใบที่ตีกลับให้ cs แก้ = ยังวางแผน/Assign ไม่ได้ จนกว่า cs จะแก้แล้วบันทึกกลับเข้าคิว
     const canPlan = !isCancelled && !isReturnedToCs && ["admin", "owner", "engineer"].includes(roleLower);
-    // สถานะรอที่เลือกได้ในรอบนี้ — ตัดสถานะที่เคยใช้ในรอบก่อน ๆ ออก จะได้ไม่วางแผนซ้ำสถานะเดิม
-    // ถ้าใช้ครบทุกสถานะแล้ว ให้กลับไปใช้รายการเต็ม กัน dropdown ว่างจนกรอกต่อไม่ได้
-    const usedWaitStates = useMemo(
-        () => new Set(planHistory.map(r => (r.wait_state || "").trim()).filter(Boolean)),
-        [planHistory],
-    );
-    const availableWaitStates = useMemo(() => {
-        const left = WAIT_STATES.filter(w => !usedWaitStates.has(w));
-        return left.length ? left : [...WAIT_STATES];
-    }, [usedWaitStates]);
-    // ค่าที่ถืออยู่ต้องมีใน dropdown เสมอ — ใบที่เคยใช้สถานะนี้ในรอบก่อนจะถูกกรองออกจากลิสต์
-    // แล้ว select จะโชว์ตัวเลือกแรกทั้งที่ค่าจริงเป็นอีกอัน (บันทึกไปคนละค่ากับที่เห็น)
-    const waitStateOptions = useMemo(
-        () => (waitState && !availableWaitStates.includes(waitState as any)
-            ? [waitState, ...availableWaitStates]
-            : availableWaitStates),
-        [availableWaitStates, waitState],
-    );
+    // แสดง Waiting On ครบทุกตัวเลือกเสมอ แม้สถานะนั้นจะเคยถูกเลือกในรอบก่อนแล้ว
+    const waitStateOptions = WAIT_STATES;
 
     // assignees = 1 แถว 1 ช่าง — แถวที่เพิ่งกด + จะยังเป็น "" จนกว่าจะเลือก
     const pickedAssignees = useMemo(() => assignees.filter(Boolean), [assignees]);
@@ -748,6 +732,12 @@ export default function CMOpenForm() {
 
     const handleAddPhotos = useCallback(async (files: FileList) => {
         const remain = MAX_PHOTOS - photos_open.length;
+        if (remain <= 0 || files.length > remain) {
+            alert(lang === "th"
+                ? `แนบรูปได้สูงสุด ${MAX_PHOTOS} รูป (เพิ่มได้อีก ${Math.max(0, remain)} รูป)`
+                : `Maximum ${MAX_PHOTOS} photos (${Math.max(0, remain)} remaining)`);
+        }
+        if (remain <= 0) return;
         const filesToAdd = Array.from(files).slice(0, remain);
 
         const now = new Date().toLocaleString("th-TH", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
@@ -775,7 +765,7 @@ export default function CMOpenForm() {
                 setPhotosOpen(prev => prev.map(p => newPhotoIds.includes(p.id) ? { ...p, location: loc } : p));
             });
         }
-    }, [photos_open.length, draftKey, isEdit, getGpsCached]);
+    }, [photos_open.length, draftKey, isEdit, getGpsCached, lang]);
 
     const handleRemovePhoto = useCallback(async (id: string) => {
         const target = photos_open.find(p => p.id === id);
@@ -910,7 +900,10 @@ export default function CMOpenForm() {
         console.log("[Edit] Loading report:", editId, "station:", stationId);
         (async () => {
             try {
-                const res = await apiFetch(`${API_BASE}/cmreport/${encodeURIComponent(editId)}?station_id=${encodeURIComponent(stationId)}`, { credentials: "include" });
+                const res = await apiFetch(`${API_BASE}/cmreport/${encodeURIComponent(editId)}?station_id=${encodeURIComponent(stationId)}`, {
+                    credentials: "include",
+                    cache: "no-store",
+                });
                 if (!res.ok) {
                     console.log("[Edit] Response not OK:", res.status);
                     return;
@@ -930,6 +923,44 @@ export default function CMOpenForm() {
                     router.replace(`${pathname}?${params.toString()}`, { scroll: false });
                     return;
                 }
+
+                // Engineer ต้องเห็นข้อมูลซ่อมชุดเดียวกับ Technician โดยเฉพาะใบ WO wait for approve
+                // ซึ่ง repair_history อาจมีข้อมูลชุดที่ 2 ครบกว่า flat fields
+                const approvalRound = loadedStatus === "wait for approve"
+                    ? ([...(Array.isArray(data.repair_history) ? data.repair_history : [])].reverse().find((round: any) =>
+                        String(round?.repair_result ?? "").trim() === String(data.repair_result ?? "").trim()
+                    ) ?? (Array.isArray(data.repair_history) ? data.repair_history[data.repair_history.length - 1] : undefined))
+                    : undefined;
+                const asStringList = (value: unknown): string[] => Array.isArray(value)
+                    ? value.map(item => String(item ?? "").trim()).filter(Boolean)
+                    : String(value ?? "").trim() ? [String(value).trim()] : [];
+                const mergeStringList = (preferred: unknown, fallback: unknown): string[] => Array.from(new Set([
+                    ...asStringList(preferred),
+                    ...asStringList(fallback),
+                ]));
+                const flatCorrectiveActions = Array.isArray(data.corrective_actions) ? data.corrective_actions : [];
+                const historyCorrectiveActions = Array.isArray(approvalRound?.corrective_actions)
+                    ? approvalRound.corrective_actions
+                    : [];
+                const mergedCorrectiveActions = historyCorrectiveActions.length > 0
+                    ? Array.from({ length: Math.max(historyCorrectiveActions.length, flatCorrectiveActions.length) }, (_, index) => {
+                        const historyAction = historyCorrectiveActions[index] ?? {};
+                        const flatAction = flatCorrectiveActions[index] ?? {};
+                        return {
+                            ...flatAction,
+                            ...historyAction,
+                            text: String(historyAction.text ?? "").trim()
+                                ? historyAction.text
+                                : (flatAction.text ?? ""),
+                            beforeImages: historyAction.beforeImages?.length
+                                ? historyAction.beforeImages
+                                : (flatAction.beforeImages ?? []),
+                            afterImages: historyAction.afterImages?.length
+                                ? historyAction.afterImages
+                                : (flatAction.afterImages ?? []),
+                        };
+                    })
+                    : flatCorrectiveActions;
 
                 const rawDate = data.found_date ?? "";
 
@@ -951,12 +982,12 @@ export default function CMOpenForm() {
                 setReporterSignature(data.reporter_signature ?? "");
                 // ค่าที่เคยวางแผนไว้ (ถ้ามี) — datetime-local รับได้แค่ "YYYY-MM-DDTHH:MM"
                 setRepairInfo({
-                    problem_type: Array.isArray(data.problem_type) ? data.problem_type : (data.problem_type ? [data.problem_type] : []),
-                    problem_type_other: data.problem_type_other ?? "",
-                    cause: Array.isArray(data.cause) ? data.cause : (data.cause ? [data.cause] : []),
-                    repaired_equipment: Array.isArray(data.repaired_equipment) ? data.repaired_equipment : [],
-                    inprogress_remarks: data.inprogress_remarks ?? "",
-                    corrective_actions: Array.isArray(data.corrective_actions) ? data.corrective_actions : [],
+                    problem_type: mergeStringList(approvalRound?.problem_type, data.problem_type),
+                    problem_type_other: approvalRound?.problem_type_other || data.problem_type_other || "",
+                    cause: mergeStringList(approvalRound?.cause, data.cause),
+                    repaired_equipment: mergeStringList(approvalRound?.repaired_equipment, data.repaired_equipment),
+                    inprogress_remarks: approvalRound?.inprogress_remarks || data.inprogress_remarks || "",
+                    corrective_actions: mergedCorrectiveActions,
                 });
                 const prevHistory: PlanRound[] = Array.isArray(data.plan_history) ? data.plan_history : [];
                 const loadedWait = normalizeWaitState(data.repair_result ?? "");

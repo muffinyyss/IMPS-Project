@@ -2,6 +2,7 @@
 import os
 import re
 import math
+import base64
 
 from fpdf import FPDF, HTMLMixin
 from pathlib import Path
@@ -210,41 +211,62 @@ T: Dict[str, Tuple[str, str]] = {
     "doc_name": ("ชื่อเอกสาร", "Document Name"),
     "org1": ("การไฟฟ้าฝ่ายผลิตแห่งประเทศไทย (กฟผ.)",
              "Electricity Generating Authority of Thailand (EGAT)"),
-    "org2": ("เลขที่ 53 หมู่ 2 ถนนจรัญสนิทวงศ์ ตำบลบางกรวย อำเภอบางกรวย จังหวัดนนทบุรี 11130",
-             "53 Moo 2, Charan Sanitwong Rd., Bang Kruai, Bang Kruai, Nonthaburi 11130"),
-    "org3": ("ศูนย์บริการข้อมูล กฟผ. สายด่วน 1416", "EGAT Call Center 1416"),
+    "org2": ("เลขที่ 53 หมู่ 2 ถนนจรัญสนิทวงศ์ ตำบลบางกรวย อำเภอบางกรวย",
+             "53 Moo 2, Charan Sanitwong Rd., Bang Kruai Sub-district, Bang Kruai District"),
+    "org3": ("จังหวัดนนทบุรี 11130 ศูนย์บริการข้อมูล กฟผ. สายด่วน 1416",
+             "Nonthaburi 11130, EGAT Call Center 1416"),
     # --- ชื่อหมวด ---
     "sec1": ("ข้อมูลการแจ้ง", "Report Information"),
     "sec2": ("รายละเอียดปัญหา", "Problem Details"),
-    "sec3": ("ประเภทและสาเหตุของปัญหา", "Problem Type and Cause"),
-    "sec4": ("การดำเนินการแก้ไข", "Corrective Action"),
-    "sec5": ("การป้องกันและผลการซ่อม", "Prevention and Repair Result"),
+    "sec3": ("ปัญหาและสาเหตุ", "Problem and Cause"),
+    "sec3_repair": ("ปัญหาและการแก้ไข", "Problem & Correction"),
+    "sec4": ("การแก้ไข", "Corrective Actions"),
+    "sec4_inprogress": ("การแก้ไข", "Corrective Actions"),
+    "sec5": ("ผลหลังซ่อม", "Repair Result"),
     "people": ("ผู้เกี่ยวข้อง", "Personnel Involved"),
     # --- ป้ายกำกับช่องข้อมูล ---
     "found_date": ("วันที่แจ้ง", "Reported Date"),
-    "reported_by": ("ผู้แจ้ง", "Reported By"),
-    "sr_wo": ("เลขที่ SR/WO", "SR/WO No."),
+    "found_date_closed": ("พบปัญหา", "Found Date"),
+    "reported_by": ("ผู้แจ้งปัญหา", "Reported by"),
+    "sr_no": ("เลขที่ SR", "SR No."),
+    "wo_no": ("เลขที่ WO", "WO No."),
     "location": ("สถานที่", "Location"),
-    "wo_status": ("สถานะใบงาน", "Work Order Status"),
-    "faulty_equipment": ("อุปกรณ์ที่เสียหาย", "Faulty Equipment"),
+    "wo_status": ("สถานะงาน", "Job Status"),
+    "faulty_equipment": ("ตำแหน่งจุดที่มีความผิดปกติ", "Faulty Equipment / Location"),
+    "faulty_equipment_repair": ("อุปกรณ์ที่พัง", "Faulty Equipment"),
     "severity": ("ความเร่งด่วน", "Urgency"),
-    "problem_details": ("ปัญหาที่พบ", "Problem Found"),
+    "problem_details": ("รายละเอียดปัญหา", "Problem Details"),
+    "problem_found": ("ปัญหาที่พบ", "Problem Found"),
+    "details": ("รายละเอียด", "Details"),
     "remarks": ("หมายเหตุ", "Remarks"),
     "problem_photos": ("รูปภาพประกอบปัญหา", "Problem Photos"),
-    "problem": ("ปัญหา", "Problem"),
-    "cause": ("สาเหตุของปัญหา", "Cause"),
-    "start_repair": ("วันที่เริ่มแก้ไข", "Repair Started"),
-    "finish_repair": ("วันที่แก้ไขเสร็จ", "Repair Finished"),
+    "problem": ("ปัญหา", "Problem Description"),
+    "cause": ("สาเหตุ", "Cause"),
+    "start_repair": ("วันที่/เวลา เริ่มแก้ไข", "Repair Start Date/Time"),
+    "finish_repair": ("วันที่/เวลา แก้ไขเสร็จ", "Repair Finish Date/Time"),
+    "start_repair_inprogress": ("วันที่เริ่มแก้ไข", "Start Repair Date"),
+    "finish_repair_inprogress": ("วันที่แก้ไขเสร็จ", "Completed Date"),
     "correction": ("การแก้ไข", "Correction"),
     "inspector": ("ผู้ตรวจสอบ", "Inspector"),
-    "repair_result": ("ผลการซ่อม", "Repair Result"),
+    "repair_result": ("ผลหลังซ่อม", "Repair Result"),
     "inprogress_remarks": ("หมายเหตุระหว่างดำเนินการ", "In-progress Remarks"),
     "preventive": ("วิธีป้องกันไม่ให้เกิดซ้ำ", "Preventive Action"),
-    "result_remarks": ("หมายเหตุผลการซ่อม", "Repair Result Remarks"),
-    "action_details": ("รายละเอียดการดำเนินการ", "Action Details"),
-    "photos_before": ("รูปภาพก่อนแก้ไข", "Photos Before Repair"),
-    "photos_after": ("รูปภาพหลังแก้ไข", "Photos After Repair"),
-    "repairer": ("ผู้ซ่อม", "Repaired By"),
+    "result_remarks": ("หมายเหตุผลหลังซ่อม", "Repair Result Remarks"),
+    "action_details": ("การดำเนินการแก้ไข", "Corrective Actions"),
+    "photos_before": ("รูปก่อนแก้ไข", "Before"),
+    "photos_after": ("รูปหลังแก้ไข", "After"),
+    "repairer": ("ผู้เข้าแก้ไข", "Repairer"),
+    "repair_info": ("ข้อมูลการซ่อม", "Repair Information"),
+    "signature": ("ลายเซ็นผู้ซ่อม", "Technician Signature"),
+    "cancel_reason": ("เหตุผลที่ยกเลิก", "Cancel Reason"),
+    "planning": ("การวางแผนงาน", "Planning"),
+    "planned_at": ("วันที่/เวลาที่วางแผน", "Planned At"),
+    "plan_round": ("วางแผนครั้งที่", "Planning Round"),
+    "sched_start": ("วันที่เริ่มตามแผน", "Scheduled Start"),
+    "sched_finish": ("วันที่เสร็จตามแผน", "Scheduled Finish"),
+    "technician": ("ช่างผู้รับผิดชอบ", "Technician"),
+    "waiting_on": ("สถานะรอ", "Waiting On"),
+    "waiting_remark": ("หมายเหตุสถานะรอ", "Waiting Remark"),
     # --- ตารางประวัติการเข้าแก้ไข ---
     "history": ("ประวัติการเข้าแก้ไข", "Repair History"),
     "round_no": ("ครั้งที่", "No."),
@@ -256,7 +278,7 @@ T: Dict[str, Tuple[str, str]] = {
     "round_before": ("รูปก่อนแก้ไข", "Before"),
     "round_after": ("รูปหลังแก้ไข", "After"),
     # --- ข้อความประกอบ ---
-    "action_no": ("การดำเนินการแก้ไขที่ {n}", "Corrective Action {n}"),
+    "action_no": ("ข้อที่ {n}", "Action {n}"),
     "round_label": ("ครั้งที่ {n}", "Round {n}"),
     "date_prefix": ("วันที่ {d}", "Date {d}"),
     "other": ("อื่นๆ: {v}", "Other: {v}"),
@@ -297,12 +319,47 @@ _STATUS_CHOICES = [
     ("Closed", "ปิดงาน", "Closed"),
     ("Cancelled", "ยกเลิก", "Cancelled"),
 ]
-# เทียบกับข้อความหลังแปลงด้วย _fmt_repair_result แล้ว (ไม่ใช่รหัส WO ดิบ)
+# checkbox ผลการซ่อมคงชุดเดิมของ PDF ไม่เพิ่มตัวเลือกตามฟอร์ม
 _REPAIR_RESULT_CHOICES = [
-    ("แก้ไขสำเร็จ", "แก้ไขสำเร็จ", "Repair Completed"),
-    ("แก้ไขไม่สำเร็จ", "แก้ไขไม่สำเร็จ", "Repair Failed"),
+    ("แก้ไขสำเร็จ", "แก้ไขสำเร็จ", "Repair completed"),
+    ("แก้ไขไม่สำเร็จ", "แก้ไขไม่สำเร็จ", "Repair not completed"),
     ("ไม่พบปัญหา", "ไม่พบปัญหา", "No Problem Found"),
 ]
+
+
+def _repair_result_choices(bucket: str) -> List[Tuple[str, str, str]]:
+    return _REPAIR_RESULT_CHOICES
+
+
+def _display_value(value: Any, fallback: str = "-") -> str:
+    """แปลงค่าที่อาจเป็น list/ค่าเก่าให้เป็นข้อความเดียวก่อนวาด PDF"""
+    if isinstance(value, list):
+        values = [str(v).strip() for v in value if str(v or "").strip()]
+        return ", ".join(values) if values else fallback
+    text = str(value or "").strip()
+    return text or fallback
+
+
+def _derived_cm_number(issue_id: Any, prefix: str) -> str:
+    match = re.search(r"(\d+)", str(issue_id or ""))
+    return f"{prefix}{int(match.group(1)):03d}" if match else "-"
+
+
+def _cm_status_bucket(doc: Dict[str, Any]) -> str:
+    """จัด status ของ backend ให้ตรงกับฟอร์ม CM ที่ผู้ใช้เปิดกรอก"""
+    nested_job = doc.get("job") if isinstance(doc.get("job"), dict) else {}
+    status = str(doc.get("status") or nested_job.get("status") or "").strip().lower()
+    stage = str(doc.get("stage") or nested_job.get("stage") or "").strip().lower()
+    if status in {"closed", "complete", "cancelled", "canceled"}:
+        return "closed"
+    if status == "wait for approve" and stage == "cs_approval":
+        return "open"
+    if status in {"in progress", "wait for approve"}:
+        return "in_progress"
+    if status in {"open", "wait for schedule", "pending"}:
+        return "open"
+    repair_fields = ("repair_result", "corrective_actions", "cause", "repaired_equipment", "start_repair_date")
+    return "in_progress" if any(doc.get(k) for k in repair_fields) else "open"
 
 
 def _choices(rows: List[Tuple[str, str, str]]) -> List[Tuple[str, str]]:
@@ -312,11 +369,9 @@ def _choices(rows: List[Tuple[str, str, str]]) -> List[Tuple[str, str]]:
 
 def _localize_repair_result(text: str) -> str:
     """แปลผลการซ่อมที่เป็นค่ามาตรฐาน — ค่าอื่น (ข้อความอิสระ/รหัส WO) คงไว้ตามเดิม"""
-    if _LANG != "en":
-        return text
     for _, th, en in _REPAIR_RESULT_CHOICES:
         if text == th:
-            return en
+            return en if _LANG == "en" else th
     return text
 
 
@@ -355,12 +410,13 @@ def _round_table_row(rnd: Dict[str, Any], failure_code, index: int) -> List[str]
     causes = _join_labels(cause_codes, cause_label)
     problem_cell = " / ".join(p for p in (problems, causes) if p)
 
+    round_actions = rnd.get("corrective_actions") or []
+    round_action_codes = [a.get("code") for a in round_actions if isinstance(a, dict)]
     remedy_labels: List[str] = []
-    for code in _as_code_list(rnd.get("repaired_equipment")):
+    for code in _merge_pdf_codes_by_index(rnd.get("repaired_equipment"), round_action_codes):
         # รอบย่อยไม่ได้เก็บ failure code ของตัวเอง — ใช้ของใบงานเป็นบริบท
         for desc in remedy_descriptions(failure_code, problem_codes, cause_codes, code):
-            if desc not in remedy_labels:
-                remedy_labels.append(desc)
+            remedy_labels.append(desc)
     actions = [
         str(a.get("text") or "").strip()
         for a in (rnd.get("corrective_actions") or [])
@@ -392,6 +448,99 @@ def _round_photos(rnd: Dict[str, Any], key: str) -> List[dict]:
             if isinstance(im, dict) and im.get("url"):
                 out.append(im)
     return out
+
+
+def _action_has_data(action: Any) -> bool:
+    if not isinstance(action, dict):
+        return False
+    return bool(
+        str(action.get("code") or "").strip()
+        or str(action.get("text") or "").strip()
+        or action.get("beforeImages")
+        or action.get("afterImages")
+    )
+
+
+def _merge_pdf_actions_by_index(*sources: Any) -> List[Dict[str, Any]]:
+    """รวม action ตามลำดับชุด ไม่ใช้ code เป็นตัวแยกชุด"""
+    lists = [source for source in sources if isinstance(source, list)]
+    max_len = max((len(items) for items in lists), default=0)
+    merged: List[Dict[str, Any]] = []
+
+    for index in range(max_len):
+        item: Dict[str, Any] = {
+            "text": "",
+            "beforeImages": [],
+            "afterImages": [],
+        }
+        for actions in lists:
+            if index >= len(actions) or not isinstance(actions[index], dict):
+                continue
+            source = actions[index]
+            if source.get("code") and not item.get("code"):
+                item["code"] = source.get("code")
+            if str(source.get("text") or "").strip() and not str(item.get("text") or "").strip():
+                item["text"] = source.get("text")
+            for key in ("beforeImages", "afterImages"):
+                images = source.get(key)
+                if isinstance(images, list) and images and not item[key]:
+                    item[key] = images
+
+        if _action_has_data(item):
+            merged.append(item)
+
+    return merged
+
+
+def _pdf_corrective_actions(doc: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """คืน corrective action ทุกชุดที่มีข้อมูลสำหรับส่วนรายละเอียดของ PDF"""
+    nested_job = doc.get("job") if isinstance(doc.get("job"), dict) else {}
+    current_actions = doc.get("corrective_actions") or nested_job.get("corrective_actions")
+    history = doc.get("repair_history") or nested_job.get("repair_history") or []
+    history_action_sets = [
+        round_data.get("corrective_actions")
+        for round_data in history
+        if isinstance(round_data, dict) and isinstance(round_data.get("corrective_actions"), list)
+    ]
+    history_actions = max(
+        history_action_sets,
+        key=lambda actions: sum(1 for action in actions if _action_has_data(action)),
+        default=[],
+    )
+    return _merge_pdf_actions_by_index(current_actions, history_actions)
+
+
+def _merge_pdf_codes_by_index(*sources: Any) -> List[str]:
+    lists = [_as_code_list(source) for source in sources]
+    max_len = max((len(items) for items in lists), default=0)
+    return [
+        next((items[index] for items in lists if index < len(items) and items[index]), "")
+        for index in range(max_len)
+    ]
+
+
+def _pdf_repaired_equipment(doc: Dict[str, Any]) -> List[str]:
+    """คืน correction ตามจำนวนชุดข้อมูล โดยไม่ตัด code ที่ซ้ำกัน"""
+    nested_job = doc.get("job") if isinstance(doc.get("job"), dict) else {}
+    current_codes = doc.get("repaired_equipment") or nested_job.get("repaired_equipment")
+    history = doc.get("repair_history") or nested_job.get("repair_history") or []
+    history_rounds = [
+        round_data
+        for round_data in history
+        if isinstance(round_data, dict)
+    ]
+    history_round = max(
+        history_rounds,
+        key=lambda round_data: len(round_data.get("corrective_actions") or []),
+        default={},
+    )
+    actions = _pdf_corrective_actions(doc)
+    action_codes = [action.get("code") for action in actions if isinstance(action, dict)]
+    return _merge_pdf_codes_by_index(
+        current_codes,
+        history_round.get("repaired_equipment"),
+        action_codes,
+    )
 
 
 def _repair_history_parts(doc: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -629,6 +778,16 @@ def _load_image_source_from_urlpath(
     if not url_path:
         return None, None
 
+    # ลายเซ็นจากฟอร์ม Closed ถูกเก็บเป็น data URL ไม่ใช่ path ของไฟล์
+    if str(url_path).startswith("data:image/"):
+        try:
+            header, encoded = str(url_path).split(",", 1)
+            if ";base64" not in header:
+                return None, None
+            return BytesIO(base64.b64decode(encoded)), "PNG" if "png" in header.lower() else "JPEG"
+        except Exception:
+            return None, None
+
     if not url_path.startswith("https"):
         backend_root = Path(__file__).resolve().parents[2]
         uploads_root = backend_root / "uploads"
@@ -827,8 +986,8 @@ def _draw_title_bar(
     x: float,
     y: float,
     w: float,
-    title_th: str = "ใบแจ้งซ่อมบำรุง",
-    title_en: str = "CORRECTIVE MAINTENANCE REPORT",
+    title_th: str = "รายงานบันทึกปัญหา (CM)",
+    title_en: str = "CORRECTIVE MAINTENANCE REPORT (CM)",
 ) -> float:
     """วาด title bar สีเหลืองด้านบน – 2 บรรทัด TH/EN"""
     bar_h = TITLE_H * 2
@@ -1281,7 +1440,6 @@ def _draw_section_group(
     x: float,
     y: float,
     w: float,
-    number: str,
     title: str,
     parts: List[Dict[str, Any]],
 ) -> float:
@@ -1306,7 +1464,7 @@ def _draw_section_group(
     pdf.rect(x, y, w, total_h)
 
     # Section bar (หัวข้อหมวด)
-    _draw_section_bar(pdf, base_font, x, y, w, number, title)
+    _draw_section_bar(pdf, base_font, x, y, w, title=title)
 
     cy = y + SECTION_BAR_H
 
@@ -1541,10 +1699,15 @@ def _draw_action_block(
     w: float,
     idx: int,
     action: dict,
+    correction_text: str = "",
 ) -> float:
     """วาดรายละเอียดการดำเนินการแก้ไข 1 ชุด (ข้อความ + รูปก่อน/หลัง)"""
     # แถบหัวข้อย่อยมีพื้นและกรอบ ให้เป็นส่วนหนึ่งของฟอร์ม ไม่ใช่ข้อความลอย
     y = _draw_section_bar(pdf, base_font, x, y, w, "", _t("action_no", n=_num(idx)))
+
+    if correction_text.strip():
+        y = _draw_text_block(pdf, base_font, x, y, w, _t("correction"), correction_text, min_h=8)
+        y += 2
 
     action_text = action.get("text", "") or "-"
     y = _draw_text_block(pdf, base_font, x, y, w, _t("action_details"), action_text, min_h=10)
@@ -1616,8 +1779,33 @@ def make_cm_report_pdf_bytes(
     """
     _apply_style(style)
     _apply_lang(lang)
+    nested_job = doc.get("job") if isinstance(doc.get("job"), dict) else {}
+    if nested_job:
+        # รองรับรายงานรุ่นเก่าที่เก็บข้อมูลไว้ใต้ job โดยให้ค่า flat รุ่นใหม่มี precedence
+        doc = dict(doc)
+        for key, value in nested_job.items():
+            if key not in doc or doc.get(key) in (None, ""):
+                doc[key] = value
+    status_bucket = _cm_status_bucket(doc)
+    is_repair_form = status_bucket == "in_progress"
     issue_id = str(doc.get("issue_id", "-"))
     doc_name = str(doc.get("doc_name", "-"))
+    reported_by = _display_value(doc.get("reported_by"))
+    sr_no = _display_value(doc.get("maximo_ticket_id") or doc.get("sr_no"))
+    wo_no = _display_value(doc.get("maximo_wonum") or doc.get("wo") or doc.get("wo_no"))
+    raw_status = str(doc.get("status") or "").strip().lower()
+    raw_stage = str(doc.get("stage") or "").strip().lower()
+    wo_stage = bool(wo_no != "-") or raw_status in {"wait for schedule", "in progress", "closed", "complete"}
+    if raw_status == "wait for approve" and raw_stage != "cs_approval":
+        wo_stage = True
+    if raw_status in {"cancelled", "canceled"} and raw_stage not in {"", "cs_approval"}:
+        wo_stage = True
+    # เลข SR เป็นเลขต้นเรื่อง จึงต้องแสดงทุก status แม้ใบงานจะเปลี่ยนเป็น WO แล้ว
+    # ถ้า Maximo ยังไม่ส่ง ticketid ให้ใช้เลขลำดับเดียวกับ issue_id เหมือนในฟอร์ม CM
+    if sr_no == "-":
+        sr_no = _derived_cm_number(issue_id, "SR")
+    if wo_no == "-" and wo_stage:
+        wo_no = _derived_cm_number(issue_id, "WO")
 
     pdf = ReportPDF(unit="mm", format="A4", issue_id=issue_id, doc_name=doc_name)
     pdf.set_margins(left=10, top=10, right=10)
@@ -1642,32 +1830,54 @@ def make_cm_report_pdf_bytes(
     y += 2
 
     # ===== ส่วนที่ 1: ข้อมูลการแจ้ง =====
+    section1_parts: List[Dict[str, Any]] = [
+        {
+            "kind": "info",
+            "data": [
+                (_t("found_date_closed" if status_bucket == "closed" else "found_date"), _fmt_date_time(doc.get("found_date"), doc.get("found_time"))),
+                (_t("reported_by"), reported_by),
+            ],
+            "cols": 2,
+        },
+        {
+            "kind": "info",
+            "data": [
+                (_t("sr_no"), sr_no),
+                (_t("wo_no"), wo_no),
+            ],
+            "cols": 2,
+        },
+        {
+            "kind": "info",
+            "data": [
+                (_t("location"), _display_value(doc.get("location"))),
+            ],
+            "cols": 1,
+        },
+        {
+            "kind": "choice",
+            "label": _t("wo_status"),
+            "options": _choices(_STATUS_CHOICES),
+            "selected": doc.get("status"),
+        },
+    ]
+
+    # ฟอร์ม Open มีข้อมูลการวางแผน/ช่างรับผิดชอบ ซึ่งไม่ควรหายจาก PDF
+    plan_values = [
+        (_t("planned_at"), _fmt_date_time(doc.get("planned_date"), doc.get("planned_time"))),
+        (_t("plan_round"), _display_value(len(doc.get("plan_history") or []) + 1)),
+        (_t("sched_start"), _display_value(doc.get("sched_start"))),
+        (_t("sched_finish"), _display_value(doc.get("sched_finish"))),
+        (_t("technician"), _display_value(doc.get("assignees"))),
+        (_t("waiting_on"), _localize_repair_result(_fmt_repair_result(doc.get("repair_result"))) if doc.get("repair_result") else "-"),
+        (_t("waiting_remark"), _display_value(doc.get("repair_result_remark"))),
+    ]
+    if status_bucket == "open" and any(str(v).strip() not in {"", "-"} for _, v in plan_values):
+        section1_parts.append({"kind": "info", "data": plan_values, "cols": 2})
+
     y = _draw_section_group(
-        pdf, base_font, x0, y, page_w, _num(1), _t("sec1"),
-        parts=[
-            {
-                "kind": "info",
-                "data": [
-                    (_t("found_date"), _fmt_date_time(doc.get("found_date"), doc.get("found_time"))),
-                    (_t("reported_by"), doc.get("reported_by", "-") or "-"),
-                ],
-                "cols": 2,
-            },
-            {
-                "kind": "info",
-                "data": [
-                    (_t("sr_wo"), doc.get("maximo_ticket_id", "-") or "-"),
-                    (_t("location"), doc.get("location", "-") or "-"),
-                ],
-                "cols": 1,
-            },
-            {
-                "kind": "choice",
-                "label": _t("wo_status"),
-                "options": _choices(_STATUS_CHOICES),
-                "selected": doc.get("status"),
-            },
-        ],
+        pdf, base_font, x0, y, page_w, _t("sec1"),
+        parts=section1_parts,
     )
     y += 3
 
@@ -1675,7 +1885,14 @@ def make_cm_report_pdf_bytes(
     section2_parts: List[Dict[str, Any]] = [
         {
             "kind": "info",
-            "data": [(_t("faulty_equipment"), failure_code_label(doc.get("faulty_equipment")) or "-")],
+            "data": [(
+                _t("faulty_equipment_repair" if is_repair_form else "faulty_equipment"),
+                _display_value(
+                    doc.get("faulty_equipment_label")
+                    or failure_code_label(doc.get("faulty_equipment"))
+                    or doc.get("faulty_equipment")
+                ),
+            )],
             "cols": 1,
         },
         {
@@ -1686,17 +1903,26 @@ def make_cm_report_pdf_bytes(
         },
         {
             "kind": "text",
-            "label": _t("problem_details"),
-            "text": doc.get("problem_details", "-"),
+            "label": _t("details" if status_bucket == "closed" else "problem_found"),
+            "text": _display_value(doc.get("problem_details")),
             "min_h": 12,
         },
     ]
 
-    remarks_open = (doc.get("remarks_open") or "").strip()
-    if remarks_open and remarks_open != "-":
+    remarks_open = _display_value(doc.get("remarks_open"), "")
+    if not remarks_open:
+        remarks_open = _display_value(doc.get("remarks"), "")
+    if remarks_open:
         section2_parts.append({
             "kind": "text", "label": _t("remarks"), "text": remarks_open, "min_h": 10,
         })
+
+    if status_bucket == "closed" and str(doc.get("status") or "").strip().lower() in {"cancelled", "canceled"}:
+        cancel_remark = _display_value(doc.get("cancel_remark"), "")
+        if cancel_remark:
+            section2_parts.append({
+                "kind": "text", "label": _t("cancel_reason"), "text": cancel_remark, "min_h": 10,
+            })
 
     photos_obj = doc.get("photos", {}) or doc.get("photos_problem", {}) or {}
     cm_photos = photos_obj.get("cm_photos", []) if isinstance(photos_obj, dict) else []
@@ -1710,7 +1936,7 @@ def make_cm_report_pdf_bytes(
         })
 
     y = _draw_section_group(
-        pdf, base_font, x0, y, page_w, _num(2), _t("sec2"),
+        pdf, base_font, x0, y, page_w, _t("sec2"),
         parts=section2_parts,
     )
     y += 3
@@ -1736,82 +1962,102 @@ def make_cm_report_pdf_bytes(
             "cols": 1,
         })
 
-    y = _new_page_if_needed(
-        pdf, y,
-        SECTION_BAR_H + sum(_measure_part_height(pdf, page_w, p) for p in section3_parts),
-    )
-    y = _draw_section_group(
-        pdf, base_font, x0, y, page_w, _num(3), _t("sec3"),
-        parts=section3_parts,
-    )
-    y += 3
+    # ฟอร์ม Open ยังไม่มีช่องปัญหา/สาเหตุจากช่าง จึงไม่พิมพ์หมวดนี้จนกว่าจะมีข้อมูลจริง
+    if is_repair_form or problem_type_text != "-" or cause:
+        y = _new_page_if_needed(
+            pdf, y,
+            SECTION_BAR_H + sum(_measure_part_height(pdf, page_w, p) for p in section3_parts),
+        )
+        y = _draw_section_group(
+            pdf, base_font, x0, y, page_w,
+            _t("sec3_repair" if is_repair_form else "sec3"),
+            parts=section3_parts,
+        )
+        y += 3
 
     # ===== ส่วนที่ 4: การดำเนินการแก้ไข =====
     # repaired_equipment เก็บ remedy code — คำอธิบายขึ้นกับบริบท (failure code + ปัญหา + สาเหตุ)
     # เช่น REPLACE ของ POWBOAFA = "Replace (Power Board)" คนละเรื่องกับ REPLACE ของ OVERHEAT
     failure_code = doc.get("faulty_equipment")
     repaired_eq_labels: List[str] = []
-    for code in _as_code_list(doc.get("repaired_equipment")):
+    for code in _pdf_repaired_equipment(doc):
         for desc in remedy_descriptions(failure_code, problem_codes, cause_codes, code):
-            if desc not in repaired_eq_labels:
-                repaired_eq_labels.append(desc)
-    repaired_eq_text = ", ".join(repaired_eq_labels) or "-"
+            repaired_eq_labels.append(desc)
+    repaired_eq_text = "\n".join(repaired_eq_labels) or "-"
 
-    section4_parts: List[Dict[str, Any]] = [
-        {
+    section4_parts: List[Dict[str, Any]] = []
+    # Open ใช้ repair_result เป็น marker ของสถานะรอแผน (เช่น WO - wait for scheduled)
+    # จึงไม่นับ marker นี้เป็นข้อมูลการซ่อมจนกว่าจะเข้า In Progress/Closed
+    has_repair_data = any([
+        doc.get("start_repair_date"), doc.get("resolved_date"), doc.get("repaired_equipment"),
+        doc.get("corrective_actions"), doc.get("repair_history"), doc.get("inspector"),
+        doc.get("inprogress_remarks"), doc.get("signature"),
+        status_bucket != "open" and doc.get("repair_result"),
+    ])
+    if is_repair_form or has_repair_data:
+        section4_parts.append({
             "kind": "info",
             "data": [
-                (_t("start_repair"), _fmt_date_time(doc.get("start_repair_date"), doc.get("start_repair_time"))),
-                (_t("finish_repair"), _fmt_date_time(doc.get("resolved_date"), doc.get("resolved_time"))),
+                (_t("start_repair_inprogress" if is_repair_form else "start_repair"), _fmt_date_time(doc.get("start_repair_date"), doc.get("start_repair_time"))),
+                (_t("finish_repair_inprogress" if is_repair_form else "finish_repair"), _fmt_date_time(doc.get("resolved_date"), doc.get("resolved_time"))),
                 (_t("correction"), repaired_eq_text),
-                (_t("inspector"), doc.get("inspector", "-") or "-"),
+                (_t("repairer"), _display_value(doc.get("inspector"))),
             ],
             "cols": 2,
-        },
-        {
+        })
+        section4_parts.append({
             "kind": "choice",
             "label": _t("repair_result"),
-            "options": _choices(_REPAIR_RESULT_CHOICES),
-            "selected": (
-                _fmt_repair_result(doc.get("repair_result"))
-                if str(doc.get("repair_result") or "").strip() else ""
-            ),
-        },
-    ]
-
-    # รอบการเข้าแก้ไขก่อนหน้า (รอของ/รอหน้างาน) — ตารางด้านบนเก็บแค่รอบที่ปิดงาน
-    section4_parts.extend(_repair_history_parts(doc))
-
-    inprogress_remarks = (doc.get("inprogress_remarks") or "").strip()
-    if inprogress_remarks and inprogress_remarks != "-":
-        section4_parts.append({
-            "kind": "text",
-            "label": _t("inprogress_remarks"),
-            "text": inprogress_remarks,
-            "min_h": 10,
+            "options": _choices(_repair_result_choices(status_bucket)),
+            "selected": _fmt_repair_result(doc.get("repair_result")) or "",
         })
 
-    y = _new_page_if_needed(
-        pdf, y,
-        SECTION_BAR_H + sum(_measure_part_height(pdf, page_w, p) for p in section4_parts),
-    )
-    y = _draw_section_group(
-        pdf, base_font, x0, y, page_w, _num(4), _t("sec4"),
-        parts=section4_parts,
-    )
-    y += 3
+        # รอบการเข้าแก้ไขก่อนหน้า (รอของ/รอหน้างาน) — ตารางด้านบนเก็บแค่รอบที่ปิดงาน
+        section4_parts.extend(_repair_history_parts(doc))
+
+        inprogress_remarks = _display_value(doc.get("inprogress_remarks"), "")
+        if inprogress_remarks:
+            section4_parts.append({
+                "kind": "text",
+                "label": _t("remarks" if is_repair_form else "inprogress_remarks"),
+                "text": inprogress_remarks,
+                "min_h": 10,
+            })
+
+        if doc.get("signature"):
+            section4_parts.append({
+                "kind": "photo",
+                "photos": [{"url": doc.get("signature")}],
+                "title": _t("signature"),
+                "cols": 1,
+                "img_h": 25,
+            })
+
+        y = _new_page_if_needed(
+            pdf, y,
+            SECTION_BAR_H + sum(_measure_part_height(pdf, page_w, p) for p in section4_parts),
+        )
+        y = _draw_section_group(
+            pdf, base_font, x0, y, page_w,
+            _t("sec4_inprogress" if is_repair_form else "sec4"),
+            parts=section4_parts,
+        )
+        y += 3
 
     # รายละเอียด corrective actions วาดแยกจากกรอบใหญ่ เพราะมีรูปก่อน/หลังที่ยืดหยุ่น
-    corrective_actions = doc.get("corrective_actions") or []
+    corrective_actions = _pdf_corrective_actions(doc)
     if corrective_actions:
         for idx, action in enumerate(corrective_actions, 1):
             y = _new_page_if_needed(pdf, y, 60)
-            y = _draw_action_block(pdf, base_font, x0, y, page_w, idx, action)
+            correction_text = repaired_eq_labels[idx - 1] if idx - 1 < len(repaired_eq_labels) else str(action.get("code") or "")
+            y = _draw_action_block(pdf, base_font, x0, y, page_w, idx, action, correction_text=correction_text)
 
     # ===== ส่วนที่ 5: การป้องกันและผลการซ่อม =====
     section5_parts: List[Dict[str, Any]] = []
 
     preventive_actions = doc.get("preventive_action") or []
+    if not isinstance(preventive_actions, list):
+        preventive_actions = [preventive_actions]
     if preventive_actions:
         preventive_text = "\n".join(
             f"{i}. {a}"
@@ -1826,7 +2072,8 @@ def make_cm_report_pdf_bytes(
                 "min_h": 12,
             })
 
-    repair_remark = (doc.get("repair_result_remark") or "").strip()
+    # Open ใช้ field นี้เป็นหมายเหตุสถานะรอ ซึ่งแสดงไว้ในข้อมูลการวางแผนแล้ว
+    repair_remark = _display_value(doc.get("repair_result_remark"), "") if status_bucket != "open" else ""
     if repair_remark and repair_remark != "-":
         section5_parts.append({
             "kind": "text",
@@ -1841,7 +2088,7 @@ def make_cm_report_pdf_bytes(
             SECTION_BAR_H + sum(_measure_part_height(pdf, page_w, p) for p in section5_parts),
         )
         y = _draw_section_group(
-            pdf, base_font, x0, y, page_w, _num(5), _t("sec5"),
+            pdf, base_font, x0, y, page_w, _t("sec5"),
             parts=section5_parts,
         )
         y += 3
@@ -1858,20 +2105,22 @@ def make_cm_report_pdf_bytes(
     people: List[Tuple[str, str, str]] = [
         (
             _t("reported_by"),
-            (doc.get("reported_by") or "").strip(),
+            reported_by if reported_by != "-" else "",
             _date_or_blank(doc.get("found_date"), doc.get("cm_date")),
         ),
-        (
-            _t("repairer"),
-            (doc.get("inspector") or "").strip(),
-            _date_or_blank(doc.get("resolved_date"), doc.get("start_repair_date"), doc.get("found_date")),
-        ),
-        (
-            _t("inspector"),
-            (doc.get("approved_by") or "").strip(),
-            _date_or_blank(doc.get("approved_at"), doc.get("approved_date")),
-        ),
     ]
+    # ฟอร์ม Open ยังไม่มีข้อมูลผู้ซ่อม/ผู้ตรวจสอบ จึงไม่สร้างช่องว่างหลอกผู้ใช้
+    if is_repair_form or status_bucket == "closed" or doc.get("inspector") or doc.get("approved_by"):
+        people.append((
+            _t("repairer"),
+            _display_value(doc.get("inspector"), ""),
+            _date_or_blank(doc.get("resolved_date"), doc.get("start_repair_date"), doc.get("found_date")),
+        ))
+        people.append((
+            _t("inspector"),
+            _display_value(doc.get("approved_by"), ""),
+            _date_or_blank(doc.get("approved_at"), doc.get("approved_date")),
+        ))
 
     people_h = (LINE_H + 1.0) * 2 + (LINE_H + 1.6)
     y = _new_page_if_needed(pdf, y, SECTION_BAR_H + people_h)

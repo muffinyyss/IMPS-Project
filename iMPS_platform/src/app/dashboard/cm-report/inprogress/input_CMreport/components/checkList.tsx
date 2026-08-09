@@ -73,8 +73,8 @@ const T = {
     actionNo: { th: "ข้อที่", en: "Action" },
     deleteAction: { th: "ลบ", en: "Delete" },
     attachPhoto: { th: "แนบรูป", en: "Attach Photo" },
-    beforePhoto: { th: "รูปก่อนแก้ไข", en: "Before" },
-    afterPhoto: { th: "รูปหลังแก้ไข", en: "After" },
+    beforePhoto: { th: "รูปก่อนแก้ไข (สูงสุด 5 รูป)", en: "Before (up to 5 photos)" },
+    afterPhoto: { th: "รูปหลังแก้ไข (สูงสุด 5 รูป)", en: "After (up to 5 photos)" },
     repairResult: { th: "ผลหลังซ่อม", en: "Repair Result" },
     // preventiveAction: { th: "วิธีป้องกันไม่ให้เกิดซ้ำ", en: "Preventive Action" },
     addPreventive: { th: "เพิ่ม", en: "Add" },
@@ -213,7 +213,7 @@ type RepairRound = {
     cause?: string[];
     repaired_equipment?: string[];
     inprogress_remarks?: string;
-    corrective_actions?: { text?: string; beforeImages?: { url?: string }[]; afterImages?: { url?: string }[] }[];
+    corrective_actions?: { code?: string; text?: string; beforeImages?: { url?: string }[]; afterImages?: { url?: string }[] }[];
 };
 
 // ผลซ่อมที่แปลว่ายังซ่อมไม่จบ ต้องรอของ/รอหน้างาน → บันทึกแล้วปิดรอบ ขึ้นรอบใหม่เมื่อกลับมา
@@ -238,6 +238,24 @@ const LEGACY_REPAIR_MAP: Record<string, string> = {
     "WO - wait for site access": "WO - wait for site condition",
 };
 const normalizeRepairResult = (v: string): string => LEGACY_REPAIR_MAP[v] ?? v;
+
+function asStringArray(value: unknown): string[] {
+    if (Array.isArray(value)) return value.map(v => String(v ?? "").trim()).filter(Boolean);
+    const text = String(value ?? "").trim();
+    return text ? [text] : [];
+}
+
+// รวมค่าตามตำแหน่งชุด ไม่ใช้ Set เพราะชุดที่ 1/2 สามารถเลือก code เดียวกันได้
+function mergeStringArraysByIndex(...values: unknown[]): string[] {
+    const arrays = values.map(asStringArray);
+    const maxLength = Math.max(0, ...arrays.map(items => items.length));
+    return Array.from({ length: maxLength }, (_, index) => {
+        for (const items of arrays) {
+            if (items[index]) return items[index];
+        }
+        return "";
+    }).filter(Boolean);
+}
 
 // ค่าผลหลังซ่อมที่ถือว่าเป็นสถานะ "รอ" (WO waiting) — ยังคงอยู่ In Progress
 // คง scheduled ไว้ที่นี่ เพราะใบที่ engineer เพิ่ง assign ยังถือค่านี้อยู่ ต้องจำแนกให้ถูก
@@ -630,8 +648,8 @@ function getSeverityColor(severity: string) {
 type PGroup = { kind: "full" | "cause" | "correction"; problem_type: string[]; cause: string[]; repaired_equipment: string[]; corrective_actions: CorrectiveItem[] };
 const newGroup = (kind: "full" | "cause" | "correction"): PGroup => ({ kind, problem_type: [], cause: [], repaired_equipment: [], corrective_actions: [{ text: "", beforeImages: [], afterImages: [] }] });
 
-function ProblemGroupBlock({ faultyEquipment, value, onChange, onRemove, onAddGroup, onAddCauseGroup, onAddCorrectionGroup, mainProblem, mainCause, takenCauses, takenCorrections, lang, index }: {
-    faultyEquipment: string; value: PGroup; onChange: (g: PGroup) => void; onRemove: () => void; onAddGroup: () => void; onAddCauseGroup: () => void; onAddCorrectionGroup: () => void; mainProblem: string[]; mainCause: string[]; takenCauses: string[]; takenCorrections: string[]; lang: Lang; index: number;
+function ProblemGroupBlock({ faultyEquipment, value, onChange, onRemove, onAddGroup, onAddCauseGroup, onAddCorrectionGroup, mainProblem, mainCause, takenCauses, lang, index, disabled = false }: {
+    faultyEquipment: string; value: PGroup; onChange: (g: PGroup) => void; onRemove: () => void; onAddGroup: () => void; onAddCauseGroup: () => void; onAddCorrectionGroup: () => void; mainProblem: string[]; mainCause: string[]; takenCauses: string[]; lang: Lang; index: number; disabled?: boolean;
 }) {
     const isCauseOnly = value.kind === "cause";            // บล็อกสาเหตุ: ไม่มีช่องปัญหา ใช้ปัญหาหลักคำนวณ
     const isCorrectionOnly = value.kind === "correction";  // บล็อกการแก้ไข: มีแค่การแก้ไข→การดำเนินการ ใช้ปัญหา+สาเหตุหลัก
@@ -655,6 +673,7 @@ function ProblemGroupBlock({ faultyEquipment, value, onChange, onRemove, onAddGr
 
     // ถ้าสาเหตุที่เหลือให้เลือกมีแค่อันเดียว → เลือกให้อัตโนมัติ
     useEffect(() => {
+        if (disabled) return;
         if (causeOptionsAvail && causeOptionsAvail.length === 1) {
             const only = causeOptionsAvail[0].value;
             if (value.cause.length !== 1 || value.cause[0] !== only) {
@@ -667,13 +686,19 @@ function ProblemGroupBlock({ faultyEquipment, value, onChange, onRemove, onAddGr
     const correctionOptions = toOptions(
         maximoRemedyOptions(maximoTree, faultyEquipment, effProblems, effCauses));
     const resolveCorrectionLabel = (v: string) => correctionOptions?.find(o => o.value === v)?.label ?? formatDeviceName(v);
-    // ตัด "การแก้ไข" ที่ถูกเลือกไว้ในช่องอื่นออก (กันเลือกซ้ำ) — เก็บค่าของตัวเองไว้
-    const correctionOptionsAvail = correctionOptions
-        ? correctionOptions.filter(o => !takenCorrections.includes(o.value) || value.repaired_equipment.includes(o.value))
-        : null;
+    // แสดงรายการการแก้ไขทั้งหมดเสมอ — รายการที่เลือกไปแล้วต้องยังเลือกซ้ำได้เมื่อเพิ่มชุดใหม่
+    const storedCorrectionOptions = value.repaired_equipment
+        .filter(Boolean)
+        .map(v => ({ value: v, label: resolveCorrectionLabel(v) }));
+    const correctionOptionsAvailList = [
+        ...(correctionOptions ?? []),
+        ...storedCorrectionOptions.filter(stored => !(correctionOptions ?? []).some(option => option.value === stored.value)),
+    ];
+    const correctionOptionsAvail = correctionOptionsAvailList.length ? correctionOptionsAvailList : null;
 
     // auto-sync การดำเนินการแก้ไข ตามการแก้ไขที่เลือก
     useEffect(() => {
+        if (disabled) return;
         const codes = value.repaired_equipment.filter(Boolean);
         const codeSet = new Set(codes);
         let next = value.corrective_actions.filter(a => !a.code || codeSet.has(a.code));
@@ -689,8 +714,16 @@ function ProblemGroupBlock({ faultyEquipment, value, onChange, onRemove, onAddGr
     const setText = (i: number, text: string) => onChange({ ...value, corrective_actions: value.corrective_actions.map((a, j) => j === i ? { ...a, text } : a) });
     const addImgs = (i: number, kind: "beforeImages" | "afterImages", files: FileList | null) => {
         if (!files) return;
+        const currentCount = value.corrective_actions[i]?.[kind]?.length ?? 0;
+        const remain = Math.max(0, MAX_PHOTOS - currentCount);
+        if (remain === 0 || files.length > remain) {
+            alert(lang === "th"
+                ? `แนบรูปได้สูงสุด ${MAX_PHOTOS} รูปต่อรายการ (เพิ่มได้อีก ${remain} รูป)`
+                : `Maximum ${MAX_PHOTOS} photos per item (${remain} remaining)`);
+        }
+        if (remain === 0) return;
         const pfx = kind === "beforeImages" ? "before" : "after";
-        const imgs: PhotoItem[] = Array.from(files).slice(0, MAX_PHOTOS).map((f, k) => ({ id: `${pfx}-${Date.now()}-${i}-${k}-${f.name}`, file: f, preview: URL.createObjectURL(f) }));
+        const imgs: PhotoItem[] = Array.from(files).slice(0, remain).map((f, k) => ({ id: `${pfx}-${Date.now()}-${i}-${k}-${f.name}`, file: f, preview: URL.createObjectURL(f) }));
         onChange({ ...value, corrective_actions: value.corrective_actions.map((a, j) => j === i ? { ...a, [kind]: [...a[kind], ...imgs].slice(0, MAX_PHOTOS) } : a) });
     };
     const removeImg = (i: number, kind: "beforeImages" | "afterImages", id: string) => {
@@ -702,9 +735,11 @@ function ProblemGroupBlock({ faultyEquipment, value, onChange, onRemove, onAddGr
         <div className="tw-pt-5 tw-mt-1 tw-border-t tw-border-dashed tw-border-blue-gray-200 tw-space-y-5">
             <div className="tw-flex tw-items-center tw-justify-between tw-gap-3">
                 <span className="tw-inline-flex tw-items-center tw-gap-2 tw-font-semibold tw-text-sm tw-text-blue-gray-700"><span className="tw-w-6 tw-h-6 tw-rounded-full tw-bg-blue-100 tw-text-blue-700 tw-flex tw-items-center tw-justify-center tw-text-xs tw-font-bold">{index + 2}</span>{isCauseOnly ? (th ? `สาเหตุเพิ่มเติม (ชุดที่ ${index + 2})` : `Additional cause (Set ${index + 2})`) : isCorrectionOnly ? (th ? `การแก้ไขเพิ่มเติม (ชุดที่ ${index + 2})` : `Additional correction (Set ${index + 2})`) : (th ? `ชุดที่ ${index + 2}` : `Set ${index + 2}`)}</span>
-                <button type="button" onClick={onRemove} className="tw-w-8 tw-h-8 tw-rounded-lg tw-text-red-400 hover:tw-text-white hover:tw-bg-red-500 tw-flex tw-items-center tw-justify-center tw-transition-all" title={th ? "ลบชุดนี้" : "Remove set"}>
-                    <XMarkIcon className="tw-w-5 tw-h-5" />
-                </button>
+                {!disabled && (
+                    <button type="button" onClick={onRemove} className="tw-w-8 tw-h-8 tw-rounded-lg tw-text-red-400 hover:tw-text-white hover:tw-bg-red-500 tw-flex tw-items-center tw-justify-center tw-transition-all" title={th ? "ลบชุดนี้" : "Remove set"}>
+                        <XMarkIcon className="tw-w-5 tw-h-5" />
+                    </button>
+                )}
             </div>
                 {/* ปัญหา (เฉพาะบล็อกชุดปัญหาเต็ม) */}
                 {!isCauseOnly && !isCorrectionOnly && (
@@ -716,11 +751,12 @@ function ProblemGroupBlock({ faultyEquipment, value, onChange, onRemove, onAddGr
                                 placeholder={th ? "เลือกปัญหา..." : "Select problem..."}
                                 options={problemSelectOptions}
                                 value={value.problem_type[0] ? { value: value.problem_type[0], label: resolveProblemLabel(value.problem_type[0]) } : null}
+                                isDisabled={disabled}
                                 onChange={(opt: any) => onChange({ ...value, problem_type: opt ? [opt.value] : [] })}
                                 formatCreateLabel={(v: string) => `+ "${v}"`}
                                 menuPlacement="auto" menuPortalTarget={typeof document !== "undefined" ? document.body : undefined} classNamePrefix="react-select" styles={makeSelectStyles(SELECT_ACCENT.blue)} />
                         </div>
-                        <button type="button" onClick={onAddGroup} title={th ? "เพิ่มชุดปัญหาใหม่" : "Add new problem set"} className="tw-flex-shrink-0 tw-w-12 tw-h-12 tw-rounded-xl tw-border tw-border-blue-300 tw-bg-blue-50 tw-text-blue-600 tw-flex tw-items-center tw-justify-center hover:tw-bg-blue-100 tw-transition-all tw-text-xl tw-font-bold tw-leading-none">+</button>
+                        {!disabled && <button type="button" onClick={onAddGroup} title={th ? "เพิ่มชุดปัญหาใหม่" : "Add new problem set"} className="tw-flex-shrink-0 tw-w-12 tw-h-12 tw-rounded-xl tw-border tw-border-blue-300 tw-bg-blue-50 tw-text-blue-600 tw-flex tw-items-center tw-justify-center hover:tw-bg-blue-100 tw-transition-all tw-text-xl tw-font-bold tw-leading-none">+</button>}
                     </div>
                 </div>
                 )}
@@ -733,13 +769,13 @@ function ProblemGroupBlock({ faultyEquipment, value, onChange, onRemove, onAddGr
                             <CreatableSelect isClearable
                                 placeholder={th ? "เลือกสาเหตุ..." : "Select cause..."}
                                 options={causeOptionsAvail ?? []}
-                                isDisabled={!causeOptionsAvail}
+                                isDisabled={disabled || !causeOptionsAvail}
                                 value={value.cause[0] ? { value: value.cause[0], label: resolveCauseLabel(value.cause[0]) } : null}
                                 onChange={(opt: any) => onChange(opt ? { ...value, cause: [opt.value] } : { ...value, cause: [], repaired_equipment: [] })}
                                 formatCreateLabel={(v: string) => `+ "${v}"`}
                                 menuPlacement="auto" menuPortalTarget={typeof document !== "undefined" ? document.body : undefined} classNamePrefix="react-select" styles={makeSelectStyles(SELECT_ACCENT.blue)} />
                         </div>
-                        {(causeOptionsAvail?.length ?? 0) > 1 && (
+                        {!disabled && (causeOptionsAvail?.length ?? 0) > 1 && (
                             <button type="button" onClick={onAddCauseGroup} title={th ? "เพิ่มสาเหตุ" : "Add cause"} className="tw-flex-shrink-0 tw-w-12 tw-h-12 tw-rounded-xl tw-border tw-border-blue-300 tw-bg-blue-50 tw-text-blue-600 tw-flex tw-items-center tw-justify-center hover:tw-bg-blue-100 tw-transition-all tw-text-xl tw-font-bold tw-leading-none">+</button>
                         )}
                     </div>
@@ -753,13 +789,13 @@ function ProblemGroupBlock({ faultyEquipment, value, onChange, onRemove, onAddGr
                             <CreatableSelect isClearable
                                 placeholder={th ? "เลือกการแก้ไข..." : "Select correction..."}
                                 options={correctionOptionsAvail ?? []}
-                                isDisabled={!correctionOptionsAvail}
+                                isDisabled={disabled || !correctionOptionsAvail}
                                 value={value.repaired_equipment[0] ? { value: value.repaired_equipment[0], label: resolveCorrectionLabel(value.repaired_equipment[0]) } : null}
                                 onChange={(opt: any) => onChange({ ...value, repaired_equipment: opt ? [opt.value] : [] })}
                                 formatCreateLabel={(v: string) => `+ "${v}"`}
                                 menuPlacement="auto" menuPortalTarget={typeof document !== "undefined" ? document.body : undefined} classNamePrefix="react-select" styles={makeSelectStyles(SELECT_ACCENT.amber)} />
                         </div>
-                        {(correctionOptionsAvail?.length ?? 0) > 1 && (
+                        {!disabled && (correctionOptionsAvail?.length ?? 0) > 1 && (
                             <button type="button" onClick={onAddCorrectionGroup} title={th ? "เพิ่มการแก้ไข" : "Add correction"} className="tw-flex-shrink-0 tw-w-12 tw-h-12 tw-rounded-xl tw-border tw-flex tw-items-center tw-justify-center hover:tw-brightness-95 tw-transition-all tw-text-xl tw-font-bold tw-leading-none" style={{ borderColor: SELECT_ACCENT.amber.border, backgroundColor: SELECT_ACCENT.amber.pill, color: SELECT_ACCENT.amber.pillText }}>+</button>
                         )}
                     </div>
@@ -773,7 +809,7 @@ function ProblemGroupBlock({ faultyEquipment, value, onChange, onRemove, onAddGr
                                 {i > 0 && <hr className="tw-border-gray-200 tw-my-5" />}
                                 <div className="tw-flex tw-gap-4">
                                     <div className="tw-flex-1 tw-space-y-4">
-                                        {value.corrective_actions.length > 1 && (
+                                        {!disabled && value.corrective_actions.length > 1 && (
                                             <div className="tw-flex tw-justify-end">
                                                 <button type="button" onClick={() => onChange({ ...value, corrective_actions: value.corrective_actions.filter((_, j) => j !== i) })} className="tw-w-10 tw-h-10 tw-rounded-lg tw-text-red-400 hover:tw-text-white hover:tw-bg-red-500 tw-flex tw-items-center tw-justify-center tw-transition-all">
                                                     <XMarkIcon className="tw-w-5 tw-h-5" />
@@ -785,10 +821,12 @@ function ProblemGroupBlock({ faultyEquipment, value, onChange, onRemove, onAddGr
                                             <div className="tw-border tw-border-red-200 tw-rounded-xl tw-p-4 tw-bg-red-50/30">
                                                 <div className="tw-flex tw-items-center tw-justify-between tw-mb-3">
                                                     <span className="tw-text-sm tw-font-semibold tw-text-red-700 tw-flex tw-items-center tw-gap-2"><span className="tw-w-2 tw-h-2 tw-rounded-full tw-bg-red-500"></span>{t("beforePhoto", lang)} <span className="tw-text-red-500">*</span></span>
-                                                    <label className="tw-inline-flex tw-items-center tw-gap-1.5 tw-px-3 tw-py-1.5 tw-rounded-lg tw-bg-white tw-border tw-border-red-300 tw-text-red-600 tw-font-medium tw-text-xs tw-cursor-pointer hover:tw-bg-red-50 tw-shadow-sm tw-transition-all">
-                                                        <input type="file" accept="image/*" multiple className="tw-hidden" onChange={(e) => addImgs(i, "beforeImages", e.target.files)} />
-                                                        <PhotoIcon className="tw-w-4 tw-h-4" /><span>{t("attachPhoto", lang)}</span>
-                                                    </label>
+                                                    {!disabled && (
+                                                        <label className="tw-inline-flex tw-items-center tw-gap-1.5 tw-px-3 tw-py-1.5 tw-rounded-lg tw-bg-white tw-border tw-border-red-300 tw-text-red-600 tw-font-medium tw-text-xs tw-cursor-pointer hover:tw-bg-red-50 tw-shadow-sm tw-transition-all">
+                                                            <input type="file" accept="image/*" multiple className="tw-hidden" onChange={(e) => addImgs(i, "beforeImages", e.target.files)} />
+                                                            <PhotoIcon className="tw-w-4 tw-h-4" /><span>{t("attachPhoto", lang)}</span>
+                                                        </label>
+                                                    )}
                                                 </div>
                                                 {action.beforeImages.length > 0 ? (
                                                     <div className="tw-grid tw-grid-cols-3 tw-gap-2">
@@ -801,7 +839,7 @@ function ProblemGroupBlock({ faultyEquipment, value, onChange, onRemove, onAddGr
                                                                         {img.location && <span className="tw-block tw-opacity-80 tw-truncate">📍 {img.location}</span>}
                                                                     </span>
                                                                 )}
-                                                                <button type="button" onClick={() => removeImg(i, "beforeImages", img.id)} className="tw-absolute tw-top-1 tw-right-1 tw-w-6 tw-h-6 tw-bg-red-500 tw-text-white tw-rounded-full tw-flex tw-items-center tw-justify-center hover:tw-bg-red-600 tw-shadow-lg tw-transition-all"><XMarkIcon className="tw-w-3.5 tw-h-3.5" /></button>
+                                                                {!disabled && <button type="button" onClick={() => removeImg(i, "beforeImages", img.id)} className="tw-absolute tw-top-1 tw-right-1 tw-w-6 tw-h-6 tw-bg-red-500 tw-text-white tw-rounded-full tw-flex tw-items-center tw-justify-center hover:tw-bg-red-600 tw-shadow-lg tw-transition-all"><XMarkIcon className="tw-w-3.5 tw-h-3.5" /></button>}
                                                             </div>
                                                         ))}
                                                     </div>
@@ -813,10 +851,12 @@ function ProblemGroupBlock({ faultyEquipment, value, onChange, onRemove, onAddGr
                                             <div className="tw-border tw-border-green-200 tw-rounded-xl tw-p-4 tw-bg-green-50/30">
                                                 <div className="tw-flex tw-items-center tw-justify-between tw-mb-3">
                                                     <span className="tw-text-sm tw-font-semibold tw-text-green-700 tw-flex tw-items-center tw-gap-2"><span className="tw-w-2 tw-h-2 tw-rounded-full tw-bg-green-500"></span>{t("afterPhoto", lang)}</span>
-                                                    <label className="tw-inline-flex tw-items-center tw-gap-1.5 tw-px-3 tw-py-1.5 tw-rounded-lg tw-bg-white tw-border tw-border-green-300 tw-text-green-600 tw-font-medium tw-text-xs tw-cursor-pointer hover:tw-bg-green-50 tw-shadow-sm tw-transition-all">
-                                                        <input type="file" accept="image/*" multiple className="tw-hidden" onChange={(e) => addImgs(i, "afterImages", e.target.files)} />
-                                                        <PhotoIcon className="tw-w-4 tw-h-4" /><span>{t("attachPhoto", lang)}</span>
-                                                    </label>
+                                                    {!disabled && (
+                                                        <label className="tw-inline-flex tw-items-center tw-gap-1.5 tw-px-3 tw-py-1.5 tw-rounded-lg tw-bg-white tw-border tw-border-green-300 tw-text-green-600 tw-font-medium tw-text-xs tw-cursor-pointer hover:tw-bg-green-50 tw-shadow-sm tw-transition-all">
+                                                            <input type="file" accept="image/*" multiple className="tw-hidden" onChange={(e) => addImgs(i, "afterImages", e.target.files)} />
+                                                            <PhotoIcon className="tw-w-4 tw-h-4" /><span>{t("attachPhoto", lang)}</span>
+                                                        </label>
+                                                    )}
                                                 </div>
                                                 {action.afterImages.length > 0 ? (
                                                     <div className="tw-grid tw-grid-cols-3 tw-gap-2">
@@ -829,7 +869,7 @@ function ProblemGroupBlock({ faultyEquipment, value, onChange, onRemove, onAddGr
                                                                         {img.location && <span className="tw-block tw-opacity-80 tw-truncate">📍 {img.location}</span>}
                                                                     </span>
                                                                 )}
-                                                                <button type="button" onClick={() => removeImg(i, "afterImages", img.id)} className="tw-absolute tw-top-1 tw-right-1 tw-w-6 tw-h-6 tw-bg-red-500 tw-text-white tw-rounded-full tw-flex tw-items-center tw-justify-center hover:tw-bg-red-600 tw-shadow-lg tw-transition-all"><XMarkIcon className="tw-w-3.5 tw-h-3.5" /></button>
+                                                                {!disabled && <button type="button" onClick={() => removeImg(i, "afterImages", img.id)} className="tw-absolute tw-top-1 tw-right-1 tw-w-6 tw-h-6 tw-bg-red-500 tw-text-white tw-rounded-full tw-flex tw-items-center tw-justify-center hover:tw-bg-red-600 tw-shadow-lg tw-transition-all"><XMarkIcon className="tw-w-3.5 tw-h-3.5" /></button>}
                                                             </div>
                                                         ))}
                                                     </div>
@@ -838,7 +878,7 @@ function ProblemGroupBlock({ faultyEquipment, value, onChange, onRemove, onAddGr
                                                 )}
                                             </div>
                                         </div>
-                                        <textarea value={action.text} onChange={(e) => setText(i, e.target.value)} rows={3} placeholder={th ? "กรอกรายละเอียดการดำเนินการ..." : "Enter action details..."} className="tw-w-full tw-px-3 tw-py-2 tw-border tw-border-gray-300 tw-rounded-lg tw-text-sm tw-bg-white focus:tw-outline-none focus:tw-border-amber-400 tw-transition-colors tw-resize-y" />
+                                        <textarea value={action.text} disabled={disabled} onChange={(e) => setText(i, e.target.value)} rows={3} placeholder={th ? "กรอกรายละเอียดการดำเนินการ..." : "Enter action details..."} className="tw-w-full tw-px-3 tw-py-2 tw-border tw-border-gray-300 tw-rounded-lg tw-text-sm tw-bg-white focus:tw-outline-none focus:tw-border-amber-400 tw-transition-colors tw-resize-y" />
                                     </div>
                                 </div>
                             </div>
@@ -910,27 +950,36 @@ export default function CMInProgressForm() {
         assignees.some((a) => (a || "").trim().toLowerCase() === currentUsername.trim().toLowerCase());
     const isEngineer = currentRole.trim().toLowerCase() === "engineer";
     const isCs = currentRole.trim().toLowerCase() === "cs";
+    const isTechnician = currentRole.trim().toLowerCase() === "technician";
     const isJobOwner =
         ["admin", "super_admin"].includes(currentRole.trim().toLowerCase()) ||
         (assignees.length > 0
             ? isAssignee
             : (!recordInspector.trim() || (!!currentUsername.trim() && currentUsername.trim() === recordInspector.trim())));
     // รองรับทั้ง Closed ใหม่และ Complete เดิมที่ยังอยู่ในฐานข้อมูล
-    const isClosedStatus = job.status === "Closed" || job.status === "Complete";
-    const isWaitForApprove = job.status.trim().toLowerCase() === "wait for approve";
-    // ด่านรออนุมัติ = หน้าตรวจงานอย่างเดียว มี 3 ปุ่ม: กลับ / ตีกลับ / อนุมัติ
-    // ผู้อนุมัติแก้ข้อมูลที่ช่างกรอกไม่ได้แล้ว — ด่านนี้ไม่มีปุ่มบันทึก ถ้าปล่อยให้พิมพ์ได้ข้อมูลจะหายเงียบตอนกดอนุมัติ
-    // (ต้องแก้ = ตีกลับพร้อมเหตุผลให้ช่างแก้)
-    const viewOnly =
-        isCs ||
-        isClosedStatus ||
-        isWaitForApprove ||
-        (!isEngineer && !isJobOwner);
-
-    // อนุมัติปิดใบงาน (Wait for approve → Closed) — เฉพาะ admin/engineer และเฉพาะใบที่รออนุมัติอยู่จริง
+    const normalizedJobStatus = job.status.trim().toLowerCase();
+    const isClosedStatus = normalizedJobStatus === "closed" || normalizedJobStatus === "complete";
+    // ใช้ status จริงเป็นตัวกำหนด Read only เท่านั้น
+    // การเลือก Repair Result = WO - wait for approve ยังต้องแก้ไข/บันทึกได้ก่อน
+    const isWaitForApprove = normalizedJobStatus === "wait for approve";
+    // Engineer แก้ไขข้อมูลของ Technician ได้เฉพาะใบที่ส่งมารออนุมัติปิดงานแล้ว
+    // ส่วน In Progress/Wait for schedule เป็นหน้าที่ของ Technician จึงเปิดดูได้อย่างเดียว
     const isWoCloseApproval =
         isWaitForApprove &&
         approvalStage.trim().toLowerCase() !== "cs_approval";
+    const canEditTechnicianData = isEngineer && isWoCloseApproval;
+    const isTechnicianWaitForApprove = isTechnician && isWaitForApprove;
+    // ด่านรออนุมัติจาก CS เป็นหน้าตรวจอย่างเดียว
+    // ส่วนด่านปิดงานเปิดให้ Engineer แก้ข้อมูลของช่างแล้วบันทึก/อนุมัติได้
+    const viewOnly =
+        isCs ||
+        isClosedStatus ||
+        isTechnicianWaitForApprove ||
+        (isWaitForApprove && !canEditTechnicianData) ||
+        (isEngineer && !canEditTechnicianData) ||
+        (!isEngineer && !isJobOwner);
+
+    // อนุมัติปิดใบงาน (Wait for approve → Closed) — เฉพาะ admin/engineer และเฉพาะใบที่รออนุมัติอยู่จริง
     const canApprove =
         isWoCloseApproval &&
         ["admin", "engineer"].includes(currentRole.trim().toLowerCase());
@@ -1008,24 +1057,51 @@ export default function CMInProgressForm() {
 
     const applyDraft = () => {
         if (pendingDraft) {
+            const draftActionsToCorrective = (actions: any[] = []): CorrectiveItem[] => actions.map((a: any) => ({
+                code: a.code,
+                text: a.text || "",
+                beforeImages: (a.beforeImages || []).map((img: DraftImage) => ({
+                    id: img.id,
+                    file: null as unknown as File,
+                    preview: base64ToBlobUrl(img.base64),
+                    isServer: false,
+                })),
+                afterImages: (a.afterImages || []).map((img: DraftImage) => ({
+                    id: img.id,
+                    file: null as unknown as File,
+                    preview: base64ToBlobUrl(img.base64),
+                    isServer: false,
+                })),
+            }));
+            const mergeDraftActionsWithServer = (draftActions: CorrectiveItem[], serverActions: CorrectiveItem[]): CorrectiveItem[] => {
+                const draftHasData = draftActions.some(action =>
+                    !!action.code ||
+                    action.text.trim() !== "" ||
+                    action.beforeImages.length > 0 ||
+                    action.afterImages.length > 0
+                );
+                if (!draftHasData) return serverActions.length > 0 ? serverActions : [{ text: "", beforeImages: [], afterImages: [] }];
+
+                const count = Math.max(draftActions.length, serverActions.length);
+                return Array.from({ length: count }, (_, index) => {
+                    const draftAction = draftActions[index];
+                    const serverAction = serverActions[index];
+                    if (!draftAction) return serverAction;
+                    if (!serverAction) return draftAction;
+                    return {
+                        ...serverAction,
+                        ...draftAction,
+                        code: draftAction.code || serverAction.code,
+                        text: draftAction.text.trim() ? draftAction.text : serverAction.text,
+                        beforeImages: draftAction.beforeImages.length ? draftAction.beforeImages : serverAction.beforeImages,
+                        afterImages: draftAction.afterImages.length ? draftAction.afterImages : serverAction.afterImages,
+                    };
+                }).filter(Boolean) as CorrectiveItem[];
+            };
             setJob(prev => ({
                 ...prev,
                 corrective_actions: pendingDraft.corrective_actions?.length > 0
-                    ? pendingDraft.corrective_actions.map((a: any) => ({
-                        text: a.text,
-                        beforeImages: (a.beforeImages || []).map((img: DraftImage) => ({
-                            id: img.id,
-                            file: null as unknown as File,
-                            preview: base64ToBlobUrl(img.base64),
-                            isServer: false,
-                        })),
-                        afterImages: (a.afterImages || []).map((img: DraftImage) => ({
-                            id: img.id,
-                            file: null as unknown as File,
-                            preview: base64ToBlobUrl(img.base64),
-                            isServer: false,
-                        }))
-                    }))
+                    ? mergeDraftActionsWithServer(draftActionsToCorrective(pendingDraft.corrective_actions), prev.corrective_actions)
                     : prev.corrective_actions,
                 repaired_equipment: pendingDraft.repaired_equipment || [],
                 // ร่างที่ถูกบันทึกไว้ก่อนช่างเลือกผลจะถือค่า default อยู่ — ถ้าเอามาทับดื้อๆ
@@ -1044,6 +1120,41 @@ export default function CMInProgressForm() {
                 start_repair_date: pendingDraft.start_repair_date || prev.start_repair_date,
                 start_repair_time: pendingDraft.start_repair_time || prev.start_repair_time,
             }));
+            // ร่างเก่าจะไม่มี extra_groups — กรณีนั้นปล่อยค่าที่โหลดจาก server ไว้
+            if (Array.isArray(pendingDraft.extra_groups)) {
+                setExtraGroups(previousGroups => {
+                    const draftGroups = pendingDraft.extra_groups ?? [];
+                    // Draft เก่าที่ไม่มีชุดเพิ่ม ห้ามล้างชุดที่โหลดจาก Server
+                    if (draftGroups.length === 0 && previousGroups.length > 0) return previousGroups;
+
+                    const groupCount = Math.max(draftGroups.length, previousGroups.length);
+                    return Array.from({ length: groupCount }, (_, index) => {
+                        const group = draftGroups[index];
+                        const serverGroup = previousGroups[index];
+                        if (!group) return serverGroup;
+                        if (!serverGroup) {
+                            return {
+                                kind: group.kind === "cause" || group.kind === "correction" ? group.kind : "full",
+                                problem_type: Array.isArray(group.problem_type) ? group.problem_type : [],
+                                cause: Array.isArray(group.cause) ? group.cause : [],
+                                repaired_equipment: Array.isArray(group.repaired_equipment) ? group.repaired_equipment : [],
+                                corrective_actions: draftActionsToCorrective(group.corrective_actions),
+                            };
+                        }
+
+                        const draftActions = draftActionsToCorrective(group.corrective_actions);
+                        return {
+                            ...serverGroup,
+                            kind: group.kind === "cause" || group.kind === "correction" ? group.kind : serverGroup.kind,
+                            problem_type: Array.isArray(group.problem_type) && group.problem_type.length ? group.problem_type : serverGroup.problem_type,
+                            cause: Array.isArray(group.cause) && group.cause.length ? group.cause : serverGroup.cause,
+                            repaired_equipment: Array.isArray(group.repaired_equipment) && group.repaired_equipment.length ? group.repaired_equipment : serverGroup.repaired_equipment,
+                            // Draft ที่ไม่ครบจะไม่ทับรูป/รายละเอียดจาก Server
+                            corrective_actions: mergeDraftActionsWithServer(draftActions, serverGroup.corrective_actions),
+                        };
+                    }).filter(Boolean) as PGroup[];
+                });
+            }
         }
         setPendingDraft(null);
     };
@@ -1052,11 +1163,17 @@ export default function CMInProgressForm() {
     // ผู้ใช้กดบันทึกไว้เองอยู่แล้ว จึงเอาของที่บันทึกไว้มาให้เลย ไม่ต้องถามซ้ำ
     // ต้องรอ jobLoaded ก่อน ไม่งั้น applyDraft จะ merge กับ prev ที่ยังว่าง แล้วโดนข้อมูลจาก server ทับ
     useEffect(() => {
+        if (viewOnly) {
+            // Draft เป็นข้อมูลชั่วคราวของช่าง ห้ามนำมาทับข้อมูลล่าสุดจาก server
+            // เมื่อเปิดใบที่รออนุมัติหรือใบ Closed แบบอ่านอย่างเดียว
+            if (pendingDraft) setPendingDraft(null);
+            return;
+        }
         if (!pendingDraft || !jobLoaded) return;
         applyDraft();
         // applyDraft เคลียร์ pendingDraft เป็น null ปิดท้าย จึงไม่วนซ้ำ
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [pendingDraft, jobLoaded]);
+    }, [pendingDraft, jobLoaded, viewOnly]);
 
     // Helper function to convert images to draft format
     const convertImagesToDraft = async (images: PhotoItem[]): Promise<DraftImage[]> => {
@@ -1089,6 +1206,7 @@ export default function CMInProgressForm() {
         if (!editId || !stationId) return;
 
         const hasData = job.corrective_actions.some((a: CorrectiveItem) => a.text.trim() !== "" || a.beforeImages.length > 0 || a.afterImages.length > 0) ||
+            extraGroups.length > 0 ||
             job.repaired_equipment.length > 0 ||
             job.repair_result ||
             job.preventive_action.some((p: string) => p.trim() !== "") ||
@@ -1101,20 +1219,29 @@ export default function CMInProgressForm() {
         if (!hasData) return;
 
         try {
-            const correctiveActionsWithImages = await Promise.all(
-                job.corrective_actions.map(async (a: CorrectiveItem) => {
+            const convertCorrectiveActionsToDraft = async (actions: CorrectiveItem[]): Promise<DraftCorrectiveAction[]> => Promise.all(
+                actions.map(async (a: CorrectiveItem) => {
                     const beforeImages = await convertImagesToDraft(a.beforeImages);
                     const afterImages = await convertImagesToDraft(a.afterImages);
                     return {
+                        code: a.code,
                         text: a.text,
                         beforeImages: beforeImages.filter(img => img.base64),
                         afterImages: afterImages.filter(img => img.base64),
                     };
                 })
             );
+            const correctiveActionsWithImages = await convertCorrectiveActionsToDraft(job.corrective_actions);
+            const extraGroupsWithImages = await Promise.all(extraGroups.map(async group => ({
+                kind: group.kind,
+                problem_type: group.problem_type,
+                cause: group.cause,
+                repaired_equipment: group.repaired_equipment,
+                corrective_actions: await convertCorrectiveActionsToDraft(group.corrective_actions),
+            })));
 
             const draftData: DraftData = {
-                corrective_actions: correctiveActionsWithImages as any,
+                corrective_actions: correctiveActionsWithImages,
                 repaired_equipment: job.repaired_equipment,
                 repair_result: job.repair_result,
                 preventive_action: job.preventive_action,
@@ -1123,6 +1250,7 @@ export default function CMInProgressForm() {
                 problem_type: job.problem_type,
                 problem_type_other: job.problem_type_other,
                 cause: job.cause,
+                extra_groups: extraGroupsWithImages,
                 start_repair_date: overrides?.start_repair_date ?? job.start_repair_date,
                 start_repair_time: overrides?.start_repair_time ?? job.start_repair_time,
             };
@@ -1130,7 +1258,7 @@ export default function CMInProgressForm() {
         } catch (e) {
             console.error("Failed to save draft with images:", e);
         }
-    }, [job.corrective_actions, job.repaired_equipment, job.repair_result, job.preventive_action, job.inprogress_remarks, job.repair_result_remark, job.problem_type, job.problem_type_other, job.cause, job.start_repair_date, job.start_repair_time, editId, stationId, saveDraftNow]);
+    }, [job.corrective_actions, extraGroups, job.repaired_equipment, job.repair_result, job.preventive_action, job.inprogress_remarks, job.repair_result_remark, job.problem_type, job.problem_type_other, job.cause, job.start_repair_date, job.start_repair_time, editId, stationId, saveDraftNow]);
 
     const draftTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     useEffect(() => {
@@ -1156,9 +1284,18 @@ export default function CMInProgressForm() {
         return COMPLETED_REPAIR_RESULTS.includes(job.repair_result.trim());
     }, [job.repair_result]);
 
-    const isMonitoringResult = useMemo(() => {
-        return WO_WAITING_RESULTS.includes(job.repair_result);
-    }, [job.repair_result]);
+    // ตั้งวันและเวลาปัจจุบันให้การปิดงาน หากใบงานเดิมยังไม่มีค่า โดยไม่ทับค่าที่บันทึกไว้แล้ว
+    useEffect(() => {
+        if (!isClosedResult || viewOnly) return;
+        const now = new Date();
+        const today = `${String(now.getDate()).padStart(2, "0")}/${String(now.getMonth() + 1).padStart(2, "0")}/${now.getFullYear()}`;
+        const currentTime = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+        setJob(prev => ({
+            ...prev,
+            resolved_date: prev.resolved_date || today,
+            resolved_time: prev.resolved_time || currentTime,
+        }));
+    }, [isClosedResult, viewOnly]);
 
     // ต้องกรอกหมายเหตุเฉพาะ material / site condition — manpower / approve ไม่ต้อง (รวมค่าเก่า)
     const needsRepairRemark = useMemo(() => {
@@ -1214,36 +1351,79 @@ export default function CMInProgressForm() {
 
     // ใบที่ยังรอ engineer วางแผน ปิดงานไม่ได้อยู่แล้ว จึงต้องการแค่ อาการ + สาเหตุ
     // (ผลหลังซ่อมเป็นของขั้นปิดงาน ไม่ควรบังคับในสถานะนี้)
+    const validationGroupState = useMemo(() => {
+        const fullGroups = extraGroups.filter(group => group.kind === "full");
+        const causeGroups = extraGroups.filter(group => group.kind !== "correction");
+        const allActions = [job.corrective_actions, ...extraGroups.map(group => group.corrective_actions)].flat();
+        return {
+            allProblemTypesFilled: job.problem_type.some(Boolean) && fullGroups.every(group => group.problem_type.some(Boolean)),
+            allCausesFilled: job.cause.some(cause => cause.trim() !== "") && causeGroups.every(group => group.cause.some(cause => cause.trim() !== "")),
+            allCorrectionsFilled: job.repaired_equipment.some(Boolean) && extraGroups.every(group => group.repaired_equipment.some(Boolean)),
+            allActionTextsFilled: allActions.length > 0 && allActions.every(action => action.text.trim() !== ""),
+            allBeforePhotosFilled: allActions.length > 0 && allActions.every(action => action.beforeImages.length > 0),
+            allAfterPhotosFilled: allActions.length > 0 && allActions.every(action => action.afterImages.length > 0),
+        };
+    }, [job, extraGroups]);
+
+    const additionalGroupValidations = useMemo<ValidationItem[]>(() => (
+        extraGroups.flatMap((group, index) => {
+            const groupNumber = index + 2;
+            const checks: ValidationItem[] = [];
+            if (group.kind !== "correction") {
+                checks.push({
+                    key: `causeGroup-${index}`,
+                    label: `${t("validCause", lang)} #${groupNumber}`,
+                    isValid: group.cause.some(cause => cause.trim() !== ""),
+                    message: t("notFilled", lang),
+                    isRequired: !isNoProblem && !isWaitingForSiteCondition,
+                    scrollId: "cm-cause",
+                });
+            }
+            checks.push({
+                key: `correctionGroup-${index}`,
+                label: `${t("repairedEquipment", lang)} #${groupNumber}`,
+                isValid: group.repaired_equipment.some(Boolean),
+                message: t("notSelected", lang),
+                isRequired: isClosedResult && !isNoProblem,
+                scrollId: "cm-correction",
+            });
+            return checks;
+        })
+    ), [extraGroups, lang, isNoProblem, isWaitingForSiteCondition, isClosedResult]);
+
     const validations = useMemo<ValidationItem[]>(() => [
-        { key: "problemType", label: t("validProblemType", lang), isValid: job.problem_type.some(Boolean), message: t("notSelected", lang), isRequired: !isWaitingForSiteCondition, scrollId: "cm-problem-type" },
+        { key: "problemType", label: t("validProblemType", lang), isValid: validationGroupState.allProblemTypesFilled, message: t("notSelected", lang), isRequired: !isWaitingForSiteCondition, scrollId: "cm-problem-type" },
         { key: "problemTypeOther", label: lang === "th" ? "ระบุปัญหา (อื่นๆ)" : "Specify Problem (Other)", isValid: !!job.problem_type_other.trim(), message: t("notFilled", lang), isRequired: job.problem_type.includes("Other"), scrollId: "cm-problem-type" },
-        { key: "cause", label: t("validCause", lang), isValid: job.cause.some(c => c.trim() !== ""), message: t("notFilled", lang), isRequired: !isNoProblem && !isWaitingForSiteCondition, scrollId: "cm-cause" },
+        { key: "cause", label: t("validCause", lang), isValid: validationGroupState.allCausesFilled, message: t("notFilled", lang), isRequired: !isNoProblem && !isWaitingForSiteCondition, scrollId: "cm-cause" },
         // ปิดงานได้ต่อเมื่อระบุ "การแก้ไข" แล้ว — เดิมมี effect คอยรีเซ็ตผลหลังซ่อมแทน
         // แต่มันเทียบกับ label ("แก้ไขสำเร็จ") ไม่ใช่ value จึงไม่เคยทำงาน
-        { key: "correction", label: t("repairedEquipment", lang), isValid: job.repaired_equipment.some(Boolean), message: t("notSelected", lang), isRequired: isClosedResult && !isNoProblem, scrollId: "cm-correction" },
-        { key: "correctiveAction", label: t("validCorrectiveAction", lang), isValid: job.corrective_actions.some((a: CorrectiveItem) => a.text.trim() !== ""), message: t("notFilled", lang), isRequired: !isNoProblem && !isWaitingForMaterial && !isWaitingForSiteCondition, scrollId: "cm-corrective" },
-        { key: "beforePhoto", label: t("validBeforePhoto", lang), isValid: job.corrective_actions.every((a: CorrectiveItem) => a.beforeImages.length > 0), message: t("notFilled", lang), isRequired: !isNoProblem && !isWaitingForMaterial && !isWaitingForSiteCondition, scrollId: "cm-corrective" },
-        { key: "afterPhoto", label: t("validAfterPhoto", lang), isValid: job.corrective_actions.every((a: CorrectiveItem) => a.afterImages.length > 0), message: t("notFilled", lang), isRequired: isClosedResult && !isNoProblem, scrollId: "cm-corrective" },
+        { key: "correction", label: t("repairedEquipment", lang), isValid: validationGroupState.allCorrectionsFilled, message: t("notSelected", lang), isRequired: isClosedResult && !isNoProblem, scrollId: "cm-correction" },
+        { key: "correctiveAction", label: t("validCorrectiveAction", lang), isValid: validationGroupState.allActionTextsFilled, message: t("notFilled", lang), isRequired: !isNoProblem && !isWaitingForMaterial && !isWaitingForSiteCondition, scrollId: "cm-corrective" },
+        { key: "beforePhoto", label: t("validBeforePhoto", lang), isValid: validationGroupState.allBeforePhotosFilled, message: t("notFilled", lang), isRequired: !isNoProblem && !isWaitingForMaterial && !isWaitingForSiteCondition, scrollId: "cm-corrective" },
+        { key: "afterPhoto", label: t("validAfterPhoto", lang), isValid: validationGroupState.allAfterPhotosFilled, message: t("notFilled", lang), isRequired: isClosedResult && !isNoProblem, scrollId: "cm-corrective" },
         { key: "repairResult", label: t("validRepairResult", lang), isValid: !!job.repair_result, message: t("notSelected", lang), isRequired: !isNoProblem, scrollId: "cm-repair-result" },
         // { key: "preventiveAction", label: t("preventiveAction", lang), isValid: job.preventive_action.some((p: string) => p.trim() !== ""), message: t("notFilled", lang), isRequired: isClosedResult && !isNoProblem, scrollId: "cm-preventive" },
         { key: "inprogressRemarks", label: lang === "th" ? "หมายเหตุผลหลังซ่อม" : "Repair Result Remark", isValid: !!job.repair_result_remark.trim(), message: t("notFilled", lang), isRequired: needsRepairRemark, scrollId: "cm-repair-result" },
         { key: "noProblemPhoto", label: lang === "th" ? "รูปภาพ" : "Photo", isValid: (job.corrective_actions[0]?.afterImages.length ?? 0) > 0, message: t("notFilled", lang), isRequired: isNoProblem, scrollId: "cm-noproblem-photo" },
         { key: "noProblemRemarks", label: t("remarks", lang), isValid: !!job.inprogress_remarks.trim(), message: t("notFilled", lang), isRequired: isNoProblem, scrollId: "cm-remarks" },
-    ], [job, lang, isClosedResult, isMonitoringResult, needsRepairRemark, isNoProblem]);
+        ...additionalGroupValidations,
+    ], [job, lang, isClosedResult, needsRepairRemark, isNoProblem, validationGroupState, isWaitingForMaterial, isWaitingForSiteCondition, additionalGroupValidations]);
 
     // "แก้ไขสำเร็จ" ใน dropdown มี value = "WO - wait for approve" (label ต่างจาก value)
     // isClosedResult เทียบข้อความไทยซึ่งเป็นค่าของใบเก่า จึงต้องเช็คค่าใหม่เพิ่มเอง
     const isRepairCompleted = job.repair_result === "WO - wait for approve" || isClosedResult;
 
-    // ยังไม่เลือกผลหลังซ่อม = ยังซ่อมไม่จบ ไม่บังคับอะไรทั้งนั้น กดบันทึกเก็บงานไว้ก่อนได้
-    // (ยกเว้นเคส "ไม่พบปัญหา" ที่ปิดงานได้โดยไม่ต้องเลือกผลหลังซ่อม จึงยังต้องบังคับตามเดิม)
+    // ยังไม่เลือกผลหลังซ่อม ให้บังคับเลือกผลก่อนบันทึกข้อมูลหลัก
+    // (ยกเว้นเคส "ไม่พบปัญหา" ที่ปิดงานได้โดยไม่ต้องเลือกผลหลังซ่อม)
     // "WO - wait for scheduled" คือ marker ที่ engineer ตั้งตอน assign ไม่ใช่ผลที่ช่างเลือก
     // จึงนับว่ายังไม่เลือกผล (ปกติฟอร์มล้างเป็นค่าว่างตอนโหลดอยู่แล้ว เช็คซ้ำกันเส้นทางอื่น)
     const hasChosenResult = !!job.repair_result.trim() && job.repair_result !== "WO - wait for scheduled";
 
     const effectiveValidations = useMemo<ValidationItem[]>(() => {
         if (!hasChosenResult && !isNoProblem) {
-            return validations.map(v => ({ ...v, isRequired: false }));
+            return validations.map(v => v.key === "repairResult"
+                ? { ...v, isRequired: true }
+                : { ...v, isRequired: false });
         }
         if (isRepairCompleted) {
             return validations.map(v => COMPLETED_REQUIRED_KEYS.includes(v.key) ? { ...v, isRequired: true } : v);
@@ -1251,6 +1431,8 @@ export default function CMInProgressForm() {
         return validations;
     }, [validations, hasChosenResult, isNoProblem, isRepairCompleted]);
     const canSave = useMemo(() => effectiveValidations.filter(v => v.isRequired).every(v => v.isValid), [effectiveValidations]);
+    // ผล "แก้ไขสำเร็จ" ต้องผ่าน validation ครบทุกข้อก่อนเปลี่ยนสถานะเป็น Closed
+    const canClose = !isClosedResult || canSave;
 
     // ใบที่ engineer ยังไม่ได้วางแผน/assign — ช่างยังปิดงานไม่ได้ แต่ต้องเก็บสิ่งที่กรอกไว้ได้
     // ไม่มีใน type Status เดิมเพราะสถานะนี้เพิ่งเพิ่มทีหลัง จึงเทียบด้วยข้อความ
@@ -1263,10 +1445,11 @@ export default function CMInProgressForm() {
         // เลือก "รอเข้าพื้นที่" = ฟอร์มล้างช่องอาการ/สาเหตุทิ้งไปแล้ว บังคับต่อไม่ได้
         // (ไม่งั้นปุ่มเดียวของใบสถานะ Wait for schedule จะ disabled ถาวร = ทางตัน)
         if (isWaitingForSiteCondition) return !!job.repair_result_remark.trim();
-        const problems = [...job.problem_type, ...extraGroups.flatMap(g => g.problem_type)].filter(Boolean);
-        const causes = [...job.cause, ...extraGroups.flatMap(g => g.cause)].filter((c: string) => (c || "").trim());
-        const hasProblem = problems.length > 0 || !!job.problem_type_other.trim();
-        return hasProblem && causes.length > 0;
+        const fullGroups = extraGroups.filter(group => group.kind === "full");
+        const hasProblem = job.problem_type.some(Boolean) && fullGroups.every(group => group.problem_type.some(Boolean));
+        const hasCause = job.cause.some(cause => cause.trim() !== "") &&
+            extraGroups.filter(group => group.kind !== "correction").every(group => group.cause.some(cause => cause.trim() !== ""));
+        return (hasProblem || !!job.problem_type_other.trim()) && hasCause;
     }, [job.problem_type, job.problem_type_other, job.cause, job.repair_result_remark, isWaitingForSiteCondition, extraGroups]);
 
     // การ์ดสรุปต้องสะท้อนสิ่งที่ "ปุ่มที่กดได้จริง" ต้องการ ไม่งั้นจะขึ้นแดงว่ายังไม่เลือก
@@ -1283,7 +1466,7 @@ export default function CMInProgressForm() {
     const isClosing = isClosedResult || isNoProblem;
     // engineer เป็นผู้อนุมัติปิดงานอยู่แล้ว — ถ้ากรอกผลซ่อมเองและเลือก "แก้ไขสำเร็จ"
     // ก็ไม่ต้องเข้าคิวรออนุมัติ ปิดเป็น Closed ไปเลย (role อื่นยังต้องรอ engineer/admin อนุมัติ)
-    const isRepairSuccess = job.repair_result === "WO - wait for approve" || job.repair_result === "แก้ไขสำเร็จ";
+    const isRepairSuccess = job.repair_result === "WO - wait for approve" || isClosedResult;
     const engineerAutoClose = isEngineer && isRepairSuccess;
     const targetStatus = engineerAutoClose
         ? "Closed"
@@ -1368,10 +1551,18 @@ export default function CMInProgressForm() {
 
     const addCorrectiveBeforeImages = (index: number, files: FileList | null) => {
         if (!files) return;
+        const currentCount = job.corrective_actions[index]?.beforeImages.length ?? 0;
+        const remain = Math.max(0, MAX_PHOTOS - currentCount);
+        if (remain === 0 || files.length > remain) {
+            alert(lang === "th"
+                ? `แนบรูปได้สูงสุด ${MAX_PHOTOS} รูปต่อรายการ (เพิ่มได้อีก ${remain} รูป)`
+                : `Maximum ${MAX_PHOTOS} photos per item (${remain} remaining)`);
+        }
+        if (remain === 0) return;
         const now = getNowTimestamp();
         const nowISO = new Date().toISOString();
         const cachedLoc = gpsCache.current.fetched ? gpsCache.current.location : undefined;
-        const newImages: PhotoItem[] = Array.from(files).slice(0, MAX_PHOTOS).map((file, i) => ({
+        const newImages: PhotoItem[] = Array.from(files).slice(0, remain).map((file, i) => ({
             id: `before-${Date.now()}-${index}-${i}-${file.name}`,
             file,
             preview: URL.createObjectURL(file),
@@ -1402,10 +1593,18 @@ export default function CMInProgressForm() {
 
     const addCorrectiveAfterImages = (index: number, files: FileList | null) => {
         if (!files) return;
+        const currentCount = job.corrective_actions[index]?.afterImages.length ?? 0;
+        const remain = Math.max(0, MAX_PHOTOS - currentCount);
+        if (remain === 0 || files.length > remain) {
+            alert(lang === "th"
+                ? `แนบรูปได้สูงสุด ${MAX_PHOTOS} รูปต่อรายการ (เพิ่มได้อีก ${remain} รูป)`
+                : `Maximum ${MAX_PHOTOS} photos per item (${remain} remaining)`);
+        }
+        if (remain === 0) return;
         const now = getNowTimestamp();
         const nowISO = new Date().toISOString();
         const cachedLoc = gpsCache.current.fetched ? gpsCache.current.location : undefined;
-        const newImages: PhotoItem[] = Array.from(files).slice(0, MAX_PHOTOS).map((file, i) => ({
+        const newImages: PhotoItem[] = Array.from(files).slice(0, remain).map((file, i) => ({
             id: `after-${Date.now()}-${index}-${i}-${file.name}`,
             file,
             preview: URL.createObjectURL(file),
@@ -1585,7 +1784,10 @@ export default function CMInProgressForm() {
         if (!editId || !stationId) return;
         (async () => {
             try {
-                const res = await fetch(`${API_BASE}/cmreport/${encodeURIComponent(editId)}?station_id=${encodeURIComponent(stationId)}`, { credentials: "include" });
+                const res = await fetch(`${API_BASE}/cmreport/${encodeURIComponent(editId)}?station_id=${encodeURIComponent(stationId)}`, {
+                    credentials: "include",
+                    cache: "no-store",
+                });
                 if (!res.ok) return;
                 const data = await res.json();
                 const rawDate = data.cm_date ?? data.found_date ?? "";
@@ -1594,7 +1796,70 @@ export default function CMInProgressForm() {
                 // ช่างเคยบันทึกเป็นสถานะรอไว้ → รอบนั้นถูกเก็บเข้าประวัติแล้ว ฟอร์มต้องเริ่มรอบใหม่จากว่าง
                 const loadedHistory: RepairRound[] = Array.isArray(data.repair_history) ? data.repair_history : [];
                 setRepairHistory(loadedHistory);
+                const isCloseApproval =
+                    (
+                        String(data.status ?? "").trim().toLowerCase() === "wait for approve" ||
+                        normalizeRepairResult(String(data.repair_result ?? "")).trim().toLowerCase() === "wo - wait for approve"
+                    ) &&
+                    String(data.stage ?? "").trim().toLowerCase() !== "cs_approval";
+                const isClosedDataStatus = ["closed", "complete"].includes(String(data.status ?? "").trim().toLowerCase());
+                const useHistorySnapshot = isCloseApproval || isClosedDataStatus;
+                const latestRepairRound = useHistorySnapshot
+                    ? [...loadedHistory].reverse().find(round =>
+                        normalizeRepairResult(String(round.repair_result ?? "")) ===
+                        normalizeRepairResult(String(data.repair_result ?? ""))
+                    )
+                    : undefined;
+                // บางใบไม่มี snapshot ของรอบปัจจุบัน แต่มี action ชุดที่ 2 อยู่ใน history
+                // ให้เลือก snapshot ที่มี action ครบที่สุดเป็น fallback สำหรับหน้าดูข้อมูล
+                const historyActionRound = useHistorySnapshot
+                    ? loadedHistory.reduce<RepairRound | undefined>((best, round) => {
+                        const bestCount = best?.corrective_actions?.length ?? 0;
+                        const roundCount = round?.corrective_actions?.length ?? 0;
+                        return roundCount > bestCount ? round : best;
+                    }, latestRepairRound)
+                    : undefined;
                 const waitingRoundArchived = WAITING_REPAIR_RESULTS.includes(normalizeRepairResult(data.repair_result ?? ""));
+                // ใช้ snapshot เฉพาะรอบที่ตรงกับสถานะปัจจุบัน และเติมข้อมูลจาก flat fields ของรอบล่าสุด
+                const flatCorrectiveActions = Array.isArray(data.corrective_actions) ? data.corrective_actions : [];
+                const historyCorrectiveActions = Array.isArray(historyActionRound?.corrective_actions)
+                    ? historyActionRound.corrective_actions
+                    : [];
+                const loadedProblemTypes = mergeStringArraysByIndex(data.problem_type, latestRepairRound?.problem_type);
+                const loadedCauses = mergeStringArraysByIndex(data.cause, latestRepairRound?.cause);
+                const storedCorrections = asStringArray(data.repaired_equipment);
+                const historyCorrections = asStringArray(latestRepairRound?.repaired_equipment);
+                const actionCodes = flatCorrectiveActions
+                    .map((action: any) => String(action?.code ?? "").trim())
+                    .filter(Boolean);
+                // ถ้าช่องการแก้ไขหลักไม่มีค่า ให้ดึง code จาก corrective_actions เพื่อไม่ให้ข้อมูลที่ช่างกรอกหาย
+                const loadedCorrections = mergeStringArraysByIndex(storedCorrections, historyCorrections, actionCodes);
+                const loadedCorrectiveActions = (() => {
+                    if (!useHistorySnapshot || historyCorrectiveActions.length === 0) return flatCorrectiveActions;
+
+                    // repair_history เป็น snapshot ของรอบล่าสุดและมักมีข้อมูลชุดที่ 2 ครบกว่า flat fields
+                    // merge รายการตามลำดับ เพื่อไม่ทิ้งรายละเอียดหรือรูปที่มีอยู่เพียงฝั่งใดฝั่งหนึ่ง
+                    const actionCount = Math.max(historyCorrectiveActions.length, flatCorrectiveActions.length);
+                    return Array.from({ length: actionCount }, (_, index) => {
+                        const historyAction = historyCorrectiveActions[index] ?? {};
+                        const flatAction = flatCorrectiveActions[index] ?? {};
+                        return {
+                            ...historyAction,
+                            ...flatAction,
+                            // ข้อมูล flat คือรอบล่าสุดของ technician — ให้มี priority สูงกว่า history
+                            code: flatAction.code || historyAction.code,
+                            text: String(flatAction.text ?? "").trim()
+                                ? flatAction.text
+                                : (historyAction.text ?? ""),
+                            beforeImages: flatAction.beforeImages?.length
+                                ? flatAction.beforeImages
+                                : (historyAction.beforeImages ?? []),
+                            afterImages: flatAction.afterImages?.length
+                                ? flatAction.afterImages
+                                : (historyAction.afterImages ?? []),
+                        };
+                    });
+                })();
                 const loadedJob: Job = {
                     ...INITIAL_JOB,
                     doc_name: data.doc_name ?? "",
@@ -1610,9 +1875,9 @@ export default function CMInProgressForm() {
                     // รอบใหม่: ประทับวันที่ตอนกดเข้าฟอร์มมากรอกรอบนี้เลย (ไม่รอให้เริ่มพิมพ์)
                     start_repair_date: waitingRoundArchived ? localTodayISO() : (data.start_repair_date || ""),
                     // ปัญหา/สาเหตุ: รอบใหม่ใช้ค่าของรอบก่อนเป็นค่าเริ่มต้น (มักเป็นอาการเดิมที่ยังแก้ไม่จบ)
-                    problem_type: Array.isArray(data.problem_type) ? data.problem_type : (data.problem_type ? [data.problem_type] : []),
+                    problem_type: loadedProblemTypes,
                     problem_type_other: data.problem_type_other ?? "",
-                    cause: Array.isArray(data.cause) ? data.cause : (data.cause ? [data.cause] : []),
+                    cause: loadedCauses,
                     // ล้างให้ว่างเพื่อบังคับให้ช่างเลือกผลใหม่ — แต่ต้องจำค่าเดิมไว้ (originalRepairResultRef)
                     // ไม่งั้นพอกดบันทึกจะส่งค่าว่างไปทับ ทำให้ marker ที่ engineer ตั้งไว้หายจาก DB
                     repair_result: waitingRoundArchived ? DEFAULT_REPAIR_RESULT : (normalizeRepairResult(data.repair_result ?? "") || DEFAULT_REPAIR_RESULT),
@@ -1622,7 +1887,7 @@ export default function CMInProgressForm() {
                     signature: data.signature ?? "",
                     start_repair_time: waitingRoundArchived ? localNowHHMM() : (data.start_repair_time ?? ""),
                     resolved_time: data.resolved_time ?? "",
-                    repaired_equipment: waitingRoundArchived ? [] : (Array.isArray(data.repaired_equipment) ? data.repaired_equipment : []),
+                    repaired_equipment: waitingRoundArchived ? [] : loadedCorrections,
                     preventive_action: Array.isArray(data.preventive_action) && data.preventive_action.length > 0 ? data.preventive_action : [""],
                     corrective_actions: (() => {
                         // รอบใหม่หลังจากรอบก่อนถูกเก็บเข้าประวัติ → เริ่มจากแถวว่างแถวเดียว
@@ -1646,11 +1911,14 @@ export default function CMInProgressForm() {
                             }
                         }
 
-                        if (Array.isArray(data.corrective_actions) && data.corrective_actions.length > 0) {
-                            return data.corrective_actions.map((a: any, idx: number) => ({
-                                code: Array.isArray(data.repaired_equipment) ? data.repaired_equipment[idx] : undefined,
+                        if (loadedCorrectiveActions.length > 0) {
+                            return loadedCorrectiveActions.map((a: any, idx: number) => ({
+                                code: a.code || loadedCorrections[idx],
                                 text: a.text || "",
-                                beforeImages: (a.beforeImages || []).map((img: any, imgIdx: number) => {
+                                beforeImages: (a.beforeImages?.length
+                                    ? a.beforeImages
+                                    : (repairByGroup[`before_${idx}`] || repairByGroup[`before_${loadedHistory.length * PHOTO_GROUP_ROUND_STRIDE + idx}`] || [])
+                                ).map((img: any, imgIdx: number) => {
                                     const repair = repairPhotoMap[img.url] || {};
                                     return {
                                         id: `server-before-${idx}-${imgIdx}-${img.name || img.url}`,
@@ -1663,7 +1931,10 @@ export default function CMInProgressForm() {
                                         location: img.location || repair.location || undefined,
                                     };
                                 }),
-                                afterImages: (a.afterImages || []).map((img: any, imgIdx: number) => {
+                                afterImages: (a.afterImages?.length
+                                    ? a.afterImages
+                                    : (repairByGroup[`after_${idx}`] || repairByGroup[`after_${loadedHistory.length * PHOTO_GROUP_ROUND_STRIDE + idx}`] || [])
+                                ).map((img: any, imgIdx: number) => {
                                     const repair = repairPhotoMap[img.url] || {};
                                     return {
                                         id: `server-after-${idx}-${imgIdx}-${img.name || img.url}`,
@@ -1723,9 +1994,60 @@ export default function CMInProgressForm() {
                     })(),
                 };
 
-                syncedCorrectionsRef.current = correctionsKey(loadedJob.repaired_equipment);
-                setJob(loadedJob);
-                loadedJobRef.current = loadedJob;
+                // ข้อมูลหลายชุดถูกบันทึกเป็น array รวมกันตอนกดบันทึก
+                // ต้องแยกกลับเป็นชุดหลัก + extraGroups ไม่เช่นนั้นหน้า Engineer จะแสดงแค่ค่า index แรก
+                // แยก corrective action ตามลำดับชุด และใช้ code เป็นตัวช่วยเท่านั้น
+                // เพราะหลายชุดสามารถเลือกการแก้ไข code เดียวกันได้ (เช่น Replace)
+                const usedActionIndexes = new Set<number>();
+                const takeActionForGroup = (correction: string, expectedIndex: number): CorrectiveItem[] => {
+                    let actionIndex = correction
+                        ? loadedJob.corrective_actions.findIndex((action, index) => !usedActionIndexes.has(index) && action.code === correction)
+                        : -1;
+                    if (actionIndex < 0 && loadedJob.corrective_actions[expectedIndex] && !usedActionIndexes.has(expectedIndex)) {
+                        actionIndex = expectedIndex;
+                    }
+                    if (actionIndex < 0) return [];
+                    usedActionIndexes.add(actionIndex);
+                    return [loadedJob.corrective_actions[actionIndex]];
+                };
+                const mainActions = takeActionForGroup(loadedCorrections[0] || "", 0);
+                const normalizedJob: Job = {
+                    ...loadedJob,
+                    problem_type: loadedProblemTypes.slice(0, 1),
+                    cause: loadedCauses.slice(0, 1),
+                    repaired_equipment: waitingRoundArchived ? [] : loadedCorrections.slice(0, 1),
+                    corrective_actions: mainActions.length ? mainActions : loadedJob.corrective_actions.slice(0, 1),
+                };
+                const restoredExtraGroups: PGroup[] = [];
+                // จำนวนชุดต้องนับจาก corrective_actions ด้วย เพราะบางใบชุดที่ 2
+                // มีรายละเอียด/รูปครบ แต่ไม่มีค่า correction code ให้ใช้เป็นตัวนับ
+                const extraCount = Math.max(
+                    loadedProblemTypes.length,
+                    loadedCauses.length,
+                    loadedCorrections.length,
+                    loadedCorrectiveActions.length,
+                ) - 1;
+                for (let i = 1; i <= extraCount; i += 1) {
+                    const kind: PGroup["kind"] = loadedProblemTypes[i]
+                        ? "full"
+                        : loadedCauses[i]
+                            ? "cause"
+                            : "correction";
+                    const group = newGroup(kind);
+                    group.problem_type = loadedProblemTypes[i] ? [loadedProblemTypes[i]] : [];
+                    group.cause = loadedCauses[i] ? [loadedCauses[i]] : [];
+                    group.repaired_equipment = loadedCorrections[i] ? [loadedCorrections[i]] : [];
+                    // ข้อมูลเก่าบางใบไม่มี code ใน corrective_actions ทำให้ชุดที่ 2 หาไม่เจอ
+                    // จึง fallback ตามลำดับ action ของชุดนั้น และห้ามใช้ action เดิมซ้ำกับชุดหลัก
+                    const groupActions = takeActionForGroup(loadedCorrections[i] || "", i);
+                    if (groupActions.length) group.corrective_actions = groupActions;
+                    restoredExtraGroups.push(group);
+                }
+
+                syncedCorrectionsRef.current = correctionsKey(normalizedJob.repaired_equipment);
+                setJob(normalizedJob);
+                setExtraGroups(restoredExtraGroups);
+                loadedJobRef.current = normalizedJob;
 
                 setReportedBy(data.reported_by ?? "");
                 setApprovedBy(data.approved_by ?? "");
@@ -1842,7 +2164,7 @@ export default function CMInProgressForm() {
         }
     };
 
-    // ตีกลับใบงานให้ช่างแก้ไข (Wait for approve → In Progress) พร้อมเหตุผล
+    // ตีกลับใบงานของช่างกลับเข้าคิววางแผน (Wait for approve → Wait for schedule) พร้อมเหตุผล
     const onReject = async () => {
         if (!canApprove || !editId || !stationId || rejecting) return;
         const remark = rejectRemark.trim();
@@ -1863,7 +2185,7 @@ export default function CMInProgressForm() {
                 throw new Error(j?.detail || `HTTP ${res.status}`);
             }
             // ใบงานกลับไปให้ช่างแก้ → กลับหน้าที่กดเข้ามา
-            router.push(buildListUrl("in-progress"));
+            router.push(buildListUrl("open"));
         } catch (e: any) {
             alert((lang === "th" ? "ตีกลับไม่สำเร็จ: " : "Reject failed: ") + (e?.message ?? e));
             setRejecting(false);
@@ -1872,16 +2194,29 @@ export default function CMInProgressForm() {
 
     // keepStatus = บันทึกความคืบหน้า: เก็บข้อมูลอย่างเดียว ไม่ขยับสถานะ ไม่เด้งออกจากหน้า
     const onFinalSave = async ({ keepStatus = false }: { keepStatus?: boolean } = {}) => {
+        if (viewOnly) return;
+        // เมื่อเลือกผลซ่อมแล้ว ต้องเปลี่ยนสถานะตามผลที่เลือก
+        // ห้ามใช้ปุ่ม Save progress ที่จะส่ง status เดิม (Wait for schedule) กลับไป
+        if (keepStatus && (hasChosenResult || isClosing)) keepStatus = false;
         if (!stationId) { alert(t("alertNoStationId", lang)); return; }
+        if (!keepStatus && !isNoProblem && !hasChosenResult) {
+            alert(lang === "th" ? "กรุณาเลือกผลหลังซ่อมก่อนบันทึก" : "Select a repair result before saving.");
+            return;
+        }
+        if (!keepStatus && isClosedResult && !canClose) {
+            alert(lang === "th" ? "กรุณากรอกข้อมูลการซ่อมให้ครบก่อนปิดงาน" : "Complete all required repair data before closing.");
+            return;
+        }
         if (keepStatus ? !canSaveProgress : !canSave) return;
         setSaving(true);
 
         try {
             // รวมชุดกรอกเพิ่มเข้ากับ set แรก (ปัญหา/สาเหตุ/การแก้ไข/การดำเนินการ)
             const allCorrectiveActions = [...job.corrective_actions, ...extraGroups.flatMap(g => g.corrective_actions)];
-            const mergedProblemType = Array.from(new Set([...job.problem_type, ...extraGroups.flatMap(g => g.problem_type)].filter(Boolean)));
-            const mergedCause = Array.from(new Set([...job.cause, ...extraGroups.flatMap(g => g.cause)].filter(Boolean)));
-            const mergedRepairedEquipment = Array.from(new Set([...job.repaired_equipment, ...extraGroups.flatMap(g => g.repaired_equipment)].filter(Boolean)));
+            // รักษาค่าซ้ำข้ามชุดไว้ เพราะชุดที่ 1/2 อาจเลือก code เดียวกันได้
+            const mergedProblemType = [...job.problem_type, ...extraGroups.flatMap(g => g.problem_type)].filter(Boolean);
+            const mergedCause = [...job.cause, ...extraGroups.flatMap(g => g.cause)].filter(Boolean);
+            const mergedRepairedEquipment = [...job.repaired_equipment, ...extraGroups.flatMap(g => g.repaired_equipment)].filter(Boolean);
 
             // "ไม่พบปัญหา" ซ่อน dropdown ผลหลังซ่อมไว้ ค่าจึงค้างเป็น marker ของ engineer
             // ต้องเขียนผลจริงลงไป ไม่งั้นใบนี้จะไปโผล่การ์ด "รอกำหนดการ" บนแดชบอร์ด
@@ -1921,17 +2256,20 @@ export default function CMInProgressForm() {
                                 `${API_BASE}/cmreport/${encodeURIComponent(editId)}/photos`,
                                 { method: "POST", credentials: "include", body: formData }
                             );
-                            if (uploadRes.ok) {
-                                const uploadData = await uploadRes.json();
-                                if (uploadData.files?.[0]) {
-                                    uploadedBeforeImages.push({
-                                        name: uploadData.files[0].filename,
-                                        url: uploadData.files[0].url,
-                                        location: img.location || uploadData.files[0].location,
-                                        uploadedAt: uploadData.files[0].uploadedAt || img.uploadedAtRaw || new Date().toISOString(),
-                                    });
-                                }
+                            if (!uploadRes.ok) {
+                                const detail = await uploadRes.text().catch(() => `HTTP ${uploadRes.status}`);
+                                throw new Error(`Before photo upload failed: ${detail}`);
                             }
+                            const uploadData = await uploadRes.json().catch(() => ({}));
+                            if (!uploadData.files?.[0]) {
+                                throw new Error("Before photo upload returned no file");
+                            }
+                            uploadedBeforeImages.push({
+                                name: uploadData.files[0].filename,
+                                url: uploadData.files[0].url,
+                                location: img.location || uploadData.files[0].location,
+                                uploadedAt: uploadData.files[0].uploadedAt || img.uploadedAtRaw || new Date().toISOString(),
+                            });
                         } else if (img.preview) {
                             // รูปจาก draft (blob URL) - ต้อง convert และ upload
                             try {
@@ -1951,19 +2289,23 @@ export default function CMInProgressForm() {
                                     `${API_BASE}/cmreport/${encodeURIComponent(editId)}/photos`,
                                     { method: "POST", credentials: "include", body: formData }
                                 );
-                                if (uploadRes.ok) {
-                                    const uploadData = await uploadRes.json();
-                                    if (uploadData.files?.[0]) {
-                                        uploadedBeforeImages.push({
-                                            name: uploadData.files[0].filename,
-                                            url: uploadData.files[0].url,
-                                            location: img.location || uploadData.files[0].location,
-                                            uploadedAt: uploadData.files[0].uploadedAt || img.uploadedAtRaw || new Date().toISOString(),
-                                        });
-                                    }
+                                if (!uploadRes.ok) {
+                                    const detail = await uploadRes.text().catch(() => `HTTP ${uploadRes.status}`);
+                                    throw new Error(`Before photo upload failed: ${detail}`);
                                 }
+                                const uploadData = await uploadRes.json().catch(() => ({}));
+                                if (!uploadData.files?.[0]) {
+                                    throw new Error("Before photo upload returned no file");
+                                }
+                                uploadedBeforeImages.push({
+                                    name: uploadData.files[0].filename,
+                                    url: uploadData.files[0].url,
+                                    location: img.location || uploadData.files[0].location,
+                                    uploadedAt: uploadData.files[0].uploadedAt || img.uploadedAtRaw || new Date().toISOString(),
+                                });
                             } catch (e) {
                                 console.error("Failed to upload before image from draft:", e);
+                                throw e;
                             }
                         }
                     }
@@ -1991,17 +2333,20 @@ export default function CMInProgressForm() {
                                 `${API_BASE}/cmreport/${encodeURIComponent(editId)}/photos`,
                                 { method: "POST", credentials: "include", body: formData }
                             );
-                            if (uploadRes.ok) {
-                                const uploadData = await uploadRes.json();
-                                if (uploadData.files?.[0]) {
-                                    uploadedAfterImages.push({
-                                        name: uploadData.files[0].filename,
-                                        url: uploadData.files[0].url,
-                                        location: img.location || uploadData.files[0].location,
-                                        uploadedAt: uploadData.files[0].uploadedAt || img.uploadedAtRaw || new Date().toISOString(),
-                                    });
-                                }
+                            if (!uploadRes.ok) {
+                                const detail = await uploadRes.text().catch(() => `HTTP ${uploadRes.status}`);
+                                throw new Error(`After photo upload failed: ${detail}`);
                             }
+                            const uploadData = await uploadRes.json().catch(() => ({}));
+                            if (!uploadData.files?.[0]) {
+                                throw new Error("After photo upload returned no file");
+                            }
+                            uploadedAfterImages.push({
+                                name: uploadData.files[0].filename,
+                                url: uploadData.files[0].url,
+                                location: img.location || uploadData.files[0].location,
+                                uploadedAt: uploadData.files[0].uploadedAt || img.uploadedAtRaw || new Date().toISOString(),
+                            });
                         } else if (img.preview) {
                             try {
                                 const response = await fetch(img.preview);
@@ -2020,24 +2365,29 @@ export default function CMInProgressForm() {
                                     `${API_BASE}/cmreport/${encodeURIComponent(editId)}/photos`,
                                     { method: "POST", credentials: "include", body: formData }
                                 );
-                                if (uploadRes.ok) {
-                                    const uploadData = await uploadRes.json();
-                                    if (uploadData.files?.[0]) {
-                                        uploadedAfterImages.push({
-                                            name: uploadData.files[0].filename,
-                                            url: uploadData.files[0].url,
-                                            location: img.location || uploadData.files[0].location,
-                                            uploadedAt: uploadData.files[0].uploadedAt || img.uploadedAtRaw || new Date().toISOString(),
-                                        });
-                                    }
+                                if (!uploadRes.ok) {
+                                    const detail = await uploadRes.text().catch(() => `HTTP ${uploadRes.status}`);
+                                    throw new Error(`After photo upload failed: ${detail}`);
                                 }
+                                const uploadData = await uploadRes.json().catch(() => ({}));
+                                if (!uploadData.files?.[0]) {
+                                    throw new Error("After photo upload returned no file");
+                                }
+                                uploadedAfterImages.push({
+                                    name: uploadData.files[0].filename,
+                                    url: uploadData.files[0].url,
+                                    location: img.location || uploadData.files[0].location,
+                                    uploadedAt: uploadData.files[0].uploadedAt || img.uploadedAtRaw || new Date().toISOString(),
+                                });
                             } catch (e) {
                                 console.error("Failed to upload after image from draft:", e);
+                                throw e;
                             }
                         }
                     }
 
                     return {
+                        code: action.code,
                         text: action.text,
                         beforeImages: uploadedBeforeImages,
                         afterImages: uploadedAfterImages
@@ -2171,23 +2521,18 @@ export default function CMInProgressForm() {
     const resolveCorrectionLabel = (val: string) =>
         correctionOptions?.find(o => o.value === val)?.label ?? formatDeviceName(val);
 
-    // การแก้ไขที่ถูกเลือกในบล็อกเพิ่มเติม — ตัดออกจากช่องการแก้ไขหลัก (กันเลือกซ้ำ)
-    const correctionsInGroups = extraGroups.flatMap(g => g.repaired_equipment).filter(Boolean);
-    const mainCorrectionOptions = correctionOptions
-        ? correctionOptions.filter(o => !correctionsInGroups.includes(o.value) || job.repaired_equipment.includes(o.value))
-        : null;
+    // แสดงรายการการแก้ไขทั้งหมดเสมอ — รายการเดิมไม่ถูกตัดออกเมื่อเพิ่มชุดการแก้ไข
+    const storedMainCorrectionOptions = job.repaired_equipment
+        .filter(Boolean)
+        .map(value => ({ value, label: resolveCorrectionLabel(value) }));
+    const mainCorrectionOptionsList = [
+        ...(correctionOptions ?? []),
+        ...storedMainCorrectionOptions.filter(stored => !(correctionOptions ?? []).some(option => option.value === stored.value)),
+    ];
+    const mainCorrectionOptions = mainCorrectionOptionsList.length ? mainCorrectionOptionsList : null;
 
-    // ล้างการแก้ไขที่ค้างมาจาก combo อื่น — เก็บเฉพาะค่าที่อยู่ในลิสต์ปัจจุบัน
-    useEffect(() => {
-        if (correctionOptions && job.repaired_equipment.length) {
-            const valid = new Set(correctionOptions.map(o => o.value));
-            // เก็บค่าที่ผู้ใช้พิมพ์เองไว้เหมือนช่องสาเหตุ (ดูคอมเมนต์ด้านบน)
-            const filtered = job.repaired_equipment.filter(v => !v || valid.has(v) || !isMaximoCode(v)); // เก็บแถวเปล่าไว้
-            if (filtered.length !== job.repaired_equipment.length) {
-                setJob(prev => ({ ...prev, repaired_equipment: filtered }));
-            }
-        }
-    }, [job.faulty_equipment, job.problem_type, job.cause]); // eslint-disable-line react-hooks/exhaustive-deps
+    // ค่าที่โหลดจาก server ต้องแสดงต่อให้มีอยู่จริง แม้ Maximo จะยังไม่มี option ตรงกันในขณะนั้น
+    // ห้ามล้าง repaired_equipment ที่ technician บันทึกไว้เพียงเพราะ option ยังโหลดไม่ครบ/เปลี่ยนชุด
 
     // auto: sync "การดำเนินการแก้ไข" ให้ตรงกับ "การแก้ไข" ที่เลือก (1 รายการต่อ 1 การแก้ไข)
     // เพิ่มเมื่อเลือกการแก้ไข / ลบแถว code เดิมออกเมื่อเอาการแก้ไขออก | ช่องรายละเอียดปล่อยว่างให้ user กรอกเอง
@@ -2198,19 +2543,20 @@ export default function CMInProgressForm() {
         const key = correctionsKey(job.repaired_equipment);
         if (syncedCorrectionsRef.current === key) return;
         syncedCorrectionsRef.current = key;
-        const codes = Array.from(new Set(job.repaired_equipment.filter(Boolean)));
+        // เก็บ code ตามลำดับเดิม เพราะแต่ละชุดอาจเลือก code เดียวกันได้
+        const codes = job.repaired_equipment.filter(Boolean);
         const codeSet = new Set(codes);
         setJob(prev => {
             // เก็บ: แถวไม่มี code (โหลด/เพิ่มเอง) หรือแถว code ที่ยังถูกเลือกอยู่
             let next = prev.corrective_actions.filter(a => !a.code || codeSet.has(a.code));
-            // dedupe rows with the same code, keeping first occurrence
-            const seenCodes = new Set<string>();
-            next = next.filter(a => {
-                if (!a.code) return true;
-                if (seenCodes.has(a.code)) return false;
-                seenCodes.add(a.code);
-                return true;
-            });
+            // ห้ามลบแถวที่เลือก code ซ้ำกัน เพราะอาจเป็น Action คนละชุด
+            const actionCount = Math.max(next.length, codes.length);
+            next = Array.from({ length: actionCount }, (_, index) => {
+                const action = next[index];
+                if (action) return action;
+                const code = codes[index];
+                return code ? { code, text: "", beforeImages: [], afterImages: [] } : null;
+            }).filter(Boolean) as CorrectiveItem[];
             // เพิ่ม: code ที่ยังไม่มีแถว
             const have = new Set(next.map(a => a.code).filter(Boolean));
             for (const c of codes) {
@@ -2567,7 +2913,7 @@ export default function CMInProgressForm() {
                                                         />
                                                         <input
                                                             type="time"
-                                                            value={job.resolved_time}
+                                                            value={job.resolved_time || localNowHHMM()}
                                                             onChange={e => setJob({ ...job, resolved_time: e.target.value })}
                                                             className="tw-w-28 tw-flex-shrink-0 tw-h-12 tw-border tw-border-gray-200 tw-rounded-xl tw-px-3 tw-text-sm tw-font-medium tw-bg-white tw-text-gray-700 hover:tw-border-green-400 focus:tw-outline-none focus:tw-ring-3 focus:tw-ring-green-500/20 focus:tw-border-green-500 tw-transition-all tw-cursor-pointer"
                                                         />
@@ -2686,7 +3032,7 @@ export default function CMInProgressForm() {
                                             <div className="tw-flex tw-gap-4">
                                                 <div className="tw-flex-1 tw-space-y-4">
                                                     {/* Delete button */}
-                                                    {job.corrective_actions.length > 1 && (
+                                                    {!viewOnly && job.corrective_actions.length > 1 && (
                                                         <div className="tw-flex tw-justify-end">
                                                             <button type="button" onClick={() => removeCorrectiveAction(i)} className="tw-w-10 tw-h-10 tw-rounded-lg tw-text-red-400 hover:tw-text-white hover:tw-bg-red-500 tw-flex tw-items-center tw-justify-center tw-transition-all">
                                                                 <XMarkIcon className="tw-w-5 tw-h-5" />
@@ -2847,9 +3193,9 @@ export default function CMInProgressForm() {
                                     mainProblem={job.problem_type}
                                     mainCause={job.cause}
                                     takenCauses={[...job.cause, ...extraGroups.filter((_, j) => j !== i).flatMap(x => x.cause)].filter(Boolean)}
-                                    takenCorrections={[...job.repaired_equipment, ...extraGroups.filter((_, j) => j !== i).flatMap(x => x.repaired_equipment)].filter(Boolean)}
                                     lang={lang}
                                     index={i}
+                                    disabled={viewOnly}
                                 />
                             ))}
                         </div>
@@ -2941,7 +3287,7 @@ export default function CMInProgressForm() {
                         ) : (
                             <>
                             {approvalActions}
-                            {isWaitForSchedule && (
+                            {isWaitForSchedule && !hasChosenResult && !isNoProblem && (
                                 <Button
                                     onClick={() => { void onFinalSave({ keepStatus: true }); }}
                                     disabled={saving || !canSaveProgress}
@@ -2951,10 +3297,10 @@ export default function CMInProgressForm() {
                                     {saving ? t("saving", lang) : (lang === "th" ? "บันทึกความคืบหน้า" : "Save progress")}
                                 </Button>
                             )}
-                            {!isWaitForSchedule && (
+                            {(!isWaitForSchedule || hasChosenResult || isNoProblem) && (
                             <Button
                                 onClick={() => { void onFinalSave(); }}
-                                disabled={saving || !canSave}
+    disabled={saving || ((isClosedResult || engineerAutoClose) ? !canClose : !canSave)}
                                 className={`tw-text-white tw-font-semibold tw-text-base tw-px-8 tw-py-3 tw-rounded-xl hover:tw-shadow-xl disabled:tw-opacity-50 disabled:tw-cursor-not-allowed disabled:tw-shadow-none tw-transition-all tw-transform hover:tw-scale-[1.02] ${isClosing || engineerAutoClose
                                     ? "tw-bg-gray-700 hover:tw-bg-red-800 hover:tw-shadow-red-500/30"
                                     : "tw-bg-amber-500 hover:tw-bg-amber-600 hover:tw-shadow-amber-500/30"
