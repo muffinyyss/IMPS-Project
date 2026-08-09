@@ -8,6 +8,8 @@ export type CMRow = {
   stage?: string;
   reject_remark?: string;
   faulty_equipment: string;
+  /** ชื่อที่แสดงของอุปกรณ์รุ่นเก่า เช่น charger_1 (ค่า raw ยังใช้กรองข้อมูล) */
+  faulty_equipment_label?: string;
   problem_details: string;
   /** codes CAUSE Maximo — fiches anciennes : texte libre. Peut arriver en chaîne simple. */
   cause: string | string[];
@@ -23,6 +25,8 @@ export type CMRow = {
   inspector: string;
   issue_id: string;
   doc_name: string;
+  /** ช่างที่ engineer assign ไว้สำหรับรอบปัจจุบัน */
+  assignees?: string[];
 };
 
 export type Period = "yearly" | "monthly" | "weekly";

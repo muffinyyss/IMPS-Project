@@ -205,7 +205,17 @@ def _assignee_scope(current: UserClaims) -> dict:
     if (current.role or "").lower() != "technician":
         return {}
     # username ว่าง = ระบุตัวไม่ได้ → ไม่ให้เห็นอะไรเลย ปลอดภัยกว่าเห็นหมด
-    return {"assignees": current.username or "__no_assignee__"}
+    username = (current.username or "").strip() or "__no_assignee__"
+    # รองรับทั้ง schema ปัจจุบัน (assignees) และข้อมูลเก่า/ข้อมูลที่ถูกเก็บใน job
+    # โดยยังคงบังคับให้ match ผู้รับผิดชอบคนนี้เท่านั้น
+    return {
+        "$or": [
+            {"assignees": username},
+            {"job.assignees": username},
+            {"assignee": username},
+            {"job.assignee": username},
+        ]
+    }
 
 
 # ==================== BRAND SCOPE (บริษัทผู้ดูแล ↔ ยี่ห้อตู้ชาร์จ) ====================
@@ -306,7 +316,7 @@ async def cmreport_list(
     mongo_filter: dict = {}
     if status and (conds := _status_or_conditions(status)):
         mongo_filter["$or"] = conds
-    mongo_filter.update(_assignee_scope(current))
+    _merge_clause(mongo_filter, _assignee_scope(current))
     _merge_clause(mongo_filter, await _brand_clause_for_station(station_id, current))
 
     cursor = coll.find(mongo_filter, {
@@ -405,7 +415,7 @@ async def _cm_items_for_station(station_id: str, station_name: str, status: str 
     if status and (conds := _status_or_conditions(status)):
         mongo_filter["$or"] = conds
     if scope:
-        mongo_filter.update(scope)
+        _merge_clause(mongo_filter, scope)
     if current is not None:
         _merge_clause(mongo_filter, await _brand_clause_for_station(station_id, current))
 
@@ -420,6 +430,29 @@ async def _cm_items_for_station(station_id: str, station_name: str, status: str 
         "repair_result_remark": 1, "maximo_ticket_id": 1, "maximo_wonum": 1, "createdAt": 1,
     }).sort([("createdAt", -1), ("_id", -1)])
     items_raw = await cursor.to_list(length=10_000)
+
+    # ใบงานรุ่นเก่าเก็บ faulty_equipment เป็น charger_1 / charger_<id>
+    # จึงแนบ label จากข้อมูลตู้ไว้ให้ dashboard แสดงผล โดยไม่เปลี่ยนค่า raw เดิม
+    charger_label_by_key: dict[str, str] = {}
+    try:
+        charger_cursor = charger_coll_async.find(
+            {"station_id": station_id},
+            {"chargerNo": 1, "charger_no": 1, "charger_id": 1, "charger_name": 1, "SN": 1, "sn": 1},
+        ).sort("chargerNo", 1)
+        charger_docs = await charger_cursor.to_list(length=1_000)
+        for index, charger in enumerate(charger_docs):
+            number = charger.get("chargerNo") or charger.get("charger_no")
+            charger_id = charger.get("charger_id")
+            name = str(charger.get("charger_name") or f"Charger {number or index + 1}").strip()
+            sn = str(charger.get("SN") or charger.get("sn") or "").strip()
+            label = f"{name} ({sn})" if sn else name
+            keys = {number, charger_id}
+            for key in keys:
+                if key not in (None, ""):
+                    charger_label_by_key[f"charger_{str(key).strip().lower()}"] = label
+    except Exception:
+        # label เป็นข้อมูลเสริม ถ้า charger collection อ่านไม่ได้ให้ใช้ค่า raw ต่อไป
+        charger_label_by_key = {}
 
     # map ไฟล์จาก CMUrl ด้วย cm_date
     cm_dates = [it.get("cm_date") for it in items_raw if it.get("cm_date")]
@@ -461,6 +494,7 @@ async def _cm_items_for_station(station_id: str, station_name: str, status: str 
     out = []
     for it in items_raw:
         job = it.get("job", {})
+        faulty_equipment = it.get("faulty_equipment") or job.get("faulty_equipment") or ""
         out.append({
             "id": str(it["_id"]),
             "station_id": station_id,
@@ -474,7 +508,8 @@ async def _cm_items_for_station(station_id: str, station_name: str, status: str 
             "status": it.get("status") or job.get("status") or "",
             "stage": it.get("stage") or "",
             "reject_remark": it.get("reject_remark") or "",
-            "faulty_equipment": it.get("faulty_equipment") or job.get("faulty_equipment") or "",
+            "faulty_equipment": faulty_equipment,
+            "faulty_equipment_label": charger_label_by_key.get(str(faulty_equipment).strip().lower(), ""),
             # codes Maximo exploités par le CM dashboard (cause / remedy)
             "cause": as_list(it.get("cause"), job.get("cause")),
             "problem_type": as_list(it.get("problem_type"), job.get("problem_type")),
@@ -579,6 +614,90 @@ async def _assert_can_edit_cm(coll, oid, station_id: str, current: UserClaims) -
     if not (is_reporter and at_cs_stage):
         raise HTTPException(status_code=403, detail="CS can only edit their own work order while it is awaiting review")
     return doc
+
+
+class CMDraftIn(BaseModel):
+    station_id: str
+    draft_data: Dict[str, Any]
+
+
+@router.post("/cmreport/{report_id}/draft")
+async def cmreport_save_draft(
+    report_id: str,
+    body: CMDraftIn,
+    current: UserClaims = Depends(get_current_user),
+):
+    """เก็บ draft ของฟอร์มซ่อม เพื่อให้รูป/ข้อมูลชุดที่เพิ่มกลับมาหลัง refresh"""
+    station_id = body.station_id.strip()
+    assert_station_access(current, station_id)
+    coll = get_cmreport_collection_for(station_id)
+    try:
+        oid = ObjectId(report_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bad report_id")
+
+    await _assert_can_edit_cm(coll, oid, station_id, current)
+    now = datetime.now(timezone.utc)
+    result = await coll.update_one(
+        {"_id": oid, "station_id": station_id},
+        {"$set": {
+            "cm_draft": body.draft_data,
+            "cm_draft_saved_at": now,
+            "cm_draft_saved_by": current.username,
+        }},
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Report not found")
+    return {"ok": True, "savedAt": now.isoformat()}
+
+
+@router.get("/cmreport/{report_id}/draft")
+async def cmreport_load_draft(
+    report_id: str,
+    station_id: str = Query(...),
+    current: UserClaims = Depends(get_current_user),
+):
+    station_id = station_id.strip()
+    assert_station_access(current, station_id)
+    coll = get_cmreport_collection_for(station_id)
+    try:
+        oid = ObjectId(report_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bad report_id")
+
+    await _assert_can_edit_cm(coll, oid, station_id, current)
+    doc = await coll.find_one(
+        {"_id": oid, "station_id": station_id},
+        {"cm_draft": 1},
+    )
+    if not doc:
+        raise HTTPException(status_code=404, detail="Report not found")
+    draft = doc.get("cm_draft")
+    return {"ok": True, "draft": draft, "hasDraft": isinstance(draft, dict) and bool(draft)}
+
+
+@router.delete("/cmreport/{report_id}/draft")
+async def cmreport_delete_draft(
+    report_id: str,
+    station_id: str = Query(...),
+    current: UserClaims = Depends(get_current_user),
+):
+    station_id = station_id.strip()
+    assert_station_access(current, station_id)
+    coll = get_cmreport_collection_for(station_id)
+    try:
+        oid = ObjectId(report_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bad report_id")
+
+    await _assert_can_edit_cm(coll, oid, station_id, current)
+    result = await coll.update_one(
+        {"_id": oid, "station_id": station_id},
+        {"$unset": {"cm_draft": "", "cm_draft_saved_at": "", "cm_draft_saved_by": ""}},
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Report not found")
+    return {"ok": True}
 
 @router.post("/cmreport/{report_id}/photos")
 async def cmreport_upload_photos(
@@ -1054,7 +1173,8 @@ async def cmreport_detail_path(
 
     # กันช่างเปิดใบของคนอื่นด้วยการยิง URL ตรง — ต้องกรองใน query ไม่ใช่แค่ซ่อนในตาราง
     # (รวมถึงใบของตู้ยี่ห้อที่บริษัทตัวเองไม่ได้ดูแล)
-    detail_filter: dict = {"_id": oid, "station_id": station_id, **_assignee_scope(current)}
+    detail_filter: dict = {"_id": oid, "station_id": station_id}
+    _merge_clause(detail_filter, _assignee_scope(current))
     _merge_clause(detail_filter, await _brand_clause_for_station(station_id, current))
     doc = await coll.find_one(detail_filter)
     if not doc:
@@ -1089,7 +1209,7 @@ async def cmreport_detail_path(
         # flat fields จาก Planning
         "sched_start": doc.get("sched_start") or "",
         "sched_finish": doc.get("sched_finish") or "",
-        "assignees": doc.get("assignees") or [],
+        "assignees": doc.get("assignees") or nested_job.get("assignees") or [],
         # วันที่/เวลาที่ engineer วางแผน (ประทับตอนเปิดฟอร์มเข้ามาวางแผน) — แสดงอย่างเดียว แก้ไม่ได้
         "planned_date": doc.get("planned_date") or "",
         "planned_time": doc.get("planned_time") or "",
@@ -1098,18 +1218,18 @@ async def cmreport_detail_path(
         "plan_history": doc.get("plan_history") or [],
         # ประวัติผลซ่อมรอบก่อน ๆ — ช่างบันทึกเป็นสถานะรอ (material/site) แล้วกลับมาซ่อมใหม่
         # flat fields ของ InProgress ด้านล่างคือ "รอบที่กำลังทำอยู่" (ว่างระหว่างรอ)
-        "repair_history": doc.get("repair_history") or [],
+        "repair_history": doc.get("repair_history") or nested_job.get("repair_history") or [],
 
         # flat fields จาก InProgress
         "inspector": doc.get("inspector") or "",
         "approved_by": doc.get("approved_by") or "",
-        "cause": doc.get("cause") or "",
-        "problem_type": doc.get("problem_type") or "",
+        "cause": doc.get("cause") or nested_job.get("cause") or "",
+        "problem_type": doc.get("problem_type") or nested_job.get("problem_type") or "",
         "problem_type_other": doc.get("problem_type_other") or "",
         "repair_result": doc.get("repair_result") or "",
-        "corrective_actions": doc.get("corrective_actions") or [],
+        "corrective_actions": doc.get("corrective_actions") or nested_job.get("corrective_actions") or [],
         "preventive_action": doc.get("preventive_action") or [],
-        "repaired_equipment": doc.get("repaired_equipment") or [],
+        "repaired_equipment": doc.get("repaired_equipment") or nested_job.get("repaired_equipment") or [],
         "inprogress_remarks": doc.get("inprogress_remarks") or "",
         "repair_result_remark": doc.get("repair_result_remark") or "",
         "resolved_date": doc.get("resolved_date") or "",
@@ -1357,7 +1477,7 @@ async def cmreport_reject(
     station_id: str = Query(...),
     current: UserClaims = Depends(get_current_user),
 ):
-    """ตีกลับใบงานที่รออนุมัติ → In Progress ให้ช่างที่กรอกมาแก้ไขต่อ (สิทธิ์เดียวกับ approve)"""
+    """ตีกลับใบงานจากช่าง → Wait for schedule เพื่อให้ engineer วางแผน/มอบหมายใหม่"""
     if (current.role or "").lower() not in CM_APPROVE_ROLES:
         raise HTTPException(status_code=403, detail="Only engineer or admin can reject")
 
@@ -1377,24 +1497,45 @@ async def cmreport_reject(
         {
             "_id": oid,
             "station_id": station_id,
-            "status": {"$regex": "^wait for approve$", "$options": "i"},
-            # เฉพาะด่านปิดงาน — ด่าน cs ใช้ /planner-reject แทน
-            "stage": {"$ne": "cs_approval"},
+            "$or": [
+                {
+                    "status": {"$regex": "^wait for approve$", "$options": "i"},
+                    # เฉพาะด่านปิดงาน — ด่าน cs ใช้ /planner-reject แทน
+                    "stage": {"$ne": "cs_approval"},
+                },
+                {
+                    # รองรับข้อมูลเก่าที่สถานะหลักยังเป็น In Progress แต่ใช้ marker รออนุมัติ
+                    "status": {"$regex": "^in progress$", "$options": "i"},
+                    "repair_result": {"$regex": "^WO - wait for approve$", "$options": "i"},
+                    "stage": {"$ne": "cs_approval"},
+                },
+            ],
         },
-        {"$set": {
-            "status": "In Progress",
-            # ล้างผลหลังซ่อม — ไม่งั้นค้างเป็น "WO - wait for approve" แล้วใบไปโผล่ sub-tab รออนุมัติทั้งที่ถูกตีกลับแล้ว
-            "repair_result": "",
-            "reject_remark": remark,
-            "rejected_by": current.username,
-            "rejected_at": now,
-            "updatedAt": now,
-        }},
+        {
+            "$set": {
+                "status": "Wait for schedule",
+                "repair_result": "WO - wait for scheduled",
+                "repair_result_remark": "",
+                # ตีกลับแล้วต้องกลับเข้าคิววางแผนใหม่ จึงไม่คงคน/วันนัดหมายเดิมไว้
+                "assignees": [],
+                "sched_start": "",
+                "sched_finish": "",
+                "reject_remark": remark,
+                "rejected_by": current.username,
+                "rejected_at": now,
+                "updatedAt": now,
+            },
+            "$unset": {
+                "stage": "",
+                "planned_date": "",
+                "planned_time": "",
+            },
+        },
     )
     if res.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Report not found or not in 'Wait for approve' status")
+        raise HTTPException(status_code=404, detail="Report not found or not awaiting technician approval")
 
-    return {"ok": True, "status": "In Progress"}
+    return {"ok": True, "status": "Wait for schedule"}
 
 
 # ── ขั้นตอนตาม flow: cs เปิดใบงาน (Wait for approve/cs_approval) → engineer อนุมัติ SR

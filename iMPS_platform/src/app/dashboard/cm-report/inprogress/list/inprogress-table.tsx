@@ -95,6 +95,7 @@ type TData = {
   problem_details?: string;
   status: string;
   inspector?: string;
+  assignees?: string[];
   source?: "cm" | "url"; // cm = ใบงานจากฟอร์ม (กดอนุมัติได้), url = ไฟล์ PDF ที่อัปโหลด
 };
 
@@ -105,14 +106,20 @@ type Props = {
 
 const BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
-// ใบที่ติดรออะไหล่/รอสภาพหน้างาน = ช่างยังลงมือซ่อมไม่ได้ ต้องกลับไปที่ขั้นวางแผนของ engineer
-// จึงเปิดด้วยฟอร์ม Open (ซึ่งมีส่วนวางแผนและดึงค่าที่ engineer กรอกไว้มาแสดง) แทนฟอร์มกรอกผลซ่อม
-// รวมค่าเก่าก่อนเปลี่ยนชื่อไว้ด้วย เพื่อให้ใบเก่าเปิดถูกฟอร์มเหมือนกัน
-const PLANNING_WAIT_RESULTS = [
+// ใบที่รออะไหล่/รอสภาพหน้างานและยังไม่มีช่าง จึงต้องกลับไปวางแผนใหม่
+// ส่วน WO - wait for scheduled มีแผน/ช่างแล้ว ให้ engineer เปิดฟอร์มกรอกผลซ่อมเหมือน technician
+const PLANNING_WAIT_RESULTS: string[] = [];
+const WAITING_ON_REPLAN_RESULTS = [
   "WO - wait for material", "WO - wait for spare part",
   "WO - wait for site condition", "WO - wait for site access",
 ];
-const isPlanningWait = (v?: string) => PLANNING_WAIT_RESULTS.includes((v || "").trim());
+const hasAssignedTechnician = (assignees?: string[]) =>
+  Array.isArray(assignees) && assignees.some((assignee) => !!assignee?.trim());
+const isPlanningWait = (v?: string, assignees?: string[]) => {
+  const result = (v || "").trim();
+  if (PLANNING_WAIT_RESULTS.includes(result)) return true;
+  return WAITING_ON_REPLAN_RESULTS.includes(result) && !hasAssignedTechnician(assignees);
+};
 
 // Sub-tabs ของหน้า In Progress (มุมขวา) — filter ตาม repair_result ยกเว้น tab approve ที่ใช้ status "Wait for approve"
 // legacy = ค่า repair_result เดิมก่อนเปลี่ยนชื่อ (รองรับข้อมูลเก่า)
@@ -333,6 +340,9 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
           reported_by: it.reported_by || "",
           inspector: it.inspector || "",
           repair_result: it.repair_result || "",
+          assignees: Array.isArray(it.assignees)
+            ? it.assignees
+            : (Array.isArray(it.job?.assignees) ? it.job.assignees : []),
           location: failureCodeLabel(it.faulty_equipment),
           problem_details: it.problem_details || "",
           status: getStatusText(it) || "-",
@@ -359,6 +369,9 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
           reported_by: it.reported_by || "",
           inspector: it.inspector || "",
           repair_result: it.repair_result || "",
+          assignees: Array.isArray(it.assignees)
+            ? it.assignees
+            : (Array.isArray(it.job?.assignees) ? it.job.assignees : []),
           location: failureCodeLabel(it.faulty_equipment),
           problem_details: it.problem_details || "",
           status: getStatusText(it) || "-",
@@ -757,8 +770,9 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
     const params = new URLSearchParams(searchParams.toString());
     params.set("view", "form");
     params.set("edit_id", row.id);
-    // ใบที่ติดรอของ/รอหน้างาน: engineer/admin/owner ไปหน้าวางแผน ส่วนช่างไปกรอกผลซ่อมรอบใหม่
-    if (isPlanningWait(row.repair_result) && canPlanRole) params.set("planning", "1");
+    // ใบที่รออะไหล่/รอหน้างานและยังไม่มีช่าง: engineer/admin/owner ไปหน้าวางแผน
+    // WO - wait for scheduled ข้ามการวางแผนซ้ำและเปิดฟอร์มกรอกผลซ่อมเหมือน technician
+    if (isPlanningWait(row.repair_result, row.assignees) && canPlanRole) params.set("planning", "1");
     else params.delete("planning");
     router.push(`${pathname}?${params.toString()}`, { scroll: false });
   }

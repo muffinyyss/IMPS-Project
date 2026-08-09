@@ -60,7 +60,7 @@ const baseRoutes = [
         name: "CM Dashboard",
         path: "/dashboard/cm-dashboard",
         // cs เข้าได้ แต่หน้าเพจซ่อนส่วนวิเคราะห์ให้เหลือแค่ตารางใบงาน
-        allow: ["admin", "owner", "engineer", "cs"],
+        allow: ["admin", "owner", "engineer", "cs", "technician"],
       },
       // {
       //   layout: "dashboard",

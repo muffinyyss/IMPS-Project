@@ -118,6 +118,8 @@ type TData = {
   stage?: string;
   found_time?: string;
   reject_remark?: string;
+  repair_result?: string;
+  assignees?: string[];
 };
 
 type Props = {
@@ -464,6 +466,10 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
           problem_details: it.problem_details || "",
           status: getStatusText(it) || "-",
           stage: it.stage || "",
+          repair_result: it.repair_result || it.job?.repair_result || "",
+          assignees: Array.isArray(it.assignees)
+            ? it.assignees
+            : (Array.isArray(it.job?.assignees) ? it.job.assignees : []),
           found_time: it.found_time || "",
           reject_remark: it.reject_remark || "",
         };
@@ -859,6 +865,16 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
     const params = new URLSearchParams(searchParams.toString());
     params.set("view", "form");
     params.set("edit_id", row.id);
+    // WO - wait for scheduled มีแผน/ช่างแล้ว ให้เปิดฟอร์มกรอกผลซ่อมเหมือน technician
+    // แม้ข้อมูลเก่าจะยังค้างอยู่ใน status Wait for schedule
+    if (
+      row.status.trim().toLowerCase() === "wait for schedule" &&
+      ["wo - wait for scheduled", "wo - wait for manpower"].includes(
+        row.repair_result?.trim().toLowerCase() ?? "",
+      )
+    ) {
+      params.set("tab", "in-progress");
+    }
     router.push(`${pathname}?${params.toString()}`, { scroll: false });
   }
 

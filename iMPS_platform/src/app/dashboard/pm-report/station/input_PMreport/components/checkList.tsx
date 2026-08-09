@@ -832,7 +832,7 @@ function PassFailRow({
 }
 
 function PhotoMultiInput({
-    photos, setPhotos, max = 10, draftKey, qNo, lang, id,
+    photos, setPhotos, max = 5, draftKey, qNo, lang, id,
 }: {
     photos: PhotoItem[]; setPhotos: React.Dispatch<React.SetStateAction<PhotoItem[]>>;
     max?: number; draftKey: string; qNo: number; lang: Lang; id?: string;
@@ -883,6 +883,7 @@ function PhotoMultiInput({
         const remain = Math.max(0, max - photos.length);
         if (remain === 0) { alert(lang === "th" ? `แนบรูปได้สูงสุด ${max} รูปต่อข้อ` : `Maximum ${max} photos per item`); return; }
         const files = Array.from(list).slice(0, remain);
+        if (Array.from(list).length > remain) alert(lang === "th" ? `เลือกได้อีก ${remain} รูป (ครบ ${max} รูปแล้ว)` : `Only ${remain} more photo(s) allowed (max ${max})`);
         let hasLandscape = false;
         const validFiles: File[] = [];
         for (const f of files) {
@@ -1708,7 +1709,7 @@ export default function StationPMReport() {
                             </div>
                             {q.hasPhoto && (
                                 <div className="tw-mb-4">
-                                    <PhotoMultiInput photos={photos[`q${q.no}`] || []} setPhotos={makePhotoSetter(`q${q.no}`)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(`q${q.no}`)} />
+                                    <PhotoMultiInput photos={photos[`q${q.no}`] || []} setPhotos={makePhotoSetter(`q${q.no}`)} max={5} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(`q${q.no}`)} />
                                 </div>
                             )}
                             <div id={getRemarkIdFromKey(q.key)}>
@@ -1736,7 +1737,7 @@ export default function StationPMReport() {
                                 </div>
                                 {q.hasPhoto && (
                                     <div className="tw-mb-4">
-                                        <PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(item.key)} />
+                                        <PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={5} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(item.key)} />
                                     </div>
                                 )}
                                 <div id={getRemarkIdFromKey(item.key)}>
@@ -1784,7 +1785,7 @@ export default function StationPMReport() {
                         remarkId={getRemarkIdFromKey(q.key)}
                         aboveRemark={q.hasPhoto && (
                             <div className="tw-pb-4 tw-border-b tw-mb-4 tw-border-gray-100">
-                                <PhotoMultiInput photos={photos[`q${q.no}`] || []} setPhotos={makePhotoSetter(`q${q.no}`)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(`q${q.no}`)} />
+                                    <PhotoMultiInput photos={photos[`q${q.no}`] || []} setPhotos={makePhotoSetter(`q${q.no}`)} max={5} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(`q${q.no}`)} />
                             </div>
                         )}
                         beforeRemark={preRemarkElement}
@@ -1828,7 +1829,7 @@ export default function StationPMReport() {
                                 remarkId={getRemarkIdFromKey(item.key)}
                                 aboveRemark={q.hasPhoto && (
                                     <div className="tw-pb-4 tw-border-b tw-mb-4 tw-border-gray-100">
-                                        <PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(item.key)} />
+                                        <PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={5} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(item.key)} />
                                     </div>
                                 )}
                                 beforeRemark={preRemarkElement}

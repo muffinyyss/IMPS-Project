@@ -757,7 +757,7 @@ async function compressImage(
     return new File([blob], ensureJpgFilename(file.name), { type: "image/jpeg" });
 }
 
-function PhotoMultiInput({ photos, setPhotos, max = 10, draftKey, qNo, lang, id }: {
+ function PhotoMultiInput({ photos, setPhotos, max = 5, draftKey, qNo, lang, id }: {
     photos: PhotoItem[]; setPhotos: React.Dispatch<React.SetStateAction<PhotoItem[]>>;
     max?: number; draftKey: string; qNo: number; lang: Lang; id?: string;
 }) {
@@ -1886,7 +1886,7 @@ export default function MDBPMForm() {
                                                     {q4Items.length > 1 && (<button type="button" onClick={() => removeQ4Item(idx)} className="tw-h-6 tw-w-6 tw-flex tw-items-center tw-justify-center tw-rounded tw-bg-red-50 tw-text-red-600 hover:tw-bg-red-100"><svg className="tw-w-3.5 tw-h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" /></svg></button>)}
                                                 </div>
                                             </div>
-                                            <div className="tw-mb-3"><PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(item.key)} /></div>
+                                            <div className="tw-mb-3"><PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={5} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(item.key)} /></div>
                                             <div id={getInputIdFromKey(item.key)} className={`tw-mb-3 tw-transition-all tw-duration-300 ${isNA ? "tw-opacity-50 tw-pointer-events-none" : ""}`}>{renderDynamicMeasureGrid(4, item.key)}</div>
                                             <div id={getRemarkIdFromKey(item.key)} className="tw-transition-all tw-duration-300"><Textarea label={t("remark", lang)} value={rows[item.key]?.remark ?? ""} onChange={e => setRows(p => ({ ...p, [item.key]: { ...(p[item.key] ?? { pf: "" }), remark: e.target.value } }))} rows={3} required containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full resize-none" /></div>
                                         </div>
@@ -1918,7 +1918,7 @@ export default function MDBPMForm() {
                                                 <Typography className="tw-font-semibold tw-text-sm tw-text-gray-800">{item.label}</Typography>
                                                 <Button id={getPfIdFromKey(item.key)} size="sm" color={isNA ? "amber" : "gray"} variant={isNA ? "filled" : "outlined"} onClick={() => setRows(p => ({ ...p, [item.key]: { ...p[item.key], pf: isNA ? "" : "NA" } }))} className="tw-text-xs tw-transition-all tw-duration-300">{isNA ? t("cancelNA", lang) : t("na", lang)}</Button>
                                             </div>
-                                            <div className="tw-mb-3"><PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(item.key)} /></div>
+                                            <div className="tw-mb-3"><PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={5} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(item.key)} /></div>
                                             <div id={getInputIdFromKey(item.key)} className={`tw-mb-3 tw-transition-all tw-duration-300 ${isNA ? "tw-opacity-50 tw-pointer-events-none" : ""}`}>{renderDynamicMeasureGrid(5, item.key)}</div>
                                             <div id={getRemarkIdFromKey(item.key)} className="tw-transition-all tw-duration-300"><Textarea label={t("remark", lang)} value={rows[item.key]?.remark ?? ""} onChange={e => setRows(p => ({ ...p, [item.key]: { ...(p[item.key] ?? { pf: "" }), remark: e.target.value } }))} rows={3} required containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full resize-none" /></div>
                                         </div>
@@ -1954,7 +1954,7 @@ export default function MDBPMForm() {
                                                     {q6Items.length > 1 && (<button type="button" onClick={() => removeQ6Item(idx)} className="tw-h-6 tw-w-6 tw-flex tw-items-center tw-justify-center tw-rounded tw-bg-red-50 tw-text-red-600 hover:tw-bg-red-100"><svg className="tw-w-3.5 tw-h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" /></svg></button>)}
                                                 </div>
                                             </div>
-                                            <div className="tw-mb-3"><PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(item.key)} /></div>
+                                            <div className="tw-mb-3"><PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={5} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(item.key)} /></div>
                                             <div id={getInputIdFromKey(item.key)} className={`tw-mb-3 tw-transition-all tw-duration-300 ${isNA ? "tw-opacity-50 tw-pointer-events-none" : ""}`}>{renderDynamicMeasureGrid(6, item.key)}</div>
                                             <div id={getRemarkIdFromKey(item.key)} className="tw-transition-all tw-duration-300"><Textarea label={t("remark", lang)} value={rows[item.key]?.remark ?? ""} onChange={e => setRows(p => ({ ...p, [item.key]: { ...(p[item.key] ?? { pf: "" }), remark: e.target.value } }))} rows={3} required containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full resize-none" /></div>
                                         </div>
@@ -1986,7 +1986,7 @@ export default function MDBPMForm() {
                                                 <Typography className="tw-font-semibold tw-text-sm tw-text-gray-800">{item.label}</Typography>
                                                 <Button id={getPfIdFromKey(item.key)} size="sm" color={isNA ? "amber" : "gray"} variant={isNA ? "filled" : "outlined"} onClick={() => setRows(p => ({ ...p, [item.key]: { ...p[item.key], pf: isNA ? "" : "NA" } }))} className="tw-text-xs tw-transition-all tw-duration-300">{isNA ? t("cancelNA", lang) : t("na", lang)}</Button>
                                             </div>
-                                            <div className="tw-mb-3"><PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(item.key)} /></div>
+                                            <div className="tw-mb-3"><PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={5} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(item.key)} /></div>
                                             <div id={getInputIdFromKey(item.key)} className={`tw-mb-3 tw-transition-all tw-duration-300 ${isNA ? "tw-opacity-50 tw-pointer-events-none" : ""}`}>{renderDynamicMeasureGrid(7, item.key)}</div>
                                             <div id={getRemarkIdFromKey(item.key)} className="tw-transition-all tw-duration-300"><Textarea label={t("remark", lang)} value={rows[item.key]?.remark ?? ""} onChange={e => setRows(p => ({ ...p, [item.key]: { ...(p[item.key] ?? { pf: "" }), remark: e.target.value } }))} rows={3} required containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full resize-none" /></div>
                                         </div>
@@ -2025,7 +2025,7 @@ export default function MDBPMForm() {
                                                 <Typography className="tw-font-semibold tw-text-sm tw-text-gray-800">{item.label}</Typography>
                                                 <Button id={getPfIdFromKey(item.key)} size="sm" color={isNA ? "amber" : "gray"} variant={isNA ? "filled" : "outlined"} onClick={() => setRows(p => ({ ...p, [item.key]: { ...p[item.key], pf: isNA ? "" : "NA" } }))} className="tw-text-xs tw-transition-all tw-duration-300">{isNA ? t("cancelNA", lang) : t("na", lang)}</Button>
                                             </div>
-                                            <div className="tw-mb-3"><PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(item.key)} /></div>
+                                            <div className="tw-mb-3"><PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={5} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(item.key)} /></div>
                                             <div id={getRemarkIdFromKey(item.key)} className="tw-transition-all tw-duration-300"><Textarea label={t("remark", lang)} value={rows[item.key]?.remark ?? ""} onChange={e => setRows(p => ({ ...p, [item.key]: { ...(p[item.key] ?? { pf: "" }), remark: e.target.value } }))} rows={3} required containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full resize-none" /></div>
                                         </div>
                                     );
@@ -2043,7 +2043,7 @@ export default function MDBPMForm() {
                         <div id={getPfIdFromKey(q.key)} className="tw-flex tw-justify-end tw-mb-3 tw-transition-all tw-duration-300">
                             <Button size="sm" color={rows[q.key]?.pf === "NA" ? "amber" : "gray"} variant={rows[q.key]?.pf === "NA" ? "filled" : "outlined"} onClick={() => setRows(p => ({ ...p, [q.key]: { ...p[q.key], pf: rows[q.key]?.pf === "NA" ? "" : "NA" } }))}>{rows[q.key]?.pf === "NA" ? t("cancelNA", lang) : t("na", lang)}</Button>
                         </div>
-                        <div className="tw-mb-3"><PhotoMultiInput photos={photos[q.no] || []} setPhotos={makePhotoSetter(q.no)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(q.no)} /></div>
+                        <div className="tw-mb-3"><PhotoMultiInput photos={photos[q.no] || []} setPhotos={makePhotoSetter(q.no)} max={5} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(q.no)} /></div>
                         <div id={getRemarkIdFromKey(q.key)} className="tw-transition-all tw-duration-300"><Textarea label={t("remark", lang)} value={rows[q.key]?.remark ?? ""} onChange={e => setRows(p => ({ ...p, [q.key]: { ...(p[q.key] ?? { pf: "" }), remark: e.target.value } }))} rows={3} required containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full resize-none" /></div>
                     </div>
                 </SectionCard>
@@ -2103,7 +2103,7 @@ export default function MDBPMForm() {
                                             remark={rows[item.key]?.remark ?? ""}
                                             onRemarkChange={v => setRows({ ...rows, [item.key]: { ...(rows[item.key] ?? { pf: "" }), remark: v } })}
                                             pfButtonsId={getPfIdFromKey(item.key)} remarkId={getRemarkIdFromKey(item.key)}
-                                            aboveRemark={<div className="tw-pb-4 tw-border-b tw-border-gray-100"><PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(item.key)} /></div>}
+                                            aboveRemark={<div className="tw-pb-4 tw-border-b tw-border-gray-100"><PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={5} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(item.key)} /></div>}
                                             beforeRemark={<><div id={getInputIdFromKey(item.key)} className="tw-mb-3 tw-transition-all tw-duration-300">{renderDynamicMeasureGridWithPre(cfg.qNo, item.key)}</div><PreRemarkElement remark={rowsPre[item.key]?.remark} lang={lang} /></>}
                                         />
                                     </div>
@@ -2156,7 +2156,7 @@ export default function MDBPMForm() {
                                             remark={rows[it.key]?.remark ?? ""}
                                             onRemarkChange={v => setRows({ ...rows, [it.key]: { ...(rows[it.key] ?? { pf: "" }), remark: v } })}
                                             pfButtonsId={getPfIdFromKey(it.key)} remarkId={getRemarkIdFromKey(it.key)}
-                                            aboveRemark={<div className="tw-pb-4 tw-border-b tw-border-gray-100"><PhotoMultiInput photos={photos[it.key] || []} setPhotos={makePhotoSetter(it.key)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(it.key)} /></div>}
+                                            aboveRemark={<div className="tw-pb-4 tw-border-b tw-border-gray-100"><PhotoMultiInput photos={photos[it.key] || []} setPhotos={makePhotoSetter(it.key)} max={5} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(it.key)} /></div>}
                                             beforeRemark={<PreRemarkElement remark={rowsPre[it.key]?.remark} lang={lang} />}
                                         />
                                     </div>
@@ -2177,7 +2177,7 @@ export default function MDBPMForm() {
                         remark={rows[q.key]?.remark ?? ""}
                         onRemarkChange={v => setRows({ ...rows, [q.key]: { ...(rows[q.key] ?? { pf: "" }), remark: v } })}
                         pfButtonsId={getPfIdFromKey(q.key)} remarkId={getRemarkIdFromKey(q.key)}
-                        aboveRemark={<>{q.hasPhoto && <div className="tw-pt-2 tw-pb-4 tw-border-b tw-mb-4 tw-border-gray-100"><PhotoMultiInput photos={photos[q.no] || []} setPhotos={makePhotoSetter(q.no)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(q.no)} /></div>}{checkboxElement && <div className="sm:tw-hidden tw-mb-3">{checkboxElement}</div>}</>}
+                        aboveRemark={<>{q.hasPhoto && <div className="tw-pt-2 tw-pb-4 tw-border-b tw-mb-4 tw-border-gray-100"><PhotoMultiInput photos={photos[q.no] || []} setPhotos={makePhotoSetter(q.no)} max={5} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(q.no)} /></div>}{checkboxElement && <div className="sm:tw-hidden tw-mb-3">{checkboxElement}</div>}</>}
                         inlineLeft={checkboxElement && <div className="tw-hidden sm:tw-flex">{checkboxElement}</div>}
                         beforeRemark={<PreRemarkElement remark={rowsPre[q.key]?.remark} lang={lang} />}
                     />
