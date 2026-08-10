@@ -1433,6 +1433,9 @@ async function addTimestampToImage(file: File, locationText: string): Promise<Fi
 }
 
 // ==================== PHOTO INPUT ====================
+const MAX_PHOTOS_PER_ITEM = 10;
+const MAX_PHOTOS_PER_GROUP = 20;
+
 function getImageDimensions(file: File): Promise<{ width: number; height: number }> {
     return new Promise((resolve, reject) => {
         const img = new window.Image();
@@ -1473,7 +1476,7 @@ function subItemQuotaLabel(itemCount: number, groupTotal: number, itemMax: numbe
 }
 
 function PhotoMultiInput({
-    photos, setPhotos, max = 5, draftKey, qNo, lang, id, hideMaxLabel = false, maxLabel,
+    photos, setPhotos, max = MAX_PHOTOS_PER_ITEM, draftKey, qNo, lang, id, hideMaxLabel = false, maxLabel,
 }: {
     label?: string; photos: PhotoItem[]; setPhotos: React.Dispatch<React.SetStateAction<PhotoItem[]>>;
     max?: number; draftKey: string; qNo: number; lang: Lang; id?: string; hideMaxLabel?: boolean;
@@ -1743,8 +1746,8 @@ function DynamicItemsSection({
         // GROUP_MAX ต้องไม่เกิน PHOTO_MAX_PER_ROW ของ pdf_charger.py เพราะ PDF รวมรูปของ
         // ข้อย่อยทุกอัน (g7, g7_1, g7_2, ...) เข้าเป็นก้อนเดียวของข้อใหญ่แล้วตัดส่วนเกินทิ้งเงียบๆ
         // วัดแล้วหน้า A4 ใส่ได้ 5 บรรทัด x 4 รูป = 20 รูป
-        const ITEM_MAX = 5;
-        const GROUP_MAX = 20;
+        const ITEM_MAX = MAX_PHOTOS_PER_ITEM;
+        const GROUP_MAX = MAX_PHOTOS_PER_GROUP;
         const groupPhotoLabel = lang === "th"
             ? `รูปในข้อนี้ ${totalPhotosInGroup}/${GROUP_MAX} — ข้อย่อยละไม่เกิน ${ITEM_MAX} รูป`
             : `${totalPhotosInGroup}/${GROUP_MAX} photos in this question — max ${ITEM_MAX} per sub-item`;
@@ -1868,8 +1871,8 @@ function DynamicItemsSection({
     // GROUP_MAX ต้องไม่เกิน PHOTO_MAX_PER_ROW ของ pdf_charger.py เพราะ PDF รวมรูปของ
     // ข้อย่อยทุกอัน (g7, g7_1, g7_2, ...) เข้าเป็นก้อนเดียวของข้อใหญ่แล้วตัดส่วนเกินทิ้งเงียบๆ
     // วัดแล้วหน้า A4 ใส่ได้ 5 บรรทัด x 4 รูป = 20 รูป
-        const ITEM_MAX = 5;
-    const GROUP_MAX = 20;
+    const ITEM_MAX = MAX_PHOTOS_PER_ITEM;
+    const GROUP_MAX = MAX_PHOTOS_PER_GROUP;
     const groupPhotoLabel = lang === "th"
         ? `รูปในข้อนี้ ${totalPhotosInGroup}/${GROUP_MAX} — ข้อย่อยละไม่เกิน ${ITEM_MAX} รูป`
         : `${totalPhotosInGroup}/${GROUP_MAX} photos in this question — max ${ITEM_MAX} per sub-item`;
@@ -2019,7 +2022,7 @@ function PhotoRemarkSection({
                     pfButtonsId={pfButtonsId}
                     aboveRemark={
                         <div className="tw-pt-2 tw-pb-4 tw-border-b tw-mb-4 tw-border-gray-100">
-                            <PhotoMultiInput id={photoId} photos={photos[qNo] || []} setPhotos={makePhotoSetter(qNo)} max={5} draftKey={draftKey} qNo={qNo} lang={lang} />
+                            <PhotoMultiInput id={photoId} photos={photos[qNo] || []} setPhotos={makePhotoSetter(qNo)} max={MAX_PHOTOS_PER_ITEM} draftKey={draftKey} qNo={qNo} lang={lang} />
                         </div>
                     }
                     beforeRemark={
@@ -2044,7 +2047,7 @@ function PhotoRemarkSection({
                 </Button>
             </div>
             <div className="tw-mb-3">
-                <PhotoMultiInput id={photoId} photos={photos[qNo] || []} setPhotos={makePhotoSetter(qNo)} max={5} draftKey={draftKey} qNo={qNo} lang={lang} />
+                <PhotoMultiInput id={photoId} photos={photos[qNo] || []} setPhotos={makePhotoSetter(qNo)} max={MAX_PHOTOS_PER_ITEM} draftKey={draftKey} qNo={qNo} lang={lang} />
             </div>
             {middleContent && <div className={`tw-mb-3 ${isNA ? "tw-opacity-50 tw-pointer-events-none" : ""}`}>{middleContent}</div>}
             <div id={remarkId} className="tw-transition-all tw-duration-300">
