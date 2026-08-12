@@ -248,6 +248,7 @@ from routers.notifications import router as notifications_router
 from routers.pm_all_stations import router as pm_all_stations_router
 from routers.pm_maximo import router as pm_maximo_router
 from routers.cm_maximo import router as cm_maximo_router
+from routers.ai_agent import router as ai_agent_router
 
 app.include_router(users_router)
 app.include_router(stations_router)
@@ -268,3 +269,4 @@ app.include_router(notifications_router)
 app.include_router(pm_all_stations_router)
 app.include_router(pm_maximo_router)
 app.include_router(cm_maximo_router)
+app.include_router(ai_agent_router)

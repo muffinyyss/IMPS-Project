@@ -23,6 +23,7 @@ import M4RuleBasedTab from "./tabs/M4RuleBasedTab";
 import M4StandardsTab from "./tabs/M4StandardsTab";
 
 import { M2DetectionTab, M3DetectionTab } from "./tabs/M2M3DetectionTree";
+import AiAgentTab from "./tabs/AiAgentTab";
 
 import { useStation } from "../hooks/useStation";
 import "../ai-theme.css";
@@ -102,6 +103,11 @@ const MODULE_TABS: Record<number, TabDef[]> = {
     { key: "algorithms", label: { th: "📖 คำอธิบายอัลกอริทึม", en: "📖 Algorithm Description" } },
   ],
 };
+
+// 🤖 AI วิเคราะห์ — แท็บ Agentic AI ที่มีเหมือนกันในทุกโมดูล (M1–M7)
+Object.values(MODULE_TABS).forEach((tabs) =>
+  tabs.push({ key: "ai-agent", label: { th: "🤖 AI วิเคราะห์", en: "🤖 AI Diagnosis" } })
+);
 
 // ── Shared UI components ──────────────────────────────────────────────────
 function HealthGauge({ value }: { value: number | null }) {
@@ -237,7 +243,7 @@ function DefaultDetailView({ data, modNum, lang }: { data: ModuleResult; modNum:
 }
 
 // ── Tab content dispatcher ────────────────────────────────────────────────
-function TabContent({ tab, modNum, mod, data, countdown, isPaused, onTogglePause, lang }: {
+function TabContent({ tab, modNum, mod, data, countdown, isPaused, onTogglePause, lang, sn }: {
   tab: string;
   modNum: number;
   mod: ModuleConfig;
@@ -246,8 +252,11 @@ function TabContent({ tab, modNum, mod, data, countdown, isPaused, onTogglePause
   isPaused: boolean;          // ← เพิ่ม
   onTogglePause: () => void;  // ← เพิ่ม
   lang: Lang;
+  sn: string;                 // ← SN ของสถานีที่เลือก (ใช้โดย AiAgentTab)
 }) {
   switch (tab) {
+    case "ai-agent":
+      return <AiAgentTab modNum={modNum} sn={sn} lang={lang} />;
     case "history":
       return <HistoryTab modNum={modNum} modKey={mod.key} modColor={mod.color} modLabel={mod.label} />;
     case "algorithms":
@@ -605,7 +614,7 @@ export default function ModulePage() {
 
       {/* Tab content */}
       <div className="tw-p-6">
-        {loading && activeTab !== "history" && activeTab !== "algorithms" ? (
+        {loading && activeTab !== "history" && activeTab !== "algorithms" && activeTab !== "ai-agent" ? (
           <div className="tw-flex tw-items-center tw-justify-center tw-h-40 tw-gap-3">
             <div className="tw-w-6 tw-h-6 tw-rounded-full tw-border-2 tw-border-gray-200
                             tw-border-t-blue-500 tw-animate-spin" />
@@ -615,6 +624,7 @@ export default function ModulePage() {
           <TabContent
             tab={activeTab} modNum={modNum} mod={mod} data={data}
             lang={lang}
+            sn={activeSn}
             countdown={countdown}
             isPaused={isPaused}
             onTogglePause={() => isPaused ? resume() : pause()}
