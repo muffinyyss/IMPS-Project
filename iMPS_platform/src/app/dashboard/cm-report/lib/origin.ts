@@ -8,7 +8,7 @@ export const CM_LIST_ROUTE = "/dashboard/cm-list";
 
 /** ค่าที่ใส่ใน ?from= ตอนเปิดใบงานจากหน้า CM Dashboard */
 export const CM_ORIGIN_DASHBOARD = "cm-dashboard";
-/** ค่าที่ใส่ใน ?from= ตอนเปิดใบงานจากหน้า CM list (ตาราง) */
+/** ค่าที่ใส่ใน ?from= ตอนเปิดใบงานจากหน้า CM List (ตาราง) */
 export const CM_ORIGIN_LIST = "cm-list";
 
 type ReadonlyParams = { get(name: string): string | null };
@@ -17,7 +17,7 @@ function originOf(searchParams: ReadonlyParams): string {
   return (searchParams.get("from") ?? "").trim().toLowerCase();
 }
 
-/** ใบงานนี้ถูกเปิดมาจากหน้า CM Dashboard หรือ CM list หรือไม่ */
+/** ใบงานนี้ถูกเปิดมาจากหน้า CM Dashboard หรือ CM List หรือไม่ */
 export function cameFromDashboard(searchParams: ReadonlyParams): boolean {
   return [CM_ORIGIN_DASHBOARD, CM_ORIGIN_LIST].includes(originOf(searchParams));
 }

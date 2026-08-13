@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * CM list — liste des fiches CM (sortie du bas du CM Dashboard)
+ * CM List — liste des fiches CM (sortie du bas du CM Dashboard)
  *
  * Différences volontaires avec l'ancien tableau intégré au dashboard :
  *   • filtre par défaut « In Progress » — c'est la file de travail, pas un historique
@@ -277,7 +277,7 @@ export default function CMListPage() {
 
   const t = useMemo(() => ({
     th: {
-      pageTitle: "CM list",
+      pageTitle: "CM List",
       subtitle: (n: number) => `ข้อมูลจาก iMPS · ${n} รายการทั้งหมด`,
       backToDashboard: "← กลับไปหน้า CM Dashboard",
       yearLabel: "ปี", monthLabel: "เดือน", weekLabel: "สัปดาห์",
@@ -313,7 +313,7 @@ export default function CMListPage() {
       },
     },
     en: {
-      pageTitle: "CM list",
+      pageTitle: "CM List",
       subtitle: (n: number) => `Data from iMPS · ${n} total records`,
       backToDashboard: "← Back to CM Dashboard",
       yearLabel: "Year", monthLabel: "Month", weekLabel: "Week",

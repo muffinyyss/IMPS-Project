@@ -59,14 +59,14 @@ const baseRoutes = [
         icon: <i className="fa fa-chart-pie" />,
         name: "CM Dashboard",
         path: "/dashboard/cm-dashboard",
-        // cs/technician ไม่เห็นส่วนวิเคราะห์ — เมนูของ role นี้คือ CM list ด้านล่าง
-        // (ถ้าเข้า URL ตรง หน้าเพจจะพาไป CM list ให้เอง)
+        // cs/technician ไม่เห็นส่วนวิเคราะห์ — เมนูของ role นี้คือ CM List ด้านล่าง
+        // (ถ้าเข้า URL ตรง หน้าเพจจะพาไป CM List ให้เอง)
         allow: ["admin", "owner", "engineer"],
       },
       {
         layout: "dashboard",
         icon: <i className="fa fa-table-list" />,
-        name: "CM list",
+        name: "CM List",
         // ตารางใบงาน CM ที่แยกออกมาจาก CM Dashboard — กรอง In Progress เป็นค่าเริ่มต้น
         path: "/dashboard/cm-list",
         allow: ["admin", "owner", "engineer", "cs", "technician"],

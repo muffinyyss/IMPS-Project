@@ -163,7 +163,7 @@ export default function CMDashboardPage() {
   // ── Language ──────────────────────────────────────────────────────────────
   const { lang } = useLanguage();
 
-  // CS และ Technician เห็นเฉพาะรายการใบงาน — ตารางย้ายไปหน้า CM list แล้ว
+  // CS และ Technician เห็นเฉพาะรายการใบงาน — ตารางย้ายไปหน้า CM List แล้ว
   // จึงพาไปหน้านั้นแทนที่จะโชว์แดชบอร์ดเปล่า ๆ ที่ role นี้ไม่มีสิทธิ์ดู
   const isListOnlyRole = ["cs", "technician"].includes(userRole.trim().toLowerCase());
   useEffect(() => {
@@ -423,7 +423,7 @@ export default function CMDashboardPage() {
       barHint: "คลิกที่แท่งกราฟเพื่อเลือกเดือน",
       rowsPerPage: "แถวต่อหน้า",
       statusFilterLabel: "กรองตามสถานะ",
-      tableTitle: "CM list",
+      tableTitle: "CM List",
       tableCount: (n: number, q?: string) => `${n} รายการ${q ? ` · "${q}"` : ""}`,
       searchPlaceholder: "ค้นหา station, issue ID, equipment, severity, inspector…",
       filterLabel: "Filters:",
@@ -503,7 +503,7 @@ export default function CMDashboardPage() {
       barHint: "Click on a bar to select the month",
       rowsPerPage: "Rows per page",
       statusFilterLabel: "Filter by status",
-      tableTitle: "CM list",
+      tableTitle: "CM List",
       tableCount: (n: number, q?: string) => `${n} records${q ? ` · "${q}"` : ""}`,
       searchPlaceholder: "Search by station, issue ID, equipment, severity, inspector…",
       filterLabel: "Filters:",
@@ -840,7 +840,7 @@ export default function CMDashboardPage() {
 
   // ─── Render ───────────────────────────────────────────────────────────────
 
-  // roleLoaded : cs/technician sont redirigés vers CM list — sans cette garde
+  // roleLoaded : cs/technician sont redirigés vers CM List — sans cette garde
   // ils verraient l'analytique clignoter le temps que /me réponde
   if (loading || !roleLoaded || isListOnlyRole) {
     return (
@@ -1265,7 +1265,7 @@ export default function CMDashboardPage() {
       </section>
       )}
 
-      {/* ── Section 4: lien vers la page CM list ──
+      {/* ── Section 4: lien vers la page CM List ──
            Le tableau vit maintenant sur sa propre page (filtre In Progress par
            défaut + tri sur toutes les colonnes) — ici on ne garde que l'entrée. */}
       <section>
