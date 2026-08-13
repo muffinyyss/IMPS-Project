@@ -13,8 +13,9 @@ import { apiFetch } from "@/utils/api";
 import { useMaximoFailureTree, failureClassOptions } from "@/app/dashboard/cm-report/lib/maximo";
 import { failureCodeLabel } from "@/app/dashboard/cm-report/lib/failureCode";
 import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
-import { cameFromDashboard, CM_DASHBOARD_ROUTE } from "@/app/dashboard/cm-report/lib/origin";
+import { cmBackRoute } from "@/app/dashboard/cm-report/lib/origin";
 import { brandScopeOf, canOpenCmAtStation } from "@/utils/brandScope";
+import ChargerIdentity, { type ChargerIdentityData } from "@/app/dashboard/cm-report/components/ChargerIdentity";
 
 // ==================== TRANSLATIONS ====================
 const T = {
@@ -528,6 +529,8 @@ export default function CMOpenForm() {
     const [currentCompany, setCurrentCompany] = useState("");
     const [saving, setSaving] = useState(false);
     const [chargers, setChargers] = useState<ChargerInfo[]>([]);
+    // ตัวตนของตู้ตามที่ backend resolve มาให้ตอนเปิดใบเดิม (ใบใหม่ยังไม่มี → derive จาก chargers)
+    const [loadedCharger, setLoadedCharger] = useState<ChargerIdentityData | null>(null);
     // ตาราง failure code จาก Maximo (IN04) — เป็นเจ้าของว่ามีอุปกรณ์/ปัญหาอะไรเลือกได้บ้าง
     const maximoTree = useMaximoFailureTree();
     const [loadingChargers, setLoadingChargers] = useState(false);
@@ -644,6 +647,29 @@ export default function CMOpenForm() {
     // แทนที่จะปล่อย dropdown ว่างเปล่าโดยไม่มีคำอธิบาย
     const failureCodesUnavailable = failureCodeOptions.length === 0;
 
+    // ข้อมูลตู้ที่จะโชว์บนหัวใบงาน — ใบเดิมใช้ค่าที่ backend resolve มา ส่วนใบใหม่ยังไม่มี
+    // ใบงาน จึงอนุมานจากรายการตู้ของสถานี (สถานียี่ห้อเดียว = รู้บริษัทผู้ถือครองแน่นอน)
+    const chargerIdentity = useMemo<ChargerIdentityData | null>(() => {
+        if (loadedCharger && (loadedCharger.charger_name || loadedCharger.charger_sn || loadedCharger.charger_brand)) {
+            return loadedCharger;
+        }
+        if (!chargers.length) return null;
+        const key = (faultyEquipment || "").trim().toLowerCase();
+        const matched = chargers.find(c => {
+            const no = c.chargerNo ?? (c as { charger_no?: number }).charger_no;
+            return [no, c.charger_id].some(v => v != null && v !== "" && `charger_${String(v).trim().toLowerCase()}` === key);
+        });
+        const brands = Array.from(new Set(chargers.map(c => (c.brand || "").trim()).filter(Boolean)));
+        const stationBrand = brands.length === 1 ? brands[0] : "";
+        if (!matched) return stationBrand ? { charger_brand: stationBrand } : null;
+        return {
+            charger_name: (matched.charger_name || `Charger ${matched.chargerNo ?? ""}`).trim(),
+            charger_no: matched.chargerNo ?? null,
+            charger_sn: (matched.SN || matched.sn || "").trim(),
+            charger_brand: (matched.brand || stationBrand || "").trim(),
+        };
+    }, [loadedCharger, chargers, faultyEquipment]);
+
     // ==================== VALIDATION ====================
     const validations = useMemo<ValidationItem[]>(() => [
         { key: "equipment", label: t("validEquipment", lang), isValid: !!faultyEquipment, message: t("notSelected", lang), isRequired: true, scrollId: "cm-equipment" },
@@ -675,7 +701,8 @@ export default function CMOpenForm() {
     // ปลายทางหลังจบ action ทุกแบบ (บันทึก/Assign/ตีกลับ/ยกเลิก/ย้อนกลับ)
     // — เข้ามาจากหน้าไหนก็กลับหน้านั้น: จาก CM Dashboard → dashboard, จากตาราง list → แท็บที่เกี่ยวข้อง
     const buildListUrl = (targetTab?: string) => {
-        if (cameFromDashboard(searchParams)) return CM_DASHBOARD_ROUTE;
+        const backRoute = cmBackRoute(searchParams);
+        if (backRoute) return backRoute;
         const p = new URLSearchParams();
         if (stationId) p.set("station_id", stationId);
         p.set("tab", targetTab ?? currentTab);
@@ -977,6 +1004,14 @@ export default function CMOpenForm() {
                 setCancelledInfo({ remark: data.cancel_remark ?? "", by: data.cancelled_by ?? "" });
                 setRemarksOpen(data.remarks_open ?? "");
                 setFaultyEquipment(data.faulty_equipment ?? "");
+                setLoadedCharger({
+                    charger_name: data.charger_name ?? "",
+                    charger_no: data.charger_no ?? null,
+                    charger_sn: data.charger_sn ?? "",
+                    charger_model: data.charger_model ?? "",
+                    charger_brand: data.charger_brand ?? "",
+                    auto_generated: !!data.auto_generated,
+                });
                 setSummary(data.summary ?? "");
                 setReportedBy(data.reported_by ?? "");
                 setReporterSignature(data.reporter_signature ?? "");
@@ -1482,6 +1517,9 @@ ${in01.error ?? ""}`);
                             <Input value={reported_by || ""} readOnly crossOrigin="" className="!tw-w-full !tw-bg-gray-100" containerProps={{ className: "!tw-min-w-0" }} />
                         </div>
                     </div>
+
+                    {/* ตู้ชาร์จที่ใบงานนี้เกี่ยวข้อง — ชื่อ / เลขตู้ / S/N / บริษัทผู้ถือครอง */}
+                    <ChargerIdentity data={chargerIdentity} lang={lang} />
 
                     {/* Problem Details Section */}
                     <div className="tw-mb-6 tw-rounded-lg tw-overflow-hidden tw-border tw-border-blue-gray-100 tw-bg-white tw-shadow-sm">

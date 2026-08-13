@@ -5,7 +5,8 @@ import { Button, Input, Textarea } from "@material-tailwind/react";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
-import { cameFromDashboard, CM_DASHBOARD_ROUTE } from "@/app/dashboard/cm-report/lib/origin";
+import { cmBackRoute } from "@/app/dashboard/cm-report/lib/origin";
+import ChargerIdentity, { type ChargerIdentityData } from "@/app/dashboard/cm-report/components/ChargerIdentity";
 
 // ==================== TRANSLATIONS ====================
 const T = {
@@ -197,7 +198,8 @@ export default function CMForm() {
 
     // เข้ามาจากหน้าไหนก็กลับหน้านั้น — จาก CM Dashboard → dashboard, จากตาราง list → แท็บเดิม
     const buildListUrl = () => {
-        if (cameFromDashboard(searchParams)) return CM_DASHBOARD_ROUTE;
+        const backRoute = cmBackRoute(searchParams);
+        if (backRoute) return backRoute;
         const params = new URLSearchParams();
         if (stationId) params.set("station_id", stationId);
         const tab = (searchParams.get("tab") ?? "open"); // กลับแท็บเดิม (default = open)
@@ -206,6 +208,8 @@ export default function CMForm() {
     };
 
     const [job, setJob] = useState<Job>({ ...INITIAL_JOB });
+    // ตัวตนของตู้ที่ backend resolve มาให้ — ชื่อ / เลขตู้ / S/N / บริษัทผู้ถือครอง
+    const [chargerIdentity, setChargerIdentity] = useState<ChargerIdentityData | null>(null);
     const [summary, setSummary] = useState<string>("");
     const [saving, setSaving] = useState(false);
 
@@ -787,6 +791,15 @@ export default function CMForm() {
                 }
                 const data = await res.json();
 
+                setChargerIdentity({
+                    charger_name: data.charger_name ?? "",
+                    charger_no: data.charger_no ?? null,
+                    charger_sn: data.charger_sn ?? "",
+                    charger_model: data.charger_model ?? "",
+                    charger_brand: data.charger_brand ?? "",
+                    auto_generated: !!data.auto_generated,
+                });
+
                 // map ข้อมูลจาก backend (flat fields) → job state
                 const correctionList = Array.isArray(data.repaired_equipment) ? data.repaired_equipment : [];
                 setJob(prev => ({
@@ -1033,6 +1046,9 @@ export default function CMForm() {
                                 />
                             </div>
                         </div>
+
+                        {/* ตู้ชาร์จที่ใบงานนี้เกี่ยวข้อง — ชื่อ / เลขตู้ / S/N / บริษัทผู้ถือครอง */}
+                        <ChargerIdentity data={chargerIdentity} lang={lang} className="!tw-mb-0" />
 
                         {/* 2 คอลัมน์: อุปกรณ์ */}
                         <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-6">

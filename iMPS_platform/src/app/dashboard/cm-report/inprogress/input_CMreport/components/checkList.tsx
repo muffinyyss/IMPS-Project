@@ -13,7 +13,8 @@ import {
     useMaximoFailureTree, maximoCodeLabel, isMaximoCode, failureClassRole, type SelectOption,
     maximoProblemOptions, maximoCauseOptions, maximoRemedyOptions,
 } from "@/app/dashboard/cm-report/lib/maximo";
-import { cameFromDashboard, CM_DASHBOARD_ROUTE } from "@/app/dashboard/cm-report/lib/origin";
+import { cmBackRoute } from "@/app/dashboard/cm-report/lib/origin";
+import ChargerIdentity, { type ChargerIdentityData } from "@/app/dashboard/cm-report/components/ChargerIdentity";
 
 // ==================== DEVICE NAME FORMATTER ====================
 function formatDeviceName(name: string): string {
@@ -898,6 +899,8 @@ export default function CMInProgressForm() {
 
     const [stationId, setStationId] = useState<string | null>(null);
     const [job, setJob] = useState<Job>({ ...INITIAL_JOB });
+    // ตัวตนของตู้ที่ backend resolve มาให้ — ชื่อ / เลขตู้ / S/N / บริษัทผู้ถือครอง
+    const [chargerIdentity, setChargerIdentity] = useState<ChargerIdentityData | null>(null);
     const loadedJobRef = useRef<Job | null>(null);
     // refs สำหรับปุ่ม "+" เปิด dropdown เพื่อเลือกเพิ่ม
     const problemSelectRef = useRef<any>(null);
@@ -1014,7 +1017,8 @@ export default function CMInProgressForm() {
     // ปลายทางหลังจบ action ทุกแบบ (บันทึก/ปิดงาน/อนุมัติ/ตีกลับ/ย้อนกลับ)
     // — เข้ามาจากหน้าไหนก็กลับหน้านั้น: จาก CM Dashboard → dashboard, จากตาราง list → แท็บที่เกี่ยวข้อง
     const buildListUrl = (targetTab?: string) => {
-        if (cameFromDashboard(searchParams)) return CM_DASHBOARD_ROUTE;
+        const backRoute = cmBackRoute(searchParams);
+        if (backRoute) return backRoute;
         const p = new URLSearchParams();
         if (stationId) p.set("station_id", stationId);
         p.set("tab", targetTab ?? currentTab);
@@ -1791,6 +1795,15 @@ export default function CMInProgressForm() {
                 if (!res.ok) return;
                 const data = await res.json();
                 const rawDate = data.cm_date ?? data.found_date ?? "";
+
+                setChargerIdentity({
+                    charger_name: data.charger_name ?? "",
+                    charger_no: data.charger_no ?? null,
+                    charger_sn: data.charger_sn ?? "",
+                    charger_model: data.charger_model ?? "",
+                    charger_brand: data.charger_brand ?? "",
+                    auto_generated: !!data.auto_generated,
+                });
 
                 originalRepairResultRef.current = normalizeRepairResult(data.repair_result ?? "");
                 // ช่างเคยบันทึกเป็นสถานะรอไว้ → รอบนั้นถูกเก็บเข้าประวัติแล้ว ฟอร์มต้องเริ่มรอบใหม่จากว่าง
@@ -2702,6 +2715,9 @@ export default function CMInProgressForm() {
                             </div>
                         )}
                     </div>
+
+                    {/* ตู้ชาร์จที่ใบงานนี้เกี่ยวข้อง — ชื่อ / เลขตู้ / S/N / บริษัทผู้ถือครอง */}
+                    <ChargerIdentity data={chargerIdentity} lang={lang} />
 
                     {/* Section 1: Problem Details (Readonly) */}
                     <div className="tw-mb-6 tw-rounded-lg tw-overflow-hidden tw-border tw-border-blue-gray-100 tw-bg-white tw-shadow-sm">

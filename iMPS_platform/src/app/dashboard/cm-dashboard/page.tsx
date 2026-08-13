@@ -7,19 +7,17 @@ import { Card, CardHeader, CardBody, Typography } from "@material-tailwind/react
 import { apiFetch } from "@/utils/api";
 import useLanguage from "@/utils/useLanguage";
 import {
-  CMRow, ActiveFilters, DateSel, STATUS_LABELS, WorkStatusFilter, EMPTY_FILTERS,
-  normalizeStatus, workStatusOf, workStatusBadge, filterByDate, listYears,
+  CMRow, ActiveFilters, DateSel, STATUS_LABELS, WorkStatusFilter, EMPTY_FILTERS, CmOrigin,
+  normalizeStatus, workStatusOf, filterByDate, listYears, listBrands, UNKNOWN_BRAND,
   excludeCancelled, isCancelled,
-  weeksInMonth, applyFilters, applySearch, groupCount, groupCountMulti, groupByMonth,
+  weeksInMonth, applyFilters, groupCount, groupCountMulti, groupCountMultiByBrand, groupByMonth,
   causeLabelsOf, remedyCodesOf, remedyDescriptionsOf,
 } from "@/utils/cm-dashboard";
 import { remedyLabel, remedyCodeOfDescription } from "@/utils/cm-failure-codes";
-import { CM_ORIGIN_DASHBOARD } from "@/app/dashboard/cm-report/lib/origin";
-import { failureCodeLabel } from "@/app/dashboard/cm-report/lib/failureCode";
-import { failureClassOptions, useMaximoFailureTree } from "@/app/dashboard/cm-report/lib/maximo";
+import { CM_LIST_ROUTE } from "@/app/dashboard/cm-report/lib/origin";
 import {
-  CheckCircleIcon, ClockIcon, DocumentTextIcon,
-  DocumentArrowDownIcon,
+  CheckCircleIcon, ClockIcon, DocumentTextIcon, InboxStackIcon,
+  TableCellsIcon, ClipboardDocumentCheckIcon,
   ExclamationTriangleIcon, ShoppingCartIcon, XCircleIcon,
 } from "@heroicons/react/24/outline";
 
@@ -27,58 +25,42 @@ const Chart = dynamic(() => import("react-apexcharts"), { ssr: false });
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-// RAG semantics: completed=green, in_progress=orange (watch), open=red (action needed)
-const DONUT_COLORS = ["#22c55e", "#f97316", "#ef4444"];
 // Categorical palette for causes / equipment — blue/cool family, no RAG meaning
 const EQUIPMENT_COLORS = ["#3b82f6","#06b6d4","#8b5cf6","#0ea5e9","#a855f7","#14b8a6","#64748b","#6366f1","#0284c7","#7c3aed"];
 // Remedy = ce qui a été fait (pas un état) → famille chaude, distincte des causes
 const REMEDY_COLORS = ["#f59e0b","#ec4899","#f97316","#d946ef","#eab308","#fb7185","#c026d3","#f43f5e","#ca8a04","#e11d48"];
-const DEFAULT_PAGE_SIZE = 50;
-const MAX_PAGE_SIZE = 500;
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+// Palette des marques (= entreprises détentrices) — famille distincte des causes
+// et des remèdes pour qu'un même écran ne fasse jamais lire deux sens à une teinte
+const BRAND_COLORS = ["#2563eb","#16a34a","#9333ea","#0891b2","#ca8a04","#db2777","#4f46e5","#65a30d","#0f766e","#94a3b8"];
 
-// ใบที่รออะไหล่/รอสภาพหน้างานและยังไม่มีช่าง ต้องเปิดฟอร์มวางแผนใหม่
-// WO - wait for scheduled มีแผน/ช่างแล้ว จึงเปิดฟอร์มกรอกผลซ่อมเหมือน technician
-const PLANNING_WAIT_RESULTS: string[] = [];
-const WAITING_ON_REPLAN_RESULTS = [
-  "WO - wait for material",
-  "WO - wait for spare part",
-  "WO - wait for site condition",
-  "WO - wait for site access",
-];
-const PLANNING_ROLES = ["admin", "owner", "engineer"];
-
-function hasAssignedTechnician(assignees?: string[]) {
-  return Array.isArray(assignees) && assignees.some((assignee) => !!assignee?.trim());
-}
-
-function isPlanningWait(value?: string, assignees?: string[]) {
-  const result = (value || "").trim();
-  if (PLANNING_WAIT_RESULTS.includes(result)) return true;
-  return WAITING_ON_REPLAN_RESULTS.includes(result) && !hasAssignedTechnician(assignees);
-}
-
-// สถานะ (raw) + stage → slug ของแท็บในหน้า CM Report (open / in-progress / closed)
-// "Wait for approve" มี 2 ด่าน ต้องแยกด้วย stage ไม่งั้นจะเปิดฟอร์มผิดใบ:
-//   • cs_approval   = cs เพิ่งเปิดเคส รอ head cs อนุมัติ        → แท็บ Open (ฟอร์มเปิดงาน/วางแผนให้ engineer)
-//   • close_approval = ช่างกรอกผลซ่อม "แก้ไขสำเร็จ" รออนุมัติปิดงาน → แท็บ In Progress (ฟอร์มผลการซ่อม)
-// ใบเก่าที่ไม่มี stage ให้ถือเป็นด่านปิดงาน — ตรงกับเงื่อนไขกรองของ open-table/inprogress-table
-function statusSlug(status: string, stage?: string, repairResult?: string): "open" | "in-progress" | "closed" | "cancelled" {
-  const raw = (status || "").trim().toLowerCase();
-  const repair = (repairResult || "").trim().toLowerCase();
-  if (
-    raw === "wait for schedule" &&
-    ["wo - wait for scheduled", "wo - wait for manpower"].includes(repair)
-  ) return "in-progress";
-  if (raw === "wait for approve") {
-    return (stage || "").trim().toLowerCase() === "cs_approval" ? "open" : "in-progress";
-  }
-  const s = normalizeStatus(status);
-  if (s === "cancelled") return "cancelled";
-  return s === "completed" ? "closed" : s === "in_progress" ? "in-progress" : "open";
-}
+/** Les camemberts Cause / Remedy se lisent soit en total, soit ventilés par entreprise */
+type ChartView = "total" | "brand";
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
+
+// Bascule « Total / Par entreprise » posée dans l'en-tête des deux blocs concernés
+function ViewToggle({ value, onChange, totalLabel, brandLabel }: {
+  value: ChartView; onChange: (v: ChartView) => void;
+  totalLabel: string; brandLabel: string;
+}) {
+  return (
+    <div className="tw-inline-flex tw-shrink-0 tw-rounded-lg tw-bg-gray-100 tw-p-0.5" role="group">
+      {([["total", totalLabel], ["brand", brandLabel]] as const).map(([key, label]) => (
+        <button
+          key={key}
+          type="button"
+          onClick={() => onChange(key)}
+          aria-pressed={value === key}
+          className={`tw-rounded-md tw-px-2.5 tw-py-1 tw-text-[11px] tw-font-semibold tw-transition-all ${
+            value === key ? "tw-bg-white tw-text-gray-800 tw-shadow-sm" : "tw-text-gray-500 hover:tw-text-gray-700"
+          }`}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 // การ์ด KPI — วางเป็นกริดข้างโดนัท Success Rate คลิกเพื่อกรองทั้งแดชบอร์ด
 function StatCard({ label, value, color, Icon, dim, active, onClick }: {
@@ -92,17 +74,17 @@ function StatCard({ label, value, color, Icon, dim, active, onClick }: {
       onClick={onClick}
       disabled={!onClick}
       aria-pressed={onClick ? !!active : undefined}
-      className={`tw-flex tw-h-full tw-min-w-0 tw-items-center tw-justify-between tw-gap-3 tw-rounded-2xl tw-p-4 tw-text-left tw-text-white tw-shadow-md tw-transition-all ${
+      className={`tw-flex tw-h-full tw-min-w-0 tw-items-center tw-justify-between tw-gap-3 tw-rounded-2xl tw-px-4 tw-py-3 tw-text-left tw-text-white tw-shadow-md tw-transition-all ${
         onClick ? "hover:tw-shadow-xl hover:tw-brightness-105 focus:tw-outline-none focus-visible:tw-ring-2 focus-visible:tw-ring-blue-400 focus-visible:tw-ring-offset-2" : "tw-cursor-default"
       } ${active ? "tw-ring-2 tw-ring-blue-500 tw-ring-offset-2" : ""}`}
       style={{ background: color, opacity: dim ? 0.45 : 1 }}
     >
       <div className="tw-min-w-0">
-        <p className="tw-text-[13px] tw-font-semibold tw-leading-snug tw-opacity-95" title={label}>{label}</p>
-        <p className="tw-mt-1.5 tw-text-3xl tw-font-extrabold tw-leading-none">{value}</p>
+        <p className="tw-truncate tw-text-[12px] tw-font-semibold tw-leading-snug tw-opacity-95" title={label}>{label}</p>
+        <p className="tw-mt-1 tw-text-2xl tw-font-extrabold tw-leading-none">{value}</p>
       </div>
-      <span className="tw-flex tw-h-11 tw-w-11 tw-shrink-0 tw-items-center tw-justify-center tw-rounded-xl tw-bg-white/20">
-        <Icon className="tw-h-6 tw-w-6" />
+      <span className="tw-flex tw-h-9 tw-w-9 tw-shrink-0 tw-items-center tw-justify-center tw-rounded-xl tw-bg-white/20">
+        <Icon className="tw-h-5 tw-w-5" />
       </span>
     </button>
   );
@@ -149,74 +131,6 @@ function DateSelect({ id, label, value, onChange, options, disabled }: {
   );
 }
 
-function Pagination({ page, total, pageSize, onChange, formatRange, lang = "th" }: {
-  page: number; total: number; pageSize: number; onChange: (p: number) => void;
-  formatRange?: (from: number, to: number, total: number) => string;
-  lang?: "th" | "en";
-}) {
-  const totalPages = Math.ceil(total / pageSize);
-  if (totalPages <= 1) return null;
-
-  const from = page * pageSize + 1;
-  const to = Math.min((page + 1) * pageSize, total);
-
-  // Build page numbers with ellipsis
-  const pages: (number | "…")[] = [];
-  if (totalPages <= 7) {
-    for (let i = 0; i < totalPages; i++) pages.push(i);
-  } else {
-    pages.push(0);
-    if (page > 2) pages.push("…");
-    for (let i = Math.max(1, page - 1); i <= Math.min(totalPages - 2, page + 1); i++) pages.push(i);
-    if (page < totalPages - 3) pages.push("…");
-    pages.push(totalPages - 1);
-  }
-
-  return (
-    <div className="tw-flex tw-flex-col tw-items-center tw-gap-3 tw-border-t tw-border-gray-100 tw-px-4 tw-py-4 sm:tw-flex-row sm:tw-justify-between">
-      <p className="tw-text-xs tw-text-gray-500">
-        {formatRange ? formatRange(from, to, total) : `${from}–${to} / ${total}`}
-      </p>
-      <div className="tw-flex tw-items-center tw-gap-1">
-        <button
-          onClick={() => onChange(page - 1)}
-          disabled={page === 0}
-          aria-label={lang === "th" ? "หน้าก่อนหน้า" : "Previous page"}
-          className="tw-flex tw-h-8 tw-w-8 tw-items-center tw-justify-center tw-rounded-lg tw-border tw-border-gray-200 tw-text-sm tw-text-gray-600 tw-transition-colors hover:tw-bg-gray-50 disabled:tw-cursor-not-allowed disabled:tw-opacity-40"
-        >
-          ‹
-        </button>
-        {pages.map((p, idx) =>
-          p === "…" ? (
-            <span key={`el${idx}`} aria-hidden="true" className="tw-flex tw-h-8 tw-w-8 tw-items-center tw-justify-center tw-text-xs tw-text-gray-400">…</span>
-          ) : (
-            <button
-              key={p}
-              onClick={() => onChange(p as number)}
-              aria-label={lang === "th" ? `หน้า ${(p as number) + 1}` : `Page ${(p as number) + 1}`}
-              aria-current={p === page ? "page" : undefined}
-              className={`tw-flex tw-h-8 tw-w-8 tw-items-center tw-justify-center tw-rounded-lg tw-text-xs tw-font-medium tw-transition-colors ${
-                p === page
-                  ? "tw-bg-blue-600 tw-text-white tw-shadow-sm"
-                  : "tw-border tw-border-gray-200 tw-text-gray-600 hover:tw-bg-gray-50"
-              }`}
-            >
-              {(p as number) + 1}
-            </button>
-          )
-        )}
-        <button
-          onClick={() => onChange(page + 1)}
-          disabled={page >= totalPages - 1}
-          aria-label={lang === "th" ? "หน้าถัดไป" : "Next page"}
-          className="tw-flex tw-h-8 tw-w-8 tw-items-center tw-justify-center tw-rounded-lg tw-border tw-border-gray-200 tw-text-sm tw-text-gray-600 tw-transition-colors hover:tw-bg-gray-50 disabled:tw-cursor-not-allowed disabled:tw-opacity-40"
-        >
-          ›
-        </button>
-      </div>
-    </div>
-  );
-}
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
@@ -232,60 +146,16 @@ export default function CMDashboardPage() {
   const [weekSel, setWeekSel] = useState<DateSel>("all");
   const [stationFilter, setStationFilter] = useState<string>("All");
   const [filters, setFilters] = useState<ActiveFilters>(EMPTY_FILTERS);
-  const [search, setSearch] = useState("");
-  const [page, setPage] = useState(0);
-  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  // « Total » (camembert) vs « Par entreprise » (barre empilée) — indépendant pour
+  // chaque bloc, on compare rarement les deux répartitions en même temps
+  const [causeView, setCauseView] = useState<ChartView>("total");
+  const [remedyView, setRemedyView] = useState<ChartView>("total");
 
   const router = useRouter();
   const [userRole, setUserRole] = useState("");
-  const maximoFailureTree = useMaximoFailureTree();
-  const faultyEquipmentLabels = useMemo(() => {
-    const labels = new Map<string, string>();
-    const options = failureClassOptions(maximoFailureTree, { hasDC: true, hasAC: true }) ?? [];
-    for (const option of options) {
-      labels.set(option.value, option.label);
-      labels.set(option.value.toUpperCase(), option.label);
-    }
-    return labels;
-  }, [maximoFailureTree]);
-  const faultyEquipmentLabel = useCallback((value?: string | null) => {
-    const code = (value || "").trim();
-    if (!code) return "";
-    return faultyEquipmentLabels.get(code) ??
-      faultyEquipmentLabels.get(code.toUpperCase()) ??
-      failureCodeLabel(code);
-  }, [faultyEquipmentLabels]);
-  const displayFaultyEquipment = useCallback((row: CMRow) => {
-    return row.faulty_equipment_label || faultyEquipmentLabel(row.faulty_equipment);
-  }, [faultyEquipmentLabel]);
-
-  // คลิกแถวในตาราง → เปิดใบงาน CM ในหน้า CM Report (แท็บตามสถานะ) + โชว์ชื่อสถานีบน navbar แทน badge ตู้ชาร์จ
-  const openReport = useCallback((r: CMRow) => {
-    if (!r.id) return;
-    const stationName = r.station_name || r.station_id;
-    if (r.station_id) localStorage.setItem("selected_station_id", r.station_id);
-    localStorage.setItem("selected_station_name", stationName);
-    localStorage.removeItem("selected_sn");
-    localStorage.removeItem("selected_charger_no");
-    window.dispatchEvent(new CustomEvent("station:selected"));
-    const params = new URLSearchParams({
-      tab: statusSlug(r.status, r.stage, r.repair_result),
-      station_id: r.station_id || "",
-      view: "form",
-      edit_id: r.id,
-      // บอกฟอร์มว่าเข้ามาจากหน้านี้ → ปุ่มย้อนกลับพากลับมาที่ dashboard ไม่ใช่ตาราง CM Report
-      from: CM_ORIGIN_DASHBOARD,
-    });
-    // ให้การกดจาก CM Dashboard เหมือนการกดจาก In Progress:
-    // engineer/admin/owner ที่เปิดใบงานรอของหรือรอหน้างานต้องเข้าฟอร์มวางแผน
-    if (
-      isPlanningWait(r.repair_result, r.assignees) &&
-      PLANNING_ROLES.includes(userRole.trim().toLowerCase())
-    ) {
-      params.set("planning", "1");
-    }
-    router.push(`/dashboard/cm-report?${params.toString()}`);
-  }, [router, userRole]);
+  // tant que le rôle n'est pas connu on ne peut pas savoir si l'utilisateur a droit
+  // à l'analytique — on garde le spinner plutôt que de la faire clignoter
+  const [roleLoaded, setRoleLoaded] = useState(false);
 
   // เคลียร์ charger ที่เลือกไว้ → sidenav กลับสู่เมนูปกติ (เหมือนหน้า Stations/PM-all)
   useEffect(() => { localStorage.removeItem("selected_sn"); localStorage.removeItem("selected_charger_no"); window.dispatchEvent(new CustomEvent("charger:deselected")); }, []);
@@ -293,8 +163,12 @@ export default function CMDashboardPage() {
   // ── Language ──────────────────────────────────────────────────────────────
   const { lang } = useLanguage();
 
-  // CS และ Technician เห็น CM Dashboard แบบรายการใบงานเท่านั้น — ซ่อนกราฟ/KPI วิเคราะห์
+  // CS และ Technician เห็นเฉพาะรายการใบงาน — ตารางย้ายไปหน้า CM list แล้ว
+  // จึงพาไปหน้านั้นแทนที่จะโชว์แดชบอร์ดเปล่า ๆ ที่ role นี้ไม่มีสิทธิ์ดู
   const isListOnlyRole = ["cs", "technician"].includes(userRole.trim().toLowerCase());
+  useEffect(() => {
+    if (isListOnlyRole) router.replace(CM_LIST_ROUTE);
+  }, [isListOnlyRole, router]);
 
   useEffect(() => {
     let alive = true;
@@ -306,6 +180,8 @@ export default function CMDashboardPage() {
         if (alive) setUserRole(user?.role ?? "");
       } catch (err) {
         console.error("fetch /me error:", err);
+      } finally {
+        if (alive) setRoleLoaded(true);
       }
     })();
     return () => { alive = false; };
@@ -332,18 +208,14 @@ export default function CMDashboardPage() {
 
   const toggleFilter = useCallback((dim: keyof ActiveFilters, value: string) => {
     setFilters((prev) => ({ ...prev, [dim]: prev[dim] === value ? null : value } as ActiveFilters));
-    setPage(0);
   }, []);
 
   const clearFilter = useCallback((dim: keyof ActiveFilters) => {
     setFilters((prev) => ({ ...prev, [dim]: null }));
-    setPage(0);
   }, []);
 
   const clearAll = () => {
     setFilters(EMPTY_FILTERS);
-    setSearch("");
-    setPage(0);
   };
 
   const activeFilterCount = Object.values(filters).filter(Boolean).length;
@@ -359,9 +231,9 @@ export default function CMDashboardPage() {
     [yearSel, monthSel]
   );
 
-  const setYear = (v: string) => { setYearSel(v === "all" ? "all" : Number(v)); setWeekSel("all"); setPage(0); };
-  const setMonth = (v: string) => { setMonthSel(v === "all" ? "all" : Number(v)); setWeekSel("all"); setPage(0); };
-  const setWeek = (v: string) => { setWeekSel(v === "all" ? "all" : Number(v)); setPage(0); };
+  const setYear = (v: string) => { setYearSel(v === "all" ? "all" : Number(v)); setWeekSel("all"); };
+  const setMonth = (v: string) => { setMonthSel(v === "all" ? "all" : Number(v)); setWeekSel("all"); };
+  const setWeek = (v: string) => { setWeekSel(v === "all" ? "all" : Number(v)); };
 
   const stationRows = useMemo(
     () => (stationFilter === "All" ? rows : rows.filter((r) => (r.station_name || r.station_id) === stationFilter)),
@@ -373,9 +245,30 @@ export default function CMDashboardPage() {
     [stationRows, yearSel, monthSel, weekSel]
   );
 
-  // ── ใบที่ถูกยกเลิกไม่ใช่ภาระงานซ่อม — ตัดออกจากทุกกราฟและ KPI (ยังเห็นในตารางด้านล่าง)
+  // ── ใบที่ถูกยกเลิกไม่ใช่ภาระงานซ่อม — ตัดออกจากทุกกราฟและ KPI
   //    ถ้าไม่ตัด ใบยกเลิกจะไปโผล่เป็น "รอจัดซื้อ"/"New SR" แล้วฉุด success rate กับ completion rate ลง
   const activeRows = useMemo(() => excludeCancelled(periodRows), [periodRows]);
+
+  // ── Marques (= entreprises détentrices) et origine des fiches ────────────────
+  // Chaque compteur ignore SON PROPRE filtre : les autres boutons restent cliquables
+  // et affichent un nombre non nul même quand une marque est déjà sélectionnée.
+  const brands = useMemo(() => listBrands(rows), [rows]);
+  const brandCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const r of applyFilters(periodRows, filters, "brand")) {
+      const b = (r.charger_brand || "").trim() || UNKNOWN_BRAND;
+      counts.set(b, (counts.get(b) ?? 0) + 1);
+    }
+    return counts;
+  }, [periodRows, filters]);
+
+  // ที่มาของใบ: ระบบเปิดเอง (auto_cm_watcher) vs ผู้ใช้กรอกเอง
+  const originCounts = useMemo(() => {
+    const base = applyFilters(periodRows, filters, "origin");
+    let auto = 0;
+    for (const r of base) if (r.auto_generated) auto++;
+    return { auto, user: base.length - auto };
+  }, [periodRows, filters]);
 
   // ── Monthly stacked chart: filtre année + station + chart-filters, mais PAS le mois/semaine
   // (เห็นครบ 12 เดือนเสมอ — คลิกแท่งเพื่อเลือกเดือน)
@@ -403,10 +296,13 @@ export default function CMDashboardPage() {
   //    une fiche à deux causes compte dans les deux tranches. Ignore son propre filtre.
   const causeRows = useMemo(() => applyFilters(activeRows, filters, "cause"), [activeRows, filters]);
   const causeData = useMemo(() => groupCountMulti(causeRows, causeLabelsOf), [causeRows]);
+  // même découpage, ventilé par marque — alimente la vue « par entreprise » du même bloc
+  const causeByBrand = useMemo(() => groupCountMultiByBrand(causeRows, causeLabelsOf), [causeRows]);
 
   // ── Remedy donut : réparti par REMEDY CODE (Replace / Repair / Reset…). Ignore son propre filtre.
   const remedyRows = useMemo(() => applyFilters(activeRows, filters, "remedy"), [activeRows, filters]);
   const remedyData = useMemo(() => groupCountMulti(remedyRows, remedyCodesOf, 10), [remedyRows]);
+  const remedyByBrand = useMemo(() => groupCountMultiByBrand(remedyRows, remedyCodesOf, 10), [remedyRows]);
 
   // ── Bar de détail : REMEDY DESCRIPTION. Sans sélection il agrège toutes les catégories ;
   //    un clic sur une tranche du donut le restreint à cette seule catégorie.
@@ -437,7 +333,7 @@ export default function CMDashboardPage() {
   const sevRows = useMemo(() => applyFilters(activeRows, filters, "severity"), [activeRows, filters]);
   const sevData = useMemo(() => groupCount(sevRows, "severity"), [sevRows]);
 
-  // ── Table: ตารางด้านล่างยังโชว์ใบที่ยกเลิกด้วย (ป้ายสีเทา) — ใช้ periodRows เต็ม ไม่ใช่ activeRows
+  // ── จำนวนใบหลังกรอง (โชว์ใต้หัวเรื่อง) — รวมใบที่ยกเลิกด้วย จึงใช้ periodRows เต็ม
   const allFiltered = useMemo(() => applyFilters(periodRows, filters), [periodRows, filters]);
   // ── KPI stat cards (7 ใบ + completion rate): all chart-filters applied
   // แถว KPI ไม่กรองด้วย workStatus ของตัวเอง — ตัวเลขครบทุก bucket เสมอ (เหมือน donut กับ status)
@@ -467,27 +363,6 @@ export default function CMDashboardPage() {
     return { ...counts, allWo, completionRate };
   }, [kpiRows]);
 
-  // ── Table: chart-filters + search + sort + paginate
-  const searchFiltered = useMemo(() => applySearch(allFiltered, search), [allFiltered, search]);
-  const sortedRows = useMemo(
-    () => [...searchFiltered].sort((a, b) => (b.cm_date || "").localeCompare(a.cm_date || "")),
-    [searchFiltered]
-  );
-  const tableRows = useMemo(
-    () => sortedRows.slice(page * pageSize, (page + 1) * pageSize),
-    [sortedRows, page, pageSize]
-  );
-
-  // Reset page when filters or search change
-  useEffect(() => { setPage(0); }, [allFiltered, search]);
-
-  const commitPageSize = (raw: string) => {
-    const n = parseInt(raw, 10);
-    if (!Number.isFinite(n) || n < 1) return;
-    setPageSize(Math.min(n, MAX_PAGE_SIZE));
-    setPage(0);
-  };
-
   // ── Translations ─────────────────────────────────────────────────────────
   const t = useMemo(() => ({
     th: {
@@ -509,6 +384,7 @@ export default function CMDashboardPage() {
       kpiWaitSiteAccess: "WO รอเข้าพื้นที่",
       kpiCancelled: "WO ยกเลิก",
       kpiCompletionRate: "อัตรางานเสร็จ",
+      kpiOther: "สถานะอื่น ๆ",
       yearLabel: "ปี",
       monthLabel: "เดือน",
       weekLabel: "สัปดาห์",
@@ -518,6 +394,18 @@ export default function CMDashboardPage() {
       weekOption: (n: number) => `สัปดาห์ที่ ${n}`,
       monthsShort: ["ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."],
       monthsLong: ["มกราคม","กุมภาพันธ์","มีนาคม","เมษายน","พฤษภาคม","มิถุนายน","กรกฎาคม","สิงหาคม","กันยายน","ตุลาคม","พฤศจิกายน","ธันวาคม"],
+      brandFilterLabel: "บริษัทผู้ถือครองตู้",
+      allBrands: "ทุกบริษัท",
+      originFilterLabel: "ที่มาของใบงาน",
+      originAuto: "ระบบเปิดอัตโนมัติ",
+      originUser: "ผู้ใช้เปิดเอง",
+      allOrigins: "ทุกที่มา",
+      unknownBrand: "ไม่ระบุบริษัท",
+      viewTotal: "รวม",
+      viewByBrand: "แยกตามบริษัท",
+      brandSplitEmpty: "ยังไม่มีข้อมูลบริษัทผู้ถือครอง",
+      tableMovedHint: "ตารางใบงานย้ายไปหน้าใหม่ — กรอง In Progress เป็นค่าเริ่มต้น และเรียงได้ทุกคอลัมน์",
+      openTablePage: "เปิดตารางใบงาน",
       s2Title: "Failure Mode Analysis",
       chartClickHint: "คลิกที่กราฟเพื่อกรองข้อมูล",
       eqTitle: "Count of Cause of Issue",
@@ -535,7 +423,7 @@ export default function CMDashboardPage() {
       barHint: "คลิกที่แท่งกราฟเพื่อเลือกเดือน",
       rowsPerPage: "แถวต่อหน้า",
       statusFilterLabel: "กรองตามสถานะ",
-      tableTitle: "CM Reports",
+      tableTitle: "CM list",
       tableCount: (n: number, q?: string) => `${n} รายการ${q ? ` · "${q}"` : ""}`,
       searchPlaceholder: "ค้นหา station, issue ID, equipment, severity, inspector…",
       filterLabel: "Filters:",
@@ -566,7 +454,7 @@ export default function CMDashboardPage() {
       clickToFilter: "Click on the chart to filter",
       cancelHint: "(click again to cancel)",
       kpiTotalSR: "Total service requests",
-      kpiAllWO: "All work order",
+      kpiAllWO: "Total work order",
       kpiNewSR: "New service requests",
       kpiWaitManpower: "WO wait for scheduled",
       kpiWaitSparepart: "WO wait for material",
@@ -576,6 +464,7 @@ export default function CMDashboardPage() {
       kpiWaitSiteAccess: "WO wait for site condition",
       kpiCancelled: "WO cancelled",
       kpiCompletionRate: "Completion rate",
+      kpiOther: "Other statuses",
       yearLabel: "Year",
       monthLabel: "Month",
       weekLabel: "Week",
@@ -585,6 +474,18 @@ export default function CMDashboardPage() {
       weekOption: (n: number) => `Week ${n}`,
       monthsShort: ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"],
       monthsLong: ["January","February","March","April","May","June","July","August","September","October","November","December"],
+      brandFilterLabel: "Owning company",
+      allBrands: "All companies",
+      originFilterLabel: "Created by",
+      originAuto: "Auto-generated",
+      originUser: "Created by user",
+      allOrigins: "All sources",
+      unknownBrand: "Unknown company",
+      viewTotal: "Total",
+      viewByBrand: "By company",
+      brandSplitEmpty: "No owning-company data yet",
+      tableMovedHint: "The work-order table moved to its own page — defaults to In Progress and every column is sortable",
+      openTablePage: "Open the table",
       s2Title: "Failure Mode Analysis",
       chartClickHint: "Click on a chart to filter data",
       eqTitle: "Count of Cause of Issue",
@@ -602,7 +503,7 @@ export default function CMDashboardPage() {
       barHint: "Click on a bar to select the month",
       rowsPerPage: "Rows per page",
       statusFilterLabel: "Filter by status",
-      tableTitle: "CM Reports",
+      tableTitle: "CM list",
       tableCount: (n: number, q?: string) => `${n} records${q ? ` · "${q}"` : ""}`,
       searchPlaceholder: "Search by station, issue ID, equipment, severity, inspector…",
       filterLabel: "Filters:",
@@ -626,17 +527,6 @@ export default function CMDashboardPage() {
     },
   }[lang]), [lang]);
 
-  // legend ใต้โดนัท — สี/ลำดับต้องตรงกับ DONUT_COLORS และ series ที่ส่งเข้ากราฟ
-  // (ต้องอยู่หลัง t ที่ประกาศไว้ด้านบน ไม่งั้นชน TDZ ตอน render)
-  const srLegend = useMemo(() => {
-    const pct = (n: number) => (srStats.total === 0 ? 0 : Math.round((n / srStats.total) * 100));
-    return [
-      { key: "completed", label: t.statusLabel.completed, color: DONUT_COLORS[0], pct: pct(srStats.completed) },
-      { key: "in_progress", label: t.statusLabel.in_progress, color: DONUT_COLORS[1], pct: pct(srStats.inProgress) },
-      { key: "open", label: t.statusLabel.open, color: DONUT_COLORS[2], pct: pct(srStats.open) },
-    ] as const;
-  }, [srStats, t]);
-
   // Maps STATUS_LABELS value (Thai key) → translated display string for filter chips
   const displayStatus = useMemo(() => (s: string | null) => {
     if (!s) return s;
@@ -645,20 +535,47 @@ export default function CMDashboardPage() {
   }, [t]);
 
   // การ์ด KPI — ws = bucket ที่คลิกแล้วกรอง, coarse = สถานะ 3 กลุ่มไว้หรี่การ์ดตอนกรองจาก donut
+  // dot = สีทึบของ bucket นั้น ใช้ทั้งในโดนัทและ legend ให้ตรงกับสีการ์ด
   type KpiCard = {
-    label: string; value: number | string; color: string;
+    label: string; value: number; color: string; dot: string;
     Icon: React.ComponentType<{ className?: string }>;
     ws?: WorkStatusFilter; coarse?: string; clearsWorkStatus?: boolean;
+    /** carte de synthèse (somme d'autres cartes) — jamais une part du donut */
+    aggregate?: boolean;
   };
-  // 6 ใบตามดีไซน์ — อัตราความสำเร็จอ่านจากกลางโดนัทแทนการ์ด
+  // Deux cartes de synthèse d'abord (Total SR = tout le périmètre, All WO = les SR
+  // devenues des work orders), puis UNE carte par bucket réel du workflow.
+  // Le donut reprend exactement ces buckets — une part par carte, même couleur —
+  // et les buckets couvrent 100 % de Total SR, donc les parts se somment au total.
+  // Les 6 cartes historiques du dashboard (cycle de vie du work order) + les 2 cartes
+  // SR demandées en amont du flux. Rien d'autre : c'est le jeu de cartes de référence.
   const kpiCards: KpiCard[] = [
-    { label: t.kpiAllWO, value: kpiStats.allWo, color: "linear-gradient(135deg,#3b82f6,#1d4ed8)", Icon: DocumentTextIcon, ws: "wo_all" },
-    { label: t.kpiWaitManpower, value: kpiStats.waitManpower, color: "linear-gradient(135deg,#fb7185,#e11d48)", Icon: ClockIcon, ws: "wait_manpower", coarse: STATUS_LABELS.open },
-    { label: t.kpiWaitSparepart, value: kpiStats.waitSparepart, color: "linear-gradient(135deg,#fbbf24,#d97706)", Icon: ShoppingCartIcon, ws: "wait_sparepart", coarse: STATUS_LABELS.open },
-    { label: t.kpiWaitSiteAccess, value: kpiStats.waitSiteAccess, color: "linear-gradient(135deg,#c084fc,#9333ea)", Icon: ExclamationTriangleIcon, ws: "wait_site_access", coarse: STATUS_LABELS.open },
-    { label: t.kpiCompleted, value: kpiStats.completed, color: "linear-gradient(135deg,#4ade80,#16a34a)", Icon: CheckCircleIcon, ws: "completed", coarse: STATUS_LABELS.completed },
-    { label: t.kpiCancelled, value: kpiCancelled, color: "linear-gradient(135deg,#94a3b8,#64748b)", Icon: XCircleIcon, ws: "cancelled", coarse: STATUS_LABELS.cancelled },
+    { label: t.kpiTotalSR, value: kpiStats.total, color: "linear-gradient(135deg,#64748b,#334155)", dot: "#64748b", Icon: InboxStackIcon, clearsWorkStatus: true, aggregate: true },
+    { label: t.kpiCsWaitApprove, value: kpiStats.waitCsApprove, color: "linear-gradient(135deg,#f472b6,#be185d)", dot: "#ec4899", Icon: ClipboardDocumentCheckIcon, ws: "wait_cs_approve", coarse: STATUS_LABELS.open },
+    { label: t.kpiAllWO, value: kpiStats.allWo, color: "linear-gradient(135deg,#3b82f6,#1d4ed8)", dot: "#3b82f6", Icon: DocumentTextIcon, ws: "wo_all", aggregate: true },
+    { label: t.kpiWaitManpower, value: kpiStats.waitManpower, color: "linear-gradient(135deg,#fb7185,#e11d48)", dot: "#fb7185", Icon: ClockIcon, ws: "wait_manpower", coarse: STATUS_LABELS.open },
+    { label: t.kpiWaitSparepart, value: kpiStats.waitSparepart, color: "linear-gradient(135deg,#fbbf24,#d97706)", dot: "#f59e0b", Icon: ShoppingCartIcon, ws: "wait_sparepart", coarse: STATUS_LABELS.open },
+    { label: t.kpiWaitSiteAccess, value: kpiStats.waitSiteAccess, color: "linear-gradient(135deg,#c084fc,#9333ea)", dot: "#a855f7", Icon: ExclamationTriangleIcon, ws: "wait_site_access", coarse: STATUS_LABELS.open },
+    { label: t.kpiCompleted, value: kpiStats.completed, color: "linear-gradient(135deg,#4ade80,#16a34a)", dot: "#22c55e", Icon: CheckCircleIcon, ws: "completed", coarse: STATUS_LABELS.completed },
+    { label: t.kpiCancelled, value: kpiCancelled, color: "linear-gradient(135deg,#94a3b8,#64748b)", dot: "#94a3b8", Icon: XCircleIcon, ws: "cancelled", coarse: STATUS_LABELS.cancelled },
   ];
+
+  // Parts du donut = une par carte de bucket (les 2 cartes de synthèse recompteraient
+  // les mêmes fiches, elles n'ont pas de part). Ces buckets ne couvrent pas tout le
+  // périmètre — les fiches restantes (SR neuves, WO en cours, WO en attente
+  // d'approbation) forment une part « autres », sinon le total du donut mentirait
+  // sur Total SR.
+  const bucketSlices = useMemo(() => {
+    const slices = kpiCards.filter((c) => !c.aggregate && c.ws !== undefined);
+    const covered = slices.reduce((sum, c) => sum + c.value, 0);
+    const rest = kpiStats.total + kpiCancelled - covered;
+    return rest > 0
+      ? [...slices, { label: t.kpiOther, value: rest, color: "", dot: "#cbd5e1", Icon: InboxStackIcon } as KpiCard]
+      : slices;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kpiStats, kpiCancelled, t]);
+
+  const donutTotal = useMemo(() => bucketSlices.reduce((sum, c) => sum + c.value, 0), [bucketSlices]);
 
   // ป้ายชื่อ bucket สำหรับ filter chip (คลิกการ์ด KPI)
   const workStatusLabel: Record<WorkStatusFilter, string> = {
@@ -676,19 +593,21 @@ export default function CMDashboardPage() {
 
   // ─── Chart options ────────────────────────────────────────────────────────
 
+  // Donut = une part par carte de bucket (même ordre, même couleur) — cliquer une
+  // part pose exactement le même filtre que cliquer la carte correspondante
   const donutOptions = useMemo<ApexCharts.ApexOptions>(() => ({
     chart: {
       type: "donut",
       events: {
         dataPointSelection: (_e: any, _ctx: any, { dataPointIndex }: any) => {
-          const labels = [STATUS_LABELS.completed, STATUS_LABELS.in_progress, STATUS_LABELS.open];
-          toggleFilter("status", labels[dataPointIndex]);
+          const ws = bucketSlices[dataPointIndex]?.ws;
+          if (ws) toggleFilter("workStatus", ws);
         },
       },
     },
-    colors: DONUT_COLORS,
-    labels: [t.statusLabel.completed, t.statusLabel.in_progress, t.statusLabel.open],
-    // legend ของ Apex ปิดไว้ — ใช้ legend ที่เขียนเองด้านล่างกราฟ (โชว์ % ต่อสถานะ + คลิกกรองได้)
+    colors: bucketSlices.map((c) => c.dot),
+    labels: bucketSlices.map((c) => c.label),
+    // legend ของ Apex ปิดไว้ — ใช้ legend ที่เขียนเองด้านล่างกราฟ (โชว์ % ต่อ bucket + คลิกกรองได้)
     legend: { show: false },
     states: { active: { filter: { type: "darken", value: 0.7 } } },
     plotOptions: {
@@ -708,7 +627,7 @@ export default function CMDashboardPage() {
     },
     dataLabels: { enabled: false },
     tooltip: { y: { formatter: (v: number) => `${v} ${t.taskUnit}` } },
-  }), [successRate, toggleFilter, t]);
+  }), [successRate, toggleFilter, t, bucketSlices]);
 
   const causeOptions = useMemo<ApexCharts.ApexOptions>(() => ({
     chart: {
@@ -738,6 +657,63 @@ export default function CMDashboardPage() {
     },
     tooltip: { y: { formatter: (v: number) => `${v} case${v !== 1 ? "s" : ""}` } },
   }), [causeData, toggleFilter]);
+
+  // ── Vue « par entreprise » des deux camemberts ────────────────────────────
+  // Un camembert ne peut pas porter deux dimensions à la fois : pour lire la
+  // répartition par marque on bascule sur une barre empilée horizontale — mêmes
+  // catégories, mêmes totaux, une couleur par entreprise détentrice.
+  const brandColorOf = useCallback(
+    (brand: string) => {
+      const i = brands.indexOf(brand);
+      return BRAND_COLORS[(i >= 0 ? i : brands.length) % BRAND_COLORS.length];
+    },
+    [brands]
+  );
+
+  const brandSplitOptions = useCallback(
+    (
+      categories: string[],
+      seriesBrands: string[],
+      onSelect: (categoryIndex: number) => void
+    ): ApexCharts.ApexOptions => ({
+      chart: {
+        type: "bar", stacked: true, toolbar: { show: false },
+        events: {
+          dataPointSelection: (_e: any, _ctx: any, { dataPointIndex }: any) => onSelect(dataPointIndex),
+        },
+      },
+      colors: seriesBrands.map(brandColorOf),
+      plotOptions: { bar: { horizontal: true, borderRadius: 3, barHeight: "70%" } },
+      xaxis: {
+        categories,
+        // comptes de tickets = entiers, jamais 0.5
+        labels: { formatter: (v: string) => String(Math.round(Number(v))), style: { fontSize: "11px" } },
+      },
+      yaxis: { labels: { maxWidth: 220, style: { fontSize: "11px" } } },
+      legend: { show: true, position: "bottom", fontSize: "11px" },
+      dataLabels: { enabled: false },
+      grid: { borderColor: "#f1f5f9" },
+      states: { active: { filter: { type: "darken", value: 0.7 } } },
+      tooltip: { y: { formatter: (v: number) => `${v} case${v !== 1 ? "s" : ""}` } },
+    }),
+    [brandColorOf]
+  );
+
+  const causeBrandOptions = useMemo(
+    () => brandSplitOptions(causeByBrand.keys, causeByBrand.brands, (i) => {
+      const label = causeByBrand.keys[i];
+      if (label) toggleFilter("cause", label);
+    }),
+    [brandSplitOptions, causeByBrand, toggleFilter]
+  );
+
+  const remedyBrandOptions = useMemo(
+    () => brandSplitOptions(remedyByBrand.keys.map(remedyLabel), remedyByBrand.brands, (i) => {
+      const code = remedyByBrand.keys[i];
+      if (code) toggleFilter("remedy", code);
+    }),
+    [brandSplitOptions, remedyByBrand, toggleFilter]
+  );
 
   // ── Remedy donut (REMEDY CODE) — clic = choisir le remède détaillé dans le bar chart
   const remedyOptions = useMemo<ApexCharts.ApexOptions>(() => ({
@@ -841,7 +817,6 @@ export default function CMDashboardPage() {
           if (dataPointIndex < 0 || dataPointIndex > 11) return;
           setMonthSel((prev) => (prev === dataPointIndex ? "all" : dataPointIndex));
           setWeekSel("all");
-          setPage(0);
         },
       },
     },
@@ -865,7 +840,9 @@ export default function CMDashboardPage() {
 
   // ─── Render ───────────────────────────────────────────────────────────────
 
-  if (loading) {
+  // roleLoaded : cs/technician sont redirigés vers CM list — sans cette garde
+  // ils verraient l'analytique clignoter le temps que /me réponde
+  if (loading || !roleLoaded || isListOnlyRole) {
     return (
       <div role="status" aria-label={t.loading} className="tw-flex tw-min-h-64 tw-items-center tw-justify-center">
         <div aria-hidden="true" className="tw-h-10 tw-w-10 tw-animate-spin tw-rounded-full tw-border-4 tw-border-blue-500 tw-border-t-transparent" />
@@ -931,6 +908,83 @@ export default function CMDashboardPage() {
         </div>
       </div>
 
+      {/* ── Filtres compagnie (marque du chargeur) + origine de la fiche ──
+           Placés avant les KPI : ils redéfinissent le périmètre de TOUT le dashboard,
+           contrairement aux clics dans les graphes qui affinent une dimension. */}
+      {!isListOnlyRole && (
+        <div className="tw-mb-4 tw-flex tw-flex-col tw-gap-3 tw-rounded-xl tw-border tw-border-blue-gray-100 tw-bg-white tw-px-4 tw-py-3 tw-shadow-sm lg:tw-flex-row lg:tw-items-center lg:tw-justify-between">
+          <div className="tw-flex tw-min-w-0 tw-flex-wrap tw-items-center tw-gap-2">
+            <span className="tw-text-xs tw-font-semibold tw-uppercase tw-tracking-wide tw-text-gray-400">
+              {t.brandFilterLabel}
+            </span>
+            <button
+              type="button"
+              onClick={() => clearFilter("brand")}
+              aria-pressed={filters.brand === null}
+              className={`tw-rounded-full tw-px-3 tw-py-1 tw-text-xs tw-font-semibold tw-transition-all ${
+                filters.brand === null
+                  ? "tw-bg-gray-900 tw-text-white tw-shadow-sm"
+                  : "tw-bg-gray-100 tw-text-gray-600 hover:tw-bg-gray-200"
+              }`}
+            >
+              {t.allBrands}
+            </button>
+            {brands.map((b, i) => {
+              const isActive = filters.brand === b;
+              const color = BRAND_COLORS[i % BRAND_COLORS.length];
+              const label = b === UNKNOWN_BRAND ? t.unknownBrand : b;
+              return (
+                <button
+                  key={b}
+                  type="button"
+                  onClick={() => toggleFilter("brand", b)}
+                  aria-pressed={isActive}
+                  className={`tw-inline-flex tw-items-center tw-gap-1.5 tw-rounded-full tw-px-3 tw-py-1 tw-text-xs tw-font-semibold tw-transition-all ${
+                    isActive ? "tw-text-white tw-shadow-sm" : "tw-bg-gray-100 tw-text-gray-600 hover:tw-bg-gray-200"
+                  }`}
+                  style={isActive ? { background: color } : undefined}
+                >
+                  <span
+                    aria-hidden="true"
+                    className="tw-h-2 tw-w-2 tw-rounded-full"
+                    style={{ background: isActive ? "#fff" : color }}
+                  />
+                  {label} ({brandCounts.get(b) ?? 0})
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="tw-flex tw-shrink-0 tw-flex-wrap tw-items-center tw-gap-2">
+            <span className="tw-text-xs tw-font-semibold tw-uppercase tw-tracking-wide tw-text-gray-400">
+              {t.originFilterLabel}
+            </span>
+            {([
+              { key: null, label: t.allOrigins, count: originCounts.auto + originCounts.user },
+              { key: "auto" as CmOrigin, label: t.originAuto, count: originCounts.auto },
+              { key: "user" as CmOrigin, label: t.originUser, count: originCounts.user },
+            ]).map(({ key, label, count }) => {
+              const isActive = filters.origin === key;
+              return (
+                <button
+                  key={key ?? "all"}
+                  type="button"
+                  onClick={() => (key === null ? clearFilter("origin") : toggleFilter("origin", key))}
+                  aria-pressed={isActive}
+                  className={`tw-rounded-full tw-px-3 tw-py-1 tw-text-xs tw-font-semibold tw-transition-all ${
+                    isActive
+                      ? "tw-bg-indigo-600 tw-text-white tw-shadow-sm"
+                      : "tw-bg-gray-100 tw-text-gray-600 hover:tw-bg-gray-200"
+                  }`}
+                >
+                  {label}{key === null ? "" : ` (${count})`}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* ── Active filter chips ── */}
       {activeFilterCount > 0 && (
         <div className="tw-mb-4 tw-flex tw-flex-wrap tw-items-center tw-gap-2">
@@ -942,6 +996,8 @@ export default function CMDashboardPage() {
           {filters.equipment && <FilterChip label={`Equipment: ${filters.equipment}`} lang={lang} onRemove={() => clearFilter("equipment")} />}
           {filters.severity && <FilterChip label={`Severity: ${filters.severity}`} lang={lang} onRemove={() => clearFilter("severity")} />}
           {filters.station && <FilterChip label={`Station: ${filters.station}`} lang={lang} onRemove={() => clearFilter("station")} />}
+          {filters.brand && <FilterChip label={`${t.brandFilterLabel}: ${filters.brand === UNKNOWN_BRAND ? t.unknownBrand : filters.brand}`} lang={lang} onRemove={() => clearFilter("brand")} />}
+          {filters.origin && <FilterChip label={`${t.originFilterLabel}: ${filters.origin === "auto" ? t.originAuto : t.originUser}`} lang={lang} onRemove={() => clearFilter("origin")} />}
           <button onClick={clearAll} aria-label={t.clearAllAria} className="tw-text-xs tw-font-semibold tw-text-red-500 hover:tw-text-red-700 tw-underline">
             {t.clearAll}
           </button>
@@ -960,73 +1016,93 @@ export default function CMDashboardPage() {
           <select
             id="station-filter"
             value={stationFilter}
-            onChange={(e) => { setStationFilter(e.target.value); setPage(0); }}
+            onChange={(e) => setStationFilter(e.target.value)}
             className="tw-rounded-lg tw-border tw-border-gray-200 tw-bg-white tw-px-3 tw-py-1.5 tw-text-sm tw-text-gray-700 tw-shadow-sm focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-blue-400"
           >
             {stations.map((s) => <option key={s}>{s}</option>)}
           </select>
         </div>
 
-        {/* โดนัทอยู่ซ้าย + กริดการ์ด KPI อยู่ขวา — คลิกได้ทั้งสไลซ์ legend และการ์ด */}
-        <Card className="tw-relative tw-border tw-border-blue-gray-100 tw-shadow-sm">
-          {filters.status && (
-            <div className="tw-absolute tw-right-3 tw-top-3 tw-z-10 tw-rounded-full tw-bg-blue-50 tw-px-2 tw-py-0.5 tw-text-[10px] tw-font-bold tw-text-blue-600 tw-ring-1 tw-ring-blue-200">
-              🔍 {displayStatus(filters.status)}
-            </div>
-          )}
-          <CardBody className="!tw-p-4 md:!tw-p-6">
-            <div className="tw-grid tw-grid-cols-1 tw-items-center tw-gap-6 lg:tw-grid-cols-3">
+        {/* Donut et cartes KPI = deux blocs distincts, dans la même grille 2 colonnes
+            que « Failure Mode Analysis » plus bas — les cartes de tout le dashboard
+            gardent ainsi la même largeur d'une section à l'autre */}
+        <div className="tw-grid tw-grid-cols-1 tw-gap-6 lg:tw-grid-cols-2">
 
-              {/* โดนัท + legend พร้อมเปอร์เซ็นต์ต่อสถานะ */}
+          <Card className="tw-relative tw-border tw-border-blue-gray-100 tw-shadow-sm">
+            {filters.workStatus && (
+              <div className="tw-absolute tw-right-3 tw-top-3 tw-z-10 tw-rounded-full tw-bg-blue-50 tw-px-2 tw-py-0.5 tw-text-[10px] tw-font-bold tw-text-blue-600 tw-ring-1 tw-ring-blue-200">
+                🔍 {workStatusLabel[filters.workStatus]}
+              </div>
+            )}
+            <CardBody className="!tw-p-4 md:!tw-p-6">
+              {/* โดนัท + legend — หนึ่งช่องต่อหนึ่งการ์ด KPI (bucket เดียวกัน สีเดียวกัน) */}
               <div className="tw-min-w-0">
                 <p className="tw-mb-1 tw-text-xs tw-text-blue-gray-400">{t.clickToFilter}</p>
                 {/* key บังคับ remount ตอนเปอร์เซ็นต์เปลี่ยน — ApexCharts ไม่รีเฟรช formatter ของ total label ผ่าน updateOptions */}
-                <Chart key={`sr-${successRate}`} type="donut" options={donutOptions} series={[srStats.completed, srStats.inProgress, srStats.open]} width="100%" height={260} />
-                <div className="tw-mt-3 tw-grid tw-grid-cols-3 tw-gap-2">
-                  {srLegend.map(({ key, label, color, pct }) => {
-                    const isActive = filters.status === STATUS_LABELS[key];
+                <Chart
+                  key={`sr-${successRate}-${bucketSlices.length}`}
+                  type="donut"
+                  options={donutOptions}
+                  series={bucketSlices.map((c) => c.value)}
+                  width="100%"
+                  height={260}
+                />
+                {/* Légende compacte sur 2 colonnes (pastille · libellé · %) — en
+                    lignes basses plutôt qu'en blocs centrés, la carte reste courte
+                    et se cale sur la hauteur de la grille de cartes à droite */}
+                <div className="tw-mt-3 tw-grid tw-grid-cols-1 tw-gap-x-3 tw-gap-y-0.5 sm:tw-grid-cols-2">
+                  {bucketSlices.map(({ ws, label, dot, value }) => {
+                    const isActive = ws !== undefined && filters.workStatus === ws;
+                    // dénominateur = somme des parts affichées, pas Total SR (qui
+                    // exclut les fiches annulées) — sinon les % ne font pas 100
+                    const pct = donutTotal === 0 ? 0 : Math.round((value / donutTotal) * 100);
                     return (
                       <button
-                        key={key}
+                        key={label}
                         type="button"
-                        onClick={() => toggleFilter("status", STATUS_LABELS[key])}
-                        aria-pressed={isActive}
-                        className={`tw-rounded-lg tw-px-1 tw-py-1.5 tw-text-center tw-transition-colors ${isActive ? "tw-bg-blue-50 tw-ring-1 tw-ring-blue-200" : "hover:tw-bg-gray-50"}`}
+                        // la part « autres » regroupe plusieurs états : rien à filtrer
+                        onClick={ws === undefined ? undefined : () => toggleFilter("workStatus", ws)}
+                        disabled={ws === undefined}
+                        aria-pressed={ws === undefined ? undefined : isActive}
+                        title={`${label} — ${value}`}
+                        className={`tw-flex tw-items-center tw-gap-1.5 tw-rounded-md tw-px-1.5 tw-py-1 tw-text-left tw-transition-colors ${isActive ? "tw-bg-blue-50 tw-ring-1 tw-ring-blue-200" : ws === undefined ? "tw-cursor-default" : "hover:tw-bg-gray-50"}`}
                       >
-                        <span className="tw-mx-auto tw-mb-1 tw-block tw-h-2.5 tw-w-2.5 tw-rounded-full" style={{ background: color }} />
-                        <span className="tw-block tw-text-[11px] tw-leading-tight tw-text-gray-500">{label}</span>
-                        <span className="tw-block tw-text-sm tw-font-bold tw-text-gray-700">{pct}%</span>
+                        <span className="tw-h-2 tw-w-2 tw-shrink-0 tw-rounded-full" style={{ background: dot }} />
+                        <span className="tw-min-w-0 tw-flex-1 tw-truncate tw-text-[11px] tw-leading-tight tw-text-gray-500">{label}</span>
+                        <span className="tw-shrink-0 tw-text-[11px] tw-font-bold tw-text-gray-700">{pct}%</span>
                       </button>
                     );
                   })}
                 </div>
               </div>
+            </CardBody>
+          </Card>
 
-              {/* การ์ด KPI — คลิกเพื่อกรองทั้งแดชบอร์ด */}
-              <div className="tw-grid tw-grid-cols-1 tw-gap-4 sm:tw-grid-cols-2 lg:tw-col-span-2">
-                {kpiCards.map((c) => (
-                  <StatCard
-                    key={c.label}
-                    label={c.label} value={c.value} color={c.color} Icon={c.Icon}
-                    active={c.ws !== undefined && filters.workStatus === c.ws}
-                    dim={
-                      // « All work order » englobe les autres buckets → on ne grise que
-                      // lorsqu'un bucket précis est sélectionné, et jamais la carte englobante
-                      (filters.workStatus !== null && filters.workStatus !== "wo_all" &&
-                        c.ws !== undefined && c.ws !== "wo_all" && filters.workStatus !== c.ws) ||
-                      (filters.status !== null && c.coarse !== undefined && filters.status !== c.coarse)
-                    }
-                    onClick={
-                      c.ws !== undefined
-                        ? () => toggleFilter("workStatus", c.ws!)
-                        : c.clearsWorkStatus ? () => clearFilter("workStatus") : undefined
-                    }
-                  />
-                ))}
-              </div>
-            </div>
-          </CardBody>
-        </Card>
+          {/* การ์ด KPI — คลิกเพื่อกรองทั้งแดชบอร์ด
+              auto-rows-fr + h-full : les 4 rangées se partagent la hauteur du donut,
+              les deux colonnes de la section se terminent donc au même niveau */}
+          <div className="tw-grid tw-h-full tw-auto-rows-fr tw-grid-cols-1 tw-gap-3 sm:tw-grid-cols-2">
+            {kpiCards.map((c) => (
+              <StatCard
+                key={c.label}
+                label={c.label} value={c.value} color={c.color} Icon={c.Icon}
+                active={c.ws !== undefined && filters.workStatus === c.ws}
+                dim={
+                  // « All work order » englobe les autres buckets → on ne grise que
+                  // lorsqu'un bucket précis est sélectionné, et jamais la carte englobante
+                  (filters.workStatus !== null && filters.workStatus !== "wo_all" &&
+                    c.ws !== undefined && c.ws !== "wo_all" && filters.workStatus !== c.ws) ||
+                  (filters.status !== null && c.coarse !== undefined && filters.status !== c.coarse)
+                }
+                onClick={
+                  c.ws !== undefined
+                    ? () => toggleFilter("workStatus", c.ws!)
+                    : c.clearsWorkStatus ? () => clearFilter("workStatus") : undefined
+                }
+              />
+            ))}
+          </div>
+        </div>
       </section>
       )}
 
@@ -1046,17 +1122,26 @@ export default function CMDashboardPage() {
                 🔍 {filters.cause}
               </div>
             )}
-            <CardHeader floated={false} shadow={false} className="tw-m-4 tw-mb-0">
-              <Typography variant="h6" color="blue-gray">
-                {t.eqTitle}
-              </Typography>
-              <Typography variant="small" className="!tw-font-normal !tw-text-blue-gray-500">
-                {t.eqSubtitle(causeData.vals.reduce((s, v) => s + v, 0))}
-              </Typography>
+            <CardHeader floated={false} shadow={false} className="tw-m-4 tw-mb-0 tw-flex tw-items-start tw-justify-between tw-gap-3">
+              <div className="tw-min-w-0">
+                <Typography variant="h6" color="blue-gray">
+                  {t.eqTitle}
+                </Typography>
+                <Typography variant="small" className="!tw-font-normal !tw-text-blue-gray-500">
+                  {t.eqSubtitle(causeData.vals.reduce((s, v) => s + v, 0))}
+                </Typography>
+              </div>
+              <ViewToggle value={causeView} onChange={setCauseView} totalLabel={t.viewTotal} brandLabel={t.viewByBrand} />
             </CardHeader>
             <CardBody className="!tw-px-4 !tw-pt-2 !tw-pb-4">
               {causeData.vals.length === 0 ? (
                 <EmptyChart message={t.noChartData} />
+              ) : causeView === "brand" ? (
+                causeByBrand.series.length === 0 ? (
+                  <EmptyChart message={t.brandSplitEmpty} />
+                ) : (
+                  <Chart type="bar" options={causeBrandOptions} series={causeByBrand.series} width="100%" height={260} />
+                )
               ) : (
                 <Chart type="donut" options={causeOptions} series={causeData.vals} width="100%" height={260} />
               )}
@@ -1103,15 +1188,24 @@ export default function CMDashboardPage() {
                 🔍 {remedyLabel(filters.remedy)}
               </div>
             )}
-            <CardHeader floated={false} shadow={false} className="tw-m-4 tw-mb-0">
-              <Typography variant="h6" color="blue-gray">{t.remedyTitle}</Typography>
-              <Typography variant="small" className="!tw-font-normal !tw-text-blue-gray-500">
-                {t.remedySubtitle(remedyData.vals.reduce((s, v) => s + v, 0))}
-              </Typography>
+            <CardHeader floated={false} shadow={false} className="tw-m-4 tw-mb-0 tw-flex tw-items-start tw-justify-between tw-gap-3">
+              <div className="tw-min-w-0">
+                <Typography variant="h6" color="blue-gray">{t.remedyTitle}</Typography>
+                <Typography variant="small" className="!tw-font-normal !tw-text-blue-gray-500">
+                  {t.remedySubtitle(remedyData.vals.reduce((s, v) => s + v, 0))}
+                </Typography>
+              </div>
+              <ViewToggle value={remedyView} onChange={setRemedyView} totalLabel={t.viewTotal} brandLabel={t.viewByBrand} />
             </CardHeader>
             <CardBody className="!tw-px-4 !tw-pt-2 !tw-pb-4">
               {remedyData.vals.length === 0 ? (
                 <EmptyChart message={t.noChartData} />
+              ) : remedyView === "brand" ? (
+                remedyByBrand.series.length === 0 ? (
+                  <EmptyChart message={t.brandSplitEmpty} />
+                ) : (
+                  <Chart type="bar" options={remedyBrandOptions} series={remedyByBrand.series} width="100%" height={260} />
+                )
               ) : (
                 <Chart type="donut" options={remedyOptions} series={remedyData.vals} width="100%" height={260} />
               )}
@@ -1171,190 +1265,27 @@ export default function CMDashboardPage() {
       </section>
       )}
 
-      {/* ── Section 4: Table ── */}
+      {/* ── Section 4: lien vers la page CM list ──
+           Le tableau vit maintenant sur sa propre page (filtre In Progress par
+           défaut + tri sur toutes les colonnes) — ici on ne garde que l'entrée. */}
       <section>
-        {/* Table header */}
-        <div className="tw-mb-3 tw-flex tw-flex-col tw-gap-3 sm:tw-flex-row sm:tw-items-center sm:tw-justify-between">
-          <h2 className="tw-text-base tw-font-semibold tw-text-gray-700">
-            {t.tableTitle}
-            <span className="tw-ml-2 tw-text-sm tw-font-normal tw-text-gray-400">
-              ({t.tableCount(searchFiltered.length, search || undefined)})
-            </span>
-          </h2>
-          <div className="tw-flex tw-flex-wrap tw-items-center tw-gap-3">
-            {activeFilterCount > 0 && (
-              <button onClick={clearAll} className="tw-text-xs tw-font-semibold tw-text-red-500 hover:tw-text-red-700 tw-underline">
-                {t.clearFilters}
-              </button>
-            )}
-            {/* ปุ่มกรองสถานะด่วน Open / In Progress / Closed / Cancelled — ป้ายเดียวกับ badge ในตาราง */}
-            <div className="tw-flex tw-items-center tw-gap-1.5" role="group" aria-label={t.statusFilterLabel}>
-              {([
-                { key: "open", label: t.quickOpen, color: "#dc2626", bg: "#fee2e2", count: srStats.open },
-                { key: "in_progress", label: t.quickInProgress, color: "#ea580c", bg: "#fff7ed", count: srStats.inProgress },
-                { key: "completed", label: t.quickComplete, color: "#15803d", bg: "#dcfce7", count: srStats.completed },
-                { key: "cancelled", label: t.quickCancelled, color: "#475569", bg: "#f1f5f9", count: cancelledCount },
-              ] as const).map(({ key, label, color, bg, count }) => {
-                const isActive = filters.status === STATUS_LABELS[key];
-                return (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => toggleFilter("status", STATUS_LABELS[key])}
-                    aria-pressed={isActive}
-                    className={`tw-rounded-full tw-px-3 tw-py-1 tw-text-xs tw-font-semibold tw-transition-all ${isActive ? "tw-shadow-sm" : "hover:tw-brightness-95"}`}
-                    style={isActive ? { background: color, color: "#fff" } : { background: bg, color }}
-                  >
-                    {label} ({count})
-                  </button>
-                );
-              })}
+        <Card className="tw-border tw-border-blue-gray-100 tw-shadow-sm">
+          <CardBody className="tw-flex tw-flex-col tw-gap-3 sm:tw-flex-row sm:tw-items-center sm:tw-justify-between">
+            <div>
+              <Typography variant="h6" color="blue-gray">{t.tableTitle}</Typography>
+              <Typography variant="small" className="!tw-font-normal !tw-text-blue-gray-500">
+                {t.tableMovedHint}
+              </Typography>
             </div>
-            {/* ผู้ใช้พิมพ์จำนวนแถวต่อหน้าเองได้ */}
-            <div className="tw-flex tw-items-center tw-gap-1.5">
-              <label htmlFor="rows-per-page" className="tw-text-xs tw-font-medium tw-text-gray-500">{t.rowsPerPage}</label>
-              <input
-                id="rows-per-page"
-                type="number"
-                min={1}
-                max={MAX_PAGE_SIZE}
-                value={pageSize}
-                onChange={(e) => commitPageSize(e.target.value)}
-                list="rows-per-page-presets"
-                className="tw-w-20 tw-rounded-lg tw-border tw-border-gray-200 tw-bg-white tw-px-2.5 tw-py-1.5 tw-text-sm tw-text-gray-700 tw-shadow-sm focus:tw-border-blue-400 focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-blue-100"
-              />
-              <datalist id="rows-per-page-presets">
-                {[10, 15, 25, 50, 100].map((n) => <option key={n} value={n} />)}
-              </datalist>
-            </div>
-          </div>
-        </div>
-
-        {/* Search bar */}
-        <div className="tw-mb-3 tw-relative">
-          <span className="tw-absolute tw-left-3 tw-top-1/2 -tw-translate-y-1/2 tw-text-gray-400 tw-text-sm">🔍</span>
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder={t.searchPlaceholder}
-            className="tw-w-full tw-rounded-xl tw-border tw-border-gray-200 tw-bg-white tw-py-2.5 tw-pl-9 tw-pr-4 tw-text-sm tw-text-gray-700 tw-shadow-sm tw-transition-all focus:tw-border-blue-400 focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-blue-100"
-          />
-          {search && (
             <button
-              onClick={() => { setSearch(""); setPage(0); }}
-              aria-label={t.clearSearchAria}
-              className="tw-absolute tw-right-3 tw-top-1/2 -tw-translate-y-1/2 tw-text-gray-400 hover:tw-text-gray-600 tw-text-lg tw-leading-none"
+              type="button"
+              onClick={() => router.push(CM_LIST_ROUTE)}
+              className="tw-inline-flex tw-shrink-0 tw-items-center tw-gap-2 tw-rounded-xl tw-bg-gray-900 tw-px-5 tw-py-2.5 tw-text-sm tw-font-semibold tw-text-white tw-shadow-lg tw-transition-colors hover:tw-bg-black"
             >
-              <span aria-hidden="true">×</span>
+              {t.openTablePage}
+              <TableCellsIcon className="tw-h-5 tw-w-5" />
             </button>
-          )}
-        </div>
-
-        <Card className="tw-overflow-hidden tw-border tw-border-blue-gray-100 tw-shadow-sm">
-          <div className="tw-overflow-x-auto">
-            <table className="tw-w-full tw-min-w-[980px] tw-table-auto tw-text-left tw-text-sm">
-              <thead>
-                <tr className="tw-bg-gray-50 tw-text-xs tw-font-semibold tw-uppercase tw-tracking-wide tw-text-gray-500">
-                  {t.tableHeaders.map((h) => (
-                    <th key={h} className="tw-px-4 tw-py-3 tw-whitespace-nowrap">{h}</th>
-                  ))}
-                  <th className="tw-px-4 tw-py-3 tw-whitespace-nowrap">PDF</th>
-                </tr>
-              </thead>
-              <tbody>
-                {tableRows.length === 0 ? (
-                  <tr>
-                    <td colSpan={10} className="tw-p-8 tw-text-center tw-text-gray-400">
-                      {t.noResults(search || undefined)}
-                    </td>
-                  </tr>
-                ) : tableRows.map((r, i) => {
-                  const badge = workStatusBadge(r);
-                  const canOpenPdf = normalizeStatus(r.status) === "completed";
-                  return (
-                    <tr
-                      key={r.id}
-                      onClick={() => openReport(r)}
-                      title={`${t.openReportTitle} · ${r.station_name || r.station_id}`}
-                      className="tw-cursor-pointer tw-border-t tw-border-gray-100 hover:tw-bg-blue-50/30"
-                    >
-                      <td className="tw-px-4 tw-py-3 tw-text-gray-400">{page * pageSize + i + 1}</td>
-                      <td className="tw-px-4 tw-py-3 tw-font-medium tw-text-gray-800">{r.station_name || r.station_id}</td>
-                      <td className="tw-px-4 tw-py-3 tw-text-gray-600">{r.issue_id || "-"}</td>
-                      <td className="tw-px-4 tw-py-3 tw-text-gray-600">{r.reported_by || "-"}</td>
-                      <td className="tw-px-4 tw-py-3">
-                        <button
-                          onClick={(e) => { e.stopPropagation(); r.faulty_equipment && toggleFilter("equipment", r.faulty_equipment); }}
-                          className={`tw-rounded tw-px-1.5 tw-py-0.5 tw-text-xs tw-transition-colors ${
-                            filters.equipment === r.faulty_equipment
-                              ? "tw-bg-blue-100 tw-text-blue-700 tw-font-bold"
-                              : "tw-text-gray-600 hover:tw-bg-gray-100"
-                          }`}
-                        >
-                          {displayFaultyEquipment(r) || "-"}
-                        </button>
-                      </td>
-                      <td className="tw-px-4 tw-py-3 tw-text-gray-600">
-                        <span className="tw-block tw-max-w-[260px] tw-truncate tw-text-xs" title={r.problem_details || ""}>
-                          {r.problem_details || "-"}
-                        </span>
-                      </td>
-                      <td className="tw-px-4 tw-py-3">
-                        <button
-                          onClick={(e) => { e.stopPropagation(); r.severity && toggleFilter("severity", r.severity); }}
-                          className={`tw-rounded tw-px-1.5 tw-py-0.5 tw-text-xs tw-transition-colors ${
-                            filters.severity === r.severity
-                              ? "tw-bg-blue-100 tw-text-blue-700 tw-font-bold"
-                              : "tw-text-gray-600 hover:tw-bg-gray-100"
-                          }`}
-                        >
-                          {r.severity || "-"}
-                        </button>
-                      </td>
-                      <td className="tw-px-4 tw-py-3 tw-text-gray-500">
-                        {r.cm_date ? new Date(r.cm_date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "-"}
-                      </td>
-                      <td className="tw-px-4 tw-py-3">
-                        <button
-                          onClick={(e) => { e.stopPropagation(); toggleFilter("workStatus", badge.ws); }}
-                          className="tw-whitespace-nowrap tw-rounded-full tw-px-2.5 tw-py-0.5 tw-text-xs tw-font-medium tw-transition-all hover:tw-opacity-80"
-                          style={{ background: badge.bg, color: badge.text, outline: filters.workStatus === badge.ws ? `2px solid ${badge.text}` : "none" }}
-                        >
-                          {workStatusLabel[badge.ws]}
-                        </button>
-                      </td>
-                      <td className="tw-px-4 tw-py-3 tw-text-center">
-                        {r.id && canOpenPdf ? (
-                          <a
-                            href={`${API_BASE}/pdf/cm/${encodeURIComponent(r.id)}/export?station_id=${encodeURIComponent(r.station_id || "")}&lang=${lang}&dl=0`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            onClick={(e) => e.stopPropagation()}
-                            className="tw-inline-flex tw-items-center tw-justify-center tw-rounded-lg tw-p-1.5 tw-text-red-600 hover:tw-bg-red-50 hover:tw-text-red-800"
-                            title="PDF"
-                            aria-label="PDF"
-                          >
-                            <DocumentArrowDownIcon className="tw-h-5 tw-w-5" />
-                          </a>
-                        ) : (
-                          <span className="tw-text-gray-300">-</span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-          <Pagination
-            page={page}
-            total={searchFiltered.length}
-            pageSize={pageSize}
-            onChange={setPage}
-            lang={lang}
-            formatRange={t.pagination}
-          />
+          </CardBody>
         </Card>
       </section>
     </main>

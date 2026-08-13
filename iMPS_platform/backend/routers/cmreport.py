@@ -239,6 +239,84 @@ def _charger_keys(doc: dict) -> set[str]:
     return keys
 
 
+# ==================== ตัวตนของตู้ชาร์จบนใบงาน CM ====================
+# ใบงานอ้างถึงตู้ได้ 2 ทาง — auto CM เก็บ charger_sn ตรง ๆ ส่วนใบที่คนเปิดเก็บเป็น
+# faulty_equipment = "charger_<เลขตู้>" (ใบรุ่นใหม่ใช้ failure class ระดับสถานี จึงไม่ระบุตู้)
+# ผู้ใช้ต้องเห็น "ชื่อตู้ / เลขตู้ / ยี่ห้อ(บริษัทที่ถือครอง)" บนใบงาน จึง resolve ที่ backend
+# ที่เดียว แทนที่จะให้ทุกหน้าจอไปยิง /chargers เอง
+
+_EMPTY_CHARGER_INDEX: dict = {"by_key": {}, "station_brand": "", "brands": []}
+
+
+async def _charger_index_for_station(station_id: str) -> dict:
+    """
+    ดัชนีตู้ของสถานี — คืน {"by_key": {...}, "station_brand": str, "brands": [...]}
+
+    by_key มีทั้งคีย์ "charger_<เลข/ไอดี>" และ "sn:<serial ตัวพิมพ์เล็ก>"
+    station_brand = ยี่ห้อของทั้งสถานี ใช้กับใบที่ไม่ระบุตู้ (failure class ระดับสถานี)
+    และมีค่าเฉพาะตอนทุกตู้เป็นยี่ห้อเดียวกัน — เกณฑ์เดียวกับ _brand_clause_for_station
+    """
+    try:
+        charger_docs = await charger_coll_async.find(
+            {"station_id": station_id},
+            {
+                "chargerNo": 1, "charger_no": 1, "charger_id": 1, "charger_name": 1,
+                "SN": 1, "sn": 1, "brand": 1, "model": 1,
+            },
+        ).sort("chargerNo", 1).to_list(length=1_000)
+    except Exception:
+        # ข้อมูลตู้เป็นส่วนเสริม — อ่านไม่ได้ก็ยังต้องคืนใบงานได้ตามปกติ
+        return dict(_EMPTY_CHARGER_INDEX)
+
+    by_key: dict[str, dict] = {}
+    brands: list[str] = []
+    for index, charger in enumerate(charger_docs):
+        number = charger.get("chargerNo") or charger.get("charger_no")
+        charger_id = charger.get("charger_id")
+        name = str(charger.get("charger_name") or f"Charger {number or index + 1}").strip()
+        sn = str(charger.get("SN") or charger.get("sn") or "").strip()
+        brand = str(charger.get("brand") or "").strip()
+        info = {
+            "charger_name": name,
+            "charger_no": number if number not in (None, "") else None,
+            "charger_sn": sn,
+            "charger_brand": brand,
+            "charger_model": str(charger.get("model") or "").strip(),
+            "label": f"{name} ({sn})" if sn else name,
+        }
+        if brand and brand not in brands:
+            brands.append(brand)
+        for key in (number, charger_id):
+            if key not in (None, ""):
+                by_key[f"charger_{str(key).strip().lower()}"] = info
+        if sn:
+            by_key[f"sn:{sn.lower()}"] = info
+
+    return {
+        "by_key": by_key,
+        "station_brand": brands[0] if len(brands) == 1 else "",
+        "brands": brands,
+    }
+
+
+def _charger_identity(index: dict, faulty_equipment: str, charger_sn: str) -> dict:
+    """ชื่อ/เลข/ยี่ห้อของตู้บนใบงานหนึ่งใบ — คีย์ SN มาก่อนเพราะแม่นกว่าเลขตู้"""
+    by_key = index.get("by_key") or {}
+    sn = (charger_sn or "").strip()
+    info = (by_key.get(f"sn:{sn.lower()}") if sn else None) \
+        or by_key.get(str(faulty_equipment or "").strip().lower()) \
+        or {}
+    return {
+        "charger_name": info.get("charger_name", ""),
+        "charger_no": info.get("charger_no"),
+        "charger_sn": info.get("charger_sn") or sn,
+        "charger_model": info.get("charger_model", ""),
+        # ใบที่ไม่ระบุตู้ → ใช้ยี่ห้อของทั้งสถานี (มีค่าเฉพาะสถานียี่ห้อเดียว)
+        "charger_brand": info.get("charger_brand") or index.get("station_brand") or "",
+        "charger_label": info.get("label", ""),
+    }
+
+
 async def _brand_clause_for_station(station_id: str, current: UserClaims) -> dict | None:
     """
     เงื่อนไขกรองใบงานของสถานีนี้ตามยี่ห้อตู้ — None = ไม่ต้องกรอง
@@ -428,31 +506,14 @@ async def _cm_items_for_station(station_id: str, station_name: str, status: str 
         "cause": 1, "problem_type": 1, "repaired_equipment": 1,
         "assignees": 1, "sched_start": 1, "sched_finish": 1,
         "repair_result_remark": 1, "maximo_ticket_id": 1, "maximo_wonum": 1, "createdAt": 1,
+        # ตัวตนของตู้ + ที่มาของใบ (auto CM vs คนเปิด) — ใช้กรอง/แยกกลุ่มใน CM dashboard
+        "charger_sn": 1, "auto_generated": 1, "auto_trigger": 1,
     }).sort([("createdAt", -1), ("_id", -1)])
     items_raw = await cursor.to_list(length=10_000)
 
     # ใบงานรุ่นเก่าเก็บ faulty_equipment เป็น charger_1 / charger_<id>
-    # จึงแนบ label จากข้อมูลตู้ไว้ให้ dashboard แสดงผล โดยไม่เปลี่ยนค่า raw เดิม
-    charger_label_by_key: dict[str, str] = {}
-    try:
-        charger_cursor = charger_coll_async.find(
-            {"station_id": station_id},
-            {"chargerNo": 1, "charger_no": 1, "charger_id": 1, "charger_name": 1, "SN": 1, "sn": 1},
-        ).sort("chargerNo", 1)
-        charger_docs = await charger_cursor.to_list(length=1_000)
-        for index, charger in enumerate(charger_docs):
-            number = charger.get("chargerNo") or charger.get("charger_no")
-            charger_id = charger.get("charger_id")
-            name = str(charger.get("charger_name") or f"Charger {number or index + 1}").strip()
-            sn = str(charger.get("SN") or charger.get("sn") or "").strip()
-            label = f"{name} ({sn})" if sn else name
-            keys = {number, charger_id}
-            for key in keys:
-                if key not in (None, ""):
-                    charger_label_by_key[f"charger_{str(key).strip().lower()}"] = label
-    except Exception:
-        # label เป็นข้อมูลเสริม ถ้า charger collection อ่านไม่ได้ให้ใช้ค่า raw ต่อไป
-        charger_label_by_key = {}
+    # จึงแนบ label + ชื่อ/เลข/ยี่ห้อของตู้ไว้ให้ dashboard แสดงผล โดยไม่เปลี่ยนค่า raw เดิม
+    charger_index = await _charger_index_for_station(station_id)
 
     # map ไฟล์จาก CMUrl ด้วย cm_date
     cm_dates = [it.get("cm_date") for it in items_raw if it.get("cm_date")]
@@ -495,6 +556,11 @@ async def _cm_items_for_station(station_id: str, station_name: str, status: str 
     for it in items_raw:
         job = it.get("job", {})
         faulty_equipment = it.get("faulty_equipment") or job.get("faulty_equipment") or ""
+        charger = _charger_identity(
+            charger_index,
+            faulty_equipment,
+            it.get("charger_sn") or job.get("charger_sn") or "",
+        )
         out.append({
             "id": str(it["_id"]),
             "station_id": station_id,
@@ -509,7 +575,16 @@ async def _cm_items_for_station(station_id: str, station_name: str, status: str 
             "stage": it.get("stage") or "",
             "reject_remark": it.get("reject_remark") or "",
             "faulty_equipment": faulty_equipment,
-            "faulty_equipment_label": charger_label_by_key.get(str(faulty_equipment).strip().lower(), ""),
+            "faulty_equipment_label": charger["charger_label"],
+            # ตัวตนของตู้ที่ใบงานนี้อ้างถึง — ชื่อ / เลขตู้ / S/N / ยี่ห้อ (บริษัทที่ถือครอง)
+            "charger_name": charger["charger_name"],
+            "charger_no": charger["charger_no"],
+            "charger_sn": charger["charger_sn"],
+            "charger_model": charger["charger_model"],
+            "charger_brand": charger["charger_brand"],
+            # ใบที่ระบบเปิดเองจาก fault/alarm — แยกจากใบที่ผู้ใช้กรอกเอง
+            "auto_generated": bool(it.get("auto_generated")),
+            "auto_trigger": it.get("auto_trigger") or "",
             # codes Maximo exploités par le CM dashboard (cause / remedy)
             "cause": as_list(it.get("cause"), job.get("cause")),
             "problem_type": as_list(it.get("problem_type"), job.get("problem_type")),
@@ -1182,9 +1257,23 @@ async def cmreport_detail_path(
 
     nested_job = doc.get("job") if isinstance(doc.get("job"), dict) else {}
 
+    # ตัวตนของตู้ที่ใบงานนี้อ้างถึง — ฟอร์ม CM ต้องโชว์ ชื่อตู้ / เลขตู้ / บริษัทที่ถือครอง
+    charger = _charger_identity(
+        await _charger_index_for_station(station_id),
+        doc.get("faulty_equipment") or nested_job.get("faulty_equipment") or "",
+        doc.get("charger_sn") or nested_job.get("charger_sn") or "",
+    )
+
     return {
         "id": str(doc["_id"]),
         "station_id": doc.get("station_id"),
+        "charger_name": charger["charger_name"],
+        "charger_no": charger["charger_no"],
+        "charger_sn": charger["charger_sn"],
+        "charger_model": charger["charger_model"],
+        "charger_brand": charger["charger_brand"],
+        "auto_generated": bool(doc.get("auto_generated")),
+        "auto_trigger": doc.get("auto_trigger") or "",
         "doc_name": doc.get("doc_name") or "",
         "issue_id": doc.get("issue_id") or "",
         "found_date": doc.get("found_date"),

@@ -27,7 +27,48 @@ export type CMRow = {
   doc_name: string;
   /** ช่างที่ engineer assign ไว้สำหรับรอบปัจจุบัน */
   assignees?: string[];
+  // ── ตัวตนของตู้ที่ใบงานนี้อ้างถึง (backend resolve จาก charger_sn / faulty_equipment) ──
+  charger_name?: string;
+  charger_no?: number | string | null;
+  charger_sn?: string;
+  charger_model?: string;
+  /** ยี่ห้อ = บริษัทที่ถือครองตู้ (EGAT, iMPS, FlexxFast…) — ว่าง = ระบุไม่ได้ */
+  charger_brand?: string;
+  /** true = ใบที่ระบบเปิดเองจาก fault/alarm (auto_cm_watcher) */
+  auto_generated?: boolean;
+  auto_trigger?: string;
 };
+
+/** บริษัทผู้ถือครองตู้ของใบงานนี้ — ใบที่ระบุไม่ได้จัดกลุ่มเป็น UNKNOWN_BRAND */
+export const UNKNOWN_BRAND = "Unknown";
+
+export function brandOf(r: CMRow): string {
+  return (r.charger_brand || "").trim() || UNKNOWN_BRAND;
+}
+
+/** ที่มาของใบงาน — ระบบเปิดเอง vs ผู้ใช้กรอกเอง */
+export type CmOrigin = "auto" | "user";
+
+export function originOf(r: CMRow): CmOrigin {
+  return r.auto_generated ? "auto" : "user";
+}
+
+/** ยี่ห้อทั้งหมดที่พบในชุดข้อมูล เรียงตามจำนวนใบงานจากมากไปน้อย */
+export function listBrands(rows: CMRow[]): string[] {
+  const counts = new Map<string, number>();
+  for (const r of rows) {
+    const b = brandOf(r);
+    counts.set(b, (counts.get(b) ?? 0) + 1);
+  }
+  return Array.from(counts.entries())
+    .sort((a, b) => {
+      // Unknown ไปท้ายสุดเสมอ — ไม่ใช่บริษัทจริง
+      if (a[0] === UNKNOWN_BRAND) return 1;
+      if (b[0] === UNKNOWN_BRAND) return -1;
+      return b[1] - a[1] || a[0].localeCompare(b[0]);
+    })
+    .map((e) => e[0]);
+}
 
 export type Period = "yearly" | "monthly" | "weekly";
 
@@ -42,11 +83,15 @@ export type ActiveFilters = {
   cause: string | null;
   /** code REMEDY — clic sur le donut « Remedy » */
   remedy: string | null;
+  /** บริษัทผู้ถือครองตู้ (ยี่ห้อ) — ปุ่มกรองแถวบนของแดชบอร์ด */
+  brand: string | null;
+  /** ที่มาของใบ: ระบบเปิดเอง / ผู้ใช้เปิดเอง */
+  origin: CmOrigin | null;
 };
 
 export const EMPTY_FILTERS: ActiveFilters = {
   status: null, equipment: null, severity: null, station: null,
-  workStatus: null, cause: null, remedy: null,
+  workStatus: null, cause: null, remedy: null, brand: null, origin: null,
 };
 
 /** Champs multi-valeurs : le backend renvoie un tableau, les fiches anciennes une chaîne. */
@@ -310,6 +355,12 @@ export function applyFilters(
     if (filters.remedy && exclude !== "remedy") {
       if (!remedyCodesOf(r).includes(filters.remedy)) return false;
     }
+    if (filters.brand && exclude !== "brand") {
+      if (brandOf(r) !== filters.brand) return false;
+    }
+    if (filters.origin && exclude !== "origin") {
+      if (originOf(r) !== filters.origin) return false;
+    }
     return true;
   });
 }
@@ -321,6 +372,8 @@ export function applySearch(rows: CMRow[], q: string): CMRow[] {
     [
       r.station_name, r.station_id, r.issue_id, r.faulty_equipment,
       r.problem_details, r.severity, r.inspector, r.reported_by, r.status,
+      r.charger_name, r.charger_sn, r.charger_brand,
+      r.charger_no === null || r.charger_no === undefined ? "" : String(r.charger_no),
       ...causeLabelsOf(r),
       ...remedyCodesOf(r).map(remedyLabel),
     ].some((v) => (v || "").toLowerCase().includes(lq))
@@ -356,4 +409,47 @@ export function groupCountMulti(
   }
   const sorted = Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, top);
   return { keys: sorted.map((e) => e[0]), vals: sorted.map((e) => e[1]) };
+}
+
+/**
+ * Même comptage que groupCountMulti, mais ventilé par marque (= entreprise
+ * détentrice du chargeur). Les catégories gardent l'ordre et la troncature de
+ * groupCountMulti, si bien que le donut et la vue « par marque » montrent
+ * toujours exactement les mêmes tranches — seule la ventilation change.
+ *
+ * Retourne des séries prêtes pour un bar chart empilé : une série par marque,
+ * data[i] = nombre de fiches de la catégorie keys[i] pour cette marque.
+ */
+export function groupCountMultiByBrand(
+  rows: CMRow[],
+  valuesOf: (r: CMRow) => string[],
+  top = 9
+): { keys: string[]; brands: string[]; series: { name: string; data: number[] }[] } {
+  const { keys } = groupCountMulti(rows, valuesOf, top);
+  const keyIndex = new Map(keys.map((k, i) => [k, i]));
+  const perBrand = new Map<string, number[]>();
+  const brandTotals = new Map<string, number>();
+
+  for (const r of rows) {
+    const brand = brandOf(r);
+    for (const v of valuesOf(r)) {
+      const i = keyIndex.get(v);
+      if (i === undefined) continue; // catégorie hors du top N
+      if (!perBrand.has(brand)) perBrand.set(brand, Array(keys.length).fill(0));
+      perBrand.get(brand)![i] += 1;
+      brandTotals.set(brand, (brandTotals.get(brand) ?? 0) + 1);
+    }
+  }
+
+  const brands = Array.from(perBrand.keys()).sort((a, b) => {
+    if (a === UNKNOWN_BRAND) return 1;
+    if (b === UNKNOWN_BRAND) return -1;
+    return (brandTotals.get(b) ?? 0) - (brandTotals.get(a) ?? 0) || a.localeCompare(b);
+  });
+
+  return {
+    keys,
+    brands,
+    series: brands.map((b) => ({ name: b, data: perBrand.get(b)! })),
+  };
 }
