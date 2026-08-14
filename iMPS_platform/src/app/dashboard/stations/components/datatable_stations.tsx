@@ -1,7 +1,7 @@
 "use client";
 import ConfirmDialog from "./ConfirmDialog";
 import LoadingOverlay from "../../components/Loadingoverlay";
-import React, { useEffect, useState, useMemo, useRef, Fragment } from "react";
+import React, { useEffect, useState, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   getCoreRowModel, getPaginationRowModel, getFilteredRowModel, getSortedRowModel, getExpandedRowModel,
   useReactTable, flexRender, type Row, type ExpandedState,
@@ -298,6 +298,14 @@ const StatCardSkeleton = () => (
   </div>
 );
 
+// สีของการ์ดตู้ชาร์จ 3 สถานะ — เทา (ยังไม่ได้ตั้งค่า) ต้องแยกจากแดง (ออฟไลน์)
+// ตู้ที่ยังไม่ตั้งค่าไม่เคยส่งสถานะเข้ามา จะทาสีแดงว่าออฟไลน์ไม่ได้ เพราะยังไม่รู้ว่าออฟไลน์จริงไหม
+const CHARGER_TONES = {
+  green: { bar: "tw-bg-gradient-to-r tw-from-green-400 tw-to-emerald-500", iconBox: "tw-bg-green-50 tw-ring-1 tw-ring-green-200", icon: "tw-text-green-600", chip: "tw-bg-green-100 tw-text-green-700", dot: "tw-bg-green-500 tw-animate-pulse" },
+  red: { bar: "tw-bg-gradient-to-r tw-from-red-400 tw-to-rose-500", iconBox: "tw-bg-red-50 tw-ring-1 tw-ring-red-200", icon: "tw-text-red-500", chip: "tw-bg-red-100 tw-text-red-600", dot: "tw-bg-red-400" },
+  gray: { bar: "tw-bg-gradient-to-r tw-from-gray-300 tw-to-gray-400", iconBox: "tw-bg-gray-50 tw-ring-1 tw-ring-gray-200", icon: "tw-text-gray-400", chip: "tw-bg-gray-100 tw-text-gray-500", dot: "tw-bg-gray-300" },
+} as const;
+
 const TableRowSkeleton = ({ cols }: { cols: number }) => (
   <tr className="tw-animate-pulse">
     {Array.from({ length: cols }).map((_, i) => (
@@ -331,6 +339,9 @@ export function SearchDataTables() {
   const closeConfirm = () => setConfirmDialog(prev => ({ ...prev, open: false, loading: false }));
   const [availability, setAvailability] = useState<Map<string, { total: number; available: number }>>(new Map());
   const [chargerAvailability, setChargerAvailability] = useState<Map<string, { total: number; available: number }>>(new Map());
+  // availability ยิงสำเร็จแล้วหรือยัง — ถ้ายังไม่สำเร็จห้ามเหมาว่าทุกตู้ "ยังไม่ได้ตั้งค่า"
+  // ไม่งั้นตอน endpoint ล่ม การ์ด offline จะกลายเป็น 0 แล้วเทไปกองที่ not configured หมด
+  const [availabilityReady, setAvailabilityReady] = useState(false);
 
   const [openEditStation, setOpenEditStation] = useState(false);
   const [editingStation, setEditingStation] = useState<StationRow | null>(null);
@@ -703,6 +714,7 @@ export function SearchDataTables() {
       });
       setAvailability(avMap);
       setChargerAvailability(cMap);
+      setAvailabilityReady(true);
     } catch (e) { console.error("Failed to fetch availability:", e); }
   };
 
@@ -763,17 +775,42 @@ export function SearchDataTables() {
   }, []);
 
   const isAdmin = me?.role === "admin";
+
+  // "ตั้งค่าแล้ว" = มีหัวชาร์จรายงานเข้ามาใน settingParameter (total > 0)
+  // ตู้ที่ยังไม่ตั้งค่าจะไม่เคยส่งสถานะเข้ามา ค่า status จึงเป็น false ตลอด — ถ้าไม่กันไว้
+  // ตู้พวกนี้จะถูกนับเป็น offline ด้วย ทำให้การ์ด offline กับ not configured ทับกัน
+  const isChargerConfigured = useCallback((c: ChargerData) => {
+    // availability ยังไม่มา → ถือว่าตั้งค่าแล้ว เพื่อให้ online/offline ยังทำงานตามเดิม
+    if (!availabilityReady) return true;
+    const av = chargerAvailability.get((c.SN || "").trim());
+    return !!av && av.total > 0;
+  }, [availabilityReady, chargerAvailability]);
+
+  // สามกลุ่มนี้ไม่ทับกันแล้ว: online + offline + notConfigured = จำนวนตู้ทั้งหมด
+  const chargerCounts = useMemo(() => {
+    let total = 0, online = 0, offline = 0, notConfigured = 0;
+    data.forEach((s) => s.chargers.forEach((c) => {
+      total++;
+      if (!isChargerConfigured(c)) notConfigured++;
+      else if (c.status) online++;
+      else offline++;
+    }));
+    return { total, online, offline, notConfigured };
+  }, [data, isChargerConfigured]);
+
   const filteredDataByStatus = useMemo(() => {
     if (statusFilter === "all") return data;
     return data.filter((station) => {
-      if (statusFilter === "notConfigured") { const av = availability.get(station.station_id); return !av || av.total === 0; }
-      const onlineCount = station.chargers.filter((c) => c.status).length;
-      const offlineCount = station.chargers.filter((c) => !c.status).length;
-      if (statusFilter === "online") return onlineCount > 0;
-      if (statusFilter === "offline") return offlineCount > 0;
+      if (statusFilter === "notConfigured") {
+        // สถานีที่ยังไม่มีตู้เลยก็คือยังไม่ได้ตั้งค่า ถ้าไม่นับจะหาไม่เจอจากตัวกรองไหนเลย
+        if (station.chargers.length === 0) return true;
+        return station.chargers.some((c) => !isChargerConfigured(c));
+      }
+      if (statusFilter === "online") return station.chargers.some((c) => isChargerConfigured(c) && c.status);
+      if (statusFilter === "offline") return station.chargers.some((c) => isChargerConfigured(c) && !c.status);
       return true;
     });
-  }, [data, statusFilter, availability]);
+  }, [data, statusFilter, isChargerConfigured]);
 
   const handleEditStation = (station: StationRow, e: React.MouseEvent) => { e.stopPropagation(); if (!isAdmin && station.user_id !== me?.user_id) { alert(t.noEditPermission); return; } setEditingStation(station); setOpenEditStation(true); };
   const handleEditCharger = (stationId: string, charger: ChargerData, e: React.MouseEvent) => { e.stopPropagation(); setEditingCharger({ stationId, charger }); setOpenEditCharger(true); };
@@ -989,24 +1026,26 @@ export function SearchDataTables() {
   const formatPower = (power: string | number | undefined | null) => { if (!power) return "-"; const text = String(power).trim(); return /\bkw\b/i.test(text) ? text : `${text} kW`; };
 
   const ChargerCard = ({ charger, stationId, canEdit, index }: { charger: ChargerData; stationId: string; canEdit: boolean; index: number }) => {
-    const isOnline = !!charger.status;
-    const av = chargerAvailability.get(charger.SN);
+    const configured = isChargerConfigured(charger);
+    const isOnline = configured && !!charger.status;
+    const tone = CHARGER_TONES[!configured ? "gray" : isOnline ? "green" : "red"];
+    const av = chargerAvailability.get((charger.SN || "").trim());
     return (
       <div onClick={() => handleChargerCardClick(charger, stationId)} className="tw-group tw-relative tw-overflow-hidden tw-rounded-xl tw-border tw-border-blue-gray-100 tw-bg-white tw-shadow-sm hover:tw-shadow-lg tw-transition-all tw-duration-300 tw-cursor-pointer hover:tw-border-blue-300 hover:tw--translate-y-0.5" style={{ animationDelay: `${index * 50}ms` }}>
-        <div className={`tw-h-1 tw-w-full ${isOnline ? "tw-bg-gradient-to-r tw-from-green-400 tw-to-emerald-500" : "tw-bg-gradient-to-r tw-from-red-400 tw-to-rose-500"}`} />
+        <div className={`tw-h-1 tw-w-full ${tone.bar}`} />
         <div className="tw-p-3 sm:tw-p-4">
           <div className="tw-flex tw-items-start tw-justify-between tw-gap-2 tw-mb-3">
             <div className="tw-flex tw-items-center tw-gap-2 tw-min-w-0 tw-flex-1">
-              <div className={`tw-p-2 tw-rounded-lg tw-flex-shrink-0 ${isOnline ? "tw-bg-green-50 tw-ring-1 tw-ring-green-200" : "tw-bg-red-50 tw-ring-1 tw-ring-red-200"}`}>
-                <BoltIcon className={`tw-h-4 tw-w-4 ${isOnline ? "tw-text-green-600" : "tw-text-red-500"}`} />
+              <div className={`tw-p-2 tw-rounded-lg tw-flex-shrink-0 ${tone.iconBox}`}>
+                <BoltIcon className={`tw-h-4 tw-w-4 ${tone.icon}`} />
               </div>
               <div className="tw-min-w-0 tw-flex-1">
                 <h4 className="tw-font-bold tw-text-xs tw-text-blue-gray-800 tw-truncate" title={charger.chargeBoxID}>{charger.chargeBoxID || "-"}</h4>
                 <div className="tw-flex tw-items-center tw-gap-1 tw-mt-1 tw-flex-wrap">
                   <span className="tw-px-1.5 tw-py-0.5 tw-rounded-md tw-bg-blue-gray-800 tw-text-[8px] tw-font-bold tw-text-white">#{charger.chargerNo}</span>
                   {charger.chargerType && (<span className="tw-px-1.5 tw-py-0.5 tw-rounded-md tw-bg-purple-100 tw-text-[8px] tw-font-bold tw-text-purple-700">{charger.chargerType}</span>)}
-                  <span className={`tw-flex tw-items-center tw-gap-0.5 tw-px-1.5 tw-py-0.5 tw-rounded-md tw-text-[8px] tw-font-bold ${isOnline ? "tw-bg-green-100 tw-text-green-700" : "tw-bg-red-100 tw-text-red-600"}`}>
-                    <span className={`tw-h-1.5 tw-w-1.5 tw-rounded-full ${isOnline ? "tw-bg-green-500 tw-animate-pulse" : "tw-bg-red-400"}`} />{isOnline ? t.online : t.offline}
+                  <span className={`tw-flex tw-items-center tw-gap-0.5 tw-px-1.5 tw-py-0.5 tw-rounded-md tw-text-[8px] tw-font-bold ${tone.chip}`}>
+                    <span className={`tw-h-1.5 tw-w-1.5 tw-rounded-full ${tone.dot}`} />{!configured ? t.notConfigured : isOnline ? t.online : t.offline}
                   </span>
                 </div>
               </div>
@@ -1029,7 +1068,8 @@ export function SearchDataTables() {
           )}
           <div className="tw-flex tw-items-center tw-gap-2 tw-mb-3">
             <div className="tw-flex-1 tw-px-2 tw-py-1 tw-rounded-lg tw-bg-blue-50/80 tw-border tw-border-blue-100"><span className="tw-text-[10px] tw-text-blue-700 tw-font-medium">📅 {formatDate(charger.commissioningDate)}</span></div>
-            {av && av.total > 0 ? (<div className="tw-px-2 tw-py-1 tw-rounded-lg tw-border tw-text-[10px] tw-font-bold tw-flex tw-items-center tw-gap-1 tw-bg-green-50 tw-border-green-200 tw-text-green-700"><span className="tw-h-1.5 tw-w-1.5 tw-rounded-full tw-bg-green-500" />🔌 {av.available}/{av.total}</div>) : (<div className="tw-px-2 tw-py-1 tw-rounded-lg tw-border tw-text-[10px] tw-font-medium tw-flex tw-items-center tw-gap-1 tw-bg-gray-50 tw-border-gray-200 tw-text-gray-400"><span className="tw-h-1.5 tw-w-1.5 tw-rounded-full tw-bg-gray-300" />{t.notConfigured}</div>)}
+            {/* ป้ายหัวชาร์จว่าง — ตู้ที่ยังไม่ได้ตั้งค่าไม่ต้องแสดง เพราะป้ายสถานะด้านบนบอกไปแล้ว */}
+            {av && av.total > 0 && (<div className="tw-px-2 tw-py-1 tw-rounded-lg tw-border tw-text-[10px] tw-font-bold tw-flex tw-items-center tw-gap-1 tw-bg-green-50 tw-border-green-200 tw-text-green-700"><span className="tw-h-1.5 tw-w-1.5 tw-rounded-full tw-bg-green-500" />🔌 {av.available}/{av.total}</div>)}
           </div>
           <div className="tw-rounded-lg tw-bg-gradient-to-b tw-from-gray-50 tw-to-gray-100/50 tw-p-2 tw-ring-1 tw-ring-gray-200/60">
             <div className="tw-flex tw-items-center tw-gap-1 tw-mb-1.5"><CpuChipIcon className="tw-h-3 tw-w-3 tw-text-blue-gray-400" /><span className="tw-text-[8px] tw-font-bold tw-uppercase tw-text-blue-gray-500 tw-tracking-wider">{t.firmware}</span></div>
@@ -1043,11 +1083,14 @@ export function SearchDataTables() {
   };
 
   const ChargersExpandedSection = ({ chargers, stationId, canEdit }: { chargers: ChargerData[]; stationId: string; canEdit: boolean }) => {
-    const onlineCount = chargers.filter(c => c.status).length;
-    const offlineCount = chargers.length - onlineCount;
+    // นับแบบเดียวกับการ์ดสรุปด้านบน — ตู้ที่ยังไม่ได้ตั้งค่าแยกออกมา ไม่รวมกับออฟไลน์
+    const configuredChargers = chargers.filter(isChargerConfigured);
+    const onlineCount = configuredChargers.filter(c => c.status).length;
+    const offlineCount = configuredChargers.length - onlineCount;
+    const notConfiguredCount = chargers.length - configuredChargers.length;
     return (
       <tr><td colSpan={columns.length} className="tw-p-0"><div className="tw-bg-gray-50/50 tw-border-t tw-border-blue-gray-100">
-        <div className="tw-px-3 sm:tw-px-6 tw-py-2 sm:tw-py-3 tw-border-b tw-border-blue-gray-100 tw-bg-white"><div className="tw-flex tw-items-center tw-justify-between tw-flex-wrap tw-gap-2"><div className="tw-flex tw-items-center tw-gap-2 sm:tw-gap-3 tw-flex-wrap"><span className="tw-inline-flex tw-items-center tw-gap-1 sm:tw-gap-1.5 tw-px-2 sm:tw-px-2.5 tw-py-0.5 sm:tw-py-1 tw-rounded-full tw-bg-gradient-to-r tw-from-amber-50 tw-to-yellow-50 tw-border tw-border-amber-200"><BoltIcon className="tw-h-3 tw-w-3 sm:tw-h-4 sm:tw-w-4 tw-text-amber-500" /><span className="tw-text-xs sm:tw-text-sm tw-font-semibold tw-text-amber-700">{t.chargers} ({chargers.length})</span></span><span className="tw-text-xs sm:tw-text-sm tw-text-green-600">• {onlineCount} {t.online}</span>{offlineCount > 0 && (<span className="tw-text-xs sm:tw-text-sm tw-text-red-500">• {offlineCount} {t.offline}</span>)}</div>{canEdit && (<Button size="sm" onClick={() => handleOpenAddCharger(stationId)} className="tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900 hover:tw-to-black tw-flex tw-items-center tw-gap-1 tw-shadow-sm tw-text-xs sm:tw-text-sm tw-px-2 sm:tw-px-3 tw-py-1.5 sm:tw-py-2"><BoltIcon className="tw-h-3 tw-w-3 sm:tw-h-4 sm:tw-w-4" /><span className="tw-hidden sm:tw-inline">{t.addCharger}</span><span className="tw-inline sm:tw-hidden">+ {t.add}</span></Button>)}</div></div>
+        <div className="tw-px-3 sm:tw-px-6 tw-py-2 sm:tw-py-3 tw-border-b tw-border-blue-gray-100 tw-bg-white"><div className="tw-flex tw-items-center tw-justify-between tw-flex-wrap tw-gap-2"><div className="tw-flex tw-items-center tw-gap-2 sm:tw-gap-3 tw-flex-wrap"><span className="tw-inline-flex tw-items-center tw-gap-1 sm:tw-gap-1.5 tw-px-2 sm:tw-px-2.5 tw-py-0.5 sm:tw-py-1 tw-rounded-full tw-bg-gradient-to-r tw-from-amber-50 tw-to-yellow-50 tw-border tw-border-amber-200"><BoltIcon className="tw-h-3 tw-w-3 sm:tw-h-4 sm:tw-w-4 tw-text-amber-500" /><span className="tw-text-xs sm:tw-text-sm tw-font-semibold tw-text-amber-700">{t.chargers} ({chargers.length})</span></span><span className="tw-text-xs sm:tw-text-sm tw-text-green-600">• {onlineCount} {t.online}</span>{offlineCount > 0 && (<span className="tw-text-xs sm:tw-text-sm tw-text-red-500">• {offlineCount} {t.offline}</span>)}{notConfiguredCount > 0 && (<span className="tw-text-xs sm:tw-text-sm tw-text-gray-400">• {notConfiguredCount} {t.notConfigured}</span>)}</div>{canEdit && (<Button size="sm" onClick={() => handleOpenAddCharger(stationId)} className="tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900 hover:tw-to-black tw-flex tw-items-center tw-gap-1 tw-shadow-sm tw-text-xs sm:tw-text-sm tw-px-2 sm:tw-px-3 tw-py-1.5 sm:tw-py-2"><BoltIcon className="tw-h-3 tw-w-3 sm:tw-h-4 sm:tw-w-4" /><span className="tw-hidden sm:tw-inline">{t.addCharger}</span><span className="tw-inline sm:tw-hidden">+ {t.add}</span></Button>)}</div></div>
         <div className="tw-p-2 sm:tw-p-4">{chargers.length > 0 ? (<div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 md:tw-grid-cols-2 lg:tw-grid-cols-3 xl:tw-grid-cols-4 tw-gap-2 sm:tw-gap-4 lg:tw-gap-5">{chargers.map((charger, index) => (<ChargerCard key={charger.id || charger.chargeBoxID} charger={charger} stationId={stationId} canEdit={canEdit} index={index} />))}</div>) : (<div className="tw-text-center tw-py-6 sm:tw-py-8 tw-text-blue-gray-400"><BoltIcon className="tw-h-8 tw-w-8 sm:tw-h-12 sm:tw-w-12 tw-mx-auto tw-mb-2 tw-opacity-30" /><p className="tw-text-xs sm:tw-text-sm">{t.noChargersYet}</p>{canEdit && (<Button size="sm" onClick={() => handleOpenAddCharger(stationId)} className="tw-mt-2 sm:tw-mt-3 tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900 hover:tw-to-black tw-text-xs">{t.addFirstCharger}</Button>)}</div>)}</div>
       </div></td></tr>
     );
@@ -1073,19 +1116,19 @@ export function SearchDataTables() {
               </div>
               <div className="tw-group tw-relative tw-overflow-hidden tw-rounded-2xl tw-bg-gradient-to-br tw-from-gray-900 tw-via-gray-800 tw-to-gray-900 tw-px-4 sm:tw-px-5 tw-py-3.5 sm:tw-py-4 tw-ring-1 tw-ring-white/10 tw-shadow-lg hover:tw-shadow-xl tw-transition-all tw-duration-300 hover:tw--translate-y-0.5">
                 <div className="tw-absolute tw-inset-0 tw-opacity-[0.03]" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '20px 20px' }} />
-                <div className="tw-relative tw-z-10"><div className="tw-flex tw-items-center tw-gap-2 tw-mb-2"><div className="tw-h-8 tw-w-8 tw-rounded-xl tw-bg-amber-500/20 tw-flex tw-items-center tw-justify-center tw-ring-1 tw-ring-amber-400/20"><BoltIcon className="tw-h-4 tw-w-4 tw-text-amber-400" /></div><span className="tw-text-[10px] sm:tw-text-[11px] tw-font-semibold tw-text-white/40 tw-uppercase tw-tracking-wider">{lang === "th" ? "ตู้ชาร์จ" : "Chargers"}</span></div><div className="tw-text-2xl sm:tw-text-3xl tw-font-black tw-text-white tw-tabular-nums tw-tracking-tight tw-leading-none">{data.reduce((sum, s) => sum + s.chargers.length, 0)}</div></div>
+                <div className="tw-relative tw-z-10"><div className="tw-flex tw-items-center tw-gap-2 tw-mb-2"><div className="tw-h-8 tw-w-8 tw-rounded-xl tw-bg-amber-500/20 tw-flex tw-items-center tw-justify-center tw-ring-1 tw-ring-amber-400/20"><BoltIcon className="tw-h-4 tw-w-4 tw-text-amber-400" /></div><span className="tw-text-[10px] sm:tw-text-[11px] tw-font-semibold tw-text-white/40 tw-uppercase tw-tracking-wider">{lang === "th" ? "ตู้ชาร์จ" : "Chargers"}</span></div><div className="tw-text-2xl sm:tw-text-3xl tw-font-black tw-text-white tw-tabular-nums tw-tracking-tight tw-leading-none">{chargerCounts.total}</div></div>
               </div>
               <div onClick={() => setStatusFilter((prev) => (prev === "online" ? "all" : "online"))} className={`tw-group tw-relative tw-overflow-hidden tw-rounded-2xl tw-bg-gradient-to-br tw-from-gray-900 tw-via-gray-800 tw-to-gray-900 tw-px-4 sm:tw-px-5 tw-py-3.5 sm:tw-py-4 tw-ring-1 tw-shadow-lg hover:tw-shadow-xl tw-transition-all tw-duration-300 hover:tw--translate-y-0.5 tw-cursor-pointer ${statusFilter === "online" ? "tw-ring-green-400 tw-scale-[1.02]" : "tw-ring-white/10"}`}>
                 <div className="tw-absolute tw-inset-0 tw-opacity-[0.03]" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '20px 20px' }} />
-                <div className="tw-relative tw-z-10"><div className="tw-flex tw-items-center tw-gap-2 tw-mb-2"><div className="tw-h-8 tw-w-8 tw-rounded-xl tw-flex tw-items-center tw-justify-center tw-ring-1" style={{ background: 'rgba(16,185,129,0.15)', borderColor: 'rgba(16,185,129,0.25)' }}><span className="tw-relative tw-flex tw-h-2.5 tw-w-2.5"><span className="tw-animate-ping tw-absolute tw-inline-flex tw-h-full tw-w-full tw-rounded-full tw-opacity-75" style={{ background: '#34d399' }} /><span className="tw-relative tw-inline-flex tw-rounded-full tw-h-2.5 tw-w-2.5" style={{ background: '#34d399' }} /></span></div><span className="tw-text-[10px] sm:tw-text-[11px] tw-font-semibold tw-uppercase tw-tracking-wider" style={{ color: 'rgba(255,255,255,0.4)' }}>{lang === "th" ? "ออนไลน์" : "Online"}</span></div><div className="tw-text-2xl sm:tw-text-3xl tw-font-black tw-tabular-nums tw-tracking-tight tw-leading-none" style={{ color: '#34d399' }}>{data.reduce((sum, s) => sum + s.chargers.filter(c => c.status).length, 0)}</div></div>
+                <div className="tw-relative tw-z-10"><div className="tw-flex tw-items-center tw-gap-2 tw-mb-2"><div className="tw-h-8 tw-w-8 tw-rounded-xl tw-flex tw-items-center tw-justify-center tw-ring-1" style={{ background: 'rgba(16,185,129,0.15)', borderColor: 'rgba(16,185,129,0.25)' }}><span className="tw-relative tw-flex tw-h-2.5 tw-w-2.5"><span className="tw-animate-ping tw-absolute tw-inline-flex tw-h-full tw-w-full tw-rounded-full tw-opacity-75" style={{ background: '#34d399' }} /><span className="tw-relative tw-inline-flex tw-rounded-full tw-h-2.5 tw-w-2.5" style={{ background: '#34d399' }} /></span></div><span className="tw-text-[10px] sm:tw-text-[11px] tw-font-semibold tw-uppercase tw-tracking-wider" style={{ color: 'rgba(255,255,255,0.4)' }}>{lang === "th" ? "ออนไลน์" : "Online"}</span></div><div className="tw-text-2xl sm:tw-text-3xl tw-font-black tw-tabular-nums tw-tracking-tight tw-leading-none" style={{ color: '#34d399' }}>{chargerCounts.online}</div></div>
               </div>
               <div onClick={() => setStatusFilter((prev) => (prev === "offline" ? "all" : "offline"))} className={`tw-group tw-relative tw-overflow-hidden tw-rounded-2xl tw-bg-gradient-to-br tw-from-gray-900 tw-via-gray-800 tw-to-gray-900 tw-px-4 sm:tw-px-5 tw-py-3.5 sm:tw-py-4 tw-ring-1 tw-shadow-lg hover:tw-shadow-xl tw-transition-all tw-duration-300 hover:tw--translate-y-0.5 tw-cursor-pointer ${statusFilter === "offline" ? "tw-ring-red-400 tw-scale-[1.02]" : "tw-ring-white/10"}`}>
                 <div className="tw-absolute tw-inset-0 tw-opacity-[0.03]" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '20px 20px' }} />
-                <div className="tw-relative tw-z-10"><div className="tw-flex tw-items-center tw-gap-2 tw-mb-2"><div className="tw-h-8 tw-w-8 tw-rounded-xl tw-flex tw-items-center tw-justify-center tw-ring-1" style={{ background: 'rgba(239,68,68,0.15)', borderColor: 'rgba(239,68,68,0.25)' }}><span className="tw-h-2.5 tw-w-2.5 tw-rounded-full" style={{ background: '#f87171' }} /></div><span className="tw-text-[10px] sm:tw-text-[11px] tw-font-semibold tw-uppercase tw-tracking-wider" style={{ color: 'rgba(255,255,255,0.4)' }}>{lang === "th" ? "ออฟไลน์" : "Offline"}</span></div><div className="tw-text-2xl sm:tw-text-3xl tw-font-black tw-tabular-nums tw-tracking-tight tw-leading-none" style={{ color: '#f87171' }}>{data.reduce((sum, s) => sum + s.chargers.filter(c => !c.status).length, 0)}</div></div>
+                <div className="tw-relative tw-z-10"><div className="tw-flex tw-items-center tw-gap-2 tw-mb-2"><div className="tw-h-8 tw-w-8 tw-rounded-xl tw-flex tw-items-center tw-justify-center tw-ring-1" style={{ background: 'rgba(239,68,68,0.15)', borderColor: 'rgba(239,68,68,0.25)' }}><span className="tw-h-2.5 tw-w-2.5 tw-rounded-full" style={{ background: '#f87171' }} /></div><span className="tw-text-[10px] sm:tw-text-[11px] tw-font-semibold tw-uppercase tw-tracking-wider" style={{ color: 'rgba(255,255,255,0.4)' }}>{lang === "th" ? "ออฟไลน์" : "Offline"}</span></div><div className="tw-text-2xl sm:tw-text-3xl tw-font-black tw-tabular-nums tw-tracking-tight tw-leading-none" style={{ color: '#f87171' }}>{chargerCounts.offline}</div></div>
               </div>
               <div onClick={() => setStatusFilter((prev) => (prev === "notConfigured" ? "all" : "notConfigured"))} className={`tw-group tw-relative tw-overflow-hidden tw-rounded-2xl tw-bg-gradient-to-br tw-from-gray-900 tw-via-gray-800 tw-to-gray-900 tw-px-4 sm:tw-px-5 tw-py-3.5 sm:tw-py-4 tw-ring-1 tw-shadow-lg hover:tw-shadow-xl tw-transition-all tw-duration-300 hover:tw--translate-y-0.5 tw-cursor-pointer ${statusFilter === "notConfigured" ? "tw-ring-gray-300 tw-scale-[1.02]" : "tw-ring-white/10"}`}>
                 <div className="tw-absolute tw-inset-0 tw-opacity-[0.03]" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '20px 20px' }} />
-                <div className="tw-relative tw-z-10"><div className="tw-flex tw-items-center tw-gap-2 tw-mb-2"><div className="tw-h-8 tw-w-8 tw-rounded-xl tw-flex tw-items-center tw-justify-center tw-ring-1" style={{ background: 'rgba(148,163,184,0.15)', borderColor: 'rgba(148,163,184,0.25)' }}><span className="tw-h-2.5 tw-w-2.5 tw-rounded-full" style={{ background: '#94a3b8' }} /></div><span className="tw-text-[10px] sm:tw-text-[11px] tw-font-semibold tw-uppercase tw-tracking-wider" style={{ color: 'rgba(255,255,255,0.4)' }}>{lang === "th" ? "ยังไม่ได้ตั้งค่า" : "Not Configured"}</span></div><div className="tw-text-2xl sm:tw-text-3xl tw-font-black tw-tabular-nums tw-tracking-tight tw-leading-none" style={{ color: '#94a3b8' }}>{data.filter((s) => { const av = availability.get(s.station_id); return !av || av.total === 0; }).length}</div></div>
+                <div className="tw-relative tw-z-10"><div className="tw-flex tw-items-center tw-gap-2 tw-mb-2"><div className="tw-h-8 tw-w-8 tw-rounded-xl tw-flex tw-items-center tw-justify-center tw-ring-1" style={{ background: 'rgba(148,163,184,0.15)', borderColor: 'rgba(148,163,184,0.25)' }}><span className="tw-h-2.5 tw-w-2.5 tw-rounded-full" style={{ background: '#94a3b8' }} /></div><span className="tw-text-[10px] sm:tw-text-[11px] tw-font-semibold tw-uppercase tw-tracking-wider" style={{ color: 'rgba(255,255,255,0.4)' }}>{lang === "th" ? "ยังไม่ได้ตั้งค่า" : "Not Configured"}</span></div><div className="tw-text-2xl sm:tw-text-3xl tw-font-black tw-tabular-nums tw-tracking-tight tw-leading-none" style={{ color: '#94a3b8' }}>{chargerCounts.notConfigured}</div></div>
               </div>
             </>
           )}
