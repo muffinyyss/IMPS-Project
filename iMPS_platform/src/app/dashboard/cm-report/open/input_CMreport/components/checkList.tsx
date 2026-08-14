@@ -524,8 +524,6 @@ export default function CMOpenForm() {
     const [cancelledInfo, setCancelledInfo] = useState<{ remark: string; by: string }>({ remark: "", by: "" });
     const [remarks_open, setRemarksOpen] = useState("");
     const [faultyEquipment, setFaultyEquipment] = useState("");
-    const [chargerNo, setChargerNo] = useState("");
-    const [chargerSn, setChargerSn] = useState("");
     const [selectedChargerNo, setSelectedChargerNo] = useState("");
     const [selectedChargerSn, setSelectedChargerSn] = useState("");
     const [chargerTypeHint, setChargerTypeHint] = useState("");
@@ -750,12 +748,6 @@ export default function CMOpenForm() {
                 : no === selectedNo || sn === selectedSn;
         });
     }, [chargers, faultyEquipment, isEdit, maximoTree, selectedChargerNo, selectedChargerSn]);
-    const displayChargerNo = isEdit
-        ? chargerNo
-        : chargerTargets.map(charger => String(charger.chargerNo ?? charger.charger_no ?? charger.charger_id ?? "").trim()).filter(Boolean).join(", ");
-    const displayChargerSn = isEdit
-        ? chargerSn
-        : chargerTargets.map(charger => (charger.SN || charger.sn || "").trim()).filter(Boolean).join(", ");
 
     // ==================== VALIDATION ====================
     const validations = useMemo<ValidationItem[]>(() => [
@@ -1108,8 +1100,6 @@ export default function CMOpenForm() {
                     charger_brand: data.charger_brand ?? "",
                     auto_generated: !!data.auto_generated,
                 });
-                setChargerNo(String(data.charger_no ?? ""));
-                setChargerSn(String(data.charger_sn ?? ""));
                 setSummary(data.summary ?? "");
                 setReportedBy(data.reported_by ?? "");
                 setReporterSignature(data.reporter_signature ?? "");
@@ -1633,19 +1623,6 @@ ${in01.error ?? ""}`);
                             <Input value={reported_by || ""} readOnly crossOrigin="" className="!tw-w-full !tw-bg-gray-100" containerProps={{ className: "!tw-min-w-0" }} />
                         </div>
                     </div>
-                    {(displayChargerNo || displayChargerSn) && (
-                        <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-4 tw-gap-4 tw-mb-6">
-                            <div>
-                                <label className="tw-block tw-text-sm tw-text-blue-gray-600 tw-mb-1">Charger No.</label>
-                                <Input value={displayChargerNo || "-"} readOnly crossOrigin="" className="!tw-w-full !tw-bg-gray-100" containerProps={{ className: "!tw-min-w-0" }} />
-                            </div>
-                            <div>
-                                <label className="tw-block tw-text-sm tw-text-blue-gray-600 tw-mb-1">Charger SN</label>
-                                <Input value={displayChargerSn || "-"} readOnly crossOrigin="" className="!tw-w-full !tw-bg-gray-100" containerProps={{ className: "!tw-min-w-0" }} />
-                            </div>
-                        </div>
-                    )}
-
                     {/* ตู้ชาร์จที่ใบงานนี้เกี่ยวข้อง — ชื่อ / เลขตู้ / S/N / บริษัทผู้ถือครอง */}
                     <ChargerIdentity data={chargerIdentity} lang={lang} />
 
