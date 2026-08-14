@@ -17,7 +17,7 @@ import { Card } from "@material-tailwind/react";
 import { apiFetch } from "@/utils/api";
 import useLanguage from "@/utils/useLanguage";
 import {
-  CMRow, ActiveFilters, DateSel, STATUS_LABELS, WorkStatusFilter, EMPTY_FILTERS,
+  CMRow, ActiveFilters, DateSel, STATUS_LABELS, WorkStatusFilter, EMPTY_FILTERS, CmOrigin,
   normalizeStatus, workStatusOf, workStatusBadge, filterByDate, listYears, listBrands,
   weeksInMonth, applyFilters, applySearch, brandOf, originOf, UNKNOWN_BRAND,
 } from "@/utils/cm-dashboard";
@@ -215,6 +215,12 @@ export default function CMListPage() {
   }, [periodRows, filters, search]);
 
   const brands = useMemo(() => listBrands(rows), [rows]);
+  const originCounts = useMemo(() => {
+    const base = applyFilters(periodRows, filters, "origin");
+    let auto = 0;
+    for (const r of base) if (originOf(r) === "auto") auto++;
+    return { auto, user: base.length - auto };
+  }, [periodRows, filters]);
 
   const sortValue = useCallback((r: CMRow, key: SortKey): string | number => {
     switch (key) {
@@ -351,6 +357,9 @@ export default function CMListPage() {
   }[lang]), [lang]);
 
   const workStatusLabel = t.workStatus as Record<WorkStatusFilter, string>;
+  const originText = lang === "th"
+    ? { label: "ที่มาของใบงาน", all: "ทั้งหมด", auto: "ใบงาน Auto", user: "ใบงานที่สร้างเอง" }
+    : { label: "Created by", all: "All sources", auto: "Auto-generated", user: "User-created" };
 
   const columns: { key: SortKey; label: string; className?: string }[] = [
     { key: "station", label: t.headers.station },
@@ -466,6 +475,39 @@ export default function CMListPage() {
             <option value="all">{t.allBrands}</option>
             {brands.map((b) => <option key={b} value={b}>{b}</option>)}
           </select>
+        </div>
+
+        <div className="tw-flex tw-flex-wrap tw-items-center tw-gap-1.5" role="group" aria-label={originText.label}>
+          <span className="tw-text-xs tw-font-medium tw-text-gray-500">{originText.label}</span>
+          {([
+            { key: null as CmOrigin | null, label: originText.all, count: originCounts.auto + originCounts.user },
+            { key: "auto" as CmOrigin, label: originText.auto, count: originCounts.auto },
+            { key: "user" as CmOrigin, label: originText.user, count: originCounts.user },
+          ]).map(({ key, label, count }) => {
+            const isActive = filters.origin === key;
+            return (
+              <button
+                key={key ?? "all"}
+                type="button"
+                onClick={() => {
+                  if (key === null) {
+                    setFilters((p) => ({ ...p, origin: null }));
+                    setPage(0);
+                  } else {
+                    toggleFilter("origin", key);
+                  }
+                }}
+                aria-pressed={isActive}
+                className={`tw-rounded-full tw-px-3 tw-py-1 tw-text-xs tw-font-semibold tw-transition-all ${
+                  isActive
+                    ? "tw-bg-indigo-600 tw-text-white tw-shadow-sm"
+                    : "tw-bg-gray-100 tw-text-gray-600 hover:tw-bg-gray-200"
+                }`}
+              >
+                {label}{key === null ? "" : ` (${count})`}
+              </button>
+            );
+          })}
         </div>
 
         <div className="tw-flex tw-items-center tw-gap-1.5" role="group" aria-label={t.statusFilterLabel}>
