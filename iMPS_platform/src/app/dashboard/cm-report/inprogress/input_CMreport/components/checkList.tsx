@@ -2833,19 +2833,6 @@ export default function CMInProgressForm() {
                             </div>
                         )}
                     </div>
-                    {(job.charger_no || job.charger_sn) && (
-                        <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 md:tw-grid-cols-4 tw-gap-4 tw-mb-6">
-                            <div>
-                                <label className="tw-block tw-text-sm tw-text-blue-gray-600 tw-mb-1">Charger No.</label>
-                                <Input value={job.charger_no || "-"} readOnly crossOrigin="" className="!tw-w-full !tw-bg-gray-100 !tw-text-blue-gray-700 !tw-opacity-100" style={{ backgroundColor: "#f3f4f6", color: "#455a64" }} containerProps={{ className: "!tw-min-w-0" }} />
-                            </div>
-                            <div>
-                                <label className="tw-block tw-text-sm tw-text-blue-gray-600 tw-mb-1">Charger SN</label>
-                                <Input value={job.charger_sn || "-"} readOnly crossOrigin="" className="!tw-w-full !tw-bg-gray-100 !tw-text-blue-gray-700 !tw-opacity-100" style={{ backgroundColor: "#f3f4f6", color: "#455a64" }} containerProps={{ className: "!tw-min-w-0" }} />
-                            </div>
-                        </div>
-                    )}
-
                     {/* ตู้ชาร์จที่ใบงานนี้เกี่ยวข้อง — ชื่อ / เลขตู้ / S/N / บริษัทผู้ถือครอง */}
                     <ChargerIdentity data={chargerIdentity} lang={lang} />
 
