@@ -354,7 +354,7 @@ export default function CMListPage() {
 
   const columns: { key: SortKey; label: string; className?: string }[] = [
     { key: "station", label: t.headers.station },
-    { key: "brand", label: t.headers.brand },
+    { key: "brand", label: "Brand" },
     { key: "issue_id", label: t.headers.issue_id },
     { key: "reported_by", label: t.headers.reported_by },
     { key: "equipment", label: t.headers.equipment },
