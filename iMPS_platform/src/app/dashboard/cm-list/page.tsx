@@ -354,7 +354,6 @@ export default function CMListPage() {
 
   const columns: { key: SortKey; label: string; className?: string }[] = [
     { key: "station", label: t.headers.station },
-    { key: "charger", label: t.headers.charger },
     { key: "brand", label: t.headers.brand },
     { key: "issue_id", label: t.headers.issue_id },
     { key: "reported_by", label: t.headers.reported_by },
@@ -571,7 +570,6 @@ export default function CMListPage() {
                 const badge = workStatusBadge(r);
                 const canOpenPdf = normalizeStatus(r.status) === "completed";
                 const brand = brandOf(r);
-                const chargerNo = r.charger_no === null || r.charger_no === undefined || r.charger_no === "" ? "" : String(r.charger_no);
                 return (
                   <tr
                     key={r.id}
@@ -581,14 +579,6 @@ export default function CMListPage() {
                   >
                     <td className="tw-px-4 tw-py-3 tw-text-gray-400">{page * pageSize + i + 1}</td>
                     <td className="tw-px-4 tw-py-3 tw-font-medium tw-text-gray-800">{r.station_name || r.station_id}</td>
-                    <td className="tw-px-4 tw-py-3 tw-text-gray-600">
-                      {r.charger_name || chargerNo ? (
-                        <span className="tw-block tw-max-w-[180px] tw-truncate" title={`${r.charger_name || ""}${r.charger_sn ? ` · ${r.charger_sn}` : ""}`}>
-                          {r.charger_name || "-"}
-                          {chargerNo && <span className="tw-ml-1 tw-text-xs tw-text-gray-400">#{chargerNo}</span>}
-                        </span>
-                      ) : <span className="tw-text-gray-300">-</span>}
-                    </td>
                     <td className="tw-px-4 tw-py-3">
                       <button
                         onClick={(e) => { e.stopPropagation(); toggleFilter("brand", brand); }}
