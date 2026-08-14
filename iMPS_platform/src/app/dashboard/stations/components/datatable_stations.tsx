@@ -677,8 +677,8 @@ export function SearchDataTables() {
     }
   }, [openEditCharger, editingCharger]);
 
-  useEffect(() => { (async () => { if (me?.role !== "admin") return; const res = await apiFetch(`/owners`); const json = await res.json(); setOwners(Array.isArray(json.owners) ? json.owners : []); })(); }, [me?.role]);
-  useEffect(() => { (async () => { if (me?.role !== "admin") return; const res = await apiFetch(`/username`); if (!res.ok) return; const json: UsernamesResp = await res.json(); setUsernames(Array.isArray(json.username) ? json.username : []); })(); }, [me?.role]);
+  useEffect(() => { (async () => { if (me?.role !== "admin" && me?.role !== "super_admin") return; const res = await apiFetch(`/owners`); const json = await res.json(); setOwners(Array.isArray(json.owners) ? json.owners : []); })(); }, [me?.role]);
+  useEffect(() => { (async () => { if (me?.role !== "admin" && me?.role !== "super_admin") return; const res = await apiFetch(`/username`); if (!res.ok) return; const json: UsernamesResp = await res.json(); setUsernames(Array.isArray(json.username) ? json.username : []); })(); }, [me?.role]);
   useEffect(() => { (async () => { try { const res = await apiFetch(`/all-users/`); if (!res.ok) return; const json = await res.json(); const users = Array.isArray(json?.users) ? json.users : []; const technicianMap = new Map<string, string[]>(); users.forEach((user: any) => { if (user.role === "technician" && user.station_id && Array.isArray(user.station_id)) { user.station_id.forEach((stationId: string) => { if (!technicianMap.has(stationId)) technicianMap.set(stationId, []); technicianMap.get(stationId)!.push(user.username); }); } }); setTechnicians(technicianMap); } catch (e) { console.error("Failed to fetch technicians:", e); } })(); }, []);
 
   // สถานะ on/off ของตู้ทุกตัวในคำขอเดียว (แทนการยิง /charger-onoff/{sn} ทีละตู้)
@@ -774,7 +774,9 @@ export function SearchDataTables() {
     })();
   }, []);
 
-  const isAdmin = me?.role === "admin";
+  // super_admin is normalized as admin by the backend and must have the same
+  // station-management permissions in the UI as admin.
+  const isAdmin = me?.role === "admin" || me?.role === "super_admin";
 
   // "ตั้งค่าแล้ว" = มีหัวชาร์จรายงานเข้ามาใน settingParameter (total > 0)
   // ตู้ที่ยังไม่ตั้งค่าจะไม่เคยส่งสถานะเข้ามา ค่า status จึงเป็น false ตลอด — ถ้าไม่กันไว้
