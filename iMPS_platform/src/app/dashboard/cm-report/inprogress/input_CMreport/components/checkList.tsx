@@ -1915,6 +1915,7 @@ export default function CMInProgressForm() {
                 const rawDate = data.cm_date ?? data.found_date ?? "";
 
                 setChargerIdentity({
+                    chargeBoxID: data.chargeBoxID ?? "",
                     charger_name: data.charger_name ?? "",
                     charger_no: data.charger_no ?? null,
                     charger_sn: data.charger_sn ?? "",
@@ -2319,7 +2320,7 @@ export default function CMInProgressForm() {
                 throw new Error(j?.detail || `HTTP ${res.status}`);
             }
             // ใบงานกลับไปให้ช่างแก้ → กลับหน้าที่กดเข้ามา
-            router.push(buildListUrl("open"));
+            router.push(buildListUrl("in-progress"));
         } catch (e: any) {
             alert((lang === "th" ? "ตีกลับไม่สำเร็จ: " : "Reject failed: ") + (e?.message ?? e));
             setRejecting(false);

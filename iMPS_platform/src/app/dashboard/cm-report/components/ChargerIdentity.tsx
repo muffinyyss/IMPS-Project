@@ -11,6 +11,7 @@
  */
 
 export type ChargerIdentityData = {
+  chargeBoxID?: string;
   charger_name?: string;
   charger_no?: number | string | null;
   charger_sn?: string;
@@ -32,10 +33,10 @@ const TEXT = {
   },
   en: {
     title: "Charger information",
-    name: "Charger name",
+    name: "ChargeBox ID",
     no: "Charger No.",
     sn: "S/N",
-    brand: "Owning company",
+    brand: "Brand",
     auto: "Auto-generated",
     stationLevel: "Station-level work order (no specific charger)",
   },
@@ -61,17 +62,15 @@ export default function ChargerIdentity({
   lang?: "th" | "en";
   className?: string;
 }) {
-  const t = TEXT[lang] ?? TEXT.th;
-  const name = (data?.charger_name || "").trim();
+  const t = { ...(TEXT[lang] ?? TEXT.th), name: "ChargeBox ID", brand: "Brand" };
+  const chargeBoxID = (data?.chargeBoxID || data?.charger_name || "").trim();
   const sn = (data?.charger_sn || "").trim();
   const brand = (data?.charger_brand || "").trim();
   const no = data?.charger_no;
   const noText = no === null || no === undefined || no === "" ? "" : String(no);
 
   // ไม่มีข้อมูลตู้เลย (และไม่รู้ยี่ห้อ) → ไม่ต้องขึ้นการ์ด
-  if (!name && !sn && !brand && !noText) return null;
-
-  const model = (data?.charger_model || "").trim();
+  if (!chargeBoxID && !sn && !brand && !noText) return null;
 
   return (
     <div
@@ -84,12 +83,12 @@ export default function ChargerIdentity({
             {t.auto}
           </span>
         )}
-        {!name && !sn && brand && (
+        {!chargeBoxID && !sn && brand && (
           <span className="tw-text-[11px] tw-text-blue-gray-400">{t.stationLevel}</span>
         )}
       </div>
       <div className="tw-grid tw-grid-cols-2 tw-gap-x-4 tw-gap-y-3 md:tw-grid-cols-4">
-        <Field label={t.name} value={name ? (model ? `${name} · ${model}` : name) : "-"} />
+        <Field label={t.name} value={chargeBoxID || "-"} />
         <Field label={t.no} value={noText || "-"} />
         <Field label={t.sn} value={sn || "-"} />
         <Field label={t.brand} value={brand || "-"} />

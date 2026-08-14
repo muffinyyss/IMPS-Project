@@ -187,7 +187,7 @@ const normalizeWaitState = (v: string): (typeof WAIT_STATES)[number] => {
 type ServerPhoto = { filename: string; size: number; url: string; remark?: string; uploadedAt?: string; location?: string; };
 // แนบได้ทั้งรูปและไฟล์ (PDF) — mime/name ใช้แยกว่าจะโชว์เป็นรูปหรือการ์ดไฟล์
 type PhotoItem = { id: string; file: File; preview: string; ref?: PhotoRef; isServer?: boolean; serverUrl?: string; serverGroup?: string; createdAt?: string; location?: string; mime?: string; name?: string; };
-type ChargerInfo = { chargerNo?: number; charger_no?: number | string; charger_id?: string; charger_name?: string; SN?: string; sn?: string; chargerType?: string; brand?: string; };
+type ChargerInfo = { chargerNo?: number; charger_no?: number | string; charger_id?: string; id?: string; chargeBoxID?: string; charger_name?: string; SN?: string; sn?: string; chargerType?: string; brand?: string; };
 type StationPublic = { station_id: string; station_name: string; };
 type ValidationItem = { key: string; label: string; isValid: boolean; message: string; isRequired: boolean; scrollId?: string; };
 
@@ -694,28 +694,6 @@ export default function CMOpenForm() {
     // แทนที่จะปล่อย dropdown ว่างเปล่าโดยไม่มีคำอธิบาย
     const failureCodesUnavailable = failureCodeOptions.length === 0;
 
-    // ข้อมูลตู้ที่จะโชว์บนหัวใบงาน — ใบเดิมใช้ค่าที่ backend resolve มา ส่วนใบใหม่ยังไม่มี
-    // ใบงาน จึงอนุมานจากรายการตู้ของสถานี (สถานียี่ห้อเดียว = รู้บริษัทผู้ถือครองแน่นอน)
-    const chargerIdentity = useMemo<ChargerIdentityData | null>(() => {
-        if (loadedCharger && (loadedCharger.charger_name || loadedCharger.charger_sn || loadedCharger.charger_brand)) {
-            return loadedCharger;
-        }
-        if (!chargers.length) return null;
-        const key = (faultyEquipment || "").trim().toLowerCase();
-        const matched = chargers.find(c => {
-            const no = c.chargerNo ?? (c as { charger_no?: number }).charger_no;
-            return [no, c.charger_id].some(v => v != null && v !== "" && `charger_${String(v).trim().toLowerCase()}` === key);
-        });
-        const brands = Array.from(new Set(chargers.map(c => (c.brand || "").trim()).filter(Boolean)));
-        const stationBrand = brands.length === 1 ? brands[0] : "";
-        if (!matched) return stationBrand ? { charger_brand: stationBrand } : null;
-        return {
-            charger_name: (matched.charger_name || `Charger ${matched.chargerNo ?? ""}`).trim(),
-            charger_no: matched.chargerNo ?? null,
-            charger_sn: (matched.SN || matched.sn || "").trim(),
-            charger_brand: (matched.brand || stationBrand || "").trim(),
-        };
-    }, [loadedCharger, chargers, faultyEquipment]);
     // ใบใหม่: ค่าที่ค้างมาจาก draft อาจเป็น failure class ของตู้คนละชนิดกับการ์ดที่กดเข้ามา
     // ต้องล้างทิ้ง ไม่งั้นเปิดใบ DC บนตู้ AC ได้ผ่านค่าเก่าที่ dropdown ไม่ได้แสดงแล้ว
     // (edit mode ห้ามแตะ — ต้องคงข้อมูลใบเดิมไว้)
@@ -748,6 +726,55 @@ export default function CMOpenForm() {
                 : no === selectedNo || sn === selectedSn;
         });
     }, [chargers, faultyEquipment, isEdit, maximoTree, selectedChargerNo, selectedChargerSn]);
+
+    // ใบใหม่ที่เลือก failure ระดับ charger จะแสดงข้อมูลตู้ที่จะถูกสร้างใบงานให้ทันที
+    const chargerIdentityItems = useMemo<ChargerIdentityData[]>(() => {
+        if (loadedCharger && (
+            loadedCharger.chargeBoxID || loadedCharger.charger_name || loadedCharger.charger_sn ||
+            loadedCharger.charger_brand || loadedCharger.charger_no != null
+        )) {
+            return [loadedCharger];
+        }
+        if (!chargers.length) return [];
+
+        const toIdentity = (charger: ChargerInfo): ChargerIdentityData => ({
+            chargeBoxID: (charger.chargeBoxID || "").trim(),
+            charger_name: (charger.charger_name || "").trim(),
+            charger_no: charger.chargerNo ?? charger.charger_no ?? null,
+            charger_sn: (charger.SN || charger.sn || "").trim(),
+            charger_brand: (charger.brand || "").trim(),
+        });
+        const selectedNo = selectedChargerNo.trim().toLowerCase();
+        const selectedSn = selectedChargerSn.trim().toLowerCase();
+        const selected = selectedNo || selectedSn
+            ? chargers.find(charger => {
+                const no = String(charger.chargerNo ?? charger.charger_no ?? charger.charger_id ?? charger.id ?? "").trim().toLowerCase();
+                const sn = String(charger.SN || charger.sn || "").trim().toLowerCase();
+                return selectedNo && selectedSn ? no === selectedNo && sn === selectedSn : no === selectedNo || sn === selectedSn;
+            })
+            : undefined;
+        const key = faultyEquipment.trim().toLowerCase();
+        const matched = chargers.find(charger => {
+            const no = charger.chargerNo ?? charger.charger_no;
+            return [no, charger.charger_id, charger.id].some(value =>
+                value != null && value !== "" && `charger_${String(value).trim().toLowerCase()}` === key
+            );
+        });
+        const failureRole = failureClassRole(maximoTree, faultyEquipment);
+        const targets = selected
+            ? [selected]
+            : chargerTargets.length > 0
+                ? chargerTargets
+                : matched
+                    ? [matched]
+                    : [];
+        if (failureRole === "dc" || failureRole === "ac") {
+            return targets.map(toIdentity);
+        }
+        if (matched) return [toIdentity(matched)];
+        const brands = Array.from(new Set(chargers.map(c => (c.brand || "").trim()).filter(Boolean)));
+        return brands.length === 1 ? [{ charger_brand: brands[0] }] : [];
+    }, [chargers, chargerTargets, faultyEquipment, loadedCharger, maximoTree, selectedChargerNo, selectedChargerSn]);
 
     // ==================== VALIDATION ====================
     const validations = useMemo<ValidationItem[]>(() => [
@@ -1093,6 +1120,7 @@ export default function CMOpenForm() {
                 setRemarksOpen(data.remarks_open ?? "");
                 setFaultyEquipment(data.faulty_equipment ?? "");
                 setLoadedCharger({
+                    chargeBoxID: data.chargeBoxID ?? "",
                     charger_name: data.charger_name ?? "",
                     charger_no: data.charger_no ?? null,
                     charger_sn: data.charger_sn ?? "",
@@ -1624,7 +1652,9 @@ ${in01.error ?? ""}`);
                         </div>
                     </div>
                     {/* ตู้ชาร์จที่ใบงานนี้เกี่ยวข้อง — ชื่อ / เลขตู้ / S/N / บริษัทผู้ถือครอง */}
-                    <ChargerIdentity data={chargerIdentity} lang={lang} />
+                    {chargerIdentityItems.map((data, index) => (
+                        <ChargerIdentity key={`${data.chargeBoxID || data.charger_no || data.charger_sn || "station"}-${index}`} data={data} lang={lang} />
+                    ))}
 
                     {/* Problem Details Section */}
                     <div className="tw-mb-6 tw-rounded-lg tw-overflow-hidden tw-border tw-border-blue-gray-100 tw-bg-white tw-shadow-sm">
