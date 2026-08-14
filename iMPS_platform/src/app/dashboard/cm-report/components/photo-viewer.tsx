@@ -68,10 +68,22 @@ export function ZoomableImg({
     );
 }
 
-/** นามสกุลที่ backend รับ (ALLOWED_EXTS ใน cmreport.py) — รูป + PDF + CSV */
-export const CM_ACCEPT_ATTACH = "image/*,.pdf,application/pdf,.csv,text/csv";
+/** นามสกุลที่หน้า Open และ backend รับ */
+export const CM_ACCEPT_ATTACH = [
+    ".pdf", ".docx", ".doc", ".xlsx", ".xls", ".pptx", ".ppt", ".txt", ".csv",
+    ".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg", ".heic", ".bmp",
+    ".mp4", ".mov", ".mkv", ".avi", ".webm", ".wmv",
+].join(",");
 
-const IMAGE_EXT = /\.(jpe?g|png|webp|gif|heic|heif)(\?|#|$)/i;
+const CM_ATTACH_EXTENSIONS = new Set(CM_ACCEPT_ATTACH.split(","));
+
+export function isAllowedCmAttachment(name?: string | null): boolean {
+    const value = String(name || "").toLowerCase();
+    const dot = value.lastIndexOf(".");
+    return dot >= 0 && CM_ATTACH_EXTENSIONS.has(value.slice(dot));
+}
+
+const IMAGE_EXT = /\.(jpe?g|png|webp|gif|svg|heic|bmp)(\?|#|$)/i;
 
 /**
  * ไฟล์แนบนี้เป็นรูปหรือเปล่า — ตัดสินจาก mime ก่อน (ไฟล์ที่เพิ่งเลือกจากเครื่องมี type)

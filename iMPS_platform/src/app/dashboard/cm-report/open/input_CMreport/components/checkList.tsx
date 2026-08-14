@@ -16,7 +16,7 @@ import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
 import { cmBackRoute } from "@/app/dashboard/cm-report/lib/origin";
 import { brandScopeOf, canOpenCmAtStation } from "@/utils/brandScope";
 import ChargerIdentity, { type ChargerIdentityData } from "@/app/dashboard/cm-report/components/ChargerIdentity";
-import { ZoomableImg, AttachmentFileRow, isImageAttachment, CM_ACCEPT_ATTACH } from "@/app/dashboard/cm-report/components/photo-viewer";
+import { ZoomableImg, AttachmentFileRow, isImageAttachment, isAllowedCmAttachment, CM_ACCEPT_ATTACH } from "@/app/dashboard/cm-report/components/photo-viewer";
 
 // ==================== TRANSLATIONS ====================
 const T = {
@@ -649,12 +649,15 @@ export default function CMOpenForm() {
 
     // เลขที่งาน — ก่อนอนุมัติเป็น SR (Service Request), หลังอนุมัติ (Wait for schedule ขึ้นไป) เป็น WO (Work Order)
     // อิงเลขลำดับเดียวกับ issue_id (CM-001 → SR001 / WO001)
-    const isWoStage = isPlanningStage; // head cs อนุมัติแล้ว = ขึ้นเป็นใบสั่งงาน (WO)
-    const srWoNo = useMemo(() => {
+    const isWoStage = isPlanningStage; // หลังอนุมัติและวางแผนแล้ว = แสดงเลขใบสั่งงาน (WO)
+    const issueSequence = useMemo(() => {
         const m = String(issueId || "").match(/(\d+)/);
         if (!m) return "";
-        return `${isWoStage ? "WO" : "SR"}${m[1].padStart(3, "0")}`;
-    }, [issueId, isWoStage]);
+        return m[1].padStart(3, "0");
+    }, [issueId]);
+    const srNo = issueSequence ? `SR${issueSequence}` : "";
+    const woNo = issueSequence ? `WO${issueSequence}` : "";
+    const srWoNo = isWoStage ? woNo : srNo;
 
     // ใบใหม่เริ่มที่ "Wait for approve" (รอ head cs อนุมัติ) — ตรงกับที่ backend /submit บันทึก
     useEffect(() => { if (!isEdit && !status) setStatus("Wait for approve"); }, [isEdit, status]);
@@ -865,13 +868,20 @@ export default function CMOpenForm() {
 
     const handleAddPhotos = useCallback(async (files: FileList) => {
         const remain = MAX_PHOTOS - photos_open.length;
-        if (remain <= 0 || files.length > remain) {
+        const selectedFiles = Array.from(files);
+        const allowedFiles = selectedFiles.filter(file => isAllowedCmAttachment(file.name));
+        if (allowedFiles.length !== selectedFiles.length) {
+            alert(lang === "th"
+                ? "รองรับเฉพาะไฟล์เอกสาร รูปภาพ และวิดีโอตามนามสกุลที่กำหนด"
+                : "Only the specified document, image, and video extensions are allowed");
+        }
+        if (remain <= 0 || allowedFiles.length > remain) {
             alert(lang === "th"
                 ? `แนบได้สูงสุด ${MAX_PHOTOS} ไฟล์ (เพิ่มได้อีก ${Math.max(0, remain)} ไฟล์)`
                 : `Maximum ${MAX_PHOTOS} files (${Math.max(0, remain)} remaining)`);
         }
-        if (remain <= 0) return;
-        const filesToAdd = Array.from(files).slice(0, remain);
+        if (remain <= 0 || allowedFiles.length === 0) return;
+        const filesToAdd = allowedFiles.slice(0, remain);
 
         const now = new Date().toLocaleString("th-TH", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
         const cachedLoc = gpsCache.current.fetched ? gpsCache.current.location : undefined;
@@ -1633,11 +1643,24 @@ ${in01.error ?? ""}`);
                     )}
 
                     {/* Meta Info - Readonly Inputs */}
-                    <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-4 tw-gap-4 tw-mb-6">
-                        <div>
-                            <label className="tw-block tw-text-sm tw-text-blue-gray-600 tw-mb-1">{isWoStage ? t("woNo", lang) : t("srNo", lang)}</label>
-                            <Input value={srWoNo} readOnly crossOrigin="" className="!tw-w-full !tw-bg-gray-100" containerProps={{ className: "!tw-min-w-0" }} />
-                        </div>
+                    <div className={`tw-grid tw-grid-cols-1 ${isCancelled ? "md:tw-grid-cols-5" : "md:tw-grid-cols-4"} tw-gap-4 tw-mb-6`}>
+                        {isCancelled ? (
+                            <>
+                                <div>
+                                    <label className="tw-block tw-text-sm tw-text-blue-gray-600 tw-mb-1">{t("srNo", lang)}</label>
+                                    <Input value={srNo} readOnly crossOrigin="" className="!tw-w-full !tw-bg-gray-100" containerProps={{ className: "!tw-min-w-0" }} />
+                                </div>
+                                <div>
+                                    <label className="tw-block tw-text-sm tw-text-blue-gray-600 tw-mb-1">{t("woNo", lang)}</label>
+                                    <Input value={woNo} readOnly crossOrigin="" className="!tw-w-full !tw-bg-gray-100" containerProps={{ className: "!tw-min-w-0" }} />
+                                </div>
+                            </>
+                        ) : (
+                            <div>
+                                <label className="tw-block tw-text-sm tw-text-blue-gray-600 tw-mb-1">{isWoStage ? t("woNo", lang) : t("srNo", lang)}</label>
+                                <Input value={srWoNo} readOnly crossOrigin="" className="!tw-w-full !tw-bg-gray-100" containerProps={{ className: "!tw-min-w-0" }} />
+                            </div>
+                        )}
                         <div>
                             <label className="tw-block tw-text-sm tw-text-blue-gray-600 tw-mb-1">{t("cmDate", lang)}</label>
                             <Input value={foundTime ? `${foundDate} ${foundTime}` : (foundDate || "")} readOnly crossOrigin="" className="!tw-w-full !tw-bg-gray-100" containerProps={{ className: "!tw-min-w-0" }} />

@@ -19,9 +19,13 @@ from services.maximo import create_sr as maximo_create_sr          # ← A) เ�
 from services import cm_maximo                                     # interface IN01–IN09
 import inspect                                                     # ← รองรับทั้ง sync/async
 
-# ไฟล์แนบใบงาน CM — รูป + เอกสาร (csv สำหรับ log/ข้อมูลดิบที่แนบมากับใบแจ้ง)
-# หมายเหตุ: /cmurl/upload-files ยังบังคับ pdf อย่างเดียวของมันเอง ไม่ได้กว้างตามชุดนี้
-ALLOWED_EXTS = {"jpg", "jpeg", "png", "webp", "gif", "pdf", "heic", "heif", "csv"}
+# ไฟล์แนบหน้า Open ของ CM — เอกสาร + รูปภาพ + วิดีโอตามรายการที่อนุญาต
+# หมายเหตุ: /cmurl/upload-files ยังบังคับ pdf อย่างเดียวของมันเอง
+ALLOWED_EXTS = {
+    "pdf", "docx", "doc", "xlsx", "xls", "pptx", "ppt", "txt", "csv",
+    "jpg", "jpeg", "png", "gif", "webp", "svg", "heic", "bmp",
+    "mp4", "mov", "mkv", "avi", "webm", "wmv",
+}
 MAX_FILE_MB = 20
 from deps import UserClaims, get_current_user
 from brand_scope import brand_scope_of
@@ -1701,10 +1705,7 @@ async def cmreport_reject(
                 "status": "In Progress",
                 "repair_result": "WO - wait for scheduled",
                 "repair_result_remark": "",
-                # ตีกลับแล้วต้องกลับเข้าคิววางแผนใหม่ จึงไม่คงคน/วันนัดหมายเดิมไว้
-                "assignees": [],
-                "sched_start": "",
-                "sched_finish": "",
+                # ตีกลับให้ technician คนเดิมแก้ไขต่อ จึงต้องคงผู้รับผิดชอบและกำหนดการเดิมไว้
                 "reject_remark": remark,
                 "rejected_by": current.username,
                 "rejected_at": now,
@@ -1712,8 +1713,6 @@ async def cmreport_reject(
             },
             "$unset": {
                 "stage": "",
-                "planned_date": "",
-                "planned_time": "",
             },
         },
     )
@@ -1883,6 +1882,7 @@ async def cmreport_cs_reject(
 # ── ยกเลิกใบงานที่ยังไม่ปิด → Cancelled (ไปแสดงใน tab Closed)
 #    planner/admin ยกเลิกตอนรีวิว/วางแผนได้
 PLANNER_CANCEL_ROLES: set[str] = {"admin", "planner"}
+TECHNICIAN_CANCEL_ROLE = "technician"
 
 
 class CMCancelIn(BaseModel):
@@ -1897,8 +1897,12 @@ async def cmreport_cancel(
     current: UserClaims = Depends(get_current_user),
 ):
     """ยกเลิกใบงานที่ยังไม่ปิด (ทุกสถานะยกเว้น complete/closed/cancelled) → Cancelled"""
-    if (current.role or "").lower() not in PLANNER_CANCEL_ROLES:
-        raise HTTPException(status_code=403, detail="Only planner or admin can cancel")
+    current_role = (current.role or "").strip().lower()
+    if current_role not in PLANNER_CANCEL_ROLES and current_role != TECHNICIAN_CANCEL_ROLE:
+        raise HTTPException(
+            status_code=403,
+            detail="Only planner, admin, or assigned technician can cancel",
+        )
 
     station_id = station_id.strip()
     coll = get_cmreport_collection_for(station_id)
@@ -1909,13 +1913,17 @@ async def cmreport_cancel(
 
     remark = (body.remark.strip() if body and body.remark else "")
     now = datetime.now(timezone.utc)
+    cancel_filter = {
+        "_id": oid,
+        "station_id": station_id,
+        # ยกเลิกได้เฉพาะใบที่ยังไม่ปิด/ยังไม่ถูกยกเลิก
+        "status": {"$not": {"$regex": "^(complete|closed|cancelled)$", "$options": "i"}},
+    }
+    if current_role == TECHNICIAN_CANCEL_ROLE:
+        _merge_clause(cancel_filter, _assignee_scope(current))
+
     res = await coll.update_one(
-        {
-            "_id": oid,
-            "station_id": station_id,
-            # ยกเลิกได้เฉพาะใบที่ยังไม่ปิด/ยังไม่ถูกยกเลิก
-            "status": {"$not": {"$regex": "^(complete|closed|cancelled)$", "$options": "i"}},
-        },
+        cancel_filter,
         {"$set": {
             "status": "Cancelled",
             "cancel_remark": remark,
