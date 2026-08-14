@@ -262,7 +262,7 @@ async def _charger_index_for_station(station_id: str) -> dict:
         charger_docs = await charger_coll_async.find(
             {"station_id": station_id},
             {
-                "chargerNo": 1, "charger_no": 1, "charger_id": 1, "charger_name": 1,
+                "chargerNo": 1, "charger_no": 1, "charger_id": 1, "chargeBoxID": 1, "charger_name": 1,
                 "SN": 1, "sn": 1, "brand": 1, "model": 1,
             },
         ).sort("chargerNo", 1).to_list(length=1_000)
@@ -279,6 +279,7 @@ async def _charger_index_for_station(station_id: str) -> dict:
         sn = str(charger.get("SN") or charger.get("sn") or "").strip()
         brand = str(charger.get("brand") or "").strip()
         info = {
+            "chargeBoxID": str(charger.get("chargeBoxID") or "").strip(),
             "charger_name": name,
             "charger_no": number if number not in (None, "") else None,
             "charger_sn": sn,
@@ -301,14 +302,17 @@ async def _charger_index_for_station(station_id: str) -> dict:
     }
 
 
-def _charger_identity(index: dict, faulty_equipment: str, charger_sn: str) -> dict:
+def _charger_identity(index: dict, faulty_equipment: str, charger_sn: str, charger_no=None) -> dict:
     """ชื่อ/เลข/ยี่ห้อของตู้บนใบงานหนึ่งใบ — คีย์ SN มาก่อนเพราะแม่นกว่าเลขตู้"""
     by_key = index.get("by_key") or {}
     sn = (charger_sn or "").strip()
+    no = str(charger_no or "").strip()
     info = (by_key.get(f"sn:{sn.lower()}") if sn else None) \
+        or (by_key.get(f"charger_{no.lower()}") if no else None) \
         or by_key.get(str(faulty_equipment or "").strip().lower()) \
         or {}
     return {
+        "chargeBoxID": info.get("chargeBoxID", ""),
         "charger_name": info.get("charger_name", ""),
         "charger_no": info.get("charger_no"),
         "charger_sn": info.get("charger_sn") or sn,
@@ -636,9 +640,10 @@ async def _cm_items_for_station(station_id: str, station_name: str, status: str 
         job = it.get("job", {})
         faulty_equipment = it.get("faulty_equipment") or job.get("faulty_equipment") or ""
         charger = _charger_identity(
-            charger_index,
-            faulty_equipment,
-            it.get("charger_sn") or job.get("charger_sn") or "",
+        charger_index,
+        faulty_equipment,
+        it.get("charger_sn") or job.get("charger_sn") or "",
+        it.get("charger_no") or job.get("charger_no") or "",
         )
         out.append({
             "id": str(it["_id"]),
@@ -656,6 +661,7 @@ async def _cm_items_for_station(station_id: str, station_name: str, status: str 
             "faulty_equipment": faulty_equipment,
             "faulty_equipment_label": charger["charger_label"],
             # ตัวตนของตู้ที่ใบงานนี้อ้างถึง — ชื่อ / เลขตู้ / S/N / ยี่ห้อ (บริษัทที่ถือครอง)
+            "chargeBoxID": charger["chargeBoxID"],
             "charger_name": charger["charger_name"],
             "charger_no": charger["charger_no"],
             "charger_sn": charger["charger_sn"],
@@ -1347,12 +1353,14 @@ async def cmreport_detail_path(
         await _charger_index_for_station(station_id),
         doc.get("faulty_equipment") or nested_job.get("faulty_equipment") or "",
         doc.get("charger_sn") or nested_job.get("charger_sn") or "",
+        doc.get("charger_no") or nested_job.get("charger_no") or "",
     )
 
     return {
         "id": str(doc["_id"]),
         "station_id": doc.get("station_id"),
         "charger_name": charger["charger_name"],
+        "chargeBoxID": charger["chargeBoxID"],
         "charger_no": charger["charger_no"],
         "charger_sn": charger["charger_sn"],
         "charger_model": charger["charger_model"],
@@ -1654,7 +1662,7 @@ async def cmreport_reject(
     station_id: str = Query(...),
     current: UserClaims = Depends(get_current_user),
 ):
-    """ตีกลับใบงานจากช่าง → Wait for schedule เพื่อให้ planner วางแผน/มอบหมายใหม่"""
+    """ตีกลับใบงานจากช่าง → In Progress เพื่อให้ planner วางแผน/มอบหมายใหม่"""
     if (current.role or "").lower() not in CM_APPROVE_ROLES:
         raise HTTPException(status_code=403, detail="Only planner or admin can reject")
 
@@ -1690,7 +1698,7 @@ async def cmreport_reject(
         },
         {
             "$set": {
-                "status": "Wait for schedule",
+                "status": "In Progress",
                 "repair_result": "WO - wait for scheduled",
                 "repair_result_remark": "",
                 # ตีกลับแล้วต้องกลับเข้าคิววางแผนใหม่ จึงไม่คงคน/วันนัดหมายเดิมไว้
@@ -1712,7 +1720,7 @@ async def cmreport_reject(
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Report not found or not awaiting technician approval")
 
-    return {"ok": True, "status": "Wait for schedule"}
+    return {"ok": True, "status": "In Progress"}
 
 
 # ── ขั้นตอนตาม flow: cs เปิดใบงาน (Wait for approve/cs_approval) → planner อนุมัติ SR

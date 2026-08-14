@@ -793,6 +793,7 @@ export default function CMForm() {
                 const data = await res.json();
 
                 setChargerIdentity({
+                    chargeBoxID: data.chargeBoxID ?? "",
                     charger_name: data.charger_name ?? "",
                     charger_no: data.charger_no ?? null,
                     charger_sn: data.charger_sn ?? "",
