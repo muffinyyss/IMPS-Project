@@ -153,7 +153,7 @@ describe("cancelled rows", () => {
 
 describe("workStatusOf", () => {
   it('"Wait for schedule" = WO แล้ว ไม่ใช่ SR ใหม่', () => {
-    // head cs อนุมัติ → ใบกลายเป็น WO รอ engineer วางแผน ต้องนับใน "WO ทั้งหมด"
+    // head cs อนุมัติ → ใบกลายเป็น WO รอ planner วางแผน ต้องนับใน "WO ทั้งหมด"
     expect(workStatusOf(makeRow({ status: "Wait for schedule" }))).toBe("wait_manpower");
     expect(workStatusOf(makeRow({ status: "Wait for schedule" }))).not.toBe("new");
   });

@@ -115,7 +115,7 @@ export function DashboardNavbar() {
 
   // ===== Super admin: dropdown สลับ role (impersonate) โดยไม่ต้อง login ใหม่ =====
   const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
-  const SWITCH_ROLES = ["super_admin", "admin", "owner", "cs", "engineer", "technician"];
+  const SWITCH_ROLES = ["super_admin", "admin", "owner", "cs", "planner", "technician"];
   const [isSuperAdminReal, setIsSuperAdminReal] = useState(false);
   const [effectiveRole, setEffectiveRole] = useState<string>("");
   const [switching, setSwitching] = useState(false);
@@ -215,11 +215,12 @@ export function DashboardNavbar() {
 
   const hasChargerSelected = !!selectedSN;
 
-  // บนหน้า CM Report: CM เป็นราย "สถานี" (ไม่ผูกกับตู้ชาร์จ) → โชว์ชื่อสถานีแทน badge ตู้ชาร์จ
+  // บนหน้า CM Report: ถ้าเข้ามาจาก CM Dashboard จะไม่มี SN (CM เป็นราย "สถานี") → ยังโชว์ชื่อสถานีได้
+  // แต่ถ้ามีตู้ชาร์จที่เลือกไว้ ให้โชว์ badge SN เหมือนหน้าอื่น ๆ
   const isCmReportPage = pathname.startsWith("/dashboard/cm-report");
   const stationDisplay = selectedStationName || selectedStationId;
   const showStationPill = hasChargerSelected || (isCmReportPage && !!stationDisplay);
-  const showChargerPill = hasChargerSelected && !isCmReportPage;
+  const showChargerPill = hasChargerSelected;
 
   // useEffect สำหรับปิด tooltip เมื่อกดที่อื่น
   useEffect(() => {

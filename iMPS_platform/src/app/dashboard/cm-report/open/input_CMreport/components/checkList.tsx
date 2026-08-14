@@ -4,18 +4,19 @@ import React, { useMemo, useState, useEffect, useRef, useCallback } from "react"
 import { Button, Input, Textarea, Tooltip } from "@material-tailwind/react";
 import Image from "next/image";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
-import { ArrowLeftIcon, PhotoIcon, XMarkIcon, PlusIcon, CheckCircleIcon, ExclamationTriangleIcon } from "@heroicons/react/24/solid";
+import { ArrowLeftIcon, PhotoIcon, XMarkIcon, CheckCircleIcon, ExclamationTriangleIcon } from "@heroicons/react/24/solid";
 import { InformationCircleIcon } from "@heroicons/react/24/outline";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
 import { draftKey as getDraftKey, saveDraftLocal, loadDraftLocal, clearDraftLocal, type CMDraftData } from "../lib/draft";
 import { putPhoto, getPhotosByDraftKey, delPhoto, delPhotosByDraftKey, createPreviewUrl, photoRefToFile, type PhotoRef } from "../lib/draftPhotos";
 import { apiFetch } from "@/utils/api";
-import { useMaximoFailureTree, failureClassOptions } from "@/app/dashboard/cm-report/lib/maximo";
+import { useMaximoFailureTree, failureClassOptions, failureClassRole } from "@/app/dashboard/cm-report/lib/maximo";
 import { failureCodeLabel } from "@/app/dashboard/cm-report/lib/failureCode";
 import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
 import { cmBackRoute } from "@/app/dashboard/cm-report/lib/origin";
 import { brandScopeOf, canOpenCmAtStation } from "@/utils/brandScope";
 import ChargerIdentity, { type ChargerIdentityData } from "@/app/dashboard/cm-report/components/ChargerIdentity";
+import { ZoomableImg, AttachmentFileRow, isImageAttachment, CM_ACCEPT_ATTACH } from "@/app/dashboard/cm-report/components/photo-viewer";
 
 // ==================== TRANSLATIONS ====================
 const T = {
@@ -86,8 +87,7 @@ const T = {
     schedStart: { th: "วันที่เริ่มตามแผน", en: "Scheduled Start" },
     schedFinish: { th: "วันที่เสร็จตามแผน", en: "Scheduled Finish" },
     technician: { th: "ช่างผู้รับผิดชอบ", en: "Technician" },
-    selectTechnician: { th: "เลือกช่าง...", en: "Select technician..." },
-    addTechnician: { th: "เพิ่มช่าง", en: "Add technician" },
+    allTechnicians: { th: "ทั้งหมด", en: "All" },
     noTechnicians: { th: "ไม่พบช่าง", en: "No technicians found" },
     failureCodesLoading: {
         th: "กำลังโหลดรายการจาก Maximo…",
@@ -100,10 +100,10 @@ const T = {
     backToList: { th: "กลับ", en: "Back" },
     alertNoStationId: { th: "ไม่พบ station_id", en: "Station ID not found" },
     alertSaveFailed: { th: "บันทึกไม่สำเร็จ:", en: "Save failed:" },
-    photos: { th: "รูปภาพ", en: "Photos" },
-    attachPhoto: { th: "แนบรูป", en: "Attach Photo" },
-    noPhotos: { th: "ยังไม่มีรูปแนบ", en: "No photos attached" },
-    photoHint: { th: "รองรับไฟล์ JPG, PNG", en: "Supports JPG, PNG" },
+    photos: { th: "รูปภาพ / ไฟล์แนบ", en: "Photos / Files" },
+    attachPhoto: { th: "แนบรูป / ไฟล์", en: "Attach Photo / File" },
+    noPhotos: { th: "ยังไม่มีไฟล์แนบ", en: "No files attached" },
+    photoHint: { th: "รองรับไฟล์ JPG, PNG, PDF, CSV", en: "Supports JPG, PNG, PDF, CSV" },
     formStatus: { th: "สถานะการกรอกข้อมูล", en: "Form Status" },
     allComplete: { th: "กรอกข้อมูลครบถ้วน พร้อมบันทึก ✓", en: "All fields completed. Ready to save ✓" },
     remaining: { th: "ยังขาดอีก", en: "Missing" },
@@ -111,7 +111,7 @@ const T = {
     validEquipment: { th: "ตำแหน่งจุดที่มีความผิดปกติ", en: "FAILURECODE DESCRIPTION" },
     validSeverity: { th: "ความเร่งด่วน", en: "Urgency" },
     validProblemFound: { th: "ปัญหาที่พบ", en: "Problem Found" },
-    validPhotos: { th: "รูปภาพ", en: "Photos" },
+    validPhotos: { th: "รูปภาพ / ไฟล์แนบ", en: "Photos / Files" },
     notFilled: { th: "ยังไม่ได้กรอก", en: "Not filled" },
     notSelected: { th: "ยังไม่ได้เลือก", en: "Not selected" },
     notAttached: { th: "ยังไม่ได้แนบ", en: "Not attached" },
@@ -129,9 +129,8 @@ const T = {
     redirecting: { th: "กำลังกลับหน้ารายการ...", en: "Redirecting to list..." },
     optional: { th: "(ไม่บังคับ)", en: "(optional)" },
     maxPhotos: { th: "สูงสุด", en: "Max" },
-    photosUnit: { th: "รูป", en: "photos" },
+    photosUnit: { th: "ไฟล์", en: "files" },
     photoSavedBadge: { th: "บันทึกแล้ว", en: "Saved" },
-    removeTechnician: { th: "ลบช่าง", en: "Remove technician" },
     cancelledBannerTitle: { th: "ใบงานถูกยกเลิก", en: "Work order cancelled" },
 };
 
@@ -144,7 +143,7 @@ type Status = "" | "Open" | "In Progress" | "Wait for approve" | "Wait for sched
 // ช่างที่เลือกได้ในขั้นวางแผน (มาจาก GET /users/by-role?role=technician)
 type TechnicianOption = { id: string; username: string; email: string; company?: string };
 
-// สถานะรอที่ engineer เลือกได้ตอนวางแผน — ต้องตรงตัวกับ WO_SUBTABS ใน inprogress-table ที่ filter ด้วย string นี้
+// สถานะรอที่ planner เลือกได้ตอนวางแผน — ต้องตรงตัวกับ WO_SUBTABS ใน inprogress-table ที่ filter ด้วย string นี้
 // ("WO - wait for approve" ไม่อยู่ที่นี่ เพราะเกิดหลังซ่อมเสร็จ ไม่ใช่ตอนวางแผน)
 const WAIT_STATES = [
     "WO - wait for scheduled",
@@ -186,8 +185,9 @@ const normalizeWaitState = (v: string): (typeof WAIT_STATES)[number] => {
 };
 
 type ServerPhoto = { filename: string; size: number; url: string; remark?: string; uploadedAt?: string; location?: string; };
-type PhotoItem = { id: string; file: File; preview: string; ref?: PhotoRef; isServer?: boolean; serverUrl?: string; serverGroup?: string; createdAt?: string; location?: string; };
-type ChargerInfo = { chargerNo?: number; charger_id?: string; charger_name?: string; SN?: string; sn?: string; chargerType?: string; brand?: string; };
+// แนบได้ทั้งรูปและไฟล์ (PDF) — mime/name ใช้แยกว่าจะโชว์เป็นรูปหรือการ์ดไฟล์
+type PhotoItem = { id: string; file: File; preview: string; ref?: PhotoRef; isServer?: boolean; serverUrl?: string; serverGroup?: string; createdAt?: string; location?: string; mime?: string; name?: string; };
+type ChargerInfo = { chargerNo?: number; charger_no?: number | string; charger_id?: string; charger_name?: string; SN?: string; sn?: string; chargerType?: string; brand?: string; };
 type StationPublic = { station_id: string; station_name: string; };
 type ValidationItem = { key: string; label: string; isValid: boolean; message: string; isRequired: boolean; scrollId?: string; };
 
@@ -202,7 +202,7 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000"
 
 // ==================== VALIDATION CARD ====================
 // การ์ดแสดงแผนรอบก่อนหน้า — อ่านอย่างเดียว ใช้ในหน้าวางแผนเมื่อใบถูกวางแผนใหม่หลายรอบ
-// ข้อมูลที่ช่างบันทึกไว้ — อ่านอย่างเดียว ใช้ตอน engineer กลับมาวางแผนรอบใหม่
+// ข้อมูลที่ช่างบันทึกไว้ — อ่านอย่างเดียว ใช้ตอน planner กลับมาวางแผนรอบใหม่
 // ซ่อนทั้งการ์ดถ้าช่างยังไม่ได้กรอกอะไรเลย และซ่อนเป็นรายหัวข้อถ้าหัวข้อนั้นว่าง
 function RepairInfoCard({ info, lang }: { info: RepairInfo; lang: Lang }) {
     const problems = [...info.problem_type.map(problemLabelOf), info.problem_type_other].map(x => (x || "").trim()).filter(Boolean);
@@ -230,7 +230,7 @@ function RepairInfoCard({ info, lang }: { info: RepairInfo; lang: Lang }) {
                     {imgs.map((im, k) => (
                         <a key={k} href={src(im.url)} target="_blank" rel="noreferrer"
                             className="tw-block tw-w-20 tw-h-20 tw-rounded-lg tw-overflow-hidden tw-border tw-border-blue-gray-100 tw-bg-blue-gray-50">
-                            <img src={src(im.url)} alt={label} className="tw-w-full tw-h-full tw-object-cover" />
+                            <ZoomableImg src={src(im.url)} alt={label} className="tw-w-full tw-h-full tw-object-cover" />
                         </a>
                     ))}
                 </div>
@@ -423,9 +423,13 @@ function PhotoUpload({ photos_open, onAdd, onRemove, max, disabled, lang, id }: 
     const fileInputRef = useRef<HTMLInputElement>(null);
     const canAddMore = photos_open.length < max && !disabled;
 
+    // รูปโชว์เป็นกริดพรีวิวใหญ่ ส่วนไฟล์ (PDF) พรีวิวไม่ได้ → แยกไปเป็นรายการแถวเล็ก ๆ ด้านล่าง
+    const images = photos_open.filter(p => isImageAttachment(p.preview, p.mime));
+    const files = photos_open.filter(p => !isImageAttachment(p.preview, p.mime));
+
     return (
         <div id={id} className="tw-space-y-3">
-            <input ref={fileInputRef} type="file" accept="image/*" multiple className="tw-hidden" onChange={e => { if (e.target.files) { onAdd(e.target.files); e.target.value = ""; } }} />
+            <input ref={fileInputRef} type="file" accept={CM_ACCEPT_ATTACH} multiple className="tw-hidden" onChange={e => { if (e.target.files) { onAdd(e.target.files); e.target.value = ""; } }} />
 
             {/* Attach button - always on left */}
             {canAddMore && (
@@ -438,11 +442,11 @@ function PhotoUpload({ photos_open, onAdd, onRemove, max, disabled, lang, id }: 
             )}
 
             {/* Photo grid */}
-            {photos_open.length > 0 ? (
+            {images.length > 0 && (
                 <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 md:tw-grid-cols-4 tw-gap-3">
-                    {photos_open.map(photo => (
+                    {images.map(photo => (
                         <div key={photo.id} className="tw-relative tw-aspect-square tw-rounded-lg tw-overflow-hidden tw-border tw-border-blue-gray-200 tw-bg-blue-gray-50 tw-shadow-sm hover:tw-shadow-md tw-transition-shadow">
-                            <img src={photo.preview} alt="" className="tw-w-full tw-h-full tw-object-cover" />
+                            <ZoomableImg src={photo.preview} alt="" className="tw-w-full tw-h-full tw-object-cover" />
                             {/* Timestamp & Location overlay */}
                             {(photo.createdAt || photo.location) && (
                                 <span className="tw-absolute tw-bottom-1 tw-right-1 tw-text-[8px] tw-leading-tight tw-bg-black/60 tw-text-white tw-px-1.5 tw-py-1 tw-rounded tw-pointer-events-none tw-text-right tw-max-w-[90%] tw-truncate">
@@ -464,10 +468,24 @@ function PhotoUpload({ photos_open, onAdd, onRemove, max, disabled, lang, id }: 
                         </div>
                     ))}
                 </div>
-            ) : disabled ? (
-                <p className="tw-text-sm tw-text-blue-gray-400">{t("noPhotos", lang)}</p>
-            ) : (
-                <p className="tw-text-sm tw-text-blue-gray-500">{t("noPhotos", lang)}</p>
+            )}
+
+            {/* ไฟล์แนบ (PDF) — รายการแถว ไม่ทำพรีวิวใหญ่เหมือนรูป */}
+            {files.length > 0 && (
+                <div className="tw-flex tw-flex-wrap tw-gap-2">
+                    {files.map(f => (
+                        <AttachmentFileRow
+                            key={f.id}
+                            src={f.preview}
+                            name={f.name}
+                            onRemove={disabled ? undefined : () => onRemove(f.id)}
+                        />
+                    ))}
+                </div>
+            )}
+
+            {photos_open.length === 0 && (
+                <p className={`tw-text-sm ${disabled ? "tw-text-blue-gray-400" : "tw-text-blue-gray-500"}`}>{t("noPhotos", lang)}</p>
             )}
         </div>
     );
@@ -500,12 +518,17 @@ export default function CMOpenForm() {
     const [commentText, setCommentText] = useState("");
     const openCommentModal = (mode: CommentMode) => { setCommentText(""); setCommentModal({ open: true, mode }); };
     const closeCommentModal = () => setCommentModal((m) => ({ ...m, open: false }));
-    // เหตุผลที่ถูกตีกลับ (engineer ตีกลับมาให้ CS แก้) — โชว์ให้ CS เห็นว่าต้องแก้อะไร
+    // เหตุผลที่ถูกตีกลับ (planner ตีกลับมาให้ CS แก้) — โชว์ให้ CS เห็นว่าต้องแก้อะไร
     const [rejectedInfo, setRejectedInfo] = useState<{ remark: string; by: string }>({ remark: "", by: "" });
     // เหตุผลที่ยกเลิก — โชว์ในหน้ารายละเอียดใบงาน Cancelled
     const [cancelledInfo, setCancelledInfo] = useState<{ remark: string; by: string }>({ remark: "", by: "" });
     const [remarks_open, setRemarksOpen] = useState("");
     const [faultyEquipment, setFaultyEquipment] = useState("");
+    const [chargerNo, setChargerNo] = useState("");
+    const [chargerSn, setChargerSn] = useState("");
+    const [selectedChargerNo, setSelectedChargerNo] = useState("");
+    const [selectedChargerSn, setSelectedChargerSn] = useState("");
+    const [chargerTypeHint, setChargerTypeHint] = useState("");
 
     // ═══ ขั้นวางแผน (เห็นเฉพาะ role ที่วางแผนได้) ═══
     // ประวัติแผนรอบก่อน ๆ (อ่านอย่างเดียว) — flat fields ด้านล่างคือรอบที่กำลังกรอก
@@ -516,7 +539,7 @@ export default function CMOpenForm() {
     const [plannedTime, setPlannedTime] = useState("");
     const [schedStart, setSchedStart] = useState("");
     const [schedFinish, setSchedFinish] = useState("");
-    const [assignees, setAssignees] = useState<string[]>([""]);   // 1 แถว = 1 ช่าง — เริ่มที่แถวว่าง 1 แถว แล้วกด + เพิ่มเอง
+    const [assignees, setAssignees] = useState<string[]>([]);   // username ของช่างที่ติ๊กเลือกไว้
     const [waitState, setWaitState] = useState<string>(DEFAULT_WAIT_STATE);
     const [waitRemark, setWaitRemark] = useState<string>(""); // หมายเหตุ สำหรับ material/site condition
     const [technicians, setTechnicians] = useState<TechnicianOption[]>([]);
@@ -554,9 +577,9 @@ export default function CMOpenForm() {
     const isEdit = !!editId;
     // คนเปิดใบงาน (reported_by) แก้ไขใบงานที่ยัง Open ได้ — คนอื่นเห็นแบบอ่านอย่างเดียว
     const isOwner = isEdit && !!currentUsername.trim() && currentUsername.trim() === reported_by.trim();
-    // engineer (อนุมัติ SR/วางแผน) ไม่มีสิทธิแก้ field ใบงานที่ตัวเองไม่ได้แจ้ง
-    // (engineer แก้ได้เฉพาะส่วนการวางแผน ซึ่งอยู่นอก fieldsLocked) — กันเคส impersonate ที่ isOwner เพี้ยนด้วย
-    const isEngineer = userRole.trim().toLowerCase() === "engineer";
+    // planner (อนุมัติ SR/วางแผน) ไม่มีสิทธิแก้ field ใบงานที่ตัวเองไม่ได้แจ้ง
+    // (planner แก้ได้เฉพาะส่วนการวางแผน ซึ่งอยู่นอก fieldsLocked) — กันเคส impersonate ที่ isOwner เพี้ยนด้วย
+    const isPlanner = userRole.trim().toLowerCase() === "planner";
     const isCs = userRole.trim().toLowerCase() === "cs";
     const isCancelled = status.trim().toLowerCase() === "cancelled";
 
@@ -566,41 +589,45 @@ export default function CMOpenForm() {
     const stageLower = String(stage).trim().toLowerCase();
     // ด่าน cs: เปิดใหม่รอ head cs อนุมัติ (Open เก่า/auto หรือ Wait for approve + cs_approval)
     const isCsStage = statusLower === "open" || (statusLower === "wait for approve" && stageLower === "cs_approval");
-    // ด่านวางแผน: head cs อนุมัติแล้ว รอ engineer วางแผน
+    // ด่านวางแผน: head cs อนุมัติแล้ว รอ planner วางแผน
     const isPlanningStage = statusLower === "wait for schedule";
     // ใบที่รอ head cs อนุมัติจริง ๆ (ยังไม่ถูกตีกลับ) — ใช้คุมปุ่มอนุมัติ/ตีกลับของ head cs
     const isCsPending = statusLower === "wait for approve" && stageLower === "cs_approval";
-    // ใบที่ถูกตีกลับแล้ว (มี reject_remark) = รอ cs ผู้เปิดแก้ไขก่อน ยังไม่ใช่คิวของ engineer
+    // ใบที่ถูกตีกลับแล้ว (มี reject_remark) = รอ cs ผู้เปิดแก้ไขก่อน ยังไม่ใช่คิวของ planner
     const isReturnedToCs = isCsStage && !!rejectedInfo.remark;
 
-    // คนเปิดใบงานแก้ข้อมูลได้ระหว่างใบยังอยู่ด่าน cs — รวม cs ที่ถูก engineer ตีกลับมาให้แก้
-    // (engineer แก้ได้เฉพาะส่วนวางแผน ซึ่งอยู่นอก fieldsLocked)
-    const canEditFields = isOwner && !isEngineer && (!isCs || isCsStage);
+    // คนเปิดใบงานแก้ข้อมูลได้ระหว่างใบยังอยู่ด่าน cs — รวม cs ที่ถูก planner ตีกลับมาให้แก้
+    // (planner แก้ได้เฉพาะส่วนวางแผน ซึ่งอยู่นอก fieldsLocked)
+    const canEditFields = isOwner && !isPlanner && (!isCs || isCsStage);
     const fieldsLocked = isEdit && (!canEditFields || isCancelled);
 
-    // ขั้นวางแผน: engineer วางแผนตาม flow, admin/owner คุมภาพรวม — cs เปิดใบงานอย่างเดียว วางแผนไม่ได้
+    // ขั้นวางแผน: planner วางแผนตาม flow, admin/owner คุมภาพรวม — cs เปิดใบงานอย่างเดียว วางแผนไม่ได้
     // เห็นทั้งตอนเปิดใบใหม่และตอนเปิดใบเดิม (เปิดงาน + วางแผน รวดเดียวได้)
     // ใบที่ตีกลับให้ cs แก้ = ยังวางแผน/Assign ไม่ได้ จนกว่า cs จะแก้แล้วบันทึกกลับเข้าคิว
-    const canPlan = !isCancelled && !isReturnedToCs && ["admin", "owner", "engineer"].includes(roleLower);
+    const canPlan = !isCancelled && !isReturnedToCs && ["admin", "owner", "planner"].includes(roleLower);
     // แสดง Waiting On ครบทุกตัวเลือกเสมอ แม้สถานะนั้นจะเคยถูกเลือกในรอบก่อนแล้ว
     const waitStateOptions = WAIT_STATES;
 
-    // assignees = 1 แถว 1 ช่าง — แถวที่เพิ่งกด + จะยังเป็น "" จนกว่าจะเลือก
+    // assignees = username ที่ติ๊กไว้ — กรอง "" กันค่าเก่าจาก draft/ใบเดิมที่เคยเก็บแถวว่างไว้
     const pickedAssignees = useMemo(() => assignees.filter(Boolean), [assignees]);
     // มีการกรอกแผนไว้บ้างหรือยัง — ใช้ตัดสินว่าต้องบันทึกแผนต่อจากการเปิดใบไหม
     const hasPlanInput = !!schedStart || !!schedFinish || pickedAssignees.length > 0;
-    // ตัวเลือกของแถว i — ตัดคนที่แถวอื่นเลือกไปแล้วออก กันมอบหมายคนเดิมซ้ำ
-    const technicianOptionsFor = (i: number) =>
-        technicians.map(x => x.username).filter(u => !assignees.some((a, j) => j !== i && a === u));
+
+    const technicianNames = useMemo(() => technicians.map(x => x.username).filter(Boolean), [technicians]);
+    const allTechniciansPicked = technicianNames.length > 0 && technicianNames.every(u => pickedAssignees.includes(u));
+    const toggleAssignee = (username: string) =>
+        setAssignees(prev => prev.includes(username) ? prev.filter(u => u !== username) : [...prev.filter(Boolean), username]);
+    // ติ๊ก All = เลือกช่างทุกคนในลิสต์, ติ๊กออก = ล้างทั้งหมด
+    const toggleAllAssignees = () => setAssignees(allTechniciansPicked ? [] : technicianNames);
     // finish ต้องอยู่หลัง start เสมอ
     const schedRangeInvalid = !!schedStart && !!schedFinish && schedFinish <= schedStart;
     // "wait for scheduled" = ต้องกำหนดวันเริ่ม/เสร็จ + ช่าง | material/site condition = รอของ/รอหน้างาน ยังกำหนดไม่ได้ → กรอกแค่สถานะรอ กดบันทึกได้เลย
     const needsSchedule = waitState === "WO - wait for scheduled";
-    // ต้องมีอย่างน้อย 1 แถว และทุกแถวต้องเลือกช่างแล้ว (กันแถวว่างที่กด + ทิ้งไว้) — เฉพาะเมื่อ needsSchedule
+    // ต้องติ๊กช่างอย่างน้อย 1 คน — เฉพาะเมื่อ needsSchedule
     // สถานะรอที่ไม่ใช่ scheduled ต้องบอกเหตุผล — ฟอร์มผลการซ่อมบังคับหมายเหตุของสองสถานะนี้อยู่แล้ว
     // ถ้าด่านวางแผนปล่อยว่างได้ ใบจะไปค้างอยู่ In Progress โดยไม่มีใครรู้ว่ารออะไร
     const canSubmitPlan = needsSchedule
-        ? (!!schedStart && !!schedFinish && assignees.length > 0 && assignees.every(Boolean) && !schedRangeInvalid)
+        ? (!!schedStart && !!schedFinish && pickedAssignees.length > 0 && !schedRangeInvalid)
         : !!waitRemark.trim();
     // บริษัทที่ดูแลเฉพาะบางยี่ห้อ (เช่น EDS = FlexxFast) เปิดใบงานได้เฉพาะสถานีของยี่ห้อนั้น
     // backend เป็นคนบังคับจริง — ตรงนี้บอกล่วงหน้าไม่ให้กรอกจนจบแล้วเพิ่งโดนปฏิเสธ
@@ -611,15 +638,15 @@ export default function CMOpenForm() {
     const draftKey = useMemo(() => getDraftKey(stationId), [stationId]);
     const STATUS_OPTIONS: Status[] = ["Open", "In Progress"];
 
-    const canCancelRole = ["admin", "owner", "engineer"].includes(roleLower);
-    const canRejectRole = ["admin", "engineer"].includes(roleLower);
-    // ยกเลิกได้เฉพาะ admin/engineer ตอนรีวิวหรือวางแผน — cs มีหน้าที่เปิดใบงานเท่านั้น
-    // ใบที่ตีกลับให้ cs แก้ = ยังไม่ใช่คิวของ engineer จึงยกเลิกไม่ได้จนกว่า cs จะแก้กลับมา
+    const canCancelRole = ["admin", "owner", "planner"].includes(roleLower);
+    const canRejectRole = ["admin", "planner"].includes(roleLower);
+    // ยกเลิกได้เฉพาะ admin/planner ตอนรีวิวหรือวางแผน — cs มีหน้าที่เปิดใบงานเท่านั้น
+    // ใบที่ตีกลับให้ cs แก้ = ยังไม่ใช่คิวของ planner จึงยกเลิกไม่ได้จนกว่า cs จะแก้กลับมา
     const showCancelBtn = isEdit && canCancelRole && (isCsStage || isPlanningStage) && !isReturnedToCs;
     const showRejectBtn = isEdit && canRejectRole && isPlanningStage;
-    // engineer (หรือ admin) ตีกลับ SR ด่าน cs ได้ — ไม่มีปุ่มอนุมัติแล้ว (engineer วางแผน/Assign SR ได้เลย)
+    // planner (หรือ admin) ตีกลับ SR ด่าน cs ได้ — ไม่มีปุ่มอนุมัติแล้ว (planner วางแผน/Assign SR ได้เลย)
     // ใบที่ถูกตีกลับแล้ว (มี reject_remark) = รอ cs ผู้เปิดแก้ → กดตีกลับซ้ำไม่ได้จนกว่า cs จะบันทึกกลับ
-    const canCsApprove = ["admin", "engineer"].includes(roleLower);
+    const canCsApprove = ["admin", "planner"].includes(roleLower);
     const showCsRejectBtn = isEdit && canCsApprove && isCsPending && !isReturnedToCs;
 
     // เลขที่งาน — ก่อนอนุมัติเป็น SR (Service Request), หลังอนุมัติ (Wait for schedule ขึ้นไป) เป็น WO (Work Order)
@@ -635,10 +662,32 @@ export default function CMOpenForm() {
     useEffect(() => { if (!isEdit && !status) setStatus("Wait for approve"); }, [isEdit, status]);
     const headerLabel = useMemo(() => (isEdit ? t("headerEdit", lang) : t("headerAdd", lang)), [isEdit, lang]);
 
-    // FAILURECODE options — รายการมาจาก Maximo (IN04) กรองตามชนิดตู้ที่สถานีนี้มีจริง
-    // สถานีที่ยังไม่มีข้อมูลตู้ ถือว่าเป็น DC ไว้ก่อนเหมือนเดิม
-    const hasDC = chargers.length === 0 || chargers.some(c => (c.chargerType || "DC").toUpperCase() === "DC");
-    const hasAC = chargers.some(c => (c.chargerType || "").toUpperCase() === "AC");
+    // ชนิดของตู้ที่กดการ์ดเข้ามา — ยึดข้อมูลจริงใน DB ก่อน (match ด้วย SN/เลขตู้ แบบเดียวกับ
+    // chargerTargets ด้านล่าง) ถ้ารายการตู้ยังไม่มา/หาไม่เจอค่อยใช้ค่าที่หน้า Stations ฝากไว้
+    // คืน "" = เข้าแบบระดับสถานี (เช่นมาจาก CM Dashboard) → ไม่จำกัดชนิดตู้
+    const pinnedChargerType = useMemo(() => {
+        const no = selectedChargerNo.trim().toLowerCase();
+        const sn = selectedChargerSn.trim().toLowerCase();
+        if (!no && !sn) return "";
+        const found = chargers.find(charger => {
+            const cno = String(charger.chargerNo ?? charger.charger_no ?? charger.charger_id ?? "").trim().toLowerCase();
+            const csn = String(charger.SN || charger.sn || "").trim().toLowerCase();
+            return no && sn ? cno === no && csn === sn : cno === no || csn === sn;
+        });
+        const type = ((found?.chargerType || "").trim().toUpperCase()) || chargerTypeHint;
+        return type === "DC" || type === "AC" ? type : "";
+    }, [chargers, selectedChargerNo, selectedChargerSn, chargerTypeHint]);
+
+    // FAILURECODE options — รายการมาจาก Maximo (IN04)
+    // • เข้ามาจากการ์ดตู้ชาร์จ → เห็นเฉพาะ failure class ของชนิดตู้นั้น (การ์ด AC ไม่ต้องเห็น DC Charger Failure)
+    // • เข้าแบบระดับสถานี → กรองตามชนิดตู้ที่สถานีนี้มีจริงเหมือนเดิม
+    //   (สถานีที่ยังไม่มีข้อมูลตู้ ถือว่าเป็น DC ไว้ก่อน)
+    const hasDC = pinnedChargerType
+        ? pinnedChargerType === "DC"
+        : (chargers.length === 0 || chargers.some(c => (c.chargerType || "DC").toUpperCase() === "DC"));
+    const hasAC = pinnedChargerType
+        ? pinnedChargerType === "AC"
+        : chargers.some(c => (c.chargerType || "").toUpperCase() === "AC");
     const failureCodeOptions = useMemo(
         () => failureClassOptions(maximoTree, { hasDC, hasAC }) ?? [],
         [maximoTree, hasDC, hasAC],
@@ -669,6 +718,44 @@ export default function CMOpenForm() {
             charger_brand: (matched.brand || stationBrand || "").trim(),
         };
     }, [loadedCharger, chargers, faultyEquipment]);
+    // ใบใหม่: ค่าที่ค้างมาจาก draft อาจเป็น failure class ของตู้คนละชนิดกับการ์ดที่กดเข้ามา
+    // ต้องล้างทิ้ง ไม่งั้นเปิดใบ DC บนตู้ AC ได้ผ่านค่าเก่าที่ dropdown ไม่ได้แสดงแล้ว
+    // (edit mode ห้ามแตะ — ต้องคงข้อมูลใบเดิมไว้)
+    useEffect(() => {
+        if (isEdit || !pinnedChargerType || !faultyEquipment) return;
+        const role = failureClassRole(maximoTree, faultyEquipment);
+        if ((role === "dc" || role === "ac") && role !== pinnedChargerType.toLowerCase()) {
+            setFaultyEquipment("");
+        }
+    }, [isEdit, pinnedChargerType, faultyEquipment, maximoTree]);
+
+    // เลือก failure class ระดับ Charger แล้วต้องเปิดใบแยกตามตู้ที่เป็นชนิดเดียวกัน
+    // เช่น DCCHARGER → 1 ใบต่อ DC charger, ACCHARGER → 1 ใบต่อ AC charger
+    const chargerTargets = useMemo(() => {
+        if (isEdit) return [] as ChargerInfo[];
+        const role = failureClassRole(maximoTree, faultyEquipment);
+        if (role !== "dc" && role !== "ac") return [] as ChargerInfo[];
+        const chargerType = role === "dc" ? "DC" : "AC";
+        const typedChargers = chargers.filter(charger =>
+            (charger.chargerType || "DC").trim().toUpperCase() === chargerType
+        );
+        const selectedNo = selectedChargerNo.trim().toLowerCase();
+        const selectedSn = selectedChargerSn.trim().toLowerCase();
+        if (!selectedNo && !selectedSn) return typedChargers;
+        return typedChargers.filter(charger => {
+            const no = String(charger.chargerNo ?? charger.charger_no ?? charger.charger_id ?? "").trim().toLowerCase();
+            const sn = String(charger.SN || charger.sn || "").trim().toLowerCase();
+            return selectedNo && selectedSn
+                ? no === selectedNo && sn === selectedSn
+                : no === selectedNo || sn === selectedSn;
+        });
+    }, [chargers, faultyEquipment, isEdit, maximoTree, selectedChargerNo, selectedChargerSn]);
+    const displayChargerNo = isEdit
+        ? chargerNo
+        : chargerTargets.map(charger => String(charger.chargerNo ?? charger.charger_no ?? charger.charger_id ?? "").trim()).filter(Boolean).join(", ");
+    const displayChargerSn = isEdit
+        ? chargerSn
+        : chargerTargets.map(charger => (charger.SN || charger.sn || "").trim()).filter(Boolean).join(", ");
 
     // ==================== VALIDATION ====================
     const validations = useMemo<ValidationItem[]>(() => [
@@ -761,8 +848,8 @@ export default function CMOpenForm() {
         const remain = MAX_PHOTOS - photos_open.length;
         if (remain <= 0 || files.length > remain) {
             alert(lang === "th"
-                ? `แนบรูปได้สูงสุด ${MAX_PHOTOS} รูป (เพิ่มได้อีก ${Math.max(0, remain)} รูป)`
-                : `Maximum ${MAX_PHOTOS} photos (${Math.max(0, remain)} remaining)`);
+                ? `แนบได้สูงสุด ${MAX_PHOTOS} ไฟล์ (เพิ่มได้อีก ${Math.max(0, remain)} ไฟล์)`
+                : `Maximum ${MAX_PHOTOS} files (${Math.max(0, remain)} remaining)`);
         }
         if (remain <= 0) return;
         const filesToAdd = Array.from(files).slice(0, remain);
@@ -780,7 +867,7 @@ export default function CMOpenForm() {
                 if (!isEdit && draftKey) {
                     ref = await putPhoto(draftKey, photoId, file);
                 }
-                return { id: photoId, file, preview: URL.createObjectURL(file), ref, createdAt: now, location: cachedLoc };
+                return { id: photoId, file, preview: URL.createObjectURL(file), ref, createdAt: now, location: cachedLoc, mime: file.type, name: file.name };
             })
         );
         setPhotosOpen(prev => [...prev, ...newPhotos]);
@@ -870,7 +957,16 @@ export default function CMOpenForm() {
     }, [stationId, isEdit, draftKey]);
 
     // ==================== API EFFECTS ====================
-    useEffect(() => { const sid = searchParams.get("station_id") || localStorage.getItem("selected_station_id"); if (sid) { setStationId(sid); localStorage.setItem("selected_station_id", sid); } }, [searchParams]);
+    useEffect(() => {
+        const sid = searchParams.get("station_id") || localStorage.getItem("selected_station_id");
+        const selectedNo = searchParams.get("charger_no") || localStorage.getItem("selected_charger_no") || "";
+        const selectedSn = searchParams.get("sn") || localStorage.getItem("selected_sn") || "";
+        if (sid) { setStationId(sid); localStorage.setItem("selected_station_id", sid); }
+        setSelectedChargerNo(selectedNo);
+        setSelectedChargerSn(selectedSn);
+        // ชนิดตู้ที่หน้า Stations ฝากไว้ตอนกดการ์ด — ใช้เป็นตัวสำรองระหว่างที่รายการตู้ยังโหลดไม่เสร็จ
+        setChargerTypeHint((localStorage.getItem("selected_chargerType") || "").trim().toUpperCase());
+    }, [searchParams]);
 
     useEffect(() => {
         if (!stationId || isEdit) return; // skip ถ้าเป็น edit mode
@@ -902,10 +998,10 @@ export default function CMOpenForm() {
                     const data = await res.json();
                     if (alive) {
                         const users: TechnicianOption[] = Array.isArray(data.users) ? data.users : [];
-                        const engineerCompany = currentCompany.trim().toLowerCase();
+                        const plannerCompany = currentCompany.trim().toLowerCase();
                         setTechnicians(
-                            userRole.trim().toLowerCase() === "engineer"
-                                ? users.filter((user) => engineerCompany && (user.company || "").trim().toLowerCase() === engineerCompany)
+                            userRole.trim().toLowerCase() === "planner"
+                                ? users.filter((user) => plannerCompany && (user.company || "").trim().toLowerCase() === plannerCompany)
                                 : users,
                         );
                     }
@@ -940,7 +1036,7 @@ export default function CMOpenForm() {
 
                 // "Wait for approve" มี 2 ด่าน — ฟอร์มนี้ใช้ได้เฉพาะด่าน cs (cs_approval)
                 // ด่านปิดงาน (close_approval = ช่างกรอกผล "แก้ไขสำเร็จ" แล้วรออนุมัติ) ต้องไปฟอร์มผลการซ่อม
-                // ในแท็บ In Progress ไม่งั้นจะเห็นส่วน "วางแผนให้ engineer" ผิดด่าน
+                // ในแท็บ In Progress ไม่งั้นจะเห็นส่วน "วางแผนให้ planner" ผิดด่าน
                 const loadedStatus = String(data.status ?? "").trim().toLowerCase();
                 const loadedStage = String(data.stage ?? "").trim().toLowerCase();
                 if (!isRePlan && loadedStatus === "wait for approve" && loadedStage !== "cs_approval") {
@@ -951,7 +1047,7 @@ export default function CMOpenForm() {
                     return;
                 }
 
-                // Engineer ต้องเห็นข้อมูลซ่อมชุดเดียวกับ Technician โดยเฉพาะใบ WO wait for approve
+                // Planner ต้องเห็นข้อมูลซ่อมชุดเดียวกับ Technician โดยเฉพาะใบ WO wait for approve
                 // ซึ่ง repair_history อาจมีข้อมูลชุดที่ 2 ครบกว่า flat fields
                 const approvalRound = loadedStatus === "wait for approve"
                     ? ([...(Array.isArray(data.repair_history) ? data.repair_history : [])].reverse().find((round: any) =>
@@ -1012,6 +1108,8 @@ export default function CMOpenForm() {
                     charger_brand: data.charger_brand ?? "",
                     auto_generated: !!data.auto_generated,
                 });
+                setChargerNo(String(data.charger_no ?? ""));
+                setChargerSn(String(data.charger_sn ?? ""));
                 setSummary(data.summary ?? "");
                 setReportedBy(data.reported_by ?? "");
                 setReporterSignature(data.reporter_signature ?? "");
@@ -1051,9 +1149,9 @@ export default function CMOpenForm() {
                     setSchedStart((data.sched_start ?? "").slice(0, 16));
                     setSchedFinish((data.sched_finish ?? "").slice(0, 16));
                 }
-                // ใบที่ยังไม่เคยวางแผน → คงแถวว่าง 1 แถวไว้ให้เลือกได้เลย
-                const loadedAssignees = Array.isArray(data.assignees) ? data.assignees : [];
-                setAssignees(isRePlan ? [""] : (loadedAssignees.length ? loadedAssignees : [""]));
+                // วางแผนรอบใหม่ = เริ่มติ๊กใหม่ทั้งหมด (ช่างของรอบก่อนอยู่ในการ์ดประวัติแล้ว)
+                const loadedAssignees = Array.isArray(data.assignees) ? data.assignees.filter(Boolean) : [];
+                setAssignees(isRePlan ? [] : loadedAssignees);
                 // เก็บเฉพาะสถานะรอที่เลือกตอนวางแผนได้ — ใบที่ซ่อมไปแล้วอาจมี repair_result เป็นค่าอื่น
                 // (รองรับค่าเก่าที่เปลี่ยนชื่อแล้วด้วย normalizeWaitState)
                 // รอบใหม่: สถานะของรอบก่อนถูกตัดออกจากตัวเลือกแล้ว จึงต้องเลือกค่าใหม่ให้ ไม่งั้น select จะค้างค่าที่ไม่มีในลิสต์
@@ -1086,6 +1184,8 @@ export default function CMOpenForm() {
                                         ? new Date(p.uploadedAt).toLocaleString("th-TH", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Bangkok" })
                                         : undefined,
                                     location: (p as any).location || undefined,
+                                    // ไฟล์จาก server ไม่มี mime — isImageAttachment จะเดาจากนามสกุลใน url เอง
+                                    name: p.filename,
                                 });
                             });
                         }
@@ -1209,67 +1309,83 @@ ${in01.error ?? ""}`);
                 // Assign แล้วกลับไปหน้า list ของแท็บปลายทาง — ไม่เปิดฟอร์มใบนั้นต่อ (งานเป็นของช่างแล้ว)
                 setOverlayText(lang === "th" ? "บันทึกสำเร็จ ✓" : "Saved successfully ✓");
                 await new Promise(r => setTimeout(r, 1200));
-                // Assign แล้วกลับหน้า Open list (ไม่เด้งไป In Progress) — engineer จัดการ SR/WO อื่นต่อได้
+                // Assign แล้วกลับหน้า Open list (ไม่เด้งไป In Progress) — planner จัดการ SR/WO อื่นต่อได้
                 // ยกเว้นกรณีมาวางแผนรอบใหม่จากตาราง In Progress — ต้องกลับที่เดิมที่กดเข้ามา
                 router.push(buildListUrl(isRePlan ? "in-progress" : "open"));
 
             } else {
-                const submitRes = await apiFetch(`${API_BASE}/cmreport/submit`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    credentials: "include",
-                    body: JSON.stringify({
-                        station_id: stationId,
-                        found_date: displayToISO(foundDate),
-                        found_time: foundTime || localNowHHMM(),
-                        faulty_equipment: faultyEquipment,
-                        severity,
-                        problem_details: problemDetails,
-                        remarks_open,
-                        location,
-                        reported_by,
-                        reporter_signature: reporterSignature,
-                    })
-                });
-                if (!submitRes.ok) throw new Error((await submitRes.json()).detail || `HTTP ${submitRes.status}`);
+                // ถ้าเลือก failure class ระดับ Charger ระบบจะเปิดใบแยกตามตู้ที่ตรงประเภท
+                // ถ้าเป็นตำแหน่งระดับสถานี หรือไม่มีข้อมูลตู้ ให้ทำงานแบบเดิมคือเปิดใบเดียว
+                const splitTargets: Array<ChargerInfo | null> = chargerTargets.length > 0 ? chargerTargets : [null];
+                const createdReportIds: string[] = [];
 
-                const { report_id, doc_name: newDocName, issue_id: newIssueId, maximo_ticket_id } = await submitRes.json();
-
-                // /cmreport/submit เปิดใบเป็น "Wait for approve" (cs_approval) และไม่รับฟิลด์แผน — ถ้ากรอกแผนมาด้วยต้อง PATCH ต่อ
-                if (canPlan && (hasPlanInput || nextStatus === "In Progress")) {
-                    const planPayload: Record<string, any> = {
-                        station_id: stationId,
-                        status: nextStatus,
-                        job: {
-                            sched_start: needsSchedule ? schedStart : "",
-                            sched_finish: needsSchedule ? schedFinish : "",
-                            assignees: needsSchedule ? pickedAssignees : [],
-                        },
-                    };
-                    if (nextStatus === "In Progress") {
-                        planPayload.job.repair_result = waitState;
-                        planPayload.job.repair_result_remark = needsSchedule ? "" : waitRemark.trim();
-                        planPayload.job.planned_date = plannedDate || localTodayISO();
-                        planPayload.job.planned_time = plannedTime || localNowHHMM();
-                        planPayload.job.plan_history = planHistory;
-                    } else {
-                        // ยังไม่ Assign — ใบยังอยู่ด่าน cs, คง stage ไว้กัน backend re-stamp เป็น close_approval
-                        planPayload.job.stage = "cs_approval";
-                    }
-                    const planRes = await apiFetch(`${API_BASE}/cmreport/${encodeURIComponent(report_id)}/status`, {
-                        method: "PATCH",
+                for (const charger of splitTargets) {
+                    const chargerNo = charger
+                        ? (charger.chargerNo ?? charger.charger_no ?? charger.charger_id)
+                        : undefined;
+                    const chargerSn = charger ? (charger.SN || charger.sn || "").trim() : "";
+                    const submitRes = await apiFetch(`${API_BASE}/cmreport/submit`, {
+                        method: "POST",
                         headers: { "Content-Type": "application/json" },
                         credentials: "include",
-                        body: JSON.stringify(planPayload),
+                        body: JSON.stringify({
+                            station_id: stationId,
+                            found_date: displayToISO(foundDate),
+                            found_time: foundTime || localNowHHMM(),
+                            faulty_equipment: faultyEquipment,
+                            charger_no: chargerNo == null ? null : String(chargerNo),
+                            charger_sn: chargerSn,
+                            severity,
+                            problem_details: problemDetails,
+                            remarks_open,
+                            location,
+                            reported_by,
+                            reporter_signature: reporterSignature,
+                        })
                     });
-                    if (!planRes.ok) throw new Error((await planRes.json()).detail || `HTTP ${planRes.status}`);
-                    reportMaximoResult((await planRes.json().catch(() => ({})))?.maximo);
+                    if (!submitRes.ok) throw new Error((await submitRes.json()).detail || `HTTP ${submitRes.status}`);
+
+                    const { report_id } = await submitRes.json();
+                    createdReportIds.push(report_id);
+
+                    // /cmreport/submit เปิดใบเป็น "Wait for approve" (cs_approval) และไม่รับฟิลด์แผน — ถ้ากรอกแผนมาด้วยต้อง PATCH ต่อ
+                    if (canPlan && (hasPlanInput || nextStatus === "In Progress")) {
+                        const planPayload: Record<string, any> = {
+                            station_id: stationId,
+                            status: nextStatus,
+                            job: {
+                                sched_start: needsSchedule ? schedStart : "",
+                                sched_finish: needsSchedule ? schedFinish : "",
+                                assignees: needsSchedule ? pickedAssignees : [],
+                            },
+                        };
+                        if (nextStatus === "In Progress") {
+                            planPayload.job.repair_result = waitState;
+                            planPayload.job.repair_result_remark = needsSchedule ? "" : waitRemark.trim();
+                            planPayload.job.planned_date = plannedDate || localTodayISO();
+                            planPayload.job.planned_time = plannedTime || localNowHHMM();
+                            planPayload.job.plan_history = planHistory;
+                        } else {
+                            // ยังไม่ Assign — ใบยังอยู่ด่าน cs, คง stage ไว้กัน backend re-stamp เป็น close_approval
+                            planPayload.job.stage = "cs_approval";
+                        }
+                        const planRes = await apiFetch(`${API_BASE}/cmreport/${encodeURIComponent(report_id)}/status`, {
+                            method: "PATCH",
+                            headers: { "Content-Type": "application/json" },
+                            credentials: "include",
+                            body: JSON.stringify(planPayload),
+                        });
+                        if (!planRes.ok) throw new Error((await planRes.json()).detail || `HTTP ${planRes.status}`);
+                        reportMaximoResult((await planRes.json().catch(() => ({})))?.maximo);
+                    }
                 }
 
                 // อัปโหลดรูป
                 setOverlayText(lang === "th" ? "กำลังอัปโหลดรูปภาพ..." : "Uploading photos...");
-                setUploadState({ show: true, total: photos_open.filter(p => !p.isServer).length, completed: 0 });
-                await uploadPhotosForReport(report_id);
+                setUploadState({ show: true, total: photos_open.filter(p => !p.isServer).length * createdReportIds.length, completed: 0 });
+                for (const reportId of createdReportIds) {
+                    await uploadPhotosForReport(reportId);
+                }
                 setUploadState({ show: false, total: 0, completed: 0 });
 
                 // cleanup draft
@@ -1279,7 +1395,7 @@ ${in01.error ?? ""}`);
                 // แสดง "บันทึกสำเร็จ" แล้ว redirect — ใบที่ส่งให้ช่างแล้วไปโผล่แท็บ In Progress
                 setOverlayText(lang === "th" ? "บันทึกสำเร็จ ✓" : "Saved successfully ✓");
                 await new Promise(r => setTimeout(r, 1500));
-                // Assign แล้วกลับหน้า Open list (ไม่เด้งไป In Progress) — engineer จัดการ SR/WO อื่นต่อได้
+                // Assign แล้วกลับหน้า Open list (ไม่เด้งไป In Progress) — planner จัดการ SR/WO อื่นต่อได้
                 // ยกเว้นกรณีมาวางแผนรอบใหม่จากตาราง In Progress — ต้องกลับที่เดิมที่กดเข้ามา
                 router.push(buildListUrl(isRePlan ? "in-progress" : "open"));
             }
@@ -1312,7 +1428,7 @@ ${in01.error ?? ""}`);
         }
     };
 
-    // ── ยกเลิกใบงาน (engineer/admin ตอนรีวิวหรือวางแผน) → Cancelled (ไปแท็บ Closed) ──
+    // ── ยกเลิกใบงาน (planner/admin ตอนรีวิวหรือวางแผน) → Cancelled (ไปแท็บ Closed) ──
     const handleCancelJob = async () => {
         if (!editId || !stationId) return;
         const remark = commentText.trim();
@@ -1336,7 +1452,7 @@ ${in01.error ?? ""}`);
     };
 
     // ── ตีกลับใบงานพร้อมเหตุผล — เลือก endpoint ตามด่าน:
-    //    engineer ตอนวางแผน → /planner-reject (กลับไปด่าน cs), head cs ตอนรีวิว → /cs-reject (กลับไปหา cs ผู้เปิด)
+    //    planner ตอนวางแผน → /planner-reject (กลับไปด่าน cs), head cs ตอนรีวิว → /cs-reject (กลับไปหา cs ผู้เปิด)
     const handleReject = async () => {
         if (!editId || !stationId) return;
         const remark = commentText.trim();
@@ -1382,7 +1498,7 @@ ${in01.error ?? ""}`);
         setPlannedTime("");
         setSchedStart("");
         setSchedFinish("");
-        setAssignees([""]);
+        setAssignees([]);
         setWaitState(DEFAULT_WAIT_STATE);
         setWaitRemark("");
     };
@@ -1472,7 +1588,7 @@ ${in01.error ?? ""}`);
                         </div>
                     )}
 
-                    {/* ═══ แจ้งเตือนใบงานถูกตีกลับจากผู้วางแผน (engineer) — โชว์ให้ CS แก้ ═══ */}
+                    {/* ═══ แจ้งเตือนใบงานถูกตีกลับจากผู้วางแผน (planner) — โชว์ให้ CS แก้ ═══ */}
                     {isEdit && isCsStage && rejectedInfo.remark && (
                         <div className="tw-mb-4 tw-flex tw-items-start tw-gap-3 tw-px-4 tw-py-3 tw-rounded-lg tw-bg-red-50 tw-border tw-border-red-200">
                             <ExclamationTriangleIcon className="tw-w-5 tw-h-5 tw-text-red-500 tw-mt-0.5 tw-flex-shrink-0" />
@@ -1517,6 +1633,18 @@ ${in01.error ?? ""}`);
                             <Input value={reported_by || ""} readOnly crossOrigin="" className="!tw-w-full !tw-bg-gray-100" containerProps={{ className: "!tw-min-w-0" }} />
                         </div>
                     </div>
+                    {(displayChargerNo || displayChargerSn) && (
+                        <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-4 tw-gap-4 tw-mb-6">
+                            <div>
+                                <label className="tw-block tw-text-sm tw-text-blue-gray-600 tw-mb-1">Charger No.</label>
+                                <Input value={displayChargerNo || "-"} readOnly crossOrigin="" className="!tw-w-full !tw-bg-gray-100" containerProps={{ className: "!tw-min-w-0" }} />
+                            </div>
+                            <div>
+                                <label className="tw-block tw-text-sm tw-text-blue-gray-600 tw-mb-1">Charger SN</label>
+                                <Input value={displayChargerSn || "-"} readOnly crossOrigin="" className="!tw-w-full !tw-bg-gray-100" containerProps={{ className: "!tw-min-w-0" }} />
+                            </div>
+                        </div>
+                    )}
 
                     {/* ตู้ชาร์จที่ใบงานนี้เกี่ยวข้อง — ชื่อ / เลขตู้ / S/N / บริษัทผู้ถือครอง */}
                     <ChargerIdentity data={chargerIdentity} lang={lang} />
@@ -1549,6 +1677,13 @@ ${in01.error ?? ""}`);
                                     {failureCodesUnavailable && <p className="tw-text-xs tw-text-blue-gray-400 tw-mt-2">{t("failureCodesLoading", lang)}</p>}
                                     {loadingChargers && <p className="tw-text-xs tw-text-blue-gray-400 tw-mt-2">{t("loadingChargers", lang)}</p>}
                                     {!loadingChargers && chargers.length === 0 && <p className="tw-text-xs tw-text-orange-600 tw-mt-2">{t("noChargersFound", lang)}</p>}
+                                    {false && !isEdit && chargerTargets.length > 0 && (
+                                        <div className="tw-text-xs tw-text-blue-600 tw-mt-2">
+                                            {lang === "th"
+                                                ? `ระบบจะเปิดใบงานแยกตามตู้ชาร์จจำนวน ${chargerTargets.length} ใบ`
+                                                : ""}
+                                        </div>
+                                    )}
                                 </div>
 
                                 {/* Severity */}
@@ -1634,7 +1769,7 @@ ${in01.error ?? ""}`);
                     {/* ข้อมูลที่ช่างกรอกไว้ — โชว์เฉพาะเมื่อมีจริง (การ์ดคืน null เองถ้าว่าง) */}
                     {canPlan && repairInfo && <RepairInfoCard info={repairInfo} lang={lang} />}
 
-                    {/* Planning Section — เห็นเฉพาะ role ที่วางแผนได้ (admin/owner/engineer) ข้อมูลด้านบนเป็น read-only สำหรับคนกลุ่มนี้อยู่แล้ว */}
+                    {/* Planning Section — เห็นเฉพาะ role ที่วางแผนได้ (admin/owner/planner) ข้อมูลด้านบนเป็น read-only สำหรับคนกลุ่มนี้อยู่แล้ว */}
                     {canPlan && (
                         <div className="tw-mb-6 tw-p-5 tw-rounded-xl tw-border tw-border-blue-gray-100 tw-bg-blue-gray-50/40">
                             <h3 className="tw-text-base tw-font-bold tw-text-blue-gray-800 tw-mb-4">{t("planningSection", lang)}</h3>
@@ -1647,7 +1782,7 @@ ${in01.error ?? ""}`);
                                 </h4>
                             )}
                             <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-4">
-                                {/* วันที่/เวลาที่วางแผน — ประทับตอน engineer เปิดฟอร์มเข้ามาครั้งแรก แก้ไม่ได้ */}
+                                {/* วันที่/เวลาที่วางแผน — ประทับตอน planner เปิดฟอร์มเข้ามาครั้งแรก แก้ไม่ได้ */}
                                 <div>
                                     <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-2">{t("plannedAt", lang)}</label>
                                     <input
@@ -1689,33 +1824,32 @@ ${in01.error ?? ""}`);
                                 </div>
                                 <div>
                                     <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-2">{t("technician", lang)} <span className="tw-text-red-500">*</span></label>
-                                    <div className="tw-space-y-2">
-                                        {assignees.map((sel, i) => (
-                                            <div key={i} className="tw-flex tw-items-center tw-gap-2">
-                                                <select value={sel} onChange={e => setAssignees(prev => prev.map((v, j) => (j === i ? e.target.value : v)))}
-                                                    className="tw-flex-1 tw-min-w-0 tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-px-3 tw-py-2.5 tw-text-sm tw-text-blue-gray-800 focus:tw-outline-none focus:tw-border-blue-500">
-                                                    <option value="">{t("selectTechnician", lang)}</option>
-                                                    {technicianOptionsFor(i).map(u => <option key={u} value={u}>{u}</option>)}
-                                                </select>
-                                                {/* แถวเดียวลบไม่ได้ — ช่างเป็นฟิลด์บังคับ อย่างน้อยต้องเหลือ 1 แถวไว้เลือก */}
-                                                {assignees.length > 1 && (
-                                                    <button type="button" aria-label={`${t("removeTechnician", lang)} ${i + 1}`} onClick={() => setAssignees(prev => prev.filter((_, j) => j !== i))}
-                                                        className="tw-shrink-0 tw-rounded-lg tw-border tw-border-blue-gray-200 tw-p-2 tw-text-blue-gray-500 hover:tw-border-red-300 hover:tw-bg-red-50 hover:tw-text-red-600 tw-transition-colors">
-                                                        <XMarkIcon className="tw-h-4 tw-w-4" />
-                                                    </button>
-                                                )}
-                                                {/* ปุ่มเพิ่มอยู่แถวล่างสุดแถวเดียว — ทุกแถวให้ผลเหมือนกันอยู่แล้ว */}
-                                                {i === assignees.length - 1 && (
-                                                    <button type="button" aria-label={t("addTechnician", lang)} title={t("addTechnician", lang)}
-                                                        onClick={() => setAssignees(prev => [...prev, ""])}
-                                                        disabled={assignees.length >= technicians.length}
-                                                        className="tw-shrink-0 tw-rounded-lg tw-border tw-border-blue-gray-200 tw-p-2 tw-text-blue-gray-600 hover:tw-border-blue-500 hover:tw-bg-blue-50 hover:tw-text-blue-600 disabled:tw-opacity-40 disabled:tw-cursor-not-allowed tw-transition-colors">
-                                                        <PlusIcon className="tw-h-4 tw-w-4" />
-                                                    </button>
-                                                )}
-                                            </div>
-                                        ))}
-                                    </div>
+                                    {technicianNames.length > 0 && (
+                                        <div className="tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-divide-y tw-divide-blue-gray-50 tw-max-h-56 tw-overflow-y-auto">
+                                            {/* All = ติ๊กช่างทุกคนในลิสต์รวดเดียว */}
+                                            <label className="tw-flex tw-items-center tw-gap-2.5 tw-px-3 tw-py-2.5 tw-cursor-pointer hover:tw-bg-blue-gray-50/60 tw-transition-colors">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={allTechniciansPicked}
+                                                    onChange={toggleAllAssignees}
+                                                    className="tw-h-4 tw-w-4 tw-shrink-0 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500 tw-cursor-pointer"
+                                                />
+                                                <span className="tw-text-sm tw-font-semibold tw-text-blue-gray-800">{t("allTechnicians", lang)}</span>
+                                                <span className="tw-ml-auto tw-text-xs tw-text-blue-gray-400">{pickedAssignees.length}/{technicianNames.length}</span>
+                                            </label>
+                                            {technicianNames.map(u => (
+                                                <label key={u} className="tw-flex tw-items-center tw-gap-2.5 tw-px-3 tw-py-2.5 tw-cursor-pointer hover:tw-bg-blue-gray-50/60 tw-transition-colors">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={pickedAssignees.includes(u)}
+                                                        onChange={() => toggleAssignee(u)}
+                                                        className="tw-h-4 tw-w-4 tw-shrink-0 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500 tw-cursor-pointer"
+                                                    />
+                                                    <span className="tw-min-w-0 tw-truncate tw-text-sm tw-text-blue-gray-800">{u}</span>
+                                                </label>
+                                            ))}
+                                        </div>
+                                    )}
                                     {technicians.length === 0 && <p className="tw-mt-1.5 tw-text-xs tw-text-orange-600">{t("noTechnicians", lang)}</p>}
                                 </div>
                                 </>)}
@@ -1733,13 +1867,13 @@ ${in01.error ?? ""}`);
                             <Button variant="outlined" onClick={goBackToList} className="tw-border-blue-gray-200 tw-text-blue-gray-700 hover:tw-border-blue-gray-300">
                                 {t("backToList", lang)}
                             </Button>
-                            {/* ยกเลิกใบงาน — ซ่อนตอนใบถูกตีกลับรอ cs แก้ (ยังไม่ใช่คิวของ engineer) */}
+                            {/* ยกเลิกใบงาน — ซ่อนตอนใบถูกตีกลับรอ cs แก้ (ยังไม่ใช่คิวของ planner) */}
                             {showCancelBtn && (
                                 <Button variant="outlined" onClick={() => openCommentModal("cancel")} disabled={saving} className="tw-border-amber-300 tw-text-amber-700 hover:tw-border-amber-400 hover:tw-bg-amber-50">
                                     {t("cancelJob", lang)}
                                 </Button>
                             )}
-                            {/* engineer ตีกลับใบขั้นวางแผน → กลับไปหา cs */}
+                            {/* planner ตีกลับใบขั้นวางแผน → กลับไปหา cs */}
                             {showRejectBtn && (
                                 <Button variant="outlined" onClick={() => openCommentModal("reject")} disabled={saving} className="tw-border-red-300 tw-text-red-600 hover:tw-border-red-400 hover:tw-bg-red-50">
                                     {t("reject", lang)}

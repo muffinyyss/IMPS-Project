@@ -1,7 +1,7 @@
 """
 ทดสอบขอบเขตการเห็นข้อมูลตามยี่ห้อตู้ (brand scope)
 
-EDS ดูแลเฉพาะตู้ FlexxFast → cs/engineer/technician ของ EDS ต้องเห็นเฉพาะตู้ยี่ห้อนี้
+EDS ดูแลเฉพาะตู้ FlexxFast → cs/planner/technician ของ EDS ต้องเห็นเฉพาะตู้ยี่ห้อนี้
 สถานีที่ปนยี่ห้อยังเห็นได้ แต่รายการตู้ต้องเหลือเฉพาะ FlexxFast
 
 เป็น integration test — ต้องมี MongoDB รันอยู่ ไม่ได้ mock
@@ -99,7 +99,7 @@ def sns_of(payload: dict) -> list[str]:
 def main_test() -> int:
     setup()
     eds = cookies("cs", "EDS")
-    eds_eng = cookies("engineer", "EDS")
+    eds_eng = cookies("planner", "EDS")
     egat = cookies("cs", "EGAT")
     admin = cookies("admin", "EDS")
 
@@ -107,7 +107,7 @@ def main_test() -> int:
     r = client.get(f"/chargers/{MIXED}", cookies=eds)
     check("EDS cs เห็นเฉพาะตู้ FlexxFast", sns_of(r.json()), [SN_FF])
     r = client.get(f"/chargers/{MIXED}", cookies=eds_eng)
-    check("EDS engineer เห็นเฉพาะตู้ FlexxFast", sns_of(r.json()), [SN_FF])
+    check("EDS planner เห็นเฉพาะตู้ FlexxFast", sns_of(r.json()), [SN_FF])
     r = client.get(f"/chargers/{MIXED}", cookies=egat)
     check("EGAT cs เห็นทุกตู้", sns_of(r.json()), sorted([SN_FF, SN_SINIO]))
     r = client.get(f"/chargers/{MIXED}", cookies=admin)

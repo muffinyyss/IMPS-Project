@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
 import { cmBackRoute } from "@/app/dashboard/cm-report/lib/origin";
 import ChargerIdentity, { type ChargerIdentityData } from "@/app/dashboard/cm-report/components/ChargerIdentity";
+import { ZoomableImg, AttachmentFileRow, isImageAttachment } from "@/app/dashboard/cm-report/components/photo-viewer";
 
 // ==================== TRANSLATIONS ====================
 const T = {
@@ -1293,7 +1294,7 @@ export default function CMForm() {
                                                                 key={j}
                                                                 className="tw-relative tw-aspect-video tw-rounded-md tw-overflow-hidden tw-border tw-border-blue-gray-100"
                                                             >
-                                                                <img src={img.url} alt={`action-${i}-img-${j}`} className="tw-w-full tw-h-full tw-object-cover" />
+                                                                <ZoomableImg src={img.url} alt={`action-${i}-img-${j}`} className="tw-w-full tw-h-full tw-object-cover" />
                                                                 <button
                                                                     type="button"
                                                                     onClick={() => removeCorrectiveImage(i, j)}
@@ -1319,7 +1320,7 @@ export default function CMForm() {
                                                                     rel="noreferrer"
                                                                     className="tw-relative tw-aspect-video tw-rounded-md tw-overflow-hidden tw-border tw-border-blue-gray-100 hover:tw-shadow"
                                                                 >
-                                                                    <img src={p.url} alt={`photo-${groupKey}-${k}`} className="tw-w-full tw-h-full tw-object-cover" />
+                                                                    <ZoomableImg src={p.url} alt={`photo-${groupKey}-${k}`} className="tw-w-full tw-h-full tw-object-cover" />
                                                                     {p.remark && (
                                                                         <div className="tw-absolute tw-bottom-0 tw-left-0 tw-right-0 tw-bg-black/50 tw-text-white tw-text-xs tw-px-2 tw-py-1">
                                                                             {p.remark}
@@ -1357,7 +1358,7 @@ export default function CMForm() {
                                                                 rel="noreferrer"
                                                                 className="tw-relative tw-aspect-video tw-rounded-md tw-overflow-hidden tw-border tw-border-blue-gray-100 hover:tw-shadow"
                                                             >
-                                                                <img
+                                                                <ZoomableImg
                                                                     src={p.url}
                                                                     alt={`photo-${groupKey}-${i}`}
                                                                     className="tw-w-full tw-h-full tw-object-cover"
@@ -1491,17 +1492,26 @@ export default function CMForm() {
                             </div>
                         </div>
 
-                        {/* รูปภาพปัญหา (จากตอนแจ้ง) */}
+                        {/* รูปภาพ/ไฟล์แนบตอนแจ้ง — ไฟล์ (PDF) พรีวิวไม่ได้ แยกไปเป็นรายการแถวใต้กริดรูป */}
                         {(photos["problem"]?.length ?? 0) > 0 && (
                             <div>
                                 <div className="tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-3">{t("problemPhotos", lang)}</div>
-                                <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 md:tw-grid-cols-4 tw-gap-3">
-                                    {photos["problem"].map((p, k) => (
-                                        <a key={`problem-${k}`} href={p.url} target="_blank" rel="noreferrer" className="tw-relative tw-aspect-video tw-rounded-md tw-overflow-hidden tw-border tw-border-blue-gray-100 hover:tw-shadow">
-                                            <img src={p.url} alt={`problem-${k}`} className="tw-w-full tw-h-full tw-object-cover" />
-                                        </a>
-                                    ))}
-                                </div>
+                                {photos["problem"].some(p => isImageAttachment(p.url)) && (
+                                    <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 md:tw-grid-cols-4 tw-gap-3">
+                                        {photos["problem"].filter(p => isImageAttachment(p.url)).map((p, k) => (
+                                            <div key={`problem-${k}`} className="tw-relative tw-aspect-video tw-rounded-md tw-overflow-hidden tw-border tw-border-blue-gray-100 hover:tw-shadow">
+                                                <ZoomableImg src={p.url} alt={`problem-${k}`} className="tw-w-full tw-h-full tw-object-cover" />
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                                {photos["problem"].some(p => !isImageAttachment(p.url)) && (
+                                    <div className="tw-mt-2 tw-flex tw-flex-wrap tw-gap-2">
+                                        {photos["problem"].filter(p => !isImageAttachment(p.url)).map((p, k) => (
+                                            <AttachmentFileRow key={`problem-file-${k}`} src={p.url} />
+                                        ))}
+                                    </div>
+                                )}
                             </div>
                         )}
 

@@ -4,7 +4,10 @@ from pydantic import BaseModel
 from typing import List, Optional
 from jose import JWTError, jwt
 from jose.exceptions import ExpiredSignatureError
-from config import SECRET_KEY, ALGORITHM, ACCESS_COOKIE_NAME, users_collection, SUPER_ADMIN_ROLE
+from config import (
+    SECRET_KEY, ALGORITHM, ACCESS_COOKIE_NAME, users_collection,
+    SUPER_ADMIN_ROLE, canonical_role,
+)
 
 class UserClaims(BaseModel):
     sub: str
@@ -32,7 +35,8 @@ def get_current_user(request: Request) -> UserClaims:
         station_ids = payload.get("station_ids") or []
         if not isinstance(station_ids, list):
             station_ids = [station_ids]
-        jwt_role = payload.get("role", "user")
+        # token ที่ออกก่อน rename role อาจยังถือ "engineer" อยู่ → map เป็น "planner" ก่อนตรวจสิทธิ์
+        jwt_role = canonical_role(payload.get("role", "user")) or "user"
         is_super_admin = (jwt_role == SUPER_ADMIN_ROLE)
         # super_admin ทำได้ทุกอย่างเหมือน admin → normalize เป็น admin ให้ admin-check เดิมทั้งหมดผ่าน
         # โดยไม่ต้องแก้ทุกจุด; เก็บ role จริงไว้ที่ effective_role และ flag is_super_admin สำหรับ function พิเศษ

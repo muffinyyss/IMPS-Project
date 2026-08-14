@@ -260,7 +260,7 @@ async def export_pdf(
         ver = data.get("updatedAt") or data.get("createdAt") or ""
         ver_str = "".join(ch for ch in str(ver) if ch.isalnum())[:20] or "0"
         maximo_ver = str(data.get("_maximo_failure_codes_version") or "0")
-        cache_name = f"{id}_{lang}_{ver_str}_{maximo_ver}_cm-v6.pdf"
+        cache_name = f"{id}_{lang}_{ver_str}_{maximo_ver}_cm-v7.pdf"
     else:
         cache_name = f"{id}_{lang}.pdf"
     cache_path = pathlib.Path(UPLOADS_ROOT) / "pdf_cache" / (coll_key or "unknown") / cache_name

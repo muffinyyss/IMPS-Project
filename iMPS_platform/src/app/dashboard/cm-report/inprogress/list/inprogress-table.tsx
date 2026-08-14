@@ -22,6 +22,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from "@material-tailwind/react";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
 import { failureCodeLabel } from "@/app/dashboard/cm-report/lib/failureCode";
+import { repairResultLabel } from "@/app/dashboard/cm-report/lib/repairResult";
 
 // ==================== TRANSLATIONS ====================
 const T = {
@@ -44,6 +45,8 @@ const T = {
   colFoundDate: { th: "วัน/เวลาที่แจ้ง", en: "Found Date/Time" },
   colReportedBy: { th: "ผู้แจ้งปัญหา", en: "Reported By" },
   colLocation: { th: "ตำแหน่งที่พบ", en: "Faulty Equipment" },
+  colChargerNo: { th: "หมายเลขตู้", en: "Charger No." },
+  colChargerSn: { th: "S/N ตู้", en: "Charger S/N" },
   colProblemDetails: { th: "ปัญหาที่พบ", en: "Problem Details" },
   colStatus: { th: "สถานะ", en: "Status" },
   colRepairResult: { th: "ผลการซ่อม", en: "Repair Result" },
@@ -81,6 +84,9 @@ const T = {
 
 const t = (key: keyof typeof T, lang: Lang): string => T[key][lang];
 
+// หมายเลขตู้/SN แยกเป็นคอลัมน์ของตัวเองแล้ว ตำแหน่งที่พบจึงเหลือแค่ชื่อ failure class
+const chargerField = (v?: unknown) => String(v ?? "").trim();
+
 type TData = {
   id?: string;
   doc_name?: string;
@@ -92,6 +98,8 @@ type TData = {
   reported_by?: string;
   repair_result?: string;
   location?: string;
+  charger_no?: string;
+  charger_sn?: string;
   problem_details?: string;
   status: string;
   inspector?: string;
@@ -107,7 +115,7 @@ type Props = {
 const BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
 // ใบที่รออะไหล่/รอสภาพหน้างานและยังไม่มีช่าง จึงต้องกลับไปวางแผนใหม่
-// ส่วน WO - wait for scheduled มีแผน/ช่างแล้ว ให้ engineer เปิดฟอร์มกรอกผลซ่อมเหมือน technician
+// ส่วน WO - wait for scheduled มีแผน/ช่างแล้ว ให้ planner เปิดฟอร์มกรอกผลซ่อมเหมือน technician
 const PLANNING_WAIT_RESULTS: string[] = [];
 const WAITING_ON_REPLAN_RESULTS = [
   "WO - wait for material", "WO - wait for spare part",
@@ -142,11 +150,11 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
   const [currentRole, setCurrentRole] = useState("");
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   // role ที่มีหน้าที่วางแผน — ใช้เลือกว่าจะเปิดฟอร์มวางแผนหรือฟอร์มกรอกผลซ่อม
-  const canPlanRole = ["admin", "owner", "engineer"].includes(currentRole.trim().toLowerCase());
+  const canPlanRole = ["admin", "owner", "planner"].includes(currentRole.trim().toLowerCase());
   const canDelete = isSuperAdmin; // ลบถาวรได้เฉพาะ super admin (ซ่อนตอน impersonate role อื่น)
   const [deleteTarget, setDeleteTarget] = useState<TData | null>(null);
   const [deleting, setDeleting] = useState(false);
-  // engineer (หรือ admin) ยกเลิกใบงานที่ยังไม่ปิด → Cancelled
+  // planner (หรือ admin) ยกเลิกใบงานที่ยังไม่ปิด → Cancelled
   // หน้า In Progress list ไม่มีปุ่มยกเลิกด้านนอกแล้ว (จัดการยกเลิก/ตีกลับตั้งแต่ด่าน SR/วางแผน)
   const canCancel = false;
 
@@ -160,6 +168,7 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
 
   const searchParams = useSearchParams();
   const [stationId, setStationId] = useState<string | null>(null);
+  const [sn, setSn] = useState<string | null>(null);
 
   useEffect(() => {
     const sidFromUrl = searchParams.get("station_id");
@@ -170,6 +179,17 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
     }
     const sidLocal = localStorage.getItem("selected_station_id");
     setStationId(sidLocal);
+  }, [searchParams]);
+
+  // ตู้ที่เลือกไว้ — มีค่า = เข้ามาจากการ์ดตู้ชาร์จ, ไม่มี = มุมมองระดับสถานี
+  useEffect(() => {
+    const snFromUrl = searchParams.get("sn");
+    if (snFromUrl) {
+      setSn(snFromUrl);
+      localStorage.setItem("selected_sn", snFromUrl);
+      return;
+    }
+    setSn(localStorage.getItem("selected_sn"));
   }, [searchParams]);
 
   // หน้า WO แสดงทั้งงานที่กำลังซ่อมและงานที่รออนุมัติ (backend รองรับหลายค่า คั่นด้วย ,)
@@ -272,6 +292,8 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
         u.searchParams.set("page", "1");
         u.searchParams.set("pageSize", "50");
         u.searchParams.set("status", statusFromTab);
+        // เข้ามาจากการ์ดตู้ชาร์จ → เห็นเฉพาะใบของตู้นั้น, ระดับสถานี → เห็นทุกใบ
+        if (sn) u.searchParams.set("sn", sn);
         return u.toString();
       };
 
@@ -343,7 +365,9 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
           assignees: Array.isArray(it.assignees)
             ? it.assignees
             : (Array.isArray(it.job?.assignees) ? it.job.assignees : []),
-          location: failureCodeLabel(it.faulty_equipment),
+          location: failureCodeLabel(it.faulty_equipment) || "-",
+          charger_no: chargerField(it.charger_no),
+          charger_sn: chargerField(it.charger_sn),
           problem_details: it.problem_details || "",
           status: getStatusText(it) || "-",
           source: "cm" as const,
@@ -372,7 +396,9 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
           assignees: Array.isArray(it.assignees)
             ? it.assignees
             : (Array.isArray(it.job?.assignees) ? it.job.assignees : []),
-          location: failureCodeLabel(it.faulty_equipment),
+          location: failureCodeLabel(it.faulty_equipment) || "-",
+          charger_no: chargerField(it.charger_no),
+          charger_sn: chargerField(it.charger_sn),
           problem_details: it.problem_details || "",
           status: getStatusText(it) || "-",
           source: "url" as const,
@@ -480,7 +506,7 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
     (async () => { await fetchRows(); })();
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [apiBase, stationId, mode]);
+  }, [apiBase, stationId, sn, mode]);
 
   const columns: ColumnDef<TData, unknown>[] = useMemo(() => [
     {
@@ -544,6 +570,34 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
       size: 140,
       minSize: 100,
       maxSize: 180,
+      meta: { headerAlign: "center", cellAlign: "center" },
+    },
+    {
+      accessorFn: (row) => row.charger_no || "-",
+      id: "charger_no",
+      header: () => t("colChargerNo", lang),
+      cell: (info: CellContext<TData, unknown>) => (
+        <span className="tw-block tw-truncate" title={info.getValue() as string}>
+          {info.getValue() as React.ReactNode}
+        </span>
+      ),
+      size: 100,
+      minSize: 70,
+      maxSize: 130,
+      meta: { headerAlign: "center", cellAlign: "center" },
+    },
+    {
+      accessorFn: (row) => row.charger_sn || "-",
+      id: "charger_sn",
+      header: () => t("colChargerSn", lang),
+      cell: (info: CellContext<TData, unknown>) => (
+        <span className="tw-block tw-truncate" title={info.getValue() as string}>
+          {info.getValue() as React.ReactNode}
+        </span>
+      ),
+      size: 150,
+      minSize: 100,
+      maxSize: 220,
       meta: { headerAlign: "center", cellAlign: "center" },
     },
     {
@@ -613,14 +667,11 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
       id: "repair_result",
       header: () => t("colRepairResult", lang),
       cell: (info: CellContext<TData, unknown>) => {
+        // ค่าใน DB เป็นภาษาอังกฤษเสมอ — แปลเฉพาะตอนแสดง (title ยังเป็นค่าดิบไว้ตรวจสอบ)
         const raw = String(info.getValue() ?? "");
-        // Show friendly label for WO - wait for approve on In Progress page,
-        // but keep the underlying status value unchanged elsewhere.
-        const isApproveWo = raw === "WO - wait for approve" || raw.trim().toLowerCase() === "wait for approve";
-        const display = isApproveWo ? (lang === "th" ? "แก้ไขสำเร็จ" : "Repair completed") : (raw || "-");
         return (
           <span className="tw-block tw-truncate" title={raw}>
-            {display as React.ReactNode}
+            {repairResultLabel(raw, lang) || "-"}
           </span>
         );
       },
@@ -770,7 +821,7 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
     const params = new URLSearchParams(searchParams.toString());
     params.set("view", "form");
     params.set("edit_id", row.id);
-    // ใบที่รออะไหล่/รอหน้างานและยังไม่มีช่าง: engineer/admin/owner ไปหน้าวางแผน
+    // ใบที่รออะไหล่/รอหน้างานและยังไม่มีช่าง: planner/admin/owner ไปหน้าวางแผน
     // WO - wait for scheduled ข้ามการวางแผนซ้ำและเปิดฟอร์มกรอกผลซ่อมเหมือน technician
     if (isPlanningWait(row.repair_result, row.assignees) && canPlanRole) params.set("planning", "1");
     else params.delete("planning");
@@ -834,7 +885,10 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
                       : "tw-bg-white tw-text-blue-gray-600 tw-border-blue-gray-200 hover:tw-bg-blue-gray-50 hover:tw-text-blue-gray-800"
                       }`}
                   >
-                    {lang === "en" ? st.en : st.th}
+                    {/* "ทั้งหมด" ไม่ใช่ค่า repair_result เลยแปลเองในตาราง ที่เหลือใช้ป้ายชุดเดียวกับฟอร์ม */}
+                    {st.id === "all"
+                      ? (lang === "en" ? st.en : st.th)
+                      : repairResultLabel(st.en, lang)}
                   </button>
                 );
               })}

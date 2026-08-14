@@ -53,6 +53,8 @@ const T = {
   colRepairer: { th: "ผู้เข้าแก้ไข", en: "Repairer" },
   colInspector: { th: "ผู้ตรวจสอบ", en: "Inspector" },
   colLocation: { th: "ตำแหน่งที่พบ", en: "Faulty Equipment" },
+  colChargerNo: { th: "หมายเลขตู้", en: "Charger No." },
+  colChargerSn: { th: "S/N ตู้", en: "Charger S/N" },
   colProblemDetails: { th: "ปัญหาที่พบ", en: "Problem Details" },
   colStatus: { th: "สถานะ", en: "Status" },
 
@@ -105,6 +107,9 @@ const T = {
 
 const t = (key: keyof typeof T, lang: Lang): string => T[key][lang];
 
+// หมายเลขตู้/SN แยกเป็นคอลัมน์ของตัวเองแล้ว ตำแหน่งที่พบจึงเหลือแค่ชื่อ failure class
+const chargerField = (v?: unknown) => String(v ?? "").trim();
+
 type TData = {
   id?: string;
   doc_name?: string;
@@ -117,6 +122,8 @@ type TData = {
   repairer?: string;
   inspector?: string;
   location?: string;
+  charger_no?: string;
+  charger_sn?: string;
   problem_details?: string;
   status: string;
 };
@@ -174,6 +181,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
 
   const searchParams = useSearchParams();
   const [stationId, setStationId] = useState<string | null>(null);
+  const [sn, setSn] = useState<string | null>(null);
 
   function nextDocNameFor(stationId: string, dateISO: string, latestFromDb?: string) {
     const d = new Date(dateISO || new Date().toISOString().slice(0, 10));
@@ -198,7 +206,16 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
     setStationId(sidLocal);
   }, [searchParams]);
 
-
+  // ตู้ที่เลือกไว้ — มีค่า = เข้ามาจากการ์ดตู้ชาร์จ, ไม่มี = มุมมองระดับสถานี
+  useEffect(() => {
+    const snFromUrl = searchParams.get("sn");
+    if (snFromUrl) {
+      setSn(snFromUrl);
+      localStorage.setItem("selected_sn", snFromUrl);
+      return;
+    }
+    setSn(localStorage.getItem("selected_sn"));
+  }, [searchParams]);
 
   const statusFromTab = (searchParams.get("status") ?? searchParams.get("tab") ?? "closed").toLowerCase();
   const statusLabel = statusFromTab
@@ -320,6 +337,8 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
         u.searchParams.set("pageSize", "50");
         // tab Closed รวมเฉพาะงานที่เสร็จ (รองรับ Complete เก่า); tab Cancelled แยกงานยกเลิก
         u.searchParams.set("status", statusFromTab === "closed" ? "complete,closed" : statusFromTab);
+        // เข้ามาจากการ์ดตู้ชาร์จ → เห็นเฉพาะใบของตู้นั้น, ระดับสถานี → เห็นทุกใบ
+        if (sn) u.searchParams.set("sn", sn);
         return u.toString();
       };
 
@@ -383,7 +402,9 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
           reported_by: it.reported_by || it.technician || "",
           repairer: it.inspector || "",
           inspector: it.approved_by || "",
-          location: failureCodeLabel(it.faulty_equipment),
+          location: failureCodeLabel(it.faulty_equipment) || "-",
+          charger_no: chargerField(it.charger_no),
+          charger_sn: chargerField(it.charger_sn),
           problem_details: it.problem_details || "",
           status: getStatusText(it) || "-",
         };
@@ -408,7 +429,9 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
           reported_by: it.reported_by || it.technician || "",
           repairer: "",
           inspector: it.approved_by || it.inspector || "",
-          location: failureCodeLabel(it.faulty_equipment),
+          location: failureCodeLabel(it.faulty_equipment) || "-",
+          charger_no: chargerField(it.charger_no),
+          charger_sn: chargerField(it.charger_sn),
           problem_details: it.problem_details || "",
           status: getStatusText(it) || "-",
         };
@@ -441,7 +464,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
     (async () => { await fetchRows(); })();
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [apiBase, stationId, mode, statusFromTab]);
+  }, [apiBase, stationId, sn, mode, statusFromTab]);
 
   const columns: ColumnDef<TData, unknown>[] = useMemo(() => [
     {
@@ -487,6 +510,34 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
       size: 140,
       minSize: 100,
       maxSize: 180,
+      meta: { headerAlign: "center", cellAlign: "center" },
+    },
+    {
+      accessorFn: (row) => row.charger_no || "-",
+      id: "charger_no",
+      header: () => t("colChargerNo", lang),
+      cell: (info: CellContext<TData, unknown>) => (
+        <span className="tw-block tw-truncate" title={info.getValue() as string}>
+          {info.getValue() as React.ReactNode}
+        </span>
+      ),
+      size: 100,
+      minSize: 70,
+      maxSize: 130,
+      meta: { headerAlign: "center", cellAlign: "center" },
+    },
+    {
+      accessorFn: (row) => row.charger_sn || "-",
+      id: "charger_sn",
+      header: () => t("colChargerSn", lang),
+      cell: (info: CellContext<TData, unknown>) => (
+        <span className="tw-block tw-truncate" title={info.getValue() as string}>
+          {info.getValue() as React.ReactNode}
+        </span>
+      ),
+      size: 150,
+      minSize: 100,
+      maxSize: 220,
       meta: { headerAlign: "center", cellAlign: "center" },
     },
     {

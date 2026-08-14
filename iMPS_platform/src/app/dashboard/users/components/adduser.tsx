@@ -25,7 +25,7 @@ const T = {
     roleAdmin: { th: "ผู้ดูแลระบบ", en: "Admin" },
     roleTechnician: { th: "ช่างเทคนิค", en: "Technician" },
     roleCS: { th: "CS", en: "CS" },
-    roleEngineer: { th: "วิศวกร", en: "Engineer" },
+    rolePlanner: { th: "ผู้วางแผน", en: "Planner" },
 } as const;
 
 const t = (k: keyof typeof T, lang: Lang) => T[k][lang];
@@ -213,7 +213,7 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
                                     <Option value="admin">{t("roleAdmin", lang)}</Option>
                                     <Option value="technician">{t("roleTechnician", lang)}</Option>
                                     <Option value="cs">{t("roleCS", lang)}</Option>
-                                    <Option value="engineer">{t("roleEngineer", lang)}</Option>
+                                    <Option value="planner">{t("rolePlanner", lang)}</Option>
 
                                 </Select>
 
@@ -238,7 +238,7 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
                             </div>
                         )}
 
-                        {/* แสดง Station Search เฉพาะเมื่อ role = technician (cs/engineer เห็นทุกสถานี ไม่ต้องเลือก) */}
+                        {/* แสดง Station Search เฉพาะเมื่อ role = technician (cs/planner เห็นทุกสถานี ไม่ต้องเลือก) */}
                         {form.role === "technician" && (
                             <div className="tw-relative">
                                 <div className="tw-flex tw-items-center tw-gap-1">

@@ -51,6 +51,8 @@ const T = {
   colCmDate: { th: "วัน/เวลาที่แจ้ง", en: "Found Date/Time" },
   colReportedBy: { th: "ผู้แจ้งปัญหา", en: "Reported By" },
   colLocation: { th: "ตำแหน่งที่พบ", en: "Faulty Equipment" },
+  colChargerNo: { th: "หมายเลขตู้", en: "Charger No." },
+  colChargerSn: { th: "S/N ตู้", en: "Charger S/N" },
   colProblemDetails: { th: "ปัญหาที่พบ", en: "Problem Details" },
   colStatus: { th: "สถานะ", en: "Status" },
 
@@ -103,6 +105,8 @@ const T = {
 
 const t = (key: keyof typeof T, lang: Lang): string => T[key][lang];
 
+// หมายเลขตู้/SN แยกเป็นคอลัมน์ของตัวเองแล้ว ตำแหน่งที่พบจึงเหลือแค่ชื่อ failure class
+const chargerField = (v?: unknown) => String(v ?? "").trim();
 
 type TData = {
   id?: string;
@@ -113,6 +117,8 @@ type TData = {
   office: string;
   reported_by?: string;
   location?: string;
+  charger_no?: string;
+  charger_sn?: string;
   problem_details?: string;
   status: string;
   stage?: string;
@@ -156,7 +162,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
   const { lang } = useLanguage();
   const [userRole, setUserRole] = useState<string>("");
   const isTechnician = userRole.toLowerCase() === "technician";
-  const isEngineer = userRole.trim().toLowerCase() === "engineer";
+  const isPlanner = userRole.trim().toLowerCase() === "planner";
   const [loading, setLoading] = useState(false);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [data, setData] = useState<TData[]>([]);
@@ -385,7 +391,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
 
     try {
       // แท็บ Open รวม: ใบเปิดใหม่รอ head cs อนุมัติ (Wait for approve/cs_approval),
-      // ใบเก่า/auto ที่เป็น Open, และใบที่รอ engineer วางแผน (Wait for schedule)
+      // ใบเก่า/auto ที่เป็น Open, และใบที่รอ planner วางแผน (Wait for schedule)
       const requestStatus = "open,wait for approve,wait for schedule";
       const makeURL = (path: string) => {
         const u = new URL(`${apiBase}${path}`);
@@ -393,6 +399,8 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
         u.searchParams.set("page", "1");
         u.searchParams.set("pageSize", "50");
         u.searchParams.set("status", requestStatus);
+        // เข้ามาจากการ์ดตู้ชาร์จ → เห็นเฉพาะใบของตู้นั้น, ระดับสถานี → เห็นทุกใบ
+        if (sn) u.searchParams.set("sn", sn);
         return u.toString();
       };
 
@@ -413,7 +421,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
         if (Array.isArray(j?.items)) urlItems = j.items;
       }
 
-      // แท็บ Open = ด่านก่อนเริ่มซ่อม: รอ head cs อนุมัติ + รอ engineer วางแผน
+      // แท็บ Open = ด่านก่อนเริ่มซ่อม: รอ head cs อนุมัติ + รอ planner วางแผน
       // "wait for approve" ต้องเป็น stage cs_approval เท่านั้น (ด่านปิดงานไปอยู่แท็บ In Progress)
       const isOpen = (it: any) => {
         const hasStatus = it?.status != null || it?.job?.status != null;
@@ -462,7 +470,9 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
           position: isoDay,
           office: fileUrl,
           reported_by: it.reported_by || it.technician || "",
-          location: failureCodeLabel(it.faulty_equipment),
+          location: failureCodeLabel(it.faulty_equipment) || "-",
+          charger_no: chargerField(it.charger_no),
+          charger_sn: chargerField(it.charger_sn),
           problem_details: it.problem_details || "",
           status: getStatusText(it) || "-",
           stage: it.stage || "",
@@ -491,7 +501,9 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
           position: isoDay,
           office: resolveFileHref(raw, apiBase),
           reported_by: it.reported_by || it.technician || "",
-          location: failureCodeLabel(it.faulty_equipment),
+          location: failureCodeLabel(it.faulty_equipment) || "-",
+          charger_no: chargerField(it.charger_no),
+          charger_sn: chargerField(it.charger_sn),
           problem_details: it.problem_details || "",
           status: getStatusText(it) || "-",
         };
@@ -524,7 +536,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
     (async () => { await fetchRows(); })();
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [apiBase, stationId, mode, statusFromTab]);
+  }, [apiBase, stationId, sn, mode, statusFromTab]);
 
   // ลบใบงาน (เฉพาะบัญชี thatsawan)
   // เปิด dialog ยืนยันแทน window.confirm ให้เหมือนปุ่มอื่นในระบบ
@@ -602,6 +614,34 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
       size: 140,
       minSize: 100,
       maxSize: 180,
+      meta: { headerAlign: "center", cellAlign: "center" },
+    },
+    {
+      accessorFn: (row) => row.charger_no || "-",
+      id: "charger_no",
+      header: () => t("colChargerNo", lang),
+      cell: (info: CellContext<TData, unknown>) => (
+        <span className="tw-block tw-truncate" title={info.getValue() as string}>
+          {info.getValue() as React.ReactNode}
+        </span>
+      ),
+      size: 100,
+      minSize: 70,
+      maxSize: 130,
+      meta: { headerAlign: "center", cellAlign: "center" },
+    },
+    {
+      accessorFn: (row) => row.charger_sn || "-",
+      id: "charger_sn",
+      header: () => t("colChargerSn", lang),
+      cell: (info: CellContext<TData, unknown>) => (
+        <span className="tw-block tw-truncate" title={info.getValue() as string}>
+          {info.getValue() as React.ReactNode}
+        </span>
+      ),
+      size: 150,
+      minSize: 100,
+      maxSize: 220,
       meta: { headerAlign: "center", cellAlign: "center" },
     },
     {
@@ -723,15 +763,15 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
   }
 
   const visibleData = useMemo(() => {
-    // engineer เป็นผู้อนุมัติ SR → เห็นทั้ง Wait for approve (รออนุมัติ) และ Wait for schedule (วางแผน)
+    // planner เป็นผู้อนุมัติ SR → เห็นทั้ง Wait for approve (รออนุมัติ) และ Wait for schedule (วางแผน)
     // ซ่อนเฉพาะใบที่ตีกลับไปหา CS แล้ว (Wait for approve + reject_remark) — ยังไม่ใช่คิว จนกว่า CS จะแก้แล้วบันทึกกลับ
-    if (isEngineer) {
+    if (isPlanner) {
       return data.filter(
         (r) => !(String(r.status || "").trim().toLowerCase() === "wait for approve" && (r.reject_remark || "").trim())
       );
     }
     return data;
-  }, [data, isEngineer]);
+  }, [data, isPlanner]);
 
   const table = useReactTable({
     data: visibleData,

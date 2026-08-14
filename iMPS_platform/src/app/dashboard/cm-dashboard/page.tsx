@@ -443,7 +443,7 @@ export default function CMDashboardPage() {
       quickInProgress: "รอดำเนินการ",
       quickComplete: "เสร็จสิ้น",
       quickCancelled: "ยกเลิก",
-      tableHeaders: ["#", "สถานี", "รหัสเอกสาร", "ผู้แจ้งปัญหา", "อุปกรณ์ที่ผิดปกติ", "ปัญหาที่พบ", "ความรุนแรง", "วันที่", "สถานะ"],
+      tableHeaders: ["#", "สถานี", "รหัสเอกสาร", "หมายเลขตู้", "S/N ตู้", "ผู้แจ้งปัญหา", "อุปกรณ์ที่ผิดปกติ", "ปัญหาที่พบ", "ความรุนแรง", "วันที่", "สถานะ"],
     },
     en: {
       pageTitle: "Corrective Maintenance (CM)",
@@ -523,7 +523,7 @@ export default function CMDashboardPage() {
       quickInProgress: "In Progress",
       quickComplete: "Complete",
       quickCancelled: "Cancelled",
-      tableHeaders: ["#", "Station", "Issue ID", "Reported By", "Faulty Equipment", "Problem Found", "Severity", "Date", "Status"],
+      tableHeaders: ["#", "Station", "Issue ID", "Charger No.", "Charger S/N", "Reported By", "Faulty Equipment", "Problem Found", "Severity", "Date", "Status"],
     },
   }[lang]), [lang]);
 

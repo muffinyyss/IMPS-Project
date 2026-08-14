@@ -31,7 +31,7 @@ const MAX_PAGE_SIZE = 500;
 const FETCH_LIMIT = 10000;
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
-const PLANNING_ROLES = ["admin", "owner", "engineer"];
+const PLANNING_ROLES = ["admin", "owner", "planner"];
 const WAITING_ON_REPLAN_RESULTS = [
   "WO - wait for material",
   "WO - wait for spare part",

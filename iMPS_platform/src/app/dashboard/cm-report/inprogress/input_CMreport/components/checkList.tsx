@@ -4,7 +4,7 @@ import React, { useMemo, useState, useEffect, useRef, useCallback } from "react"
 import { Button, Input, Textarea } from "@material-tailwind/react";
 import Image from "next/image";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
-import { ArrowLeftIcon, ArrowUturnLeftIcon, PhotoIcon, XMarkIcon, CheckCircleIcon, ExclamationTriangleIcon } from "@heroicons/react/24/solid";
+import { ArrowLeftIcon, ArrowUturnLeftIcon, PhotoIcon, XMarkIcon, CheckCircleIcon, ExclamationTriangleIcon, PencilIcon } from "@heroicons/react/24/solid";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
 import CreatableSelect from "react-select/creatable";
 import { useDraft, type DraftData, type DraftImage, type DraftCorrectiveAction } from "../lib/draft";
@@ -15,6 +15,8 @@ import {
 } from "@/app/dashboard/cm-report/lib/maximo";
 import { cmBackRoute } from "@/app/dashboard/cm-report/lib/origin";
 import ChargerIdentity, { type ChargerIdentityData } from "@/app/dashboard/cm-report/components/ChargerIdentity";
+import { repairResultLabel, normalizeRepairResult, REPAIR_RESULT_VALUES } from "@/app/dashboard/cm-report/lib/repairResult";
+import { ZoomableImg, AttachmentFileRow, isImageAttachment } from "@/app/dashboard/cm-report/components/photo-viewer";
 
 // ==================== DEVICE NAME FORMATTER ====================
 function formatDeviceName(name: string): string {
@@ -74,8 +76,8 @@ const T = {
     actionNo: { th: "ข้อที่", en: "Action" },
     deleteAction: { th: "ลบ", en: "Delete" },
     attachPhoto: { th: "แนบรูป", en: "Attach Photo" },
-    beforePhoto: { th: "รูปก่อนแก้ไข (สูงสุด 5 รูป)", en: "Before (up to 5 photos)" },
-    afterPhoto: { th: "รูปหลังแก้ไข (สูงสุด 5 รูป)", en: "After (up to 5 photos)" },
+    beforePhoto: { th: "รูปก่อนแก้ไข (สูงสุด 10 รูป)", en: "Before (up to 10 photos)" },
+    afterPhoto: { th: "รูปหลังแก้ไข (สูงสุด 10 รูป)", en: "After (up to 10 photos)" },
     repairResult: { th: "ผลหลังซ่อม", en: "Repair Result" },
     // preventiveAction: { th: "วิธีป้องกันไม่ให้เกิดซ้ำ", en: "Preventive Action" },
     addPreventive: { th: "เพิ่ม", en: "Add" },
@@ -158,7 +160,7 @@ function base64ToBlobUrl(base64: string): string {
 type Severity = "" | "Low" | "Medium" | "High" | "Urgent";
 type Status = "" | "Open" | "In Progress" | "Wait for approve" | "Complete" | "Closed";
 type ServerPhoto = { filename: string; size: number; url: string; remark?: string; uploadedAt?: string; location?: string; };
-type PhotoItem = { id: string; file: File | null; preview: string; isServer?: boolean; serverUrl?: string; createdAt?: string; uploadedAtRaw?: string; location?: string; };
+type PhotoItem = { id: string; file: File | null; preview: string; isServer?: boolean; serverUrl?: string; createdAt?: string; uploadedAtRaw?: string; location?: string; name?: string; };
 type CorrectiveItem = { text: string; beforeImages: PhotoItem[]; afterImages: PhotoItem[]; code?: string; };
 
 /** แปลง uploadedAt → display string, รองรับทั้ง ISO date และ string ที่ format แล้ว */
@@ -174,6 +176,7 @@ function formatPhotoDate(dateStr: string | undefined): string | undefined {
 
 type Job = {
     issue_id: string; doc_name: string; found_date: string; found_time: string; location: string;
+    charger_no?: string; charger_sn?: string;
     problem_details: string; problem_type: string[]; severity: Severity;
     initial_cause: string; status: Status; remarks: string; faulty_equipment: string;
     corrective_actions: CorrectiveItem[];
@@ -195,7 +198,7 @@ type ChargerInfo = { chargerNo?: number; charger_id?: string; charger_name?: str
 type ValidationItem = { key: string; label: string; isValid: boolean; message: string; isRequired: boolean; scrollId?: string; };
 
 // ตัวเลือกผลหลังซ่อมของช่าง — ไม่มี "wait for manpower" เพราะพอช่างมากรอกฟอร์มนี้ก็ไม่ได้รอช่างแล้ว
-// (manpower เป็นสถานะที่ engineer ตั้งตอน assign ไม่ใช่ผลที่ช่างเลือกเอง)
+// (manpower เป็นสถานะที่ planner ตั้งตอน assign ไม่ใช่ผลที่ช่างเลือกเอง)
 // ผลซ่อม 1 รอบ — ช่างบันทึกเป็นสถานะรอ (material/site) แล้วกลับมาซ่อมใหม่ รอบเดิมย้ายมาเก็บที่นี่
 type RepairRound = {
     // วันที่/เวลาที่ช่างเริ่มลงมือแก้ไขรอบนั้น (ไม่ใช่เวลาที่กดบันทึก)
@@ -223,22 +226,10 @@ const WAITING_REPAIR_RESULTS = [
     "WO - wait for site condition", "WO - wait for site access",
 ];
 
-const REPAIR_OPTIONS = [
-    { value: "WO - wait for scheduled", th: "WO - wait for scheduled", en: "WO - wait for scheduled" },
-    { value: "WO - wait for material", th: "WO - wait for material", en: "WO - wait for material" },
-    { value: "WO - wait for site condition", th: "WO - wait for site condition", en: "WO - wait for site condition" },
-    // Show friendly label for approve-waiting WO while keeping value unchanged
-    { value: "WO - wait for approve", th: "แก้ไขสำเร็จ", en: "Repair completed" },
-] as const;
+// ป้ายชื่อทั้งชุดอยู่ใน lib/repairResult — ตาราง In Progress ใช้ตัวเดียวกัน ชื่อจะได้ไม่หลุดกัน
+// value ที่บันทึกยังเป็นภาษาอังกฤษเสมอ (Maximo/backend อ้างค่านี้) แปลแค่ตอนแสดง
+const REPAIR_OPTIONS = REPAIR_RESULT_VALUES;
 const DEFAULT_REPAIR_RESULT = "WO - wait for scheduled";
-
-// รองรับข้อมูลเก่า: map ค่า repair_result เดิม (ก่อนเปลี่ยนชื่อ) → ค่าใหม่ ตอนโหลดใบเก่า
-const LEGACY_REPAIR_MAP: Record<string, string> = {
-    "WO - wait for manpower": "WO - wait for scheduled",
-    "WO - wait for spare part": "WO - wait for material",
-    "WO - wait for site access": "WO - wait for site condition",
-};
-const normalizeRepairResult = (v: string): string => LEGACY_REPAIR_MAP[v] ?? v;
 
 function asStringArray(value: unknown): string[] {
     if (Array.isArray(value)) return value.map(v => String(v ?? "").trim()).filter(Boolean);
@@ -259,7 +250,7 @@ function mergeStringArraysByIndex(...values: unknown[]): string[] {
 }
 
 // ค่าผลหลังซ่อมที่ถือว่าเป็นสถานะ "รอ" (WO waiting) — ยังคงอยู่ In Progress
-// คง scheduled ไว้ที่นี่ เพราะใบที่ engineer เพิ่ง assign ยังถือค่านี้อยู่ ต้องจำแนกให้ถูก
+// คง scheduled ไว้ที่นี่ เพราะใบที่ planner เพิ่ง assign ยังถือค่านี้อยู่ ต้องจำแนกให้ถูก
 // รวมค่าเก่า (manpower / spare part / site access) เพื่อจำแนกใบเก่าให้ถูก
 const WO_WAITING_RESULTS = [
     "WO - wait for scheduled", "WO - wait for manpower",
@@ -276,7 +267,7 @@ const WO_WAITING_RESULTS = [
 const COMPLETED_REPAIR_RESULTS = ["WO - wait for approve", "แก้ไขสำเร็จ", "แก้ไขไม่สำเร็จ"];
 
 // ปิดงานด้วย "ไม่พบปัญหา" — ต้องเขียนผลหลังซ่อมเป็นค่านี้ ไม่ปล่อยให้ค้างเป็น marker
-// "WO - wait for scheduled" ที่ engineer ตั้งไว้ (ไม่งั้นแดชบอร์ดจะนับใบนี้เป็น "รอกำหนดการ")
+// "WO - wait for scheduled" ที่ planner ตั้งไว้ (ไม่งั้นแดชบอร์ดจะนับใบนี้เป็น "รอกำหนดการ")
 const NO_PROBLEM_REPAIR_RESULT = "ไม่พบปัญหา";
 
 // ตัวเลือกท้าย dropdown ปัญหา — แสดงเสมอทุก failure code
@@ -301,7 +292,7 @@ const toOptions = (codes: { code: string; description: string }[] | null): Selec
 
 const LOGO_SRC = "/img/logo_egat.png";
 const LIST_ROUTE = "/dashboard/cm-report";
-const MAX_PHOTOS = 5;
+const MAX_PHOTOS = 10;
 const FIXED_EQUIPMENT = ["MDB", "CCB", "CB-BOX", "Station"] as const;
 
 // ==================== อุปกรณ์ภายในของแต่ละ Non-Charger (Placeholder - แก้ทีหลัง) ====================
@@ -314,6 +305,7 @@ const NON_CHARGER_DEVICES: Record<string, string[]> = {
 
 const INITIAL_JOB: Job = {
     issue_id: "", doc_name: "", found_date: "", found_time: "", location: "", problem_details: "",
+    charger_no: "", charger_sn: "",
     problem_type: [], severity: "", initial_cause: "", status: "", remarks: "", faulty_equipment: "",
     corrective_actions: [{ text: "", beforeImages: [], afterImages: [] }],
     resolved_date: "",
@@ -468,7 +460,7 @@ function RepairRoundCard({ round, index, lang }: { round: RepairRound; index: nu
                     {imgs.map((im, k) => (
                         <a key={k} href={src(im.url)} target="_blank" rel="noreferrer"
                             className="tw-block tw-w-20 tw-h-20 tw-rounded-lg tw-overflow-hidden tw-border tw-border-gray-200 tw-bg-gray-50">
-                            <img src={src(im.url)} alt={label} className="tw-w-full tw-h-full tw-object-cover" />
+                            <ZoomableImg src={src(im.url)} alt={label} className="tw-w-full tw-h-full tw-object-cover" />
                         </a>
                     ))}
                 </div>
@@ -489,7 +481,7 @@ function RepairRoundCard({ round, index, lang }: { round: RepairRound; index: nu
                 </div>
                 <div>
                     <p className="tw-text-xs tw-font-semibold tw-text-blue-gray-500 tw-mb-1">{t("rrResult", lang)}</p>
-                    {line(round.repair_result)}
+                    {line(repairResultLabel(round.repair_result, lang))}
                 </div>
                 <div>
                     <p className="tw-text-xs tw-font-semibold tw-text-blue-gray-500 tw-mb-1">{t("rrRemarks", lang)}</p>
@@ -584,6 +576,9 @@ function CMValidationCard({ validations, lang }: { validations: ValidationItem[]
 function PhotoUpload({ photos_problem, onAdd, onRemove, max, disabled, lang }: { photos_problem: PhotoItem[]; onAdd: (files: FileList) => void; onRemove: (id: string) => void; max: number; disabled: boolean; lang: Lang; }) {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const canAddMore = photos_problem.length < max && !disabled;
+    // ไฟล์ที่แนบมาจากหน้า Open (PDF) พรีวิวไม่ได้ → แยกไปเป็นรายการแถว ไม่กินช่องกริดรูป
+    const images = photos_problem.filter(p => isImageAttachment(p.preview));
+    const files = photos_problem.filter(p => !isImageAttachment(p.preview));
 
     return (
         <div className="tw-space-y-4">
@@ -591,9 +586,9 @@ function PhotoUpload({ photos_problem, onAdd, onRemove, max, disabled, lang }: {
             <input ref={fileInputRef} type="file" accept="image/*" multiple className="tw-hidden" onChange={e => { if (e.target.files) { onAdd(e.target.files); e.target.value = ""; } }} />
             {photos_problem.length > 0 ? (
                 <div className="tw-grid tw-grid-cols-3 sm:tw-grid-cols-4 md:tw-grid-cols-5 tw-gap-3">
-                    {photos_problem.map(photo => (
+                    {images.map(photo => (
                         <div key={photo.id} className="tw-relative tw-aspect-square tw-rounded-lg tw-overflow-hidden tw-border tw-border-blue-gray-200 tw-bg-blue-gray-50 tw-shadow-sm hover:tw-shadow-md tw-transition-shadow">
-                            <img src={photo.preview} alt="" className="tw-w-full tw-h-full tw-object-cover" />
+                            <ZoomableImg src={photo.preview} alt="" className="tw-w-full tw-h-full tw-object-cover" />
                             {(photo.createdAt || photo.location) && (
                                 <span className="tw-absolute tw-bottom-1 tw-right-1 tw-text-[8px] tw-leading-tight tw-bg-black/60 tw-text-white tw-px-1.5 tw-py-1 tw-rounded tw-pointer-events-none tw-text-right tw-max-w-[90%] tw-truncate">
                                     {photo.createdAt && <span className="tw-block tw-font-mono">{photo.createdAt}</span>}
@@ -629,6 +624,15 @@ function PhotoUpload({ photos_problem, onAdd, onRemove, max, disabled, lang }: {
                     <p className="tw-text-xs tw-text-blue-gray-600">{t("noPhotos", lang)}</p>
                 </div>
             )}
+
+            {/* ไฟล์แนบ (PDF) จากหน้า Open — รายการแถว ไม่ทำพรีวิวใหญ่เหมือนรูป */}
+            {files.length > 0 && (
+                <div className="tw-flex tw-flex-wrap tw-gap-2">
+                    {files.map(f => (
+                        <AttachmentFileRow key={f.id} src={f.preview} name={f.name} />
+                    ))}
+                </div>
+            )}
         </div>
     );
 }
@@ -648,9 +652,34 @@ function getSeverityColor(severity: string) {
 // ==================== PROBLEM GROUP (ชุดกรอกเพิ่ม: ปัญหา→สาเหตุ→การแก้ไข→การดำเนินการ) ====================
 type PGroup = { kind: "full" | "cause" | "correction"; problem_type: string[]; cause: string[]; repaired_equipment: string[]; corrective_actions: CorrectiveItem[] };
 const newGroup = (kind: "full" | "cause" | "correction"): PGroup => ({ kind, problem_type: [], cause: [], repaired_equipment: [], corrective_actions: [{ text: "", beforeImages: [], afterImages: [] }] });
+// เปลี่ยนตัวเลือกด้านบนแล้วต้องถอด code ที่ผูกไว้ออก แต่ "รายละเอียดการแก้ไข" กับรูป
+// เป็นสิ่งที่ผู้ใช้พิมพ์/แนบเอง ห้ามล้าง — planner มาแก้ต่อจากช่างแล้วข้อมูลหายทั้งชุด
+const detachCorrectiveCodes = (actions: CorrectiveItem[]): CorrectiveItem[] => actions.map(action => ({
+    ...action,
+    code: undefined,
+}));
+const retainCorrectiveDataForCodes = (actions: CorrectiveItem[], codes: string[]): CorrectiveItem[] => {
+    const keep = new Set(codes.filter(Boolean));
+    return actions.map(action => keep.has(action.code || "")
+        ? action
+        : { ...action, code: undefined });   // ถอดแค่ code — ข้อความที่พิมพ์ไว้ต้องอยู่ต่อ
+};
+const matchingCorrectionCodes = (
+    tree: ReturnType<typeof useMaximoFailureTree>,
+    faultyEquipment: string,
+    problems: string[],
+    causes: string[],
+    currentCodes: string[],
+): string[] => {
+    const options = toOptions(maximoRemedyOptions(tree, faultyEquipment, problems, causes));
+    // Maximo กำลังโหลด/ไม่มีรายการ: อย่าเสี่ยงล้างข้อมูลเดิม
+    if (!options?.length) return currentCodes.filter(Boolean);
+    const available = new Set(options.map(option => option.value));
+    return currentCodes.filter(code => available.has(code));
+};
 
-function ProblemGroupBlock({ faultyEquipment, value, onChange, onRemove, onAddGroup, onAddCauseGroup, onAddCorrectionGroup, mainProblem, mainCause, takenCauses, lang, index, disabled = false }: {
-    faultyEquipment: string; value: PGroup; onChange: (g: PGroup) => void; onRemove: () => void; onAddGroup: () => void; onAddCauseGroup: () => void; onAddCorrectionGroup: () => void; mainProblem: string[]; mainCause: string[]; takenCauses: string[]; lang: Lang; index: number; disabled?: boolean;
+function ProblemGroupBlock({ faultyEquipment, value, onChange, onRemove, onAddGroup, onAddCauseGroup, onAddCorrectionGroup, mainProblem, mainCause, takenCauses, takenCorrections, lang, index, disabled = false }: {
+    faultyEquipment: string; value: PGroup; onChange: (g: PGroup) => void; onRemove: () => void; onAddGroup: () => void; onAddCauseGroup: () => void; onAddCorrectionGroup: () => void; mainProblem: string[]; mainCause: string[]; takenCauses: string[]; takenCorrections: string[]; lang: Lang; index: number; disabled?: boolean;
 }) {
     const isCauseOnly = value.kind === "cause";            // บล็อกสาเหตุ: ไม่มีช่องปัญหา ใช้ปัญหาหลักคำนวณ
     const isCorrectionOnly = value.kind === "correction";  // บล็อกการแก้ไข: มีแค่การแก้ไข→การดำเนินการ ใช้ปัญหา+สาเหตุหลัก
@@ -687,26 +716,37 @@ function ProblemGroupBlock({ faultyEquipment, value, onChange, onRemove, onAddGr
     const correctionOptions = toOptions(
         maximoRemedyOptions(maximoTree, faultyEquipment, effProblems, effCauses));
     const resolveCorrectionLabel = (v: string) => correctionOptions?.find(o => o.value === v)?.label ?? formatDeviceName(v);
-    // แสดงรายการการแก้ไขทั้งหมดเสมอ — รายการที่เลือกไปแล้วต้องยังเลือกซ้ำได้เมื่อเพิ่มชุดใหม่
+    // ตัด "การแก้ไข" ที่ถูกเลือกไว้ในช่องอื่นออก (กันเลือกซ้ำ) — เก็บค่าของตัวเองไว้ เกณฑ์เดียวกับสาเหตุ
     const storedCorrectionOptions = value.repaired_equipment
         .filter(Boolean)
         .map(v => ({ value: v, label: resolveCorrectionLabel(v) }));
     const correctionOptionsAvailList = [
-        ...(correctionOptions ?? []),
+        ...(correctionOptions ?? []).filter(o => !takenCorrections.includes(o.value) || value.repaired_equipment.includes(o.value)),
         ...storedCorrectionOptions.filter(stored => !(correctionOptions ?? []).some(option => option.value === stored.value)),
     ];
     const correctionOptionsAvail = correctionOptionsAvailList.length ? correctionOptionsAvailList : null;
 
     // auto-sync การดำเนินการแก้ไข ตามการแก้ไขที่เลือก
+    // เปลี่ยนตัวเลือกแล้วห้ามลบแถวเดิม เพราะแถวนั้นอาจมีรูป/รายละเอียดที่กรอกไว้แล้ว
     useEffect(() => {
         if (disabled) return;
         const codes = value.repaired_equipment.filter(Boolean);
         const codeSet = new Set(codes);
-        let next = value.corrective_actions.filter(a => !a.code || codeSet.has(a.code));
-        const have = new Set(next.map(a => a.code).filter(Boolean));
-        for (const c of codes) if (!have.has(c)) { next = [...next, { code: c, text: "", beforeImages: [], afterImages: [] }]; have.add(c); }
-        if (next.some(a => a.code)) next = next.filter(a => a.code || a.text.trim() || a.beforeImages.length || a.afterImages.length);
+        // ถ้าเอาการแก้ไขเดิมออก ให้คงแถวและรูปไว้ แต่ถอด code ออกเพื่อไม่ให้รูปหาย
+        let next = value.corrective_actions.map(a =>
+            a.code && !codeSet.has(a.code)
+                ? { ...a, code: undefined }
+                : a
+        );
         if (next.length === 0) next = [{ text: "", beforeImages: [], afterImages: [] }];
+        const have = new Set(next.map(a => a.code).filter(Boolean));
+        for (const c of codes) {
+            if (have.has(c)) continue;
+            const reusableIndex = next.findIndex(a => !a.code);
+            if (reusableIndex < 0) continue;
+            next = next.map((a, i) => i === reusableIndex ? { ...a, code: c } : a);
+            have.add(c);
+        }
         const same = next.length === value.corrective_actions.length && next.every((a, i) => a === value.corrective_actions[i]);
         if (!same) onChange({ ...value, corrective_actions: next });
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -753,7 +793,23 @@ function ProblemGroupBlock({ faultyEquipment, value, onChange, onRemove, onAddGr
                                 options={problemSelectOptions}
                                 value={value.problem_type[0] ? { value: value.problem_type[0], label: resolveProblemLabel(value.problem_type[0]) } : null}
                                 isDisabled={disabled}
-                                onChange={(opt: any) => onChange({ ...value, problem_type: opt ? [opt.value] : [] })}
+                                onChange={(opt: any) => {
+                                    const nextProblems = opt ? [opt.value] : [];
+                                    const keptCorrections = matchingCorrectionCodes(
+                                        maximoTree,
+                                        faultyEquipment,
+                                        nextProblems,
+                                        [],
+                                        value.repaired_equipment,
+                                    );
+                                    onChange({
+                                        ...value,
+                                        problem_type: nextProblems,
+                                        cause: [],
+                                        repaired_equipment: keptCorrections,
+                                        corrective_actions: retainCorrectiveDataForCodes(value.corrective_actions, keptCorrections),
+                                    });
+                                }}
                                 formatCreateLabel={(v: string) => `+ "${v}"`}
                                 menuPlacement="auto" menuPortalTarget={typeof document !== "undefined" ? document.body : undefined} classNamePrefix="react-select" styles={makeSelectStyles(SELECT_ACCENT.blue)} />
                         </div>
@@ -772,7 +828,22 @@ function ProblemGroupBlock({ faultyEquipment, value, onChange, onRemove, onAddGr
                                 options={causeOptionsAvail ?? []}
                                 isDisabled={disabled || !causeOptionsAvail}
                                 value={value.cause[0] ? { value: value.cause[0], label: resolveCauseLabel(value.cause[0]) } : null}
-                                onChange={(opt: any) => onChange(opt ? { ...value, cause: [opt.value] } : { ...value, cause: [], repaired_equipment: [] })}
+                                onChange={(opt: any) => {
+                                    const nextCauses = opt ? [opt.value] : [];
+                                    const keptCorrections = matchingCorrectionCodes(
+                                        maximoTree,
+                                        faultyEquipment,
+                                        effProblems,
+                                        nextCauses,
+                                        value.repaired_equipment,
+                                    );
+                                    onChange({
+                                        ...value,
+                                        cause: nextCauses,
+                                        repaired_equipment: keptCorrections,
+                                        corrective_actions: retainCorrectiveDataForCodes(value.corrective_actions, keptCorrections),
+                                    });
+                                }}
                                 formatCreateLabel={(v: string) => `+ "${v}"`}
                                 menuPlacement="auto" menuPortalTarget={typeof document !== "undefined" ? document.body : undefined} classNamePrefix="react-select" styles={makeSelectStyles(SELECT_ACCENT.blue)} />
                         </div>
@@ -792,7 +863,18 @@ function ProblemGroupBlock({ faultyEquipment, value, onChange, onRemove, onAddGr
                                 options={correctionOptionsAvail ?? []}
                                 isDisabled={disabled || !correctionOptionsAvail}
                                 value={value.repaired_equipment[0] ? { value: value.repaired_equipment[0], label: resolveCorrectionLabel(value.repaired_equipment[0]) } : null}
-                                onChange={(opt: any) => onChange({ ...value, repaired_equipment: opt ? [opt.value] : [] })}
+                                onChange={(opt: any) => {
+                                    const nextCorrections = opt ? [opt.value] : [];
+                                    const sameCorrection = nextCorrections.length === value.repaired_equipment.length
+                                        && nextCorrections.every((code, i) => code === value.repaired_equipment[i]);
+                                    onChange({
+                                        ...value,
+                                        repaired_equipment: nextCorrections,
+                                        corrective_actions: sameCorrection
+                                            ? value.corrective_actions
+                                            : detachCorrectiveCodes(value.corrective_actions),
+                                    });
+                                }}
                                 formatCreateLabel={(v: string) => `+ "${v}"`}
                                 menuPlacement="auto" menuPortalTarget={typeof document !== "undefined" ? document.body : undefined} classNamePrefix="react-select" styles={makeSelectStyles(SELECT_ACCENT.amber)} />
                         </div>
@@ -833,7 +915,7 @@ function ProblemGroupBlock({ faultyEquipment, value, onChange, onRemove, onAddGr
                                                     <div className="tw-grid tw-grid-cols-3 tw-gap-2">
                                                         {action.beforeImages.map((img) => (
                                                             <div key={img.id} className="tw-relative tw-aspect-square tw-rounded-lg tw-overflow-hidden tw-border tw-border-red-200 tw-bg-white tw-shadow-sm hover:tw-shadow-md tw-transition-shadow">
-                                                                <img src={img.preview} alt="" className="tw-w-full tw-h-full tw-object-cover" />
+                                                                <ZoomableImg src={img.preview} alt="" className="tw-w-full tw-h-full tw-object-cover" />
                                                                 {(img.createdAt || img.location) && (
                                                                     <span className="tw-absolute tw-bottom-1 tw-right-1 tw-text-[8px] tw-leading-tight tw-bg-black/60 tw-text-white tw-px-1.5 tw-py-1 tw-rounded tw-pointer-events-none tw-text-right tw-max-w-[90%] tw-truncate">
                                                                         {img.createdAt && <span className="tw-block tw-font-mono">{img.createdAt}</span>}
@@ -863,7 +945,7 @@ function ProblemGroupBlock({ faultyEquipment, value, onChange, onRemove, onAddGr
                                                     <div className="tw-grid tw-grid-cols-3 tw-gap-2">
                                                         {action.afterImages.map((img) => (
                                                             <div key={img.id} className="tw-relative tw-aspect-square tw-rounded-lg tw-overflow-hidden tw-border tw-border-green-200 tw-bg-white tw-shadow-sm hover:tw-shadow-md tw-transition-shadow">
-                                                                <img src={img.preview} alt="" className="tw-w-full tw-h-full tw-object-cover" />
+                                                                <ZoomableImg src={img.preview} alt="" className="tw-w-full tw-h-full tw-object-cover" />
                                                                 {(img.createdAt || img.location) && (
                                                                     <span className="tw-absolute tw-bottom-1 tw-right-1 tw-text-[8px] tw-leading-tight tw-bg-black/60 tw-text-white tw-px-1.5 tw-py-1 tw-rounded tw-pointer-events-none tw-text-right tw-max-w-[90%] tw-truncate">
                                                                         {img.createdAt && <span className="tw-block tw-font-mono">{img.createdAt}</span>}
@@ -916,7 +998,7 @@ export default function CMInProgressForm() {
     const [recordInspector, setRecordInspector] = useState(""); // inspector ที่บันทึกในใบงานแล้ว = เจ้าของใบงานเฟสซ่อม
     // ประวัติผลซ่อมรอบก่อน ๆ (อ่านอย่างเดียว) — flat fields คือรอบที่กำลังกรอก
     const [repairHistory, setRepairHistory] = useState<RepairRound[]>([]);
-    const [assignees, setAssignees] = useState<string[]>([]);   // ช่างที่ engineer มอบหมายตอนวางแผน
+    const [assignees, setAssignees] = useState<string[]>([]);   // ช่างที่ planner มอบหมายตอนวางแผน
     // ตาราง failure code จาก Maximo (IN04) — ผสมกับตารางในโค้ดเพื่อทำ dropdown ปัญหา→สาเหตุ→การแก้ไข
     const maximoTree = useMaximoFailureTree();
     const [currentUsername, setCurrentUsername] = useState("");
@@ -925,6 +1007,8 @@ export default function CMInProgressForm() {
     const [approvalStage, setApprovalStage] = useState("");
     const [approving, setApproving] = useState(false);
     const [approveOpen, setApproveOpen] = useState(false);
+    const [plannerEditMode, setPlannerEditMode] = useState(false);
+    const [editConfirmOpen, setEditConfirmOpen] = useState(false);
     // ตีกลับใบงาน — ต้องกรอกเหตุผลให้ช่างรู้ว่าต้องแก้อะไร
     const [rejectOpen, setRejectOpen] = useState(false);
     const [rejectRemark, setRejectRemark] = useState("");
@@ -946,12 +1030,12 @@ export default function CMInProgressForm() {
     const isEdit = !!editId;
 
     // เปิดใบงานที่ปิดแล้ว (Closed) = โหมดดูอย่างเดียว (อ่านไม่แก้, ปิดฟีเจอร์ร่าง)
-    // สิทธิ์กรอกใบงานเฟสซ่อม = ต้องเป็นช่างที่ engineer มอบหมายตอนวางแผน (อยู่ใน assignees) หรือ admin
+    // สิทธิ์กรอกใบงานเฟสซ่อม = ต้องเป็นช่างที่ planner มอบหมายตอนวางแผน (อยู่ใน assignees) หรือ admin
     // ใบเก่าที่ไม่มี assignees → fallback กติกาเดิม (inspector ว่าง = ใครก็เริ่มได้ / คน save แรกเป็นเจ้าของ)
     const isAssignee =
         !!currentUsername.trim() &&
         assignees.some((a) => (a || "").trim().toLowerCase() === currentUsername.trim().toLowerCase());
-    const isEngineer = currentRole.trim().toLowerCase() === "engineer";
+    const isPlanner = currentRole.trim().toLowerCase() === "planner";
     const isCs = currentRole.trim().toLowerCase() === "cs";
     const isTechnician = currentRole.trim().toLowerCase() === "technician";
     const isJobOwner =
@@ -965,27 +1049,27 @@ export default function CMInProgressForm() {
     // ใช้ status จริงเป็นตัวกำหนด Read only เท่านั้น
     // การเลือก Repair Result = WO - wait for approve ยังต้องแก้ไข/บันทึกได้ก่อน
     const isWaitForApprove = normalizedJobStatus === "wait for approve";
-    // Engineer แก้ไขข้อมูลของ Technician ได้เฉพาะใบที่ส่งมารออนุมัติปิดงานแล้ว
+    // Planner แก้ไขข้อมูลของ Technician ได้เฉพาะใบที่ส่งมารออนุมัติปิดงานแล้ว
     // ส่วน In Progress/Wait for schedule เป็นหน้าที่ของ Technician จึงเปิดดูได้อย่างเดียว
     const isWoCloseApproval =
         isWaitForApprove &&
         approvalStage.trim().toLowerCase() !== "cs_approval";
-    const canEditTechnicianData = isEngineer && isWoCloseApproval;
+    const canEditTechnicianData = isPlanner && isWoCloseApproval;
     const isTechnicianWaitForApprove = isTechnician && isWaitForApprove;
     // ด่านรออนุมัติจาก CS เป็นหน้าตรวจอย่างเดียว
-    // ส่วนด่านปิดงานเปิดให้ Engineer แก้ข้อมูลของช่างแล้วบันทึก/อนุมัติได้
+    // ส่วนด่านปิดงานเปิดให้ Planner แก้ข้อมูลของช่างแล้วบันทึก/อนุมัติได้
     const viewOnly =
         isCs ||
         isClosedStatus ||
         isTechnicianWaitForApprove ||
         (isWaitForApprove && !canEditTechnicianData) ||
-        (isEngineer && !canEditTechnicianData) ||
-        (!isEngineer && !isJobOwner);
+        (isPlanner && (!canEditTechnicianData || !plannerEditMode)) ||
+        (!isPlanner && !isJobOwner);
 
-    // อนุมัติปิดใบงาน (Wait for approve → Closed) — เฉพาะ admin/engineer และเฉพาะใบที่รออนุมัติอยู่จริง
+    // อนุมัติปิดใบงาน (Wait for approve → Closed) — เฉพาะ admin/planner และเฉพาะใบที่รออนุมัติอยู่จริง
     const canApprove =
         isWoCloseApproval &&
-        ["admin", "engineer"].includes(currentRole.trim().toLowerCase());
+        ["admin", "planner"].includes(currentRole.trim().toLowerCase());
     const reviewerName = isClosedStatus ? approvedBy : currentUsername;
 
     const approvalActions = canApprove ? (
@@ -994,22 +1078,52 @@ export default function CMInProgressForm() {
                 type="button"
                 onClick={() => { setRejectRemark(""); setRejectOpen(true); }}
                 disabled={approving || rejecting}
-                className="tw-flex tw-items-center tw-gap-2 tw-bg-red-600 hover:tw-bg-red-700 tw-text-white tw-font-semibold tw-text-base tw-px-8 tw-py-3 tw-rounded-xl hover:tw-shadow-xl hover:tw-shadow-red-500/30 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed tw-transition-all"
+                className="tw-bg-red-600 hover:tw-bg-red-700 tw-text-white tw-font-semibold tw-text-base tw-px-8 tw-py-3 tw-rounded-xl hover:tw-shadow-xl hover:tw-shadow-red-500/30 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed tw-transition-all"
             >
-                <ArrowUturnLeftIcon className="tw-w-5 tw-h-5" />
                 {lang === "th" ? "ตีกลับ" : "Reject"}
             </Button>
             <Button
                 type="button"
                 onClick={() => setApproveOpen(true)}
                 disabled={approving || rejecting}
-                className="tw-flex tw-items-center tw-gap-2 tw-bg-green-600 hover:tw-bg-green-700 tw-text-white tw-font-semibold tw-text-base tw-px-8 tw-py-3 tw-rounded-xl hover:tw-shadow-xl hover:tw-shadow-green-500/30 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed tw-transition-all"
+                className="tw-bg-green-600 hover:tw-bg-green-700 tw-text-white tw-font-semibold tw-text-base tw-px-8 tw-py-3 tw-rounded-xl hover:tw-shadow-xl hover:tw-shadow-green-500/30 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed tw-transition-all"
             >
-                <CheckCircleIcon className="tw-w-5 tw-h-5" />
                 {approving ? (lang === "th" ? "กำลังอนุมัติ..." : "Approving...") : (lang === "th" ? "อนุมัติ" : "Approve")}
             </Button>
         </>
     ) : null;
+
+    // planner กำลังแก้ข้อมูลของช่างค้างอยู่ — แถวปุ่มจะเหลือแค่ ยกเลิกแก้ไข + ปิดงาน
+    const isPlannerEditing = isPlanner && plannerEditMode;
+
+    const requestPlannerEdit = () => {
+        if (canEditTechnicianData) setEditConfirmOpen(true);
+    };
+
+    // ค่าตอนก่อนเข้าโหมดแก้ไข — กด "ยกเลิกแก้ไข" แล้วต้องได้ข้อมูลของช่างคืนตามเดิม
+    const preEditSnapshot = useRef<{ job: Job; extraGroups: PGroup[] } | null>(null);
+
+    const confirmPlannerEdit = () => {
+        setEditConfirmOpen(false);
+        preEditSnapshot.current = { job, extraGroups };
+        setPlannerEditMode(true);
+    };
+
+    // ออกจากโหมดแก้ไขโดยไม่บันทึก — คืนค่าที่ snapshot ไว้ กลับไปเป็นหน้าดูอย่างเดียว
+    //
+    // ต้องทิ้งร่างด้วย: ระหว่างแก้ไข auto-save เขียนร่างไว้ทุก 2 วิ ถ้าไม่ลบ พอกดแก้ไขรอบหน้า
+    // effect โหลดร่างจะเอาค่าที่เพิ่งยกเลิกไปกลับมาทับ กลายเป็นยกเลิกไม่จริง
+    const cancelPlannerEdit = () => {
+        const snap = preEditSnapshot.current;
+        if (snap) {
+            setJob(snap.job);
+            setExtraGroups(snap.extraGroups);
+        }
+        preEditSnapshot.current = null;
+        setPendingDraft(null);
+        void deleteDraft().catch(() => { /* ลบร่างไม่ได้ไม่ควรบล็อกการออกจากโหมดแก้ไข */ });
+        setPlannerEditMode(false);
+    };
 
     const currentTab = searchParams.get("tab") ?? "in-progress";
 
@@ -1353,7 +1467,7 @@ export default function CMInProgressForm() {
     // เลือกปัญหา = "ไม่พบปัญหา" → ปิดงานได้เลย ไม่ต้องกรอกรายละเอียดการซ่อม
     const isNoProblem = job.problem_type.includes(NO_PROBLEM_OPTION.value);
 
-    // ใบที่ยังรอ engineer วางแผน ปิดงานไม่ได้อยู่แล้ว จึงต้องการแค่ อาการ + สาเหตุ
+    // ใบที่ยังรอ planner วางแผน ปิดงานไม่ได้อยู่แล้ว จึงต้องการแค่ อาการ + สาเหตุ
     // (ผลหลังซ่อมเป็นของขั้นปิดงาน ไม่ควรบังคับในสถานะนี้)
     const validationGroupState = useMemo(() => {
         const fullGroups = extraGroups.filter(group => group.kind === "full");
@@ -1419,7 +1533,7 @@ export default function CMInProgressForm() {
 
     // ยังไม่เลือกผลหลังซ่อม ให้บังคับเลือกผลก่อนบันทึกข้อมูลหลัก
     // (ยกเว้นเคส "ไม่พบปัญหา" ที่ปิดงานได้โดยไม่ต้องเลือกผลหลังซ่อม)
-    // "WO - wait for scheduled" คือ marker ที่ engineer ตั้งตอน assign ไม่ใช่ผลที่ช่างเลือก
+    // "WO - wait for scheduled" คือ marker ที่ planner ตั้งตอน assign ไม่ใช่ผลที่ช่างเลือก
     // จึงนับว่ายังไม่เลือกผล (ปกติฟอร์มล้างเป็นค่าว่างตอนโหลดอยู่แล้ว เช็คซ้ำกันเส้นทางอื่น)
     const hasChosenResult = !!job.repair_result.trim() && job.repair_result !== "WO - wait for scheduled";
 
@@ -1438,7 +1552,7 @@ export default function CMInProgressForm() {
     // ผล "แก้ไขสำเร็จ" ต้องผ่าน validation ครบทุกข้อก่อนเปลี่ยนสถานะเป็น Closed
     const canClose = !isClosedResult || canSave;
 
-    // ใบที่ engineer ยังไม่ได้วางแผน/assign — ช่างยังปิดงานไม่ได้ แต่ต้องเก็บสิ่งที่กรอกไว้ได้
+    // ใบที่ planner ยังไม่ได้วางแผน/assign — ช่างยังปิดงานไม่ได้ แต่ต้องเก็บสิ่งที่กรอกไว้ได้
     // ไม่มีใน type Status เดิมเพราะสถานะนี้เพิ่งเพิ่มทีหลัง จึงเทียบด้วยข้อความ
     const isWaitForSchedule = job.status.trim().toLowerCase() === "wait for schedule";
 
@@ -1466,16 +1580,20 @@ export default function CMInProgressForm() {
     );
 
     // ซ่อมเสร็จ ("แก้ไขสำเร็จ/ไม่สำเร็จ" หรือ "ไม่พบปัญหา") หรือเลือก "WO - wait for approve"
-    // → เข้าคิวรออนุมัติ (Wait for approve) ให้ engineer/admin กดปิดงาน | ติดตามผล/รออะไหล่ → In Progress
+    // → เข้าคิวรออนุมัติ (Wait for approve) ให้ planner/admin กดปิดงาน | ติดตามผล/รออะไหล่ → In Progress
     const isClosing = isClosedResult || isNoProblem;
-    // engineer เป็นผู้อนุมัติปิดงานอยู่แล้ว — ถ้ากรอกผลซ่อมเองและเลือก "แก้ไขสำเร็จ"
-    // ก็ไม่ต้องเข้าคิวรออนุมัติ ปิดเป็น Closed ไปเลย (role อื่นยังต้องรอ engineer/admin อนุมัติ)
+    // planner เป็นผู้อนุมัติปิดงานอยู่แล้ว — ถ้ากรอกผลซ่อมเองและเลือก "แก้ไขสำเร็จ"
+    // ก็ไม่ต้องเข้าคิวรออนุมัติ ปิดเป็น Closed ไปเลย (role อื่นยังต้องรอ planner/admin อนุมัติ)
     const isRepairSuccess = job.repair_result === "WO - wait for approve" || isClosedResult;
-    const engineerAutoClose = isEngineer && isRepairSuccess;
-    const targetStatus = engineerAutoClose
+    const plannerAutoClose = isPlanner && isRepairSuccess;
+    const targetStatus = plannerAutoClose
         ? "Closed"
         : (isClosing || job.repair_result === "WO - wait for approve" ? "Wait for approve" : "In Progress");
     const targetTab = targetStatus === "Closed" ? "closed" : "in-progress";
+    // ป้าย Job Status ต้องบอก "สถานะตอนนี้" ของใบงาน ไม่ใช่สถานะที่จะกลายเป็นตอนกดบันทึก
+    // ด่านปิดงาน targetStatus ของ planner เป็น "Closed" ตั้งแต่เปิดหน้า (กดบันทึกแล้วปิดเลย)
+    // ถ้าเอามาโชว์ตรง ๆ จะดูเหมือนใบถูกปิดไปแล้วทั้งที่ยังรออนุมัติอยู่
+    const jobStatusLabel = isWoCloseApproval ? "WO - wait for approve" : targetStatus;
     // ใบที่ซ่อมจบแล้ว (รออนุมัติ หรือปิดเลย) → ต้องมีวันที่แก้ไขเสร็จเสมอ
     // (ครอบคลุมทั้ง แก้ไขสำเร็จ/ไม่สำเร็จ, ไม่พบปัญหา และ WO - wait for approve)
     const hasResolvedDate = targetStatus === "Wait for approve" || targetStatus === "Closed";
@@ -1880,6 +1998,8 @@ export default function CMInProgressForm() {
                     found_date: rawDate ? isoToDisplay(rawDate) : localTodayFormatted(),
                     found_time: data.found_time ?? "",
                     location: data.location ?? "",
+                    charger_no: String(data.charger_no ?? data.job?.charger_no ?? ""),
+                    charger_sn: String(data.charger_sn ?? data.job?.charger_sn ?? ""),
                     problem_details: data.problem_details ?? "",
                     severity: (data.severity ?? "") as Severity,
                     status: (data.status ?? "In Progress") as Status,
@@ -1892,7 +2012,7 @@ export default function CMInProgressForm() {
                     problem_type_other: data.problem_type_other ?? "",
                     cause: loadedCauses,
                     // ล้างให้ว่างเพื่อบังคับให้ช่างเลือกผลใหม่ — แต่ต้องจำค่าเดิมไว้ (originalRepairResultRef)
-                    // ไม่งั้นพอกดบันทึกจะส่งค่าว่างไปทับ ทำให้ marker ที่ engineer ตั้งไว้หายจาก DB
+                    // ไม่งั้นพอกดบันทึกจะส่งค่าว่างไปทับ ทำให้ marker ที่ planner ตั้งไว้หายจาก DB
                     repair_result: waitingRoundArchived ? DEFAULT_REPAIR_RESULT : (normalizeRepairResult(data.repair_result ?? "") || DEFAULT_REPAIR_RESULT),
                     inprogress_remarks: waitingRoundArchived ? "" : (data.inprogress_remarks ?? ""),
                     repair_result_remark: waitingRoundArchived ? "" : (data.repair_result_remark ?? ""),
@@ -2008,7 +2128,7 @@ export default function CMInProgressForm() {
                 };
 
                 // ข้อมูลหลายชุดถูกบันทึกเป็น array รวมกันตอนกดบันทึก
-                // ต้องแยกกลับเป็นชุดหลัก + extraGroups ไม่เช่นนั้นหน้า Engineer จะแสดงแค่ค่า index แรก
+                // ต้องแยกกลับเป็นชุดหลัก + extraGroups ไม่เช่นนั้นหน้า Planner จะแสดงแค่ค่า index แรก
                 // แยก corrective action ตามลำดับชุด และใช้ code เป็นตัวช่วยเท่านั้น
                 // เพราะหลายชุดสามารถเลือกการแก้ไข code เดียวกันได้ (เช่น Replace)
                 const usedActionIndexes = new Set<number>();
@@ -2073,7 +2193,7 @@ export default function CMInProgressForm() {
                 if (data.inspector) {
                     setInspector(data.inspector);
                 }
-                // ช่างที่ engineer มอบหมายตอนวางแผน — ใช้จำกัดว่าใครกรอกใบงานเฟสซ่อมได้
+                // ช่างที่ planner มอบหมายตอนวางแผน — ใช้จำกัดว่าใครกรอกใบงานเฟสซ่อมได้
                 setAssignees(Array.isArray(data.assignees) ? data.assignees.filter(Boolean) : []);
 
                 // Photos สำหรับ Section 1
@@ -2092,6 +2212,7 @@ export default function CMInProgressForm() {
                                     createdAt: formatPhotoDate(p.uploadedAt),
                                     uploadedAtRaw: p.uploadedAt || undefined,
                                     location: (p as any).location || undefined,
+                                    name: p.filename,
                                 });
                             });
                         }
@@ -2231,7 +2352,7 @@ export default function CMInProgressForm() {
             const mergedCause = [...job.cause, ...extraGroups.flatMap(g => g.cause)].filter(Boolean);
             const mergedRepairedEquipment = [...job.repaired_equipment, ...extraGroups.flatMap(g => g.repaired_equipment)].filter(Boolean);
 
-            // "ไม่พบปัญหา" ซ่อน dropdown ผลหลังซ่อมไว้ ค่าจึงค้างเป็น marker ของ engineer
+            // "ไม่พบปัญหา" ซ่อน dropdown ผลหลังซ่อมไว้ ค่าจึงค้างเป็น marker ของ planner
             // ต้องเขียนผลจริงลงไป ไม่งั้นใบนี้จะไปโผล่การ์ด "รอกำหนดการ" บนแดชบอร์ด
             // และใบที่ปิดแล้วจะแสดงผลหลังซ่อมเป็น "WO - wait for scheduled" ตลอด
             const savedRepairResult = isNoProblem
@@ -2534,12 +2655,14 @@ export default function CMInProgressForm() {
     const resolveCorrectionLabel = (val: string) =>
         correctionOptions?.find(o => o.value === val)?.label ?? formatDeviceName(val);
 
-    // แสดงรายการการแก้ไขทั้งหมดเสมอ — รายการเดิมไม่ถูกตัดออกเมื่อเพิ่มชุดการแก้ไข
+    // การแก้ไขที่ถูกเลือกในบล็อกเพิ่มเติม — ตัดออกจากช่องการแก้ไขหลัก (กันเลือกซ้ำ เกณฑ์เดียวกับสาเหตุ)
+    // ค่าของช่องตัวเองต้องเหลือไว้ ไม่งั้น select จะหาค่าที่เลือกอยู่ไม่เจอ
+    const correctionsInGroups = extraGroups.flatMap(g => g.repaired_equipment).filter(Boolean);
     const storedMainCorrectionOptions = job.repaired_equipment
         .filter(Boolean)
         .map(value => ({ value, label: resolveCorrectionLabel(value) }));
     const mainCorrectionOptionsList = [
-        ...(correctionOptions ?? []),
+        ...(correctionOptions ?? []).filter(o => !correctionsInGroups.includes(o.value) || job.repaired_equipment.includes(o.value)),
         ...storedMainCorrectionOptions.filter(stored => !(correctionOptions ?? []).some(option => option.value === stored.value)),
     ];
     const mainCorrectionOptions = mainCorrectionOptionsList.length ? mainCorrectionOptionsList : null;
@@ -2547,9 +2670,9 @@ export default function CMInProgressForm() {
     // ค่าที่โหลดจาก server ต้องแสดงต่อให้มีอยู่จริง แม้ Maximo จะยังไม่มี option ตรงกันในขณะนั้น
     // ห้ามล้าง repaired_equipment ที่ technician บันทึกไว้เพียงเพราะ option ยังโหลดไม่ครบ/เปลี่ยนชุด
 
-    // auto: sync "การดำเนินการแก้ไข" ให้ตรงกับ "การแก้ไข" ที่เลือก (1 รายการต่อ 1 การแก้ไข)
-    // เพิ่มเมื่อเลือกการแก้ไข / ลบแถว code เดิมออกเมื่อเอาการแก้ไขออก | ช่องรายละเอียดปล่อยว่างให้ user กรอกเอง
-    // แถวที่ไม่มี code (โหลดมา/เพิ่มเอง) จะถูกเก็บไว้
+    // auto: sync code ของ "การดำเนินการแก้ไข" ให้ตรงกับ "การแก้ไข" ที่เลือก
+    // ใช้แถวเดิมและคงรูปไว้เมื่อเปลี่ยน/ลบการแก้ไข — ห้ามสร้างชุดรูปเพิ่มอัตโนมัติ
+    // แถวที่ไม่มี code (โหลดมา/เพิ่มเอง/ถอด code ออกเพื่อรักษารูป) จะถูกเก็บไว้
     // sync เฉพาะตอน "การแก้ไข" เปลี่ยนค่าจริงเท่านั้น — รอบที่ค่ามาจาก server ตัวโหลดจะเซ็ต ref ไว้ให้ตรงแล้ว
     // (เดิมใช้ธง "ข้ามรอบแรก" ซึ่งถูกเผาตอน mount ที่ค่ายังว่าง แล้วรอบที่ server โหลดเสร็จกลับถูกนับเป็นผู้ใช้เลือก → แถมแถวเปล่าทุกครั้งที่เปิดใบ)
     useEffect(() => {
@@ -2560,28 +2683,23 @@ export default function CMInProgressForm() {
         const codes = job.repaired_equipment.filter(Boolean);
         const codeSet = new Set(codes);
         setJob(prev => {
-            // เก็บ: แถวไม่มี code (โหลด/เพิ่มเอง) หรือแถว code ที่ยังถูกเลือกอยู่
-            let next = prev.corrective_actions.filter(a => !a.code || codeSet.has(a.code));
+            // เก็บแถวเดิมทั้งหมดไว้ — ถอดเฉพาะ code ที่ไม่ได้เลือกแล้ว รูปและรายละเอียดจึงไม่หาย
+            let next = prev.corrective_actions.map(a =>
+                a.code && !codeSet.has(a.code)
+                    ? { ...a, code: undefined }
+                    : a
+            );
             // ห้ามลบแถวที่เลือก code ซ้ำกัน เพราะอาจเป็น Action คนละชุด
-            const actionCount = Math.max(next.length, codes.length);
-            next = Array.from({ length: actionCount }, (_, index) => {
-                const action = next[index];
-                if (action) return action;
-                const code = codes[index];
-                return code ? { code, text: "", beforeImages: [], afterImages: [] } : null;
-            }).filter(Boolean) as CorrectiveItem[];
-            // เพิ่ม: code ที่ยังไม่มีแถว
+            if (next.length === 0) next = [{ text: "", beforeImages: [], afterImages: [] }];
             const have = new Set(next.map(a => a.code).filter(Boolean));
             for (const c of codes) {
-                if (!have.has(c)) {
-                    next = [...next, { code: c, text: "", beforeImages: [], afterImages: [] }];
-                    have.add(c);
-                }
+                if (have.has(c)) continue;
+                const reusableIndex = next.findIndex(a => !a.code);
+                if (reusableIndex < 0) continue;
+                next = next.map((a, i) => i === reusableIndex ? { ...a, code: c } : a);
+                have.add(c);
             }
-            // ถ้ามีแถว code แล้ว → ตัดแถวเปล่าไม่มี code ที่ว่างสนิททิ้ง
-            if (next.some(a => a.code)) next = next.filter(a => a.code || a.text.trim() || a.beforeImages.length || a.afterImages.length);
             // กันแถวว่างหมด — อย่างน้อยเหลือ 1 แถว
-            if (next.length === 0) next = [{ text: "", beforeImages: [], afterImages: [] }];
             // ถ้าไม่เปลี่ยน → คืนค่าเดิม (กัน re-render ไม่จำเป็น)
             const same = next.length === prev.corrective_actions.length && next.every((a, i) => a === prev.corrective_actions[i]);
             return same ? prev : { ...prev, corrective_actions: next };
@@ -2703,10 +2821,10 @@ export default function CMInProgressForm() {
                             <Input value={reportedBy || ""} readOnly crossOrigin="" className="!tw-w-full !tw-bg-gray-100 !tw-text-blue-gray-700 !tw-opacity-100" style={{ backgroundColor: "#f3f4f6", color: "#455a64" }} containerProps={{ className: "!tw-min-w-0" }} />
                         </div>
                         {/* ผู้เข้าแก้ไข (คนซ่อม) — เดิมชื่อผู้ตรวจสอบ */}
-                        <div>
-                            <label className="tw-block tw-text-sm tw-text-blue-gray-600 tw-mb-1">{t("repairer", lang)}</label>
-                            <Input value={inspector || ""} readOnly crossOrigin="" className="!tw-w-full !tw-bg-gray-100 !tw-text-blue-gray-700 !tw-opacity-100" style={{ backgroundColor: "#f3f4f6", color: "#455a64" }} containerProps={{ className: "!tw-min-w-0" }} />
-                        </div>
+                                        <div>
+                                            <label className="tw-block tw-text-sm tw-text-blue-gray-600 tw-mb-1">{t("repairer", lang)}</label>
+                                            <Input value={inspector || ""} readOnly crossOrigin="" className="!tw-w-full !tw-bg-gray-100 !tw-text-blue-gray-700 !tw-opacity-100" style={{ backgroundColor: "#f3f4f6", color: "#455a64" }} containerProps={{ className: "!tw-min-w-0" }} />
+                                        </div>
                         {/* ผู้ตรวจสอบ — แสดงชื่อผู้อนุมัติเมื่อใบงานปิดแล้ว */}
                         {(canApprove || isClosedStatus) && (
                             <div>
@@ -2715,6 +2833,18 @@ export default function CMInProgressForm() {
                             </div>
                         )}
                     </div>
+                    {(job.charger_no || job.charger_sn) && (
+                        <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 md:tw-grid-cols-4 tw-gap-4 tw-mb-6">
+                            <div>
+                                <label className="tw-block tw-text-sm tw-text-blue-gray-600 tw-mb-1">Charger No.</label>
+                                <Input value={job.charger_no || "-"} readOnly crossOrigin="" className="!tw-w-full !tw-bg-gray-100 !tw-text-blue-gray-700 !tw-opacity-100" style={{ backgroundColor: "#f3f4f6", color: "#455a64" }} containerProps={{ className: "!tw-min-w-0" }} />
+                            </div>
+                            <div>
+                                <label className="tw-block tw-text-sm tw-text-blue-gray-600 tw-mb-1">Charger SN</label>
+                                <Input value={job.charger_sn || "-"} readOnly crossOrigin="" className="!tw-w-full !tw-bg-gray-100 !tw-text-blue-gray-700 !tw-opacity-100" style={{ backgroundColor: "#f3f4f6", color: "#455a64" }} containerProps={{ className: "!tw-min-w-0" }} />
+                            </div>
+                        </div>
+                    )}
 
                     {/* ตู้ชาร์จที่ใบงานนี้เกี่ยวข้อง — ชื่อ / เลขตู้ / S/N / บริษัทผู้ถือครอง */}
                     <ChargerIdentity data={chargerIdentity} lang={lang} />
@@ -2795,11 +2925,11 @@ export default function CMInProgressForm() {
                             {/* Job Status */}
                             <div>
                                 <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-3">{t("jobStatus", lang)}</label>
-                                {/* สถานะที่ใบงานจะกลายเป็นเมื่อกดบันทึก — เลือก "แก้ไขสำเร็จ" แล้วยังต้องรออนุมัติ
-                                    (ยกเว้น engineer ที่ปิดงานเองได้) จึงไม่โชว์ Closed ทันที */}
-                                <div className={`tw-inline-flex tw-items-center tw-px-4 tw-py-2.5 tw-rounded-full tw-text-white tw-font-semibold tw-text-sm tw-shadow-md ${targetStatus === "Closed" ? "tw-bg-gray-600" : targetStatus === "Wait for approve" ? "tw-bg-blue-500" : "tw-bg-amber-500"
+                                {/* สถานะปัจจุบันของใบงาน — ด่านรออนุมัติปิดงานโชว์ "WO - wait for approve"
+                                    ไม่ใช่ Closed (ดู jobStatusLabel) */}
+                                <div className={`tw-inline-flex tw-items-center tw-px-4 tw-py-2.5 tw-rounded-full tw-text-white tw-font-semibold tw-text-sm tw-shadow-md ${jobStatusLabel === "Closed" ? "tw-bg-gray-600" : jobStatusLabel === "In Progress" ? "tw-bg-amber-500" : "tw-bg-blue-500"
                                     }`}>
-                                    <span>{targetStatus}</span>
+                                    <span>{jobStatusLabel}</span>
                                 </div>
                             </div>
 
@@ -2888,16 +3018,16 @@ export default function CMInProgressForm() {
                                                     onChange={(e) => setJob(prev => ({ ...prev, repair_result: e.target.value }))}
                                                     className="tw-w-full md:tw-w-96 tw-h-12 tw-border tw-border-gray-200 tw-rounded-xl tw-px-4 tw-text-sm tw-font-medium tw-bg-white tw-text-gray-700 hover:tw-border-amber-400 focus:tw-outline-none focus:tw-ring-3 focus:tw-ring-amber-500/20 focus:tw-border-amber-500 tw-transition-all tw-cursor-pointer tw-flex-shrink-0"
                                                 >
-                                                    {REPAIR_OPTIONS.map((opt) => (
-                                                        <option key={opt.value} value={opt.value}>
-                                                            {lang === "en" ? opt.en : opt.th}
+                                                    {REPAIR_OPTIONS.map((value) => (
+                                                        <option key={value} value={value}>
+                                                            {repairResultLabel(value, lang)}
                                                         </option>
                                                     ))}
                                                     {/* ค่าที่ไม่มีในลิสต์ (ใบเก่า / ใบที่ถูกตีกลับหลังปิดงาน) ต้องมี option ของตัวเอง
                                                         ไม่งั้น select จะโชว์ตัวเลือกแรกทั้งที่ค่าจริงเป็นอย่างอื่น */}
                                                     {!!job.repair_result.trim()
-                                                        && !REPAIR_OPTIONS.some(o => o.value === job.repair_result) && (
-                                                            <option value={job.repair_result}>{job.repair_result}</option>
+                                                        && !REPAIR_OPTIONS.some(v => v === job.repair_result) && (
+                                                            <option value={job.repair_result}>{repairResultLabel(job.repair_result, lang)}</option>
                                                         )}
                                                 </select>
                                                 {needsRepairRemark && (
@@ -2957,9 +3087,31 @@ export default function CMInProgressForm() {
                                                 options={problemSelectOptions}
                                                 value={job.problem_type[0] ? { value: job.problem_type[0], label: resolveProblemLabel(job.problem_type[0]) } : null}
                                                 onChange={(opt: any) => {
-                                                    // เปลี่ยน/ลบปัญหา → ล้างค่าช่องอื่นด้วย (สาเหตุ/การแก้ไข/ชุดที่เพิ่ม)
-                                                    setJob(prev => ({ ...prev, problem_type: opt ? [opt.value] : [], cause: [], repaired_equipment: [] }));
-                                                    setExtraGroups([]);
+                                                    // เปลี่ยน/ลบปัญหา → ล้างข้อมูลที่เชื่อมกัน แต่คงเฉพาะรูปใน corrective action
+                                                    const nextProblems = opt ? [opt.value] : [];
+                                                    setJob(prev => ({
+                                                        ...prev,
+                                                        problem_type: nextProblems,
+                                                        cause: [],
+                                                        repaired_equipment: matchingCorrectionCodes(maximoTree, prev.faulty_equipment, nextProblems, [], prev.repaired_equipment),
+                                                        corrective_actions: retainCorrectiveDataForCodes(
+                                                            prev.corrective_actions,
+                                                            matchingCorrectionCodes(maximoTree, prev.faulty_equipment, nextProblems, [], prev.repaired_equipment),
+                                                        ),
+                                                    }));
+                                                    setExtraGroups(prev => prev
+                                                        .map(group => {
+                                                            const keptCorrections = matchingCorrectionCodes(maximoTree, job.faulty_equipment, nextProblems, [], group.repaired_equipment);
+                                                            const corrective_actions = retainCorrectiveDataForCodes(group.corrective_actions, keptCorrections);
+                                                            const hasContent = corrective_actions.some(action =>
+                                                                action.text.trim() || action.beforeImages.length > 0 || action.afterImages.length > 0
+                                                            );
+                                                            return hasContent
+                                                                ? { ...group, problem_type: [], cause: [], repaired_equipment: keptCorrections, corrective_actions }
+                                                                : null;
+                                                        })
+                                                        .filter(Boolean) as PGroup[]
+                                                    );
                                                 }}
                                                 formatCreateLabel={(v: string) => `+ "${v}"`}
                                                 menuPlacement="auto"
@@ -2987,7 +3139,16 @@ export default function CMInProgressForm() {
                                                 options={mainCauseOptions ?? []}
                                                 isDisabled={viewOnly || !mainCauseOptions}
                                                 value={job.cause[0] ? { value: job.cause[0], label: resolveCauseLabel(job.cause[0]) } : null}
-                                                onChange={(opt: any) => setJob(prev => opt ? { ...prev, cause: [opt.value] } : { ...prev, cause: [], repaired_equipment: [] })}
+                                                onChange={(opt: any) => setJob(prev => {
+                                                    const nextCauses = opt ? [opt.value] : [];
+                                                    const keptCorrections = matchingCorrectionCodes(maximoTree, prev.faulty_equipment, prev.problem_type, nextCauses, prev.repaired_equipment);
+                                                    return {
+                                                        ...prev,
+                                                        cause: nextCauses,
+                                                        repaired_equipment: keptCorrections,
+                                                        corrective_actions: retainCorrectiveDataForCodes(prev.corrective_actions, keptCorrections),
+                                                    };
+                                                })}
                                                 formatCreateLabel={(v: string) => `+ "${v}"`}
                                                 menuPlacement="auto"
                                                 menuPortalTarget={typeof document !== "undefined" ? document.body : undefined}
@@ -3020,7 +3181,18 @@ export default function CMInProgressForm() {
                                                 options={mainCorrectionOptions ?? []}
                                                 isDisabled={viewOnly || !mainCorrectionOptions}
                                                 value={job.repaired_equipment[0] ? { value: job.repaired_equipment[0], label: resolveCorrectionLabel(job.repaired_equipment[0]) } : null}
-                                                onChange={(opt: any) => setJob({ ...job, repaired_equipment: opt ? [opt.value] : [] })}
+                                                onChange={(opt: any) => setJob(prev => {
+                                                    const nextCorrections = opt ? [opt.value] : [];
+                                                    const sameCorrection = nextCorrections.length === prev.repaired_equipment.length
+                                                        && nextCorrections.every((code, i) => code === prev.repaired_equipment[i]);
+                                                    return {
+                                                        ...prev,
+                                                        repaired_equipment: nextCorrections,
+                                                        corrective_actions: sameCorrection
+                                                            ? prev.corrective_actions
+                                                            : detachCorrectiveCodes(prev.corrective_actions),
+                                                    };
+                                                })}
                                                 formatCreateLabel={(v: string) => `+ "${v}"`}
                                                 menuPlacement="auto" menuPortalTarget={typeof document !== "undefined" ? document.body : undefined} classNamePrefix="react-select" styles={makeSelectStyles(SELECT_ACCENT.amber)} />
                                         </div>
@@ -3078,7 +3250,7 @@ export default function CMInProgressForm() {
                                                                 <div className="tw-grid tw-grid-cols-3 tw-gap-2">
                                                                     {action.beforeImages.map((img) => (
                                                                         <div key={img.id} className="tw-relative tw-aspect-square tw-rounded-lg tw-overflow-hidden tw-border tw-border-red-200 tw-bg-white tw-shadow-sm hover:tw-shadow-md tw-transition-shadow">
-                                                                            <img src={img.preview} alt="" className="tw-w-full tw-h-full tw-object-cover" />
+                                                                            <ZoomableImg src={img.preview} alt="" className="tw-w-full tw-h-full tw-object-cover" />
                                                                             {(img.createdAt || img.location) && (
                                                                                 <span className="tw-absolute tw-bottom-1 tw-right-1 tw-text-[8px] tw-leading-tight tw-bg-black/60 tw-text-white tw-px-1.5 tw-py-1 tw-rounded tw-pointer-events-none tw-text-right tw-max-w-[90%] tw-truncate">
                                                                                     {img.createdAt && <span className="tw-block tw-font-mono">{img.createdAt}</span>}
@@ -3120,7 +3292,7 @@ export default function CMInProgressForm() {
                                                                 <div className="tw-grid tw-grid-cols-3 tw-gap-2">
                                                                     {action.afterImages.map((img) => (
                                                                         <div key={img.id} className="tw-relative tw-aspect-square tw-rounded-lg tw-overflow-hidden tw-border tw-border-green-200 tw-bg-white tw-shadow-sm hover:tw-shadow-md tw-transition-shadow">
-                                                                            <img src={img.preview} alt="" className="tw-w-full tw-h-full tw-object-cover" />
+                                                                            <ZoomableImg src={img.preview} alt="" className="tw-w-full tw-h-full tw-object-cover" />
                                                                             {(img.createdAt || img.location) && (
                                                                                 <span className="tw-absolute tw-bottom-1 tw-right-1 tw-text-[8px] tw-leading-tight tw-bg-black/60 tw-text-white tw-px-1.5 tw-py-1 tw-rounded tw-pointer-events-none tw-text-right tw-max-w-[90%] tw-truncate">
                                                                                     {img.createdAt && <span className="tw-block tw-font-mono">{img.createdAt}</span>}
@@ -3209,6 +3381,7 @@ export default function CMInProgressForm() {
                                     mainProblem={job.problem_type}
                                     mainCause={job.cause}
                                     takenCauses={[...job.cause, ...extraGroups.filter((_, j) => j !== i).flatMap(x => x.cause)].filter(Boolean)}
+                                    takenCorrections={[...job.repaired_equipment, ...extraGroups.filter((_, j) => j !== i).flatMap(x => x.repaired_equipment)].filter(Boolean)}
                                     lang={lang}
                                     index={i}
                                     disabled={viewOnly}
@@ -3240,7 +3413,7 @@ export default function CMInProgressForm() {
                                     <div className="tw-grid tw-grid-cols-3 tw-gap-2">
                                         {job.corrective_actions[0].afterImages.map((img) => (
                                             <div key={img.id} className="tw-relative tw-aspect-square tw-rounded-lg tw-overflow-hidden tw-border tw-border-amber-200 tw-bg-white tw-shadow-sm">
-                                                <img src={img.preview} alt="" className="tw-w-full tw-h-full tw-object-cover" />
+                                                <ZoomableImg src={img.preview} alt="" className="tw-w-full tw-h-full tw-object-cover" />
                                                 {(img.createdAt || img.location) && (
                                                     <span className="tw-absolute tw-bottom-1 tw-right-1 tw-text-[8px] tw-leading-tight tw-bg-black/60 tw-text-white tw-px-1.5 tw-py-1 tw-rounded tw-pointer-events-none tw-text-right tw-max-w-[90%] tw-truncate">
                                                         {img.createdAt && <span className="tw-block tw-font-mono">{img.createdAt}</span>}
@@ -3286,7 +3459,7 @@ export default function CMInProgressForm() {
                     </fieldset>
 
                     {/* Actions */}
-                    <div className="tw-flex tw-items-center tw-justify-end tw-gap-3 tw-pt-6 tw-border-t tw-border-gray-200">
+                    <div className="tw-flex tw-flex-wrap tw-items-center tw-justify-end tw-gap-3 tw-pt-6 tw-border-t tw-border-gray-200">
                         {viewOnly ? (
                             /* เรียงซ้าย→ขวา: กลับ · ตีกลับ · อนุมัติ */
                             <>
@@ -3297,12 +3470,36 @@ export default function CMInProgressForm() {
                                 >
                                     {lang === "th" ? "กลับ" : "Back"}
                                 </Button>
-                                {/* อนุมัติ / ตีกลับ — เห็นเฉพาะ admin/engineer และเฉพาะใบที่รออนุมัติ */}
+                                {canEditTechnicianData && (
+                                    <Button
+                                        type="button"
+                                        onClick={requestPlannerEdit}
+                                        disabled={approving || rejecting}
+                                        className="tw-bg-amber-500 hover:tw-bg-amber-600 tw-text-white tw-font-semibold tw-text-base tw-px-8 tw-py-3 tw-rounded-xl hover:tw-shadow-xl hover:tw-shadow-amber-500/30 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed tw-transition-all"
+                                    >
+                                        {lang === "th" ? "แก้ไขข้อมูล" : "Edit data"}
+                                    </Button>
+                                )}
+                                {/* อนุมัติ / ตีกลับ — เห็นเฉพาะ admin/planner และเฉพาะใบที่รออนุมัติ */}
                                 {approvalActions}
                             </>
                         ) : (
                             <>
-                            {approvalActions}
+                            {/* planner เข้าโหมดแก้ไขข้อมูลของช่าง — ต้องถอยออกได้โดยไม่บันทึก */}
+                            {isPlannerEditing && (
+                                <Button
+                                    type="button"
+                                    variant="outlined"
+                                    onClick={cancelPlannerEdit}
+                                    disabled={saving}
+                                    className="tw-border-blue-gray-300 tw-text-blue-gray-700 tw-font-semibold tw-text-base tw-px-8 tw-py-3 tw-rounded-xl hover:tw-border-blue-gray-500 hover:tw-bg-blue-gray-50 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed tw-transition-all"
+                                >
+                                    {lang === "th" ? "ยกเลิกแก้ไข" : "Cancel edit"}
+                                </Button>
+                            )}
+                            {/* โหมดแก้ไขข้อมูลเหลือแค่ ยกเลิกแก้ไข + ปิดงาน — อนุมัติ/ตีกลับ เป็นของหน้าตรวจ
+                                กดตอนแก้ไขค้างอยู่จะทิ้งสิ่งที่แก้ไปโดยไม่ได้บันทึก */}
+                            {!isPlannerEditing && approvalActions}
                             {isWaitForSchedule && !hasChosenResult && !isNoProblem && (
                                 <Button
                                     onClick={() => { void onFinalSave({ keepStatus: true }); }}
@@ -3316,13 +3513,13 @@ export default function CMInProgressForm() {
                             {(!isWaitForSchedule || hasChosenResult || isNoProblem) && (
                             <Button
                                 onClick={() => { void onFinalSave(); }}
-    disabled={saving || ((isClosedResult || engineerAutoClose) ? !canClose : !canSave)}
-                                className={`tw-text-white tw-font-semibold tw-text-base tw-px-8 tw-py-3 tw-rounded-xl hover:tw-shadow-xl disabled:tw-opacity-50 disabled:tw-cursor-not-allowed disabled:tw-shadow-none tw-transition-all tw-transform hover:tw-scale-[1.02] ${isClosing || engineerAutoClose
+    disabled={saving || ((isClosedResult || plannerAutoClose) ? !canClose : !canSave)}
+                                className={`tw-text-white tw-font-semibold tw-text-base tw-px-8 tw-py-3 tw-rounded-xl hover:tw-shadow-xl disabled:tw-opacity-50 disabled:tw-cursor-not-allowed disabled:tw-shadow-none tw-transition-all tw-transform hover:tw-scale-[1.02] ${isClosing || plannerAutoClose
                                     ? "tw-bg-gray-700 hover:tw-bg-red-800 hover:tw-shadow-red-500/30"
                                     : "tw-bg-amber-500 hover:tw-bg-amber-600 hover:tw-shadow-amber-500/30"
                                     }`}
                             >
-                                {saving ? t("saving", lang) : (isClosing || engineerAutoClose ? t("closed", lang) : t("save", lang))}
+                                {saving ? t("saving", lang) : (isClosing || plannerAutoClose ? t("closed", lang) : t("save", lang))}
                             </Button>
                             )}
                             </>
@@ -3330,6 +3527,43 @@ export default function CMInProgressForm() {
                     </div>
                 </div>
             </form>
+
+            {/* Modal ยืนยันก่อน Planner แก้ไขข้อมูลที่ Technician ส่งมา */}
+            {editConfirmOpen && (
+                <div
+                    className="tw-fixed tw-inset-0 tw-z-[9999] tw-flex tw-items-center tw-justify-center tw-bg-black/50 tw-p-4"
+                    onClick={() => setEditConfirmOpen(false)}
+                >
+                    <div className="tw-w-full tw-max-w-md tw-rounded-2xl tw-bg-white tw-p-6 tw-shadow-2xl" onClick={e => e.stopPropagation()}>
+                        <h3 className="tw-flex tw-items-center tw-gap-2 tw-text-lg tw-font-bold tw-text-blue-gray-800 tw-mb-2">
+                            <PencilIcon className="tw-w-5 tw-h-5 tw-text-amber-600" />
+                            {lang === "th" ? "ยืนยันการแก้ไขข้อมูล" : "Confirm editing data"}
+                        </h3>
+                        <p className="tw-text-sm tw-text-blue-gray-600">
+                            {lang === "th"
+                                ? "ข้อมูลนี้ถูกกรอกโดย Technician ต้องการแก้ไขข้อมูลใช่หรือไม่?"
+                                : "This data was entered by the technician. Do you want to edit it?"}
+                        </p>
+                        <div className="tw-flex tw-items-center tw-justify-end tw-gap-3 tw-mt-5">
+                            <Button
+                                type="button"
+                                variant="outlined"
+                                onClick={() => setEditConfirmOpen(false)}
+                                className="tw-border-blue-gray-200 tw-text-blue-gray-700 hover:tw-border-blue-gray-300"
+                            >
+                                {lang === "th" ? "ยกเลิก" : "Cancel"}
+                            </Button>
+                            <Button
+                                type="button"
+                                onClick={confirmPlannerEdit}
+                                className="tw-bg-amber-500 hover:tw-bg-amber-600 tw-text-white tw-font-semibold"
+                            >
+                                {lang === "th" ? "ยืนยันแก้ไข" : "Confirm edit"}
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Modal ตีกลับ — บังคับกรอกเหตุผลก่อนส่งกลับให้ช่าง */}
             {rejectOpen && (

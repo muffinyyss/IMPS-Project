@@ -25,7 +25,7 @@ export type CMRow = {
   inspector: string;
   issue_id: string;
   doc_name: string;
-  /** ช่างที่ engineer assign ไว้สำหรับรอบปัจจุบัน */
+  /** ช่างที่ planner assign ไว้สำหรับรอบปัจจุบัน */
   assignees?: string[];
   // ── ตัวตนของตู้ที่ใบงานนี้อ้างถึง (backend resolve จาก charger_sn / faulty_equipment) ──
   charger_name?: string;
@@ -217,7 +217,7 @@ export function normalizeWorkStatus(s: string): WorkStatus {
 /**
  * bucket ของ KPI สำหรับ 1 ใบงาน — ต้องดู 2 ฟิลด์:
  *   • status        = ด่านของ workflow (Open → Wait for approve → Wait for schedule → In Progress → Closed)
- *   • repair_result = สถานะรอที่ engineer/ช่างเลือก ("WO - wait for material" / "…site condition" / "…scheduled")
+ *   • repair_result = สถานะรอที่ planner/ช่างเลือก ("WO - wait for material" / "…site condition" / "…scheduled")
  * สถานะรอไม่เคยถูกเขียนลง status (backend จำกัดด้วย ALLOWED_STATUS) — ถ้าดูแค่ status
  * การ์ดรออะไหล่/รอเข้าพื้นที่/รอกำหนดการจะเป็น 0 ตลอด
  */
@@ -233,7 +233,7 @@ export function workStatusOf(r: CMRow): WorkStatus {
   if (byResult === "wait_manpower" || byResult === "wait_sparepart" || byResult === "wait_site_access") {
     return byResult;
   }
-  // status "Wait for schedule" = head cs อนุมัติแล้ว รอ engineer วางแผน → ขึ้นเป็น WO แล้ว
+  // status "Wait for schedule" = head cs อนุมัติแล้ว รอ planner วางแผน → ขึ้นเป็น WO แล้ว
   // (ฟอร์มเปลี่ยนเลขที่งานจาก SR เป็น WO ที่ด่านนี้) — normalizeWorkStatus จงใจไม่จับ
   // เพราะเป็น mapper ของสตริงดิบที่ใช้กับ repair_result ด้วย จึงมาตัดสินที่ระดับใบงานตรงนี้แทน
   if (r.status.trim().toLowerCase() === "wait for schedule") return "wait_manpower";
@@ -372,6 +372,7 @@ export function applySearch(rows: CMRow[], q: string): CMRow[] {
     [
       r.station_name, r.station_id, r.issue_id, r.faulty_equipment,
       r.problem_details, r.severity, r.inspector, r.reported_by, r.status,
+      // charger_no เป็นตัวเลขได้ (backend resolve มาจาก charger index) ต้องแปลงก่อน
       r.charger_name, r.charger_sn, r.charger_brand,
       r.charger_no === null || r.charger_no === undefined ? "" : String(r.charger_no),
       ...causeLabelsOf(r),

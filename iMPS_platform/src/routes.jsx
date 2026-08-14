@@ -7,7 +7,7 @@ const baseRoutes = [
     name: "admin",                       // ← จะถูกเปลี่ยนเป็นชื่อคนที่ล็อกอิน
     icon: <i className="fa fa-user" />,
     divider: true,
-    allow: ["admin", "owner", "technician", "cs", "engineer"],
+    allow: ["admin", "owner", "technician", "cs", "planner"],
     showMode: "both", // แสดงทั้งสองโหมด
     pages: [
       {
@@ -37,7 +37,7 @@ const baseRoutes = [
   {
     name: "EV Stations",
     icon: <i className="fa fa-map-marker-alt" />,
-    allow: ["admin", "owner", "technician", "cs", "engineer"],
+    allow: ["admin", "owner", "technician", "cs", "planner"],
     showMode: "both",  // แสดงตลอด
     pages: [
       {
@@ -45,14 +45,14 @@ const baseRoutes = [
         icon: <i className="fa fa-map-marker-alt" />,
         name: "EV Stations",
         path: "/dashboard/stations",
-        allow: ["admin", "owner", "technician", "cs", "engineer"],
+        allow: ["admin", "owner", "technician", "cs", "planner"],
       },
       {
         layout: "dashboard",
         icon: <i className="fa fa-file-alt" />,
         name: "PM report (All)",        // รวมทุก charger
         path: "/dashboard/pm-all",
-        allow: ["admin", "owner", "engineer"],
+        allow: ["admin", "owner", "planner"],
       },
       {
         layout: "dashboard",
@@ -61,7 +61,7 @@ const baseRoutes = [
         path: "/dashboard/cm-dashboard",
         // cs/technician ไม่เห็นส่วนวิเคราะห์ — เมนูของ role นี้คือ CM List ด้านล่าง
         // (ถ้าเข้า URL ตรง หน้าเพจจะพาไป CM List ให้เอง)
-        allow: ["admin", "owner", "engineer"],
+        allow: ["admin", "owner", "planner"],
       },
       {
         layout: "dashboard",
@@ -69,7 +69,7 @@ const baseRoutes = [
         name: "CM List",
         // ตารางใบงาน CM ที่แยกออกมาจาก CM Dashboard — กรอง In Progress เป็นค่าเริ่มต้น
         path: "/dashboard/cm-list",
-        allow: ["admin", "owner", "engineer", "cs", "technician"],
+        allow: ["admin", "owner", "planner", "cs", "technician"],
       },
       // {
       //   layout: "dashboard",
@@ -80,18 +80,18 @@ const baseRoutes = [
       // },
     ],
   },
-  { name: "Solar Plant", icon: <i className="fa fa-solar-panel" />, path: "/dashboard/solar-plant", allow: ["admin", "owner", "engineer"], showMode: "before" },
-  { name: "Power Plant", icon: <i className="fa fa-industry" />, path: "/dashboard/power-plant", allow: ["admin", "owner", "engineer"], showMode: "before" },
+  { name: "Solar Plant", icon: <i className="fa fa-solar-panel" />, path: "/dashboard/solar-plant", allow: ["admin", "owner", "planner"], showMode: "before" },
+  { name: "Power Plant", icon: <i className="fa fa-industry" />, path: "/dashboard/power-plant", allow: ["admin", "owner", "planner"], showMode: "before" },
   { name: "Users", icon: <i className="fa fa-users" />, path: "/dashboard/users", allow: ["admin"], showMode: "before" },
   { name: "My Charger", icon: <i className="fa fa-charging-station" />, path: "/dashboard/chargers", allow: ["admin", "owner"], showMode: "after" },
-  { name: "Device", icon: <i className="fa fa-microchip" />, path: "/dashboard/device", allow: ["admin", "owner", "engineer"], showMode: "after" },
-  { name: "Configuration", icon: <i className="fa fa-cog" />, path: "/dashboard/setting", allow: ["admin", "owner", "engineer"], showMode: "after" },
-  { name: "Condition-base", icon: <i className="fa fa-desktop" />, path: "/dashboard/cbm", allow: ["admin", "owner", "engineer"], showMode: "after" },
-  { name: "MDB/CCB", icon: <i className="fa fa-database" />, path: "/dashboard/mdb", allow: ["admin", "owner", "engineer"], showMode: "after" },
-  { name: "PM report", icon: <i className="fa fa-file-alt" />, path: "/dashboard/pm-report", allow: ["admin", "owner", "technician", "engineer"], showMode: "after" },
-  { name: "CM report", icon: <i className="far fa-file" />, path: "/dashboard/cm-report", allow: ["admin", "owner", "technician", "cs", "engineer"], showMode: "after" },
-  { name: "Test report", icon: <i className="fa fa-check-square" />, path: "/dashboard/test-report", allow: ["admin", "owner", "technician", "engineer"], showMode: "after" },
-  { name: "Ai Module", icon: <i className="fa fa-robot" />, path: "/dashboard/ai", allow: ["admin", "owner", "engineer"], showMode: "after" },
+  { name: "Device", icon: <i className="fa fa-microchip" />, path: "/dashboard/device", allow: ["admin", "owner", "planner"], showMode: "after" },
+  { name: "Configuration", icon: <i className="fa fa-cog" />, path: "/dashboard/setting", allow: ["admin", "owner", "planner"], showMode: "after" },
+  { name: "Condition-base", icon: <i className="fa fa-desktop" />, path: "/dashboard/cbm", allow: ["admin", "owner", "planner"], showMode: "after" },
+  { name: "MDB/CCB", icon: <i className="fa fa-database" />, path: "/dashboard/mdb", allow: ["admin", "owner", "planner"], showMode: "after" },
+  { name: "PM report", icon: <i className="fa fa-file-alt" />, path: "/dashboard/pm-report", allow: ["admin", "owner", "technician", "planner"], showMode: "after" },
+  { name: "CM report", icon: <i className="far fa-file" />, path: "/dashboard/cm-report", allow: ["admin", "owner", "technician", "cs", "planner"], showMode: "after" },
+  { name: "Test report", icon: <i className="fa fa-check-square" />, path: "/dashboard/test-report", allow: ["admin", "owner", "technician", "planner"], showMode: "after" },
+  { name: "Ai Module", icon: <i className="fa fa-robot" />, path: "/dashboard/ai", allow: ["admin", "owner", "planner"], showMode: "after" },
 ];
 
 /** 2) อ่าน user/role จาก localStorage (ตาม payload ที่ backend ส่งมาใน /login) */

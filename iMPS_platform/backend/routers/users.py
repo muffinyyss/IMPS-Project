@@ -18,7 +18,7 @@ from config import (
     SESSION_IDLE_MINUTES_TECHNICIAN, SESSION_IDLE_MINUTES_DEFAULT,
     REFRESH_TOKEN_EXPIRE_DAYS, STAFF_ROLES, ALL_STATIONS_ROLES,
     users_collection, station_collection, charger_collection,
-    create_access_token,
+    create_access_token, canonical_role,
     SUPER_ADMIN_ROLE, SUPER_ADMIN_USERNAME, SWITCHABLE_ROLES,
 )
 from deps import UserClaims, get_current_user, get_user_station_ids
@@ -87,7 +87,8 @@ def login(body: LoginRequest, response: Response):
     sid = str(uuid.uuid4())
     
     # กำหนด token expire time ตามบทบาท
-    user_role = user.get("role", "user")
+    # user เก่าที่ยังเป็น "engineer" ใน DB → normalize เป็น "planner" ก่อนอบลง JWT
+    user_role = canonical_role(user.get("role", "user")) or "user"
     if user_role in STAFF_ROLES:
         token_expire_minutes = ACCESS_TOKEN_EXPIRE_MINUTES_TECHNICIAN  # 24 ชั่วโมง
     else:
@@ -139,7 +140,7 @@ def login(body: LoginRequest, response: Response):
             "user_id": str(user["_id"]),
             "username": user.get("username"),
             "email": user["email"],
-            "role": user.get("role", "user"),
+            "role": user_role,
             "company": user.get("company"),
             "station_id": station_ids,
             "ai_package": user.get("ai_package", {"enabled": False}),
@@ -265,7 +266,7 @@ def me(current: UserClaims = Depends(get_current_user)):
         "effective_role": current.effective_role or (u.get("role") or ""),
         "is_super_admin": current.is_super_admin,
         # role จริงใน DB (ตัวจริง) — ใช้เช็คว่าเป็น super admin ตัวจริงไหม (โชว์ dropdown)
-        "true_role": u.get("role") or "",
+        "true_role": canonical_role(u.get("role")) or "",
         "company": u.get("company") or "",
         "tel": u.get("tel") or "",
         "station_id": u.get("station_id") or [],
@@ -650,8 +651,8 @@ async def users():
     return {"username": usernames}
 
 
-# ผู้ที่วางแผนงาน CM ได้ (เลือกช่างในขั้น Planning) — engineer ตาม flow, admin/owner คุมภาพรวม
-ASSIGNER_ROLES: set[str] = {"admin", "owner", "engineer"}
+# ผู้ที่วางแผนงาน CM ได้ (เลือกช่างในขั้น Planning) — planner ตาม flow, admin/owner คุมภาพรวม
+ASSIGNER_ROLES: set[str] = {"admin", "owner", "planner"}
 
 @router.get("/users/by-role")
 def users_by_role(
@@ -664,22 +665,22 @@ def users_by_role(
 
     query = {"role": role.strip().lower()}
 
-    # Engineer วางแผนได้เฉพาะช่างในบริษัทเดียวกัน
+    # Planner วางแผนได้เฉพาะช่างในบริษัทเดียวกัน
     # อ่าน company ล่าสุดจาก DB เพื่อไม่ให้ JWT ที่เก่ากว่าข้อมูล profile ทำให้เห็นข้ามบริษัท
-    if (current.role or "").lower() == "engineer":
+    if (current.role or "").lower() == "planner":
         company = (current.company or "").strip()
         if current.user_id:
             try:
-                engineer_user = users_collection.find_one(
+                planner_user = users_collection.find_one(
                     {"_id": ObjectId(current.user_id)},
                     {"company": 1},
                 )
-                company = (engineer_user or {}).get("company") or company
+                company = (planner_user or {}).get("company") or company
             except Exception:
                 # ใช้ company จาก claims ต่อได้ กรณี user_id ใน token ไม่ใช่ ObjectId
                 pass
 
-        # Engineer ที่ไม่มี company จะไม่เห็น technician ใด ๆ
+        # Planner ที่ไม่มี company จะไม่เห็น technician ใด ๆ
         if not company:
             return {"users": []}
         query["company"] = company
@@ -751,6 +752,9 @@ def all_users(current: UserClaims = Depends(get_current_user)):
     for d in docs:
         if "_id" in d:
             d["_id"] = str(d["_id"])
+        # user เก่าที่ยังเป็น "engineer" ใน DB → แสดงเป็น "planner" ให้ตรงกับ dropdown
+        if d.get("role"):
+            d["role"] = canonical_role(d["role"])
     return {"users": docs}
 
 class addUsers(BaseModel):
@@ -760,7 +764,7 @@ class addUsers(BaseModel):
     tel:str
     company_name:str
     station_id:Optional[Union[str, int, List[Union[str, int]]]] = None
-    role: Literal["admin", "owner", "technician", "cs", "engineer"]
+    role: Literal["admin", "owner", "technician", "cs", "planner"]
     ai_package: Optional[AiPackage] = None
 
 class UserOut(BaseModel):
@@ -839,7 +843,7 @@ class UserUpdate(BaseModel):
     email: EmailStr | None = None
     tel : str | None = None      # ใช้ "phone" ให้สอดคล้องเอกสารที่คุณมี
     company: str | None = None
-    role: Literal["admin", "owner", "technician", "cs", "engineer"] | None = None  # admin เท่านั้นที่แก้ได้
+    role: Literal["admin", "owner", "technician", "cs", "planner"] | None = None  # admin เท่านั้นที่แก้ได้
     is_active: bool | None = None # admin เท่านั้นที่แก้ได้
     password: str | None = None   # จะถูกแฮชเสมอถ้ามีค่า
     station_id: Optional[List[str]] = None  # สำหรับ technician
