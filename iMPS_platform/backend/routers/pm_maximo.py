@@ -15,12 +15,14 @@ routers/pm_maximo.py
 เป็นงานฝั่ง iMPS ล้วน ๆ
 """
 
+import json
 import logging
 import os
+import re
 from datetime import datetime, timezone
 from typing import Any, Literal, Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from config import client, station_collection, charger_collection
@@ -132,25 +134,46 @@ def _station_scope(source: str, identifier: str) -> tuple[str, str]:
     return station_id, (st.get("maximo_location") or "")
 
 
+def _location_variants(location: str) -> list[str]:
+    """
+    รหัส location เดียวกันแต่เขียนต่างกัน — Maximo ส่ง "PTG0001-EV" มาได้ ขณะที่
+    iMPS อาจเก็บ station root "PTG0001" ไว้ (หรือกลับกัน) เทียบตรง ๆ จะไม่เจอกัน
+    แล้วใบงานจะเข้ามาแต่ไม่โผล่ในหน้า PM report
+
+    Returns: [ตัวเดิม, แบบไม่มี -EV, แบบมี -EV] (ไม่ซ้ำ)
+    """
+    loc = (location or "").strip()
+    if not loc:
+        return []
+    root = loc[:-3] if loc.upper().endswith("-EV") else loc
+    return list(dict.fromkeys([loc, root, f"{root}-EV"]))
+
+
 def _resolve_owner(location: str) -> dict:
     """
     map location ที่ Maximo ส่งมา → station_id / sn ของ iMPS (reverse lookup)
     """
-    if not location:
+    variants = _location_variants(location)
+    if not variants:
         return {}
 
     charger = charger_collection.find_one(
-        {"maximo_location": location}, {"SN": 1, "station_id": 1}
+        {"maximo_location": {"$in": variants}}, {"SN": 1, "station_id": 1}
     )
     if charger:
         return {"station_id": charger.get("station_id"), "sn": charger.get("SN")}
 
     st = station_collection.find_one(
-        {"maximo_location": location}, {"station_id": 1}
+        {"maximo_location": {"$in": variants}}, {"station_id": 1}
     )
     if st:
         return {"station_id": st.get("station_id"), "sn": None}
 
+    log.warning(
+        "  ⚠️  Maximo location %r ไม่ตรงกับ maximo_location ของสถานี/ตู้ไหนเลย "
+        "— ใบงานจะเก็บไว้แต่ไม่ผูกกับ station_id (ลองแล้ว: %s)",
+        location, variants,
+    )
     return {}
 
 
@@ -417,9 +440,14 @@ async def pm_maximo_work_orders(
 
 
 # ══════════════════════════════════════════════════════════════════
-# 4) Open — Maximo ยิงเข้ามาตอน "เปิดใบงาน PM"
-#     contract 4 field ที่ iMPS ต้องได้รับ:
-#       location, pm_date, wonum, status
+# 4) Open — Maximo ยิงเข้ามาตอน "เปิดใบงาน PM"  (IN06)
+#     field ที่ iMPS รับ: location, pm_date, wonum, status, company (+description)
+#     บังคับจริงแค่ location — ที่เหลือขาดได้ (จะเตือนกลับไปใน response.warnings)
+#
+#    รับ payload แบบยืดหยุ่นโดยตั้งใจ: ชื่อฟิลด์ไม่สนตัวพิมพ์เล็ก/ใหญ่ รับชื่อพ้อง
+#    (targstartdate/schedstart → pm_date) และรับได้ทั้ง object เดียว, array,
+#    {"workorders":[…]} และ {"member":[…]} — เพราะ integration ฝั่ง Maximo
+#    เปลี่ยนทรง payload ได้ตามที่ตั้งค่าไว้ เราไม่อยากให้ล้มทั้งใบเพราะ 422
 #
 #    ⚠️ location ที่ Maximo ส่งมาเป็น "ระดับสถานี" (station-level) — 1 ใบงาน
 #    ต่อ 1 สถานี ไม่ได้ระบุอุปกรณ์ ผู้ใช้ต้องมาเลือกใน iMPS เองว่าจะ PM
@@ -440,33 +468,103 @@ EQUIP_TYPES = {"charger", "mdb", "ccb", "cbbox", "station"}
 EQUIP_ALIASES = {"cb_box": "cbbox", "cbbox": "cbbox", "cb-box": "cbbox"}
 
 
-class PMWorkOrderOpenIn(BaseModel):
+# ── ชื่อฟิลด์ที่ Maximo (หรือ IESB) อาจส่งมา → key มาตรฐานของ iMPS ──
+# เทียบแบบ case-insensitive และตัด _ / - / ช่องว่างออกก่อน เพราะ Maximo ส่ง
+# attribute เป็นตัวพิมพ์ใหญ่ (LOCATION) บ้าง camelCase บ้าง แล้วแต่ integration
+_FIELD_ALIASES: dict[str, str] = {
+    # location (ระดับสถานี)
+    "location": "location", "loc": "location", "zlocation": "location",
+    "locationnum": "location", "siteloc": "location",
+    # pm_date — Maximo เรียกวันนัดงานได้หลายชื่อแล้วแต่ object structure
+    "pmdate": "pm_date", "zpmdate": "pm_date",
+    "targstartdate": "pm_date", "targetstart": "pm_date",
+    "schedstart": "pm_date", "startdate": "pm_date", "scheduledate": "pm_date",
+    # wonum
+    "wonum": "wonum", "wonumber": "wonum", "workorderid": "wonum",
+    "woid": "wonum", "zwonum": "wonum",
+    # status
+    "status": "status", "wostatus": "status", "zstatus": "status",
+    # company
+    "company": "company", "companyname": "company", "zcompany": "company",
+    # description
+    "description": "description", "desc": "description",
+    "zdescription": "description", "shortdesc": "description",
+}
+
+# key ที่ Maximo อาจใช้ห่อ list ของใบงานมา (batch)
+_BATCH_KEYS = ("workorders", "workorder", "member", "wo", "data", "items")
+
+
+def _alias_key(key: str) -> str:
+    """'TARG_START_DATE' → 'targstartdate' → 'pm_date' (ไม่รู้จักก็คืนชื่อเดิม lowercase)"""
+    flat = re.sub(r"[\s_\-.]", "", str(key)).lower()
+    return _FIELD_ALIASES.get(flat, str(key).strip().lower())
+
+
+def _canon(raw: Any) -> dict:
     """
-    ใบงาน PM ที่ Maximo เปิดแล้วยิงเข้ามา — 5 field ที่ iMPS ต้องได้รับ:
-      location — รหัส Maximo location "ระดับสถานี" เช่น "PTG0001-EV"
-      pm_date  — วันที่นัด PM (YYYY-MM-DD หรือ ISO datetime)
-      wonum    — Maximo Work Order Number ใช้เป็น key กันซ้ำ/อ้างอิงตอนส่งกลับ
-      status   — สถานะฝั่ง Maximo (WAPPR/APPR/INPRG/COMP/…)
-      company  — บริษัท/ผู้ดูแลสถานี
-    (description ส่งมาก็เก็บให้ ไม่ส่งก็ได้)
+    ทำ payload 1 ใบงานให้เป็น key มาตรฐาน
+
+    - ชื่อฟิลด์ case-insensitive + ตัด _ - . ออก (LOCATION / Location / pm-date)
+    - ค่า scalar ที่ไม่ใช่ string (เช่น status ส่งมาเป็นตัวเลข) แปลงเป็น string ให้
+    - key ที่ไม่รู้จัก เก็บไว้ตามเดิม ไม่ทิ้ง
     """
-    location: str
-    pm_date: str
-    wonum: str
-    status: str
-    company: str
-    description: Optional[str] = None
+    if not isinstance(raw, dict):
+        return {}
 
-    class Config:
-        extra = "allow"
+    def _coerce(v: Any) -> Any:
+        # status/company ที่ส่งมาเป็นตัวเลขล้วน ไม่ควรตกไปเพราะ type ไม่ตรง
+        return str(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else v
+
+    out: dict[str, Any] = {}
+    # รอบแรก: ชื่อพ้อง (targstartdate → pm_date) — ใครมาก่อนได้ก่อน
+    for k, v in raw.items():
+        key = _alias_key(k)
+        if out.get(key) in (None, ""):
+            out[key] = _coerce(v)
+    # รอบสอง: ชื่อจริงทับชื่อพ้องเสมอ — ถ้าส่ง targstartdate มาพร้อม pm_date
+    # ต้องได้ค่าจาก pm_date ไม่ใช่ค่าที่ alias เขียนทิ้งไว้
+    for k, v in raw.items():
+        key = re.sub(r"[\s\-.]", "_", str(k).strip()).lower()
+        if key in _FIELD_ALIASES.values() and v not in (None, ""):
+            out[key] = _coerce(v)
+    return out
 
 
-class PMWorkOrderOpenBatchIn(BaseModel):
-    workorders: list[PMWorkOrderOpenIn] = Field(default_factory=list)
+def _extract_items(payload: Any) -> list[dict]:
+    """
+    ดึง list ของใบงานออกจาก body — รองรับทุกทรงที่ Maximo ยิงมาได้
 
-    class Config:
-        # กัน single-body ที่ field ไม่ครบ หลุดมาถูกตีความเป็น batch ว่าง
-        extra = "forbid"
+      {...}                       ใบเดียว
+      [{...}, {...}]              array ตรง ๆ (bulk ของ Maximo REST)
+      {"workorders": [...]}       batch ตามสัญญาเดิม
+      {"member": [...]}           ทรงมาตรฐานของ Maximo OSLC
+      {"ZAPIWO": {"member": [...]}}  publish channel ที่ห่ออีกชั้น
+    """
+    if isinstance(payload, list):
+        return [_canon(x) for x in payload if isinstance(x, dict)]
+
+    if not isinstance(payload, dict):
+        return []
+
+    lowered = {str(k).strip().lower(): v for k, v in payload.items()}
+    for key in _BATCH_KEYS:
+        val = lowered.get(key)
+        if isinstance(val, list):
+            return [_canon(x) for x in val if isinstance(x, dict)]
+        if isinstance(val, dict):
+            # ห่ออีกชั้น เช่น {"ZAPIWO": {"member": [...]}} — ไล่เข้าไปข้างใน
+            return _extract_items(val)
+
+    # envelope ชั้นเดียวที่ key เป็นชื่อ object structure: {"ZAPIWO": {...}}
+    if len(payload) == 1:
+        only = next(iter(payload.values()))
+        if isinstance(only, (list, dict)):
+            inner = _extract_items(only)
+            if inner:
+                return inner
+
+    return [_canon(payload)]
 
 
 def _normalize_open(raw: dict) -> dict | None:
@@ -477,13 +575,24 @@ def _normalize_open(raw: dict) -> dict | None:
 
     owner = _resolve_owner(location)
 
+    def _text(key: str) -> str | None:
+        v = raw.get(key)
+        return str(v).strip() or None if v not in (None, "") else None
+
+    def _upper(key: str) -> str | None:
+        """wonum/status สเปกระบุ type = UPPER — เก็บเป็นตัวพิมพ์ใหญ่เสมอ
+        ไม่งั้น status ตัวเล็กจะไม่ match OPEN_WO_STATUSES แล้วใบงานหายจากหน้า PM"""
+        v = _text(key)
+        return v.upper() if v else None
+
     return {
         "location": location,
-        "description": raw.get("description"),
+        "description": _text("description"),
         "pm_date": _norm_pm_date(raw.get("pm_date")),
-        "wonum": str(raw.get("wonum") or "").strip() or None,
-        "status": raw.get("status"),
-        "company": raw.get("company"),
+        "wonum": _upper("wonum"),
+        # สเปก IN06 กำหนด Default = OPEN เมื่อ Maximo ไม่ได้ส่ง status มา
+        "status": _upper("status") or "OPEN",
+        "company": _text("company"),
         # ── map กลับเข้าระบบ iMPS ──
         "station_id": owner.get("station_id"),
         "sn": owner.get("sn"),
@@ -537,13 +646,35 @@ async def _upsert_open(items: list[dict]) -> dict:
     return {"inserted": inserted, "updated": updated, "skipped": skipped}
 
 
+# header ที่รับ shared secret ได้ — Maximo/IESB บาง integration ตั้ง custom header
+# ไม่ได้ เลยรับ apikey / Authorization: Bearer ให้ด้วย (ค่าเดียวกัน ไม่ได้ลดความปลอดภัย)
+_TOKEN_HEADERS = ("x-maximo-token", "apikey", "x-api-key", "authorization")
+
+
+def _extract_token(request: Request) -> tuple[str, list[str]]:
+    """คืน (token ที่เจอ, ชื่อ header ที่ client ส่งมาจริง) — ไว้ log ตอน auth ไม่ผ่าน"""
+    seen: list[str] = []
+    token = ""
+    for name in _TOKEN_HEADERS:
+        val = (request.headers.get(name) or "").strip()
+        if not val:
+            continue
+        seen.append(name)
+        if name == "authorization":
+            val = re.sub(r"^Bearer\s+", "", val, flags=re.IGNORECASE).strip()
+        if not token:
+            token = val
+    return token, seen
+
+
 @router.post("/maximo/pm/open")
+@router.post("/maximo/pm/open/")   # กัน client ที่เติม / ท้าย URL แล้วไม่ตาม 307 redirect
 async def maximo_pm_open(
-    body: PMWorkOrderOpenIn | PMWorkOrderOpenBatchIn,
-    x_maximo_token: str | None = Header(default=None, alias="X-Maximo-Token"),
+    request: Request,
+    verbose: bool = Query(False, description="ตอบรายละเอียด inserted/updated/warnings ด้วย (ใช้ตอนดีบัก)"),
 ):
     """
-    รับใบงาน PM ที่ Maximo เปิด (push/webhook)
+    รับใบงาน PM ที่ Maximo เปิด (push/webhook — IN06)
 
     ยิงได้ทั้งใบเดียว (location = ระดับสถานี):
         {
@@ -553,38 +684,125 @@ async def maximo_pm_open(
           "status": "APPR",
           "company": "PTG"
         }
-    และเป็น batch:
-        { "workorders": [ {…}, {…} ] }
+    เป็น batch: { "workorders": [ {…}, {…} ] } หรือ array ตรง ๆ [ {…}, {…} ]
 
-    ป้องกันด้วย shared secret ใน header X-Maximo-Token (env MAXIMO_WEBHOOK_SECRET)
+    ตั้งใจรับแบบยืดหยุ่น — ชื่อฟิลด์ไม่สนตัวพิมพ์เล็ก/ใหญ่, รับชื่อพ้อง
+    (targstartdate/schedstart → pm_date, workorderid → wonum ฯลฯ), field เดียว
+    ที่ขาดไม่ได้คือ location ส่วน pm_date/wonum/status/company ขาดได้แต่จะเตือนกลับไป
+    เพื่อไม่ให้ integration ล้มทั้งใบเพราะฟิลด์ประกอบตัวเดียว
+
+    ป้องกันด้วย shared secret (env MAXIMO_WEBHOOK_SECRET) ส่งมาทาง header
+    X-Maximo-Token / apikey / X-API-Key / Authorization: Bearer <secret>
     """
+    ctype = request.headers.get("content-type") or "-"
+    body_bytes = await request.body()
+
+    if not MAXIMO_WEBHOOK_SECRET:
+        log.error("  ❌ IN06 rejected: MAXIMO_WEBHOOK_SECRET ไม่ได้ตั้งค่าบน server นี้")
+        raise HTTPException(
+            status_code=503,
+            detail="MAXIMO_WEBHOOK_SECRET is not configured on this server",
+        )
+
+    token, seen_headers = _extract_token(request)
+    if token != MAXIMO_WEBHOOK_SECRET:
+        log.warning(
+            "  🔒 IN06 auth failed — token headers ที่ได้รับ=%s (ต้องส่ง X-Maximo-Token), "
+            "content-type=%r, %d bytes",
+            seen_headers or "ไม่มีเลย", ctype, len(body_bytes),
+        )
+        raise HTTPException(
+            status_code=401,
+            detail="invalid or missing shared secret — ส่งมาทาง header X-Maximo-Token",
+        )
+
+    # parse เอง ไม่ผ่าน pydantic body model: Maximo จะได้ไม่โดน 422 ที่อ่านไม่รู้เรื่อง
+    # และ log เห็น body จริงทุกครั้งแม้ payload ผิดทรง (422 ของ FastAPI ไม่เข้ามาถึงตรงนี้)
+    try:
+        payload = json.loads(body_bytes or b"")
+    except (json.JSONDecodeError, UnicodeDecodeError) as e:
+        log.warning(
+            "  ❌ IN06 body ไม่ใช่ JSON: %s | content-type=%r | body=%r",
+            e, ctype, body_bytes[:500],
+        )
+        raise HTTPException(status_code=400, detail=f"body ต้องเป็น JSON: {e}")
+
+    items = _extract_items(payload)
+    log.info(
+        "  📥 IN06 received: %d item(s) | content-type=%r | body=%s",
+        len(items), ctype, (body_bytes[:1000].decode("utf-8", "replace") or "-"),
+    )
+
+    if not items:
+        raise HTTPException(
+            status_code=400,
+            detail="ไม่พบใบงานใน body — ส่งเป็น object ใบเดียว, array "
+                   'หรือ {"workorders": [...]}',
+        )
+
+    no_location = [i for i, it in enumerate(items) if not str(it.get("location") or "").strip()]
+    if no_location:
+        got = sorted({k for it in items for k in it})
+        log.warning("  ❌ IN06 ขาด location ในลำดับ %s | key ที่ได้รับ=%s", no_location, got)
+        raise HTTPException(
+            status_code=400,
+            detail=f"location จำเป็นต้องมี — ขาดในรายการลำดับ {no_location} "
+                   f"(key ที่ได้รับ: {', '.join(got) or 'ไม่มี'})",
+        )
+
+    # field ที่สเปกระบุ Required=Y แต่ไม่ได้ส่งมา — รับเข้าไปก่อน ไม่ปฏิเสธทั้งใบ
+    # (company สเปกเป็น Required=N จึงไม่นับ)
+    warnings = [
+        f"item[{i}] ไม่ได้ส่ง {f}"
+        for i, it in enumerate(items)
+        for f in ("pm_date", "wonum", "status")
+        if not str(it.get(f) or "").strip()
+    ]
+    if warnings:
+        log.warning("  ⚠️  IN06 field ไม่ครบ: %s", "; ".join(warnings))
+
+    stats = await _upsert_open(items)
+    log.info(f"  ✅ IN06 stored: {stats} ({len(items)} received)")
+
+    # สเปก IN06 กำหนด response ไว้แค่ {"status": "OK"} — ตอบเกินไปกว่านี้ไม่ได้
+    # เผื่อฝั่ง EGAT validate schema ตอน UAT. รายละเอียดดูจาก log หรือ ?verbose=1
+    if verbose:
+        return {"status": "OK", "received": len(items), **stats, "warnings": warnings}
+    return {"status": "OK"}
+
+
+@router.get("/maximo/pm/ping")
+@router.post("/maximo/pm/ping")
+async def maximo_pm_ping(request: Request):
+    """
+    ให้ฝั่ง Maximo ทดสอบได้เองว่าติดตรงไหน โดยไม่ต้องยิงใบงานจริงเข้ามา
+
+      404/timeout → ยิงไม่ถึง iMPS (network / nginx / URL ผิด)
+      503         → ถึงแล้ว แต่ server ยังไม่ได้ตั้ง MAXIMO_WEBHOOK_SECRET
+      401         → ถึงแล้ว แต่ token ผิด/ไม่ได้ส่ง (ดู token_headers_received)
+      200         → เชื่อมต่อ + auth ผ่าน เหลือแค่รูป payload
+    """
+    token, seen_headers = _extract_token(request)
     if not MAXIMO_WEBHOOK_SECRET:
         raise HTTPException(
             status_code=503,
             detail="MAXIMO_WEBHOOK_SECRET is not configured on this server",
         )
-    if x_maximo_token != MAXIMO_WEBHOOK_SECRET:
-        raise HTTPException(status_code=401, detail="invalid X-Maximo-Token")
-
-    if isinstance(body, PMWorkOrderOpenBatchIn):
-        items = [w.model_dump() for w in body.workorders]
-    else:
-        items = [body.model_dump()]
-
-    if not items:
-        return {"status": "OK"}
-
-    missing = [i for i, it in enumerate(items) if not str(it.get("location") or "").strip()]
-    if missing:
+    if token != MAXIMO_WEBHOOK_SECRET:
         raise HTTPException(
-            status_code=400,
-            detail=f"location จำเป็นต้องมี — ขาดในรายการลำดับ {missing}",
+            status_code=401,
+            detail={
+                "message": "invalid or missing shared secret",
+                "token_headers_received": seen_headers,
+                "expected_header": "X-Maximo-Token",
+            },
         )
-
-    stats = await _upsert_open(items)
-    log.info(f"  📥 Maximo PM open: {stats} ({len(items)} received)")
-    # ตอบกลับ Maximo แค่ status: OK (รายละเอียด inserted/updated ดูได้จาก log)
-    return {"status": "OK"}
+    return {
+        "status": "OK",
+        "endpoint": "POST /maximo/pm/open",
+        "required_fields": ["location"],
+        "optional_fields": ["pm_date", "wonum", "status", "company", "description"],
+    }
 
 
 def _serialize_open(doc: dict) -> dict:
@@ -642,7 +860,8 @@ async def list_maximo_pm_open(
         # ยังไม่ได้ตั้ง maximo_location → เทียบ location ควบไว้ด้วยกันเหนียว
         scope = [{"station_id": sid}] if sid else []
         if station_location:
-            scope.append({"location": station_location})
+            # เทียบทั้ง "PTG0001" และ "PTG0001-EV" — Maximo กับ iMPS เขียนคนละแบบได้
+            scope.append({"location": {"$in": _location_variants(station_location)}})
         and_clauses.append({"$or": scope})
 
     if location:

@@ -665,7 +665,7 @@ def to_object_id_safe(s: str):
 
 def _station_role_query(current: UserClaims) -> Optional[Dict[str, Any]]:
     """match query ตาม role ล้วน ๆ (ยังไม่คิดเรื่องยี่ห้อ) — คืน None ถ้ามองไม่เห็นสถานีเลย"""
-    # Admin/CS/Engineer → เห็นทุกสถานี
+    # Admin/CS/Planner → เห็นทุกสถานี
     if current.role in ALL_STATIONS_ROLES:
         return {}
     if current.role == "technician":

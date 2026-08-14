@@ -54,6 +54,10 @@ SIG_H = 28
 SECTION_BAR_H = 5.5
 EDGE_ALIGN_FIX = (LINE_W_OUTER - LINE_W_INNER) / 2.0
 
+# รูปประกอบปัญหาที่พิมพ์ได้สูงสุด — 3 คอลัมน์ 4 แถว พอดีหน้าเปล่า 1 หน้า
+# (ฟอร์มแนบได้ 5 ใบสำหรับ Open / 10 ใบสำหรับ In Progress จึงไม่ตัดของจริงทิ้ง)
+PROBLEM_PHOTO_LIMIT = 12
+
 INFO_ROW_H = 6.5
 INFO_LABEL_W = 38.0
 TABLE_LINE_H = 4.0
@@ -234,12 +238,16 @@ T: Dict[str, Tuple[str, str]] = {
     "wo_status": ("สถานะงาน", "Job Status"),
     "faulty_equipment": ("ตำแหน่งอุปกรณ์ที่พบความผิดปกติ", "Faulty Equipment / Location"),
     "faulty_equipment_repair": ("อุปกรณ์ที่ชำรุด", "Faulty Equipment"),
+    "charger_no": ("หมายเลขตู้ชาร์จ", "Charger No."),
+    "charger_sn": ("S/N ตู้ชาร์จ", "Charger S/N"),
     "severity": ("ความเร่งด่วน", "Urgency"),
     "problem_details": ("รายละเอียดปัญหา", "Problem Details"),
     "problem_found": ("รายละเอียดปัญหาที่พบ", "Problem Found"),
     "details": ("รายละเอียด", "Details"),
     "remarks": ("หมายเหตุ", "Remarks"),
     "problem_photos": ("รูปภาพประกอบปัญหา", "Problem Photos"),
+    "attachments": ("รูปภาพ / ไฟล์แนบ", "Photos / Attachments"),
+    "attached_files": ("ไฟล์แนบ (คลิกเพื่อเปิดไฟล์)", "Attached Files (click to open)"),
     "problem": ("รายละเอียดปัญหา", "Problem Description"),
     "cause": ("สาเหตุของปัญหา", "Cause"),
     "start_repair": ("วันที่/เวลา เริ่มแก้ไข", "Repair Start Date/Time"),
@@ -932,6 +940,65 @@ def _load_image_with_cache(url_path: str) -> Tuple[Optional[BytesIO], Optional[s
     return new_buf, "JPEG"
 
 
+# -------------------- Attachments (รูป / ไฟล์แนบ) --------------------
+# ฟอร์ม CM แนบได้ทั้งรูปและไฟล์ (pdf/csv) เก็บปนกันใน group เดียว
+# เอกสารจึงต้องแยกเอง: รูปวาดเป็น grid ส่วนไฟล์อื่นวาดเป็นรูปไม่ได้ ทำเป็นลิงก์ให้กดเปิดแทน
+_IMAGE_EXT_RE = re.compile(r"\.(jpe?g|png|webp|gif|heic|heif)(\?|#|$)", re.I)
+
+
+def _attachment_url(item: Any) -> str:
+    if isinstance(item, dict):
+        return str(item.get("url") or item.get("path") or "").strip()
+    return str(item or "").strip()
+
+
+def _attachment_name(item: Any) -> str:
+    if isinstance(item, dict):
+        name = str(item.get("filename") or item.get("name") or "").strip()
+        if name:
+            return name
+    url = _attachment_url(item)
+    return url.split("/")[-1].split("?")[0] or "file"
+
+
+def _is_image_attachment(item: Any) -> bool:
+    """ไฟล์แนบนี้เป็นรูปไหม — ดู mime ก่อน ไม่มีค่อยดูนามสกุล (ตรรกะเดียวกับ isImageAttachment ฝั่งเว็บ)"""
+    if isinstance(item, dict):
+        mime = str(item.get("mime") or item.get("type") or "").strip().lower()
+        if mime:
+            return mime.startswith("image/")
+    url = _attachment_url(item)
+    if url.startswith("data:image/"):
+        return True
+    return bool(_IMAGE_EXT_RE.search(url) or _IMAGE_EXT_RE.search(_attachment_name(item)))
+
+
+def _split_attachments(items: Any) -> Tuple[List[dict], List[dict]]:
+    """แยกไฟล์แนบเป็น (รูป, ไฟล์อื่น) — รายการที่ไม่มี url ถูกข้าม"""
+    images: List[dict] = []
+    files: List[dict] = []
+    for item in items if isinstance(items, list) else []:
+        url = _attachment_url(item)
+        if not url:
+            continue
+        entry = dict(item) if isinstance(item, dict) else {"url": url}
+        (images if _is_image_attachment(item) else files).append(entry)
+    return images, files
+
+
+def _absolute_file_url(url_path: str) -> str:
+    """URL เต็มของไฟล์แนบ — ลิงก์ใน PDF ต้องเป็น absolute ไม่งั้นกดแล้วเปิดไม่ได้
+    APP_BASE_URL ถูกตั้งจาก request ตอน gen PDF (ดู pdf_routes1) จึงเป็น origin ที่ผู้ใช้เปิดได้จริง
+    """
+    s = str(url_path or "").strip()
+    if not s or s.startswith("data:"):
+        return ""
+    if s.startswith("http://") or s.startswith("https://"):
+        return s
+    base = (os.getenv("APP_BASE_URL") or os.getenv("PHOTOS_BASE_URL") or "").rstrip("/")
+    return f"{base}/{s.lstrip('/')}" if base else ""
+
+
 # -------------------- PDF output helper --------------------
 def _output_pdf_bytes(pdf: FPDF) -> bytes:
     data = pdf.output(dest="S")
@@ -1481,6 +1548,8 @@ def _measure_part_height(
         label_h = LINE_H + 1.0 if part.get("title") else 0
         rows = math.ceil(len(photos) / cols)
         return label_h + rows * img_h + (rows + 1) * gap
+    if kind == "links":
+        return _links_block_height(part.get("items") or [], str(part.get("label") or ""))
     if kind == "choice":
         return float(part.get("row_h", INFO_ROW_H))
     if kind == "table":
@@ -1538,6 +1607,8 @@ def _draw_section_group(
         if cy > y + SECTION_BAR_H:
             if kind == "photo" and not (p.get("photos") or []):
                 continue
+            if kind == "links" and not (p.get("items") or []):
+                continue
             if kind == "table" and not (p.get("rows") or []):
                 continue
             pdf.set_draw_color(*GRID_COLOR)
@@ -1570,6 +1641,16 @@ def _draw_section_group(
                 cols=int(p.get("cols", 3)),
                 img_h=float(p.get("img_h", 40.0)),
                 gap=float(p.get("gap", 2.0)),
+                draw_outer=False,
+            )
+        elif kind == "links":
+            items = p.get("items") or []
+            if not items:
+                continue
+            cy = _draw_links_block(
+                pdf, base_font, x, cy, w,
+                str(p.get("label") or ""),
+                items,
                 draw_outer=False,
             )
         elif kind == "choice":
@@ -1680,6 +1761,67 @@ def _draw_photo_grid(
             _draw_placeholder(pdf, base_font, cx, cy, img_w, img_h)
 
     return y + total_h
+
+
+# -------------------- Attachment links (ไฟล์แนบที่วาดเป็นรูปไม่ได้) --------------------
+LINK_COLOR = (0, 0, 238)
+
+
+def _links_block_height(items: List[dict], label: str = "") -> float:
+    if not items:
+        return 0.0
+    label_h = LINE_H + 1.0 if label else 0.0
+    return label_h + len(items) * LINE_H + 2 * PADDING_Y
+
+
+def _draw_links_block(
+    pdf: FPDF,
+    base_font: str,
+    x: float,
+    y: float,
+    w: float,
+    label: str,
+    items: List[dict],
+    draw_outer: bool = True,
+) -> float:
+    """รายชื่อไฟล์แนบ — กดที่ชื่อไฟล์แล้วเปิดไฟล์จริง (pdf/csv วาดลงเอกสารไม่ได้)"""
+    if not items:
+        return y
+
+    label_h = LINE_H + 1.0 if label else 0.0
+    content_h = len(items) * LINE_H + 2 * PADDING_Y
+
+    pdf.set_line_width(LINE_W_INNER)
+    pdf.set_draw_color(*GRID_COLOR)
+
+    if label:
+        pdf.set_fill_color(245, 245, 245)
+        pdf.rect(x, y, w, label_h, style="FD")
+        pdf.set_xy(x + PADDING_X, y + (label_h - LINE_H) / 2.0)
+        pdf.set_font(base_font, "B", FONT_MAIN)
+        pdf.cell(w - 2 * PADDING_X, LINE_H, label, border=0, align="L")
+
+    if draw_outer:
+        pdf.rect(x, y + label_h, w, content_h)
+
+    cy = y + label_h + PADDING_Y
+    for i, item in enumerate(items, 1):
+        text = f"{i}. {_attachment_name(item)}"
+        link = _absolute_file_url(_attachment_url(item))
+        pdf.set_xy(x + PADDING_X, cy)
+        if link:
+            # น้ำเงินขีดเส้นใต้ให้เห็นว่ากดได้ — ไฟล์ที่หา base url ไม่ได้แสดงเป็นข้อความเฉย ๆ
+            pdf.set_font(base_font, "U", FONT_MAIN)
+            pdf.set_text_color(*LINK_COLOR)
+            pdf.cell(w - 2 * PADDING_X, LINE_H, text, border=0, align="L", link=link)
+            pdf.set_text_color(0, 0, 0)
+        else:
+            pdf.set_font(base_font, "", FONT_MAIN)
+            pdf.cell(w - 2 * PADDING_X, LINE_H, text, border=0, align="L")
+        cy += LINE_H
+
+    pdf.set_font(base_font, "", FONT_MAIN)
+    return y + label_h + content_h
 
 
 def _draw_placeholder(pdf: FPDF, base_font: str, x: float, y: float, w: float, h: float):
@@ -2115,6 +2257,24 @@ def make_cm_report_pdf_bytes(
             )],
             "cols": 1,
         },
+    ]
+
+    # ใบที่ปัญหาอยู่ที่ตู้ชาร์จ ต้องระบุว่าตู้ไหน — ฟอร์มกรอก charger_no/charger_sn ไว้เฉพาะ
+    # failure class ระดับตู้ (DC/AC Charger) ใบระดับสถานีจึงไม่มีค่าและไม่ต้องขึ้นแถวนี้
+    # เช็คจากค่าที่มีจริงแทนรหัส class เพราะใบเก่าใช้รหัสคนละชุด (DCCHARFC/ACCHARFC)
+    charger_no = _display_value(doc.get("charger_no"), "")
+    charger_sn = _display_value(doc.get("charger_sn"), "")
+    if charger_no or charger_sn:
+        section2_parts.append({
+            "kind": "info",
+            "data": [
+                (_t("charger_no"), charger_no or "-"),
+                (_t("charger_sn"), charger_sn or "-"),
+            ],
+            "cols": 2,
+        })
+
+    section2_parts += [
         {
             "kind": "choice",
             "label": _t("severity"),
@@ -2144,22 +2304,46 @@ def make_cm_report_pdf_bytes(
                 "kind": "text", "label": _t("cancel_reason"), "text": cancel_remark, "min_h": 10,
             })
 
-    photos_obj = doc.get("photos", {}) or doc.get("photos_problem", {}) or {}
-    cm_photos = photos_obj.get("cm_photos", []) if isinstance(photos_obj, dict) else []
-    if cm_photos:
-        section2_parts.append({
-            "kind": "photo",
-            "photos": cm_photos[:9],
-            "title": _t("problem_photos"),
-            "cols": 3,
-            "img_h": 45,
-        })
-
     y = _draw_section_group(
         pdf, base_font, x0, y, page_w, _t("sec2"),
         parts=section2_parts,
     )
     y += 3
+
+    # ===== รูปภาพ / ไฟล์แนบของใบแจ้ง =====
+    # แยกออกมาเป็นบล็อกของตัวเองแทนที่จะต่อท้ายหมวดรายละเอียดปัญหา เพราะกรอบหมวดขึ้นหน้าใหม่ไม่ได้
+    # รูปที่เกินขอบหน้าจึงถูกตัดหาย — บล็อกนี้ย้ายไปทั้งก้อน รูปทุกใบจึงอยู่ที่เดียวกันเสมอ
+    photos_obj = doc.get("photos", {}) or doc.get("photos_problem", {}) or {}
+    cm_attachments = photos_obj.get("cm_photos", []) if isinstance(photos_obj, dict) else []
+    cm_images, cm_files = _split_attachments(cm_attachments)
+
+    attachment_parts: List[Dict[str, Any]] = []
+    if cm_images:
+        attachment_parts.append({
+            "kind": "photo",
+            "photos": cm_images[:PROBLEM_PHOTO_LIMIT],
+            "cols": 3,
+            "img_h": 45,
+        })
+    if cm_files:
+        attachment_parts.append({
+            "kind": "links",
+            # มีรูปอยู่ด้วยต้องมีป้ายคั่นว่าส่วนนี้คือไฟล์แนบ ถ้ามีแต่ไฟล์ หัวบล็อกบอกอยู่แล้ว
+            "label": _t("attached_files") if cm_images else "",
+            "items": cm_files,
+        })
+
+    if attachment_parts:
+        y = _new_page_if_needed(
+            pdf, y,
+            SECTION_BAR_H + sum(_measure_part_height(pdf, page_w, p) for p in attachment_parts),
+        )
+        y = _draw_section_group(
+            pdf, base_font, x0, y, page_w,
+            _t("problem_photos") if cm_images else _t("attachments"),
+            parts=attachment_parts,
+        )
+        y += 3
 
     # ===== ส่วนที่ 3: ประเภทและสาเหตุของปัญหา =====
     # ฟิลด์เหล่านี้เก็บเป็นรหัส Maximo — เอกสารต้องแสดงคำอธิบาย ไม่ใช่รหัส

@@ -32,15 +32,26 @@ if not SECRET_KEY or len(SECRET_KEY) < 32:
         "JWT_SECRET_KEY environment variable must be set to a strong secret (>= 32 chars)"
     )
 ALGORITHM = "HS256"
+# role เดิมที่ถูกเปลี่ยนชื่อ → ชื่อใหม่ (normalize ตอน login/decode JWT)
+# "engineer" ถูกเปลี่ยนเป็น "planner" — user เก่าใน DB และ token ที่ออกไปแล้วยังใช้ได้ต่อ
+LEGACY_ROLE_ALIASES = {"engineer": "planner"}
+
+
+def canonical_role(role: str | None) -> str:
+    """แปลงชื่อ role เดิมเป็นชื่อปัจจุบัน (ไม่ใช่ alias ก็คืนค่าเดิม)"""
+    r = (role or "").strip()
+    return LEGACY_ROLE_ALIASES.get(r.lower(), r)
+
+
 # บทบาทสายปฏิบัติงาน — ใช้อายุ session แบบ technician (token 24 ชม. ไม่มี idle timeout)
-STAFF_ROLES = ("technician", "cs", "engineer")
+STAFF_ROLES = ("technician", "cs", "planner")
 # บทบาทที่เห็นทุกสถานี (technician เห็นเฉพาะสถานีที่ถูก assign ผ่าน station_id)
-ALL_STATIONS_ROLES = ("admin", "cs", "engineer")
+ALL_STATIONS_ROLES = ("admin", "cs", "planner")
 # super admin — role จริงใน DB ทำได้เหมือน admin + สิทธิ์พิเศษ (สลับ role, จัดการผู้ใช้, ลบถาวร)
 SUPER_ADMIN_ROLE = "super_admin"
 SUPER_ADMIN_USERNAME = "thatsawan"
 # role ที่ super admin สลับ (impersonate) ไปได้ผ่าน dropdown
-SWITCHABLE_ROLES = ("super_admin", "admin", "owner", "cs", "engineer", "technician")
+SWITCHABLE_ROLES = ("super_admin", "admin", "owner", "cs", "planner", "technician")
 ACCESS_TOKEN_EXPIRE_MINUTES_TECHNICIAN = 1440
 ACCESS_TOKEN_EXPIRE_MINUTES_DEFAULT = 1440
 SESSION_IDLE_MINUTES_TECHNICIAN = None

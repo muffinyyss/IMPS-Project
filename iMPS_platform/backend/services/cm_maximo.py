@@ -533,13 +533,13 @@ def _combine(date_str: Any, time_str: Any) -> str:
 
 
 # ══════════════════════════════════════════════════════════════════
-# IN01 — เปิด Work Order ตอน engineer วางแผน
+# IN01 — เปิด Work Order ตอน planner วางแผน
 # ══════════════════════════════════════════════════════════════════
 async def ensure_work_order(coll, report_id, report: dict) -> dict:
     """
     สร้าง Maximo WO ให้ใบงานนี้ถ้ายังไม่มี (idempotent — เรียกซ้ำได้)
 
-    เรียกตอน engineer วางแผนเสร็จ ไม่ว่าจะลงเอยเป็น wait for scheduled /
+    เรียกตอน planner วางแผนเสร็จ ไม่ว่าจะลงเอยเป็น wait for scheduled /
     wait for material / wait for site condition ก็ตาม — ทั้งสามแบบคือ "รับงานแล้ว"
     """
     if not CM_MAXIMO_ENABLED:
@@ -794,7 +794,7 @@ async def push_labor_time(coll, report_id, report: dict) -> dict:
 # ══════════════════════════════════════════════════════════════════
 # Orchestrator — routers/cmreport.py เรียกตัวนี้ตัวเดียวหลังบันทึกใบงาน
 # ══════════════════════════════════════════════════════════════════
-# ผลซ่อมที่แปลว่า engineer วางแผนเสร็จแล้ว (ทั้งสามแบบ = รับงานเข้าระบบแล้ว)
+# ผลซ่อมที่แปลว่า planner วางแผนเสร็จแล้ว (ทั้งสามแบบ = รับงานเข้าระบบแล้ว)
 PLANNED_RESULTS = {
     "wo - wait for scheduled",
     "wo - wait for material",
@@ -807,7 +807,7 @@ CLOSING_STATUSES = {"complete", "closed"}
 
 
 def is_planning_save(report: dict) -> bool:
-    """ใบงานผ่านขั้นวางแผนของ engineer แล้วหรือยัง"""
+    """ใบงานผ่านขั้นวางแผนของ planner แล้วหรือยัง"""
     if str(report.get("repair_result") or "").strip().lower() in PLANNED_RESULTS:
         return True
     # วางแผนแบบกำหนดวันและช่างครบ (ไม่ได้เลือกสถานะรอ)

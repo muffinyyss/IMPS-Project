@@ -8,7 +8,8 @@ import Image from "next/image";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 import { Tabs, TabsHeader, Tab } from "@material-tailwind/react";
 import { putPhoto, getPhotoByDbKey, delPhoto, type PhotoRef } from "../lib/draftPhotos";
-import { isFileReadable, isImageDecodable, resolveUsableFile, reportMissingDraftPhoto } from "@/utils/upload-safety";
+import { isFileReadable, isImageDecodable, resolveUsableFile, reportMissingDraftPhoto, reportPhotoStorageFailure } from "@/utils/upload-safety";
+import { collectPending, unrecoverablePhotos, expectedCountByGroup, findShortfall, shortfallMessage, pendingMessage, unrecoverableMessage } from "@/utils/pm-photo-sync";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
 
 const T = {
@@ -782,7 +783,7 @@ function PassFailRow({ label, value, onChange, remark, onRemarkChange, labels, a
     );
 }
 
-function PhotoMultiInput({ photos, setPhotos, max = 5, draftKey, qNo, lang, id }: {
+function PhotoMultiInput({ photos, setPhotos, max = 10, draftKey, qNo, lang, id }: {
     photos: PhotoItem[]; setPhotos: React.Dispatch<React.SetStateAction<PhotoItem[]>>;
     max?: number; draftKey: string; qNo: number; lang: Lang; id?: string;
 }) {
@@ -822,8 +823,10 @@ function PhotoMultiInput({ photos, setPhotos, max = 5, draftKey, qNo, lang, id }
             }
 
             const photoId = `${qNo}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${file.name}`;
-            const ref = await putPhoto(draftKey, photoId, finalFile);
-            if (!ref) return { id: photoId, file: finalFile, preview: URL.createObjectURL(finalFile), remark: "" };
+            // เขียน IndexedDB ไม่ได้ (พื้นที่เต็ม / private mode) → ห้ามทิ้งรูป เก็บใน memory ต่อแล้วเตือน
+            let ref: PhotoRef | undefined;
+            try { ref = await putPhoto(draftKey, photoId, finalFile); }
+            catch (e) { console.error("putPhoto failed:", e); reportPhotoStorageFailure(lang); }
             const now = new Date().toLocaleString("th-TH", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
             return { id: photoId, file: finalFile, preview: URL.createObjectURL(finalFile), remark: "", ref, createdAt: now, location: locationText };
         } catch (err) { console.error("processFile error:", err); return null; }
@@ -1252,7 +1255,7 @@ export default function CBBOXPMForm() {
                             {isLockedByQ2 && <Typography variant="small" className="tw-text-amber-700 tw-italic">{lang === "th" ? "(N/A ตามข้อ 2)" : "(N/A from Q2)"}</Typography>}
                             <Button size="sm" color={isNA ? "amber" : "gray"} variant={isNA ? "filled" : "outlined"} disabled={isLockedByQ2} onClick={() => setRows(prev => ({ ...prev, [q.key]: { ...prev[q.key], pf: isNA ? "" : "NA" } }))}>{isNA ? t("cancelNA", lang) : t("na", lang)}</Button>
                         </div>
-                        {q.hasPhoto && <div className="tw-mb-3"><PhotoMultiInput photos={photos[q.no] || []} setPhotos={makePhotoSetter(q.no)} max={5} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(q.no)} /></div>}
+                        {q.hasPhoto && <div className="tw-mb-3"><PhotoMultiInput photos={photos[q.no] || []} setPhotos={makePhotoSetter(q.no)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(q.no)} /></div>}
                         {hasMeasure && <div className={`tw-mb-3 ${isNA ? "tw-opacity-50 tw-pointer-events-none" : ""}`}>{renderMeasureGrid(q.no)}</div>}
                         {q.no === 1 && <div className={`tw-mb-4 ${isNA ? "tw-opacity-50 tw-pointer-events-none" : ""}`}><select value={dropdownQ1} onChange={e => setDropdownQ1(e.target.value)} className="tw-w-full tw-max-w-sm tw-px-3 tw-py-2 tw-rounded-lg tw-border tw-border-gray-300 tw-bg-white tw-text-sm focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-blue-500/30"><option value="">{t("selectPowerSource", lang)}</option>{DROPDOWN_Q1_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt[lang]}</option>)}</select></div>}
                         {q.no === 2 && <div className={`tw-mb-4 ${isNA ? "tw-opacity-50 tw-pointer-events-none" : ""}`}><select value={dropdownQ2} onChange={e => setDropdownQ2(e.target.value)} className="tw-w-full tw-max-w-sm tw-px-3 tw-py-2 tw-rounded-lg tw-border tw-border-gray-300 tw-bg-white tw-text-sm focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-blue-500/30"><option value="">{t("selectDevice", lang)}</option>{DROPDOWN_Q2_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt[lang]}</option>)}</select>{isNA && <Typography variant="small" className="tw-text-amber-700 tw-mt-2">{lang === "th" ? "* ข้อ 5, 6, 7 จะเป็น N/A ตามข้อนี้" : "* Q5, 6, 7 will be N/A accordingly"}</Typography>}</div>}
@@ -1267,7 +1270,7 @@ export default function CBBOXPMForm() {
         if (mode === "post" && (q.no === 1 || q.no === 2)) {
             return (
                 <SectionCard key={q.key} title={getQuestionLabel(q, mode, lang)} tooltip={qTooltip}>
-                        {q.hasPhoto && <div className="tw-mb-3"><PhotoMultiInput photos={photos[q.no] || []} setPhotos={makePhotoSetter(q.no)} max={5} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(q.no)} /></div>}
+                        {q.hasPhoto && <div className="tw-mb-3"><PhotoMultiInput photos={photos[q.no] || []} setPhotos={makePhotoSetter(q.no)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(q.no)} /></div>}
                     {q.no === 1 && <div className="tw-mb-4"><Typography variant="small" className="tw-font-medium tw-text-gray-700 tw-mb-2">{t("powerSource", lang)}</Typography><div className="tw-p-3 tw-bg-gray-100 tw-rounded tw-border tw-border-gray-200"><Typography variant="small">{dropdownQ1 || "-"}</Typography></div>{preRemarkElement}<div id={getRemarkIdFromKey(q.no)}><Textarea label={t("remark", lang)} value={rows[q.key]?.remark || ""} onChange={e => setRows(prev => ({ ...prev, [q.key]: { ...prev[q.key], remark: e.target.value } }))} rows={2} containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full tw-mt-3" /></div></div>}
                     {q.no === 2 && <div className="tw-mb-4"><Typography variant="small" className="tw-font-medium tw-text-gray-700 tw-mb-2">{t("circuitDevice", lang)}</Typography><div className="tw-p-3 tw-bg-gray-100 tw-rounded tw-border tw-border-gray-200"><Typography variant="small">{dropdownQ2 || "-"}</Typography></div>{preRemarkElement}<div id={getRemarkIdFromKey(q.no)}><Textarea label={t("remark", lang)} value={rows[q.key]?.remark || ""} onChange={e => setRows(prev => ({ ...prev, [q.key]: { ...prev[q.key], remark: e.target.value } }))} rows={2} containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full tw-mt-3" /></div></div>}
                 </SectionCard>
@@ -1285,7 +1288,7 @@ export default function CBBOXPMForm() {
                     onRemarkChange={v => setRows(prev => ({ ...prev, [q.key]: { ...prev[q.key], remark: v } }))}
                     id={getPfIdFromKey(q.no)}
                     remarkId={getRemarkIdFromKey(q.no)}
-                    aboveRemark={q.hasPhoto && <div className="tw-pb-4 tw-border-b tw-mb-4 tw-border-gray-100"><PhotoMultiInput photos={photos[q.no] || []} setPhotos={makePhotoSetter(q.no)} max={5} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(q.no)} /></div>}
+                    aboveRemark={q.hasPhoto && <div className="tw-pb-4 tw-border-b tw-mb-4 tw-border-gray-100"><PhotoMultiInput photos={photos[q.no] || []} setPhotos={makePhotoSetter(q.no)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(q.no)} /></div>}
                     beforeRemark={<>{hasMeasure && (q.no === 5 ? renderMeasureGridWithPre(q.no) : renderMeasureGrid(q.no))}{preRemarkElement}</>}
                 />
             </SectionCard>
@@ -1294,8 +1297,10 @@ export default function CBBOXPMForm() {
 
     // รับ PhotoItem แทน File[] เพื่อให้รู้ว่ารูปไหนอัปสำเร็จแล้ว — ตอนกดบันทึกซ้ำหลังอัปหลุด
     // จะได้ข้ามรูปเดิม ไม่อัปซ้ำจนรูปโผล่ซ้ำในรายงาน (และไม่ไปชนเพดาน 10 รูป/ข้อ)
-    async function uploadGroupPhotos(reportId: string, stationId: string, group: string, items: PhotoItem[], side: TabId, stateKey: string) {
-        const pending = (items || []).filter(p => !p.isNA && !p.uploaded && (p.file || p.ref));
+    async function uploadGroupPhotos(reportId: string, stationId: string, group: string, items: PhotoItem[], side: TabId, stateKey: string, uploadedIds: Set<string>) {
+        // uploadedIds จำเป็นเพราะ setPhotos() ยังไม่ flush เข้า photosRef ภายใน tick เดียวกัน
+        // ถ้าไม่มี รอบอัปโหลดรอบสองจะส่งรูปเดิมซ้ำ
+        const pending = (items || []).filter(p => !p.isNA && !p.uploaded && !uploadedIds.has(p.id) && (p.file || p.ref));
         if (pending.length === 0) return;
         const token = localStorage.getItem("access_token");
         const url = side === "pre" ? `${API_BASE}/cbboxpmreport/${reportId}/pre/photos` : `${API_BASE}/cbboxpmreport/${reportId}/post/photos`;
@@ -1309,8 +1314,50 @@ export default function CBBOXPMForm() {
             form.append("files", compressed);
             const res = await fetch(url, { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : undefined, body: form, credentials: "include" });
             if (!res.ok) throw new Error(await res.text());
+            uploadedIds.add(p.id);
             setPhotos(prev => ({ ...prev, [stateKey]: (prev[stateKey as any] || []).map(x => x.id === p.id ? { ...x, uploaded: true } : x) }));
         }
+    }
+
+    /** อัปโหลดหลายรอบ + ยืนยันจำนวนกับ server ก่อนให้ caller ไปลบรูปในเครื่อง
+     *  คืน true = ปลอดภัยที่จะลบ, false = ยังไม่ครบ (แจ้ง user แล้ว) ห้ามลบ */
+    async function syncPhotosAndVerify(reportId: string, side: TabId): Promise<boolean> {
+        const sid = stationId;
+        if (!sid) throw new Error(t("alertNoStation", lang));
+        const uploadedIds = new Set<string>();
+        for (let pass = 1; pass <= 3; pass++) {
+            if (unrecoverablePhotos(photosRef.current as any, uploadedIds).length > 0) {
+                throw new Error(unrecoverableMessage(lang));
+            }
+            if (collectPending(photosRef.current as any, uploadedIds).length === 0) break;
+            // อัปไม่ผ่าน → throw ทะลุขึ้นไป catch ของ handler โดยยังไม่ได้ลบอะไร
+            await Promise.all(
+                Object.entries(photosRef.current).map(([no, list]) =>
+                    uploadGroupPhotos(reportId, sid, `g${no}`, list || [], side, no, uploadedIds))
+            );
+        }
+
+        const stillPending = collectPending(photosRef.current as any, uploadedIds);
+        if (stillPending.length > 0) {
+            alert(pendingMessage(stillPending.length, lang));
+            return false;
+        }
+
+        const expected = expectedCountByGroup(photosRef.current as any, k => `g${k}`);
+        if (Object.keys(expected).length === 0) return true;
+
+        const token = localStorage.getItem("access_token");
+        const res = await fetch(`${API_BASE}/cbboxpmreport/get?station_id=${encodeURIComponent(sid)}&report_id=${reportId}`,
+            { headers: token ? { Authorization: `Bearer ${token}` } : undefined, credentials: "include" });
+        if (!res.ok) throw new Error(await res.text());
+        const doc = await res.json() as { photos_pre?: Record<string, unknown[]>; photos?: Record<string, unknown[]> };
+        const shortfall = findShortfall(expected, side === "pre" ? doc?.photos_pre : doc?.photos);
+        if (shortfall.length > 0) {
+            console.error(`[CB-BOX ${side} verify] shortfall:`, shortfall);
+            alert(shortfallMessage(shortfall, lang));
+            return false;
+        }
+        return true;
     }
 
     const onPreSave = async () => {
@@ -1340,10 +1387,9 @@ export default function CBBOXPMForm() {
             }
             preReportIdRef.current = report_id;
             setReportId(report_id);
-            const uploadPromises: Promise<void>[] = [];
-            for (const [no, list] of Object.entries(photos)) uploadPromises.push(uploadGroupPhotos(report_id, stationId, `g${no}`, list, "pre", no));
-            if (uploadPromises.length > 0) await Promise.all(uploadPromises);
-            const allPhotos = Object.values(photos).flat();
+            // ลบรูปในเครื่องได้ต่อเมื่อ server ยืนยันว่ามีครบจำนวนแล้วเท่านั้น
+            if (!(await syncPhotosAndVerify(report_id, "pre"))) return;
+            const allPhotos = Object.values(photosRef.current).flat();
             await Promise.all(allPhotos.map(p => delPhoto(key, p.id)));
             preReportIdRef.current = null;
             await clearDraftLocal(key);
@@ -1370,12 +1416,11 @@ export default function CBBOXPMForm() {
             const payload = { station_id: stationId, rows, measures: { m5: m5.state }, summary, dropdownQ1, dropdownQ2, ...(summaryCheck ? { summaryCheck } : {}), side: "post", report_id: finalReportId };
             const res = await fetch(`${API_BASE}/cbboxpmreport/submit`, { method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, credentials: "include", body: JSON.stringify(payload) });
             if (!res.ok) throw new Error(await res.text());
-            const uploadPromises: Promise<void>[] = [];
-            for (const [no, list] of Object.entries(photos)) uploadPromises.push(uploadGroupPhotos(finalReportId, stationId, `g${no}`, list, "post", no));
-            if (uploadPromises.length > 0) await Promise.all(uploadPromises);
+            // ต้องยืนยันรูปครบก่อน ถึงจะ finalize + ลบรูปในเครื่อง
+            if (!(await syncPhotosAndVerify(finalReportId, "post"))) return;
             const finalizeRes = await fetch(`${API_BASE}/cbboxpmreport/${finalReportId}/finalize`, { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : undefined, credentials: "include", body: new URLSearchParams({ station_id: stationId }) });
             if (!finalizeRes.ok) throw new Error(await finalizeRes.text());
-            const allPhotos = Object.values(photos).flat();
+            const allPhotos = Object.values(photosRef.current).flat();
             await Promise.all(allPhotos.map(p => delPhoto(postKey, p.id)));
             await clearDraftLocal(postKey);
             router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&tab=cb-box`);

@@ -17,7 +17,8 @@ import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 import { Tabs, TabsHeader, Tab } from "@material-tailwind/react";
 import { putPhoto, getPhotoByDbKey, delPhoto, type PhotoRef } from "../lib/draftPhotos";
-import { isFileReadable, isImageDecodable, resolveUsableFile, reportMissingDraftPhoto } from "@/utils/upload-safety";
+import { isFileReadable, isImageDecodable, resolveUsableFile, reportMissingDraftPhoto, reportPhotoStorageFailure } from "@/utils/upload-safety";
+import { collectPending, unrecoverablePhotos, expectedCountByGroup, findShortfall, shortfallMessage, pendingMessage, unrecoverableMessage } from "@/utils/pm-photo-sync";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
 
 // ==================== GPS + IMAGE UTILS ====================
@@ -832,7 +833,7 @@ function PassFailRow({
 }
 
 function PhotoMultiInput({
-    photos, setPhotos, max = 5, draftKey, qNo, lang, id,
+    photos, setPhotos, max = 10, draftKey, qNo, lang, id,
 }: {
     photos: PhotoItem[]; setPhotos: React.Dispatch<React.SetStateAction<PhotoItem[]>>;
     max?: number; draftKey: string; qNo: number; lang: Lang; id?: string;
@@ -872,8 +873,10 @@ function PhotoMultiInput({
                 console.warn("processFile: เบราว์เซอร์แสดงผลรูปนี้ไม่ได้", file.name, file.type);
             }
             const photoId = `${qNo}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${file.name}`;
-            const ref = await putPhoto(draftKey, photoId, finalFile);
-            if (!ref) return { id: photoId, file: finalFile, preview: URL.createObjectURL(finalFile), remark: "" };
+            // เขียน IndexedDB ไม่ได้ (พื้นที่เต็ม / private mode) → ห้ามทิ้งรูป เก็บใน memory ต่อแล้วเตือน
+            let ref: PhotoRef | undefined;
+            try { ref = await putPhoto(draftKey, photoId, finalFile); }
+            catch (e) { console.error("putPhoto failed:", e); reportPhotoStorageFailure(lang); }
             return { id: photoId, file: finalFile, preview: URL.createObjectURL(finalFile), remark: "", ref };
         } catch (err) { console.error("processFile error:", err); return null; }
     };
@@ -1468,8 +1471,26 @@ export default function StationPMReport() {
 
     // รับ PhotoItem แทน File[] เพื่อให้รู้ว่ารูปไหนอัปสำเร็จแล้ว — ตอนกดบันทึกซ้ำหลังอัปหลุด
     // จะได้ข้ามรูปเดิม ไม่อัปซ้ำจนรูปโผล่ซ้ำในรายงาน (และไม่ไปชนเพดาน 10 รูป/ข้อ)
-    async function uploadGroupPhotos(reportId: string, stationId: string, group: string, items: PhotoItem[], side: TabId, stateKey: string) {
-        const pending = (items || []).filter(p => !p.isNA && !p.uploaded && (p.file || p.ref));
+    /** key ที่ backend ใช้เก็บใน photos_pre / photos — ต้องใช้สูตรเดียวกันทั้งตอน upload และตอน verify
+     *  หลาย photoKey (r7_1, r7_2) map ไปข้อเดียวกันได้ ฝั่ง server ก็รวมเป็น group เดียว */
+    const toGroupKey = (photoKey: string): string | null => {
+        if (photoKey.startsWith("q")) {
+            const q = QUESTIONS.find(q => q.no === Number(photoKey.substring(1)));
+            return q ? q.key : null;
+        }
+        if (photoKey.includes("_")) {
+            const match = photoKey.match(/r(\d+)/);
+            if (match) {
+                const q = QUESTIONS.find(q => q.no === Number(match[1]));
+                return q ? q.key : null;
+            }
+        }
+        return null;
+    };
+
+    async function uploadGroupPhotos(reportId: string, stationId: string, group: string, items: PhotoItem[], side: TabId, stateKey: string, uploadedIds: Set<string>) {
+        // uploadedIds จำเป็นเพราะ setPhotos() ยังไม่ flush เข้า photosRef ภายใน tick เดียวกัน
+        const pending = (items || []).filter(p => !p.isNA && !p.uploaded && !uploadedIds.has(p.id) && (p.file || p.ref));
         if (pending.length === 0) return;
         const token = localStorage.getItem("access_token");
         const url = side === "pre" ? `${API_BASE}/stationpmreport/${reportId}/pre/photos` : `${API_BASE}/stationpmreport/${reportId}/post/photos`;
@@ -1483,8 +1504,58 @@ export default function StationPMReport() {
             form.append("files", compressed);
             const res = await fetch(url, { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : undefined, body: form, credentials: "include" });
             if (!res.ok) throw new Error(await res.text());
+            uploadedIds.add(p.id);
             setPhotos(prev => ({ ...prev, [stateKey]: ((prev as any)[stateKey] || []).map((x: PhotoItem) => x.id === p.id ? { ...x, uploaded: true } : x) }));
         }
+    }
+
+    /** อัปโหลดหลายรอบ + ยืนยันจำนวนกับ server ก่อนให้ caller ไปลบรูปในเครื่อง
+     *  คืน true = ปลอดภัยที่จะลบ, false = ยังไม่ครบ (แจ้ง user แล้ว) ห้ามลบ */
+    async function syncPhotosAndVerify(reportId: string, side: TabId): Promise<boolean> {
+        const sid = stationId;
+        if (!sid) throw new Error(t("alertNoStation", lang));
+        const uploadedIds = new Set<string>();
+        for (let pass = 1; pass <= 3; pass++) {
+            if (unrecoverablePhotos(photosRef.current as any, uploadedIds).length > 0) {
+                throw new Error(unrecoverableMessage(lang));
+            }
+            if (collectPending(photosRef.current as any, uploadedIds).length === 0) break;
+
+            const jobs: Promise<void>[] = [];
+            for (const [photoKey, list] of Object.entries(photosRef.current)) {
+                if (!list || list.length === 0) continue;
+                const groupKey = toGroupKey(photoKey);
+                // เดิม continue เฉย ๆ → รูปข้อนี้ไม่ถูกอัปแต่โค้ดไหลไปลบรูปในเครื่องต่อ
+                if (!groupKey) throw new Error(lang === "th"
+                    ? `จับคู่รูปข้อ ${photoKey} กับหัวข้อในฟอร์มไม่ได้ กรุณาแจ้งผู้ดูแลระบบ`
+                    : `Cannot map photo key ${photoKey} to a checklist item. Please contact the administrator.`);
+                jobs.push(uploadGroupPhotos(reportId, sid, groupKey, list, side, photoKey, uploadedIds));
+            }
+            // อัปไม่ผ่าน → throw ทะลุขึ้นไป catch ของ handler โดยยังไม่ได้ลบอะไร
+            await Promise.all(jobs);
+        }
+
+        const stillPending = collectPending(photosRef.current as any, uploadedIds);
+        if (stillPending.length > 0) {
+            alert(pendingMessage(stillPending.length, lang));
+            return false;
+        }
+
+        const expected = expectedCountByGroup(photosRef.current as any, k => toGroupKey(k) ?? k);
+        if (Object.keys(expected).length === 0) return true;
+
+        const token = localStorage.getItem("access_token");
+        const res = await fetch(`${API_BASE}/stationpmreport/get?station_id=${encodeURIComponent(sid)}&report_id=${reportId}`,
+            { headers: token ? { Authorization: `Bearer ${token}` } : undefined, credentials: "include" });
+        if (!res.ok) throw new Error(await res.text());
+        const doc = await res.json() as { photos_pre?: Record<string, unknown[]>; photos?: Record<string, unknown[]> };
+        const shortfall = findShortfall(expected, side === "pre" ? doc?.photos_pre : doc?.photos);
+        if (shortfall.length > 0) {
+            console.error(`[STATION ${side} verify] shortfall:`, shortfall);
+            alert(shortfallMessage(shortfall, lang));
+            return false;
+        }
+        return true;
     }
 
     // Helper function to flatten rows and ensure correct structure
@@ -1562,32 +1633,10 @@ export default function StationPMReport() {
             preReportIdRef.current = report_id;
             setReportId(report_id);
 
-            // Upload photos
-            const photoKeys = Object.keys(photos);
-            const uploadPromises: Promise<void>[] = [];
-            for (const photoKey of photoKeys) {
-                const list = photos[photoKey] || [];
-                if (list.length === 0) continue;
+            // ลบรูปในเครื่องได้ต่อเมื่อ server ยืนยันว่ามีครบจำนวนแล้วเท่านั้น
+            if (!(await syncPhotosAndVerify(report_id, "pre"))) return;
 
-                let groupKey: string | null = null;
-                if (photoKey.startsWith("q")) {
-                    const qNo = Number(photoKey.substring(1));
-                    const q = QUESTIONS.find(q => q.no === qNo);
-                    if (q) groupKey = q.key;
-                } else if (photoKey.includes("_")) {
-                    const match = photoKey.match(/r(\d+)/);
-                    if (match) {
-                        const qNo = Number(match[1]);
-                        const q = QUESTIONS.find(q => q.no === qNo);
-                        if (q) groupKey = q.key;
-                    }
-                }
-                if (!groupKey) continue;
-                uploadPromises.push(uploadGroupPhotos(report_id, stationId, groupKey, list, "pre", photoKey));
-            }
-            if (uploadPromises.length > 0) { await Promise.all(uploadPromises); }
-
-            const allPhotos = Object.values(photos).flat();
+            const allPhotos = Object.values(photosRef.current).flat();
             await Promise.all(allPhotos.map(p => delPhoto(key, p.id)));
             preReportIdRef.current = null;
             await clearDraftLocal(key);
@@ -1650,30 +1699,8 @@ export default function StationPMReport() {
             if (!res.ok) throw new Error(await res.text());
             const { report_id } = await res.json() as { report_id: string };
 
-            // Upload photos
-            const photoKeys = Object.keys(photos);
-            const uploadPromises: Promise<void>[] = [];
-            for (const photoKey of photoKeys) {
-                const list = photos[photoKey] || [];
-                if (list.length === 0) continue;
-
-                let groupKey: string | null = null;
-                if (photoKey.startsWith("q")) {
-                    const qNo = Number(photoKey.substring(1));
-                    const q = QUESTIONS.find(q => q.no === qNo);
-                    if (q) groupKey = q.key;
-                } else if (photoKey.includes("_")) {
-                    const match = photoKey.match(/r(\d+)/);
-                    if (match) {
-                        const qNo = Number(match[1]);
-                        const q = QUESTIONS.find(q => q.no === qNo);
-                        if (q) groupKey = q.key;
-                    }
-                }
-                if (!groupKey) continue;
-                uploadPromises.push(uploadGroupPhotos(finalReportId, stationId, groupKey, list, "post", photoKey));
-            }
-            if (uploadPromises.length > 0) { await Promise.all(uploadPromises); }
+            // ต้องยืนยันรูปครบก่อน ถึงจะ finalize + ลบรูปในเครื่อง
+            if (!(await syncPhotosAndVerify(finalReportId, "post"))) return;
 
             const finalizeRes = await fetch(`${API_BASE}/stationpmreport/${finalReportId}/finalize`, {
                 method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : undefined,
@@ -1681,7 +1708,7 @@ export default function StationPMReport() {
             });
             if (!finalizeRes.ok) throw new Error(await finalizeRes.text());
 
-            const allPhotos = Object.values(photos).flat();
+            const allPhotos = Object.values(photosRef.current).flat();
             await Promise.all(allPhotos.map(p => delPhoto(postKey, p.id)));
             await clearDraftLocal(postKey);
             router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&tab=station`);
@@ -1709,7 +1736,7 @@ export default function StationPMReport() {
                             </div>
                             {q.hasPhoto && (
                                 <div className="tw-mb-4">
-                                    <PhotoMultiInput photos={photos[`q${q.no}`] || []} setPhotos={makePhotoSetter(`q${q.no}`)} max={5} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(`q${q.no}`)} />
+                                    <PhotoMultiInput photos={photos[`q${q.no}`] || []} setPhotos={makePhotoSetter(`q${q.no}`)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(`q${q.no}`)} />
                                 </div>
                             )}
                             <div id={getRemarkIdFromKey(q.key)}>
@@ -1737,7 +1764,7 @@ export default function StationPMReport() {
                                 </div>
                                 {q.hasPhoto && (
                                     <div className="tw-mb-4">
-                                        <PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={5} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(item.key)} />
+                                        <PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(item.key)} />
                                     </div>
                                 )}
                                 <div id={getRemarkIdFromKey(item.key)}>
@@ -1785,7 +1812,7 @@ export default function StationPMReport() {
                         remarkId={getRemarkIdFromKey(q.key)}
                         aboveRemark={q.hasPhoto && (
                             <div className="tw-pb-4 tw-border-b tw-mb-4 tw-border-gray-100">
-                                    <PhotoMultiInput photos={photos[`q${q.no}`] || []} setPhotos={makePhotoSetter(`q${q.no}`)} max={5} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(`q${q.no}`)} />
+                                    <PhotoMultiInput photos={photos[`q${q.no}`] || []} setPhotos={makePhotoSetter(`q${q.no}`)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(`q${q.no}`)} />
                             </div>
                         )}
                         beforeRemark={preRemarkElement}
@@ -1829,7 +1856,7 @@ export default function StationPMReport() {
                                 remarkId={getRemarkIdFromKey(item.key)}
                                 aboveRemark={q.hasPhoto && (
                                     <div className="tw-pb-4 tw-border-b tw-mb-4 tw-border-gray-100">
-                                        <PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={5} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(item.key)} />
+                                        <PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(item.key)} />
                                     </div>
                                 )}
                                 beforeRemark={preRemarkElement}

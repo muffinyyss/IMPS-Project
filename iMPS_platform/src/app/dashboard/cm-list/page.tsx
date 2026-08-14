@@ -1,0 +1,689 @@
+"use client";
+
+/**
+ * CM List — liste des fiches CM (sortie du bas du CM Dashboard)
+ *
+ * Différences volontaires avec l'ancien tableau intégré au dashboard :
+ *   • filtre par défaut « In Progress » — c'est la file de travail, pas un historique
+ *   • toutes les colonnes sont triables (asc/desc), en plus de la recherche texte
+ *   • colonnes Charger / Company : identifier le chargeur et l'entreprise qui le détient
+ * Le reste (recherche, boutons de statut, lignes/page, pagination, clic → fiche,
+ * export PDF) est repris tel quel.
+ */
+
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { Card } from "@material-tailwind/react";
+import { apiFetch } from "@/utils/api";
+import useLanguage from "@/utils/useLanguage";
+import {
+  CMRow, ActiveFilters, DateSel, STATUS_LABELS, WorkStatusFilter, EMPTY_FILTERS,
+  normalizeStatus, workStatusOf, workStatusBadge, filterByDate, listYears, listBrands,
+  weeksInMonth, applyFilters, applySearch, brandOf, originOf, UNKNOWN_BRAND,
+} from "@/utils/cm-dashboard";
+import { CM_ORIGIN_LIST } from "@/app/dashboard/cm-report/lib/origin";
+import { failureCodeLabel } from "@/app/dashboard/cm-report/lib/failureCode";
+import { failureClassOptions, useMaximoFailureTree } from "@/app/dashboard/cm-report/lib/maximo";
+import { DocumentArrowDownIcon } from "@heroicons/react/24/outline";
+
+const DEFAULT_PAGE_SIZE = 50;
+const MAX_PAGE_SIZE = 500;
+const FETCH_LIMIT = 10000;
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+
+const PLANNING_ROLES = ["admin", "owner", "planner"];
+const WAITING_ON_REPLAN_RESULTS = [
+  "WO - wait for material",
+  "WO - wait for spare part",
+  "WO - wait for site condition",
+  "WO - wait for site access",
+];
+
+function hasAssignedTechnician(assignees?: string[]) {
+  return Array.isArray(assignees) && assignees.some((assignee) => !!assignee?.trim());
+}
+
+function isPlanningWait(value?: string, assignees?: string[]) {
+  const result = (value || "").trim();
+  return WAITING_ON_REPLAN_RESULTS.includes(result) && !hasAssignedTechnician(assignees);
+}
+
+// même règle que le CM Dashboard : status brut + stage → onglet de la fiche CM
+function statusSlug(status: string, stage?: string, repairResult?: string): "open" | "in-progress" | "closed" | "cancelled" {
+  const raw = (status || "").trim().toLowerCase();
+  const repair = (repairResult || "").trim().toLowerCase();
+  if (raw === "wait for schedule" && ["wo - wait for scheduled", "wo - wait for manpower"].includes(repair)) return "in-progress";
+  if (raw === "wait for approve") {
+    return (stage || "").trim().toLowerCase() === "cs_approval" ? "open" : "in-progress";
+  }
+  const s = normalizeStatus(status);
+  if (s === "cancelled") return "cancelled";
+  return s === "completed" ? "closed" : s === "in_progress" ? "in-progress" : "open";
+}
+
+// ─── Colonnes triables ────────────────────────────────────────────────────────
+// L'accesseur renvoie la valeur comparée : string pour un tri alphabétique,
+// number pour un tri numérique. `null`/"" finit toujours en bas quel que soit le sens.
+type SortKey =
+  | "station" | "charger" | "brand" | "issue_id" | "reported_by"
+  | "equipment" | "problem" | "severity" | "date" | "status";
+type SortDir = "asc" | "desc";
+
+const SEVERITY_RANK: Record<string, number> = { urgent: 4, high: 3, medium: 2, low: 1 };
+
+export default function CMListPage() {
+  const [rows, setRows] = useState<CMRow[]>([]);
+  const [totalInDB, setTotalInDB] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [yearSel, setYearSel] = useState<DateSel>("all");
+  const [monthSel, setMonthSel] = useState<DateSel>("all");
+  const [weekSel, setWeekSel] = useState<DateSel>("all");
+  const [stationFilter, setStationFilter] = useState<string>("All");
+  // Filtre par défaut = In Progress : la page sert à suivre le travail en cours
+  const [filters, setFilters] = useState<ActiveFilters>({ ...EMPTY_FILTERS, status: STATUS_LABELS.in_progress });
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [sortKey, setSortKey] = useState<SortKey>("date");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [userRole, setUserRole] = useState("");
+
+  const router = useRouter();
+  const { lang } = useLanguage();
+  const maximoFailureTree = useMaximoFailureTree();
+
+  const faultyEquipmentLabels = useMemo(() => {
+    const labels = new Map<string, string>();
+    const options = failureClassOptions(maximoFailureTree, { hasDC: true, hasAC: true }) ?? [];
+    for (const option of options) {
+      labels.set(option.value, option.label);
+      labels.set(option.value.toUpperCase(), option.label);
+    }
+    return labels;
+  }, [maximoFailureTree]);
+
+  const displayFaultyEquipment = useCallback((row: CMRow) => {
+    if (row.faulty_equipment_label) return row.faulty_equipment_label;
+    const code = (row.faulty_equipment || "").trim();
+    if (!code) return "";
+    return faultyEquipmentLabels.get(code) ?? faultyEquipmentLabels.get(code.toUpperCase()) ?? failureCodeLabel(code);
+  }, [faultyEquipmentLabels]);
+
+  useEffect(() => {
+    localStorage.removeItem("selected_sn");
+    localStorage.removeItem("selected_charger_no");
+    window.dispatchEvent(new CustomEvent("charger:deselected"));
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const res = await apiFetch(`/me`);
+        if (!res.ok) return;
+        const user = await res.json();
+        if (alive) setUserRole(user?.role ?? "");
+      } catch (err) {
+        console.error("fetch /me error:", err);
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await apiFetch(`/cmreport/list-all?limit=${FETCH_LIMIT}`);
+        const json = await res.json();
+        if (!res.ok) throw new Error(json?.detail || `HTTP ${res.status}`);
+        setRows(Array.isArray(json?.items) ? json.items : []);
+        setTotalInDB(json?.total ?? 0);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "โหลดข้อมูลไม่สำเร็จ");
+        setRows([]);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  const openReport = useCallback((r: CMRow) => {
+    if (!r.id) return;
+    const stationName = r.station_name || r.station_id;
+    if (r.station_id) localStorage.setItem("selected_station_id", r.station_id);
+    localStorage.setItem("selected_station_name", stationName);
+    localStorage.removeItem("selected_sn");
+    localStorage.removeItem("selected_charger_no");
+    window.dispatchEvent(new CustomEvent("station:selected"));
+    const params = new URLSearchParams({
+      tab: statusSlug(r.status, r.stage, r.repair_result),
+      station_id: r.station_id || "",
+      view: "form",
+      edit_id: r.id,
+      from: CM_ORIGIN_LIST,
+    });
+    if (isPlanningWait(r.repair_result, r.assignees) && PLANNING_ROLES.includes(userRole.trim().toLowerCase())) {
+      params.set("planning", "1");
+    }
+    router.push(`/dashboard/cm-report?${params.toString()}`);
+  }, [router, userRole]);
+
+  const toggleFilter = useCallback((dim: keyof ActiveFilters, value: string) => {
+    setFilters((prev) => ({ ...prev, [dim]: prev[dim] === value ? null : value } as ActiveFilters));
+    setPage(0);
+  }, []);
+
+  const clearAll = () => {
+    setFilters(EMPTY_FILTERS);
+    setSearch("");
+    setPage(0);
+  };
+
+  const activeFilterCount = Object.values(filters).filter(Boolean).length;
+
+  const stations = useMemo(() => {
+    const names = Array.from(new Set(rows.map((r) => r.station_name || r.station_id))).filter(Boolean);
+    return ["All", ...names];
+  }, [rows]);
+
+  const years = useMemo(() => listYears(rows), [rows]);
+  const weekCount = useMemo(
+    () => (yearSel !== "all" && monthSel !== "all" ? weeksInMonth(yearSel, monthSel) : 0),
+    [yearSel, monthSel]
+  );
+
+  const stationRows = useMemo(
+    () => (stationFilter === "All" ? rows : rows.filter((r) => (r.station_name || r.station_id) === stationFilter)),
+    [rows, stationFilter]
+  );
+  const periodRows = useMemo(
+    () => filterByDate(stationRows, yearSel, monthSel, weekSel),
+    [stationRows, yearSel, monthSel, weekSel]
+  );
+  const allFiltered = useMemo(() => applyFilters(periodRows, filters), [periodRows, filters]);
+  const searchFiltered = useMemo(() => applySearch(allFiltered, search), [allFiltered, search]);
+
+  // compteurs des boutons de statut — indépendants du filtre statut courant
+  const statusCounts = useMemo(() => {
+    const base = applySearch(applyFilters(periodRows, filters, "status"), search);
+    const counts = { open: 0, in_progress: 0, completed: 0, cancelled: 0 };
+    for (const r of base) counts[normalizeStatus(r.status)]++;
+    return counts;
+  }, [periodRows, filters, search]);
+
+  const brands = useMemo(() => listBrands(rows), [rows]);
+
+  const sortValue = useCallback((r: CMRow, key: SortKey): string | number => {
+    switch (key) {
+      case "station": return (r.station_name || r.station_id || "").toLowerCase();
+      case "charger": {
+        const no = r.charger_no;
+        // tri par numéro de chargeur quand il existe, sinon par nom
+        if (no !== null && no !== undefined && no !== "" && !Number.isNaN(Number(no))) return Number(no);
+        return (r.charger_name || "").toLowerCase();
+      }
+      case "brand": return brandOf(r).toLowerCase();
+      case "issue_id": return (r.issue_id || "").toLowerCase();
+      case "reported_by": return (r.reported_by || "").toLowerCase();
+      case "equipment": return (displayFaultyEquipment(r) || "").toLowerCase();
+      case "problem": return (r.problem_details || "").toLowerCase();
+      case "severity": return SEVERITY_RANK[(r.severity || "").trim().toLowerCase()] ?? 0;
+      case "date": return r.cm_date || "";
+      case "status": return workStatusOf(r);
+      default: return "";
+    }
+  }, [displayFaultyEquipment]);
+
+  const sortedRows = useMemo(() => {
+    const dir = sortDir === "asc" ? 1 : -1;
+    return [...searchFiltered].sort((a, b) => {
+      const va = sortValue(a, sortKey);
+      const vb = sortValue(b, sortKey);
+      // les valeurs vides restent en bas quel que soit le sens du tri
+      const emptyA = va === "" || va === 0;
+      const emptyB = vb === "" || vb === 0;
+      if (emptyA !== emptyB) return emptyA ? 1 : -1;
+      if (typeof va === "number" && typeof vb === "number") return (va - vb) * dir;
+      return String(va).localeCompare(String(vb)) * dir;
+    });
+  }, [searchFiltered, sortKey, sortDir, sortValue]);
+
+  const tableRows = useMemo(
+    () => sortedRows.slice(page * pageSize, (page + 1) * pageSize),
+    [sortedRows, page, pageSize]
+  );
+
+  useEffect(() => { setPage(0); }, [allFiltered, search, sortKey, sortDir]);
+
+  const commitPageSize = (raw: string) => {
+    const n = parseInt(raw, 10);
+    if (!Number.isFinite(n) || n < 1) return;
+    setPageSize(Math.min(n, MAX_PAGE_SIZE));
+    setPage(0);
+  };
+
+  const toggleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      // les dates partent du plus récent, le texte de A→Z — c'est ce qu'on attend
+      setSortDir(key === "date" || key === "severity" ? "desc" : "asc");
+    }
+  };
+
+  const t = useMemo(() => ({
+    th: {
+      pageTitle: "CM List",
+      subtitle: (n: number) => `ข้อมูลจาก iMPS · ${n} รายการทั้งหมด`,
+      backToDashboard: "← กลับไปหน้า CM Dashboard",
+      yearLabel: "ปี", monthLabel: "เดือน", weekLabel: "สัปดาห์",
+      allYears: "ทุกปี", allMonths: "ทุกเดือน", allWeeks: "ทุกสัปดาห์",
+      weekOption: (n: number) => `สัปดาห์ที่ ${n}`,
+      monthsLong: ["มกราคม","กุมภาพันธ์","มีนาคม","เมษายน","พฤษภาคม","มิถุนายน","กรกฎาคม","สิงหาคม","กันยายน","ตุลาคม","พฤศจิกายน","ธันวาคม"],
+      stationFilterLabel: "กรองตามสถานี",
+      brandFilterLabel: "บริษัทผู้ถือครอง",
+      allBrands: "ทุกบริษัท",
+      rowsPerPage: "แถวต่อหน้า",
+      statusFilterLabel: "กรองตามสถานะ",
+      tableCount: (n: number, q?: string) => `${n} รายการ${q ? ` · "${q}"` : ""}`,
+      searchPlaceholder: "ค้นหา station, issue ID, ตู้ชาร์จ, บริษัท, equipment, severity…",
+      clearFilters: "ล้างตัวกรอง",
+      pagination: (from: number, to: number, total: number) => `แสดง ${from}–${to} จาก ${total} รายการ`,
+      loading: "กำลังโหลด",
+      errorPrefix: "โหลดข้อมูลไม่สำเร็จ",
+      noResults: (q?: string) => q ? `ไม่พบรายการที่ตรงกับ "${q}"` : "ไม่พบรายงาน",
+      volumeWarning: (total: number, limit: number) => `ฐานข้อมูลมี ${total.toLocaleString()} รายการ — แสดงผล ${limit.toLocaleString()} รายการล่าสุด`,
+      openReportTitle: "เปิดใบงาน CM",
+      quickOpen: "รอจัดซื้อ", quickInProgress: "รอดำเนินการ", quickComplete: "เสร็จสิ้น", quickCancelled: "ยกเลิก",
+      sortAsc: "เรียงน้อย→มาก", sortDesc: "เรียงมาก→น้อย",
+      headers: {
+        station: "สถานี", charger: "ตู้ชาร์จ", brand: "บริษัท", issue_id: "รหัสเอกสาร",
+        reported_by: "ผู้แจ้งปัญหา", equipment: "อุปกรณ์ที่ผิดปกติ", problem: "ปัญหาที่พบ",
+        severity: "ความรุนแรง", date: "วันที่", status: "สถานะ",
+      },
+      workStatus: {
+        wo_all: "WO ทั้งหมด", new: "SR ใหม่", wait_manpower: "WO รอกำหนดการ",
+        wait_sparepart: "WO รออะไหล่", wait_cs_approve: "SR รออนุมัติ", wait_approve: "WO รออนุมัติ",
+        wait_site_access: "WO รอเข้าพื้นที่", in_progress: "รอดำเนินการ", completed: "WO เสร็จสิ้น",
+        cancelled: "WO ยกเลิก",
+      },
+    },
+    en: {
+      pageTitle: "CM List",
+      subtitle: (n: number) => `Data from iMPS · ${n} total records`,
+      backToDashboard: "← Back to CM Dashboard",
+      yearLabel: "Year", monthLabel: "Month", weekLabel: "Week",
+      allYears: "All years", allMonths: "All months", allWeeks: "All weeks",
+      weekOption: (n: number) => `Week ${n}`,
+      monthsLong: ["January","February","March","April","May","June","July","August","September","October","November","December"],
+      stationFilterLabel: "Filter by station",
+      brandFilterLabel: "Owning company",
+      allBrands: "All companies",
+      rowsPerPage: "Rows per page",
+      statusFilterLabel: "Filter by status",
+      tableCount: (n: number, q?: string) => `${n} records${q ? ` · "${q}"` : ""}`,
+      searchPlaceholder: "Search by station, issue ID, charger, company, equipment, severity…",
+      clearFilters: "Clear filters",
+      pagination: (from: number, to: number, total: number) => `Showing ${from}–${to} of ${total} records`,
+      loading: "Loading",
+      errorPrefix: "Failed to load data",
+      noResults: (q?: string) => q ? `No records matching "${q}"` : "No reports found",
+      volumeWarning: (total: number, limit: number) => `Database has ${total.toLocaleString()} records — showing latest ${limit.toLocaleString()}.`,
+      openReportTitle: "Open CM work order",
+      quickOpen: "Open", quickInProgress: "In Progress", quickComplete: "Complete", quickCancelled: "Cancelled",
+      sortAsc: "Sort ascending", sortDesc: "Sort descending",
+      headers: {
+        station: "Station", charger: "Charger", brand: "Company", issue_id: "Issue ID",
+        reported_by: "Reported By", equipment: "Faulty Equipment", problem: "Problem Found",
+        severity: "Severity", date: "Date", status: "Status",
+      },
+      workStatus: {
+        wo_all: "All work order", new: "New service requests", wait_manpower: "WO wait for scheduled",
+        wait_sparepart: "WO wait for material", wait_cs_approve: "SR wait for approve", wait_approve: "WO wait for approve",
+        wait_site_access: "WO wait for site condition", in_progress: "In Progress", completed: "WO completed",
+        cancelled: "WO cancelled",
+      },
+    },
+  }[lang]), [lang]);
+
+  const workStatusLabel = t.workStatus as Record<WorkStatusFilter, string>;
+
+  const columns: { key: SortKey; label: string; className?: string }[] = [
+    { key: "station", label: t.headers.station },
+    { key: "charger", label: t.headers.charger },
+    { key: "brand", label: t.headers.brand },
+    { key: "issue_id", label: t.headers.issue_id },
+    { key: "reported_by", label: t.headers.reported_by },
+    { key: "equipment", label: t.headers.equipment },
+    { key: "problem", label: t.headers.problem },
+    { key: "severity", label: t.headers.severity },
+    { key: "date", label: t.headers.date },
+    { key: "status", label: t.headers.status },
+  ];
+
+  const totalPages = Math.ceil(sortedRows.length / pageSize);
+  const from = page * pageSize + 1;
+  const to = Math.min((page + 1) * pageSize, sortedRows.length);
+
+  if (loading) {
+    return (
+      <div role="status" aria-label={t.loading} className="tw-flex tw-min-h-64 tw-items-center tw-justify-center">
+        <div aria-hidden="true" className="tw-h-10 tw-w-10 tw-animate-spin tw-rounded-full tw-border-4 tw-border-blue-500 tw-border-t-transparent" />
+      </div>
+    );
+  }
+
+  return (
+    <main className="tw-min-h-screen tw-bg-gray-50/60 tw-p-6">
+      {totalInDB > FETCH_LIMIT && (
+        <div className="tw-mb-4 tw-flex tw-items-center tw-gap-3 tw-rounded-xl tw-border tw-border-amber-200 tw-bg-amber-50 tw-px-4 tw-py-3 tw-text-sm tw-text-amber-700">
+          <span className="tw-text-base">⚡</span>
+          <span>{t.volumeWarning(totalInDB, FETCH_LIMIT)}</span>
+        </div>
+      )}
+
+      {error && (
+        <div className="tw-mb-4 tw-flex tw-items-center tw-gap-3 tw-rounded-xl tw-border tw-border-red-200 tw-bg-red-50 tw-px-4 tw-py-3 tw-text-sm tw-text-red-700">
+          <span className="tw-text-base">⚠️</span>
+          <span>{t.errorPrefix}: <strong>{error}</strong></span>
+        </div>
+      )}
+
+      {/* ── Header ── */}
+      <div className="tw-mb-4 tw-flex tw-flex-col tw-gap-3 sm:tw-flex-row sm:tw-items-start sm:tw-justify-between">
+        <div>
+          <h1 className="tw-text-2xl tw-font-bold tw-text-gray-800">{t.pageTitle}</h1>
+          <p className="tw-mt-0.5 tw-text-sm tw-text-gray-500">
+            {t.subtitle(rows.length)}
+            <span className="tw-ml-2 tw-font-semibold tw-text-blue-600">{t.tableCount(searchFiltered.length, search || undefined)}</span>
+          </p>
+          <button
+            onClick={() => router.push("/dashboard/cm-dashboard")}
+            className="tw-mt-1 tw-text-xs tw-font-semibold tw-text-blue-600 hover:tw-text-blue-800 hover:tw-underline"
+          >
+            {t.backToDashboard}
+          </button>
+        </div>
+        <div className="tw-flex tw-flex-wrap tw-items-center tw-gap-3">
+          <div className="tw-flex tw-items-center tw-gap-1.5">
+            <label htmlFor="year-select" className="tw-text-xs tw-font-medium tw-text-gray-500">{t.yearLabel}</label>
+            <select
+              id="year-select" value={String(yearSel)}
+              onChange={(e) => { setYearSel(e.target.value === "all" ? "all" : Number(e.target.value)); setWeekSel("all"); setPage(0); }}
+              className="tw-rounded-lg tw-border tw-border-gray-200 tw-bg-white tw-px-2.5 tw-py-1.5 tw-text-sm tw-text-gray-700 tw-shadow-sm focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-blue-400"
+            >
+              <option value="all">{t.allYears}</option>
+              {years.map((y) => <option key={y} value={String(y)}>{y}</option>)}
+            </select>
+          </div>
+          <div className="tw-flex tw-items-center tw-gap-1.5">
+            <label htmlFor="month-select" className="tw-text-xs tw-font-medium tw-text-gray-500">{t.monthLabel}</label>
+            <select
+              id="month-select" value={String(monthSel)}
+              onChange={(e) => { setMonthSel(e.target.value === "all" ? "all" : Number(e.target.value)); setWeekSel("all"); setPage(0); }}
+              className="tw-rounded-lg tw-border tw-border-gray-200 tw-bg-white tw-px-2.5 tw-py-1.5 tw-text-sm tw-text-gray-700 tw-shadow-sm focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-blue-400"
+            >
+              <option value="all">{t.allMonths}</option>
+              {t.monthsLong.map((m, i) => <option key={m} value={String(i)}>{m}</option>)}
+            </select>
+          </div>
+          <div className="tw-flex tw-items-center tw-gap-1.5">
+            <label htmlFor="week-select" className="tw-text-xs tw-font-medium tw-text-gray-500">{t.weekLabel}</label>
+            <select
+              id="week-select" value={String(weekSel)} disabled={weekCount === 0}
+              onChange={(e) => { setWeekSel(e.target.value === "all" ? "all" : Number(e.target.value)); setPage(0); }}
+              className="tw-rounded-lg tw-border tw-border-gray-200 tw-bg-white tw-px-2.5 tw-py-1.5 tw-text-sm tw-text-gray-700 tw-shadow-sm focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-blue-400 disabled:tw-cursor-not-allowed disabled:tw-bg-gray-50 disabled:tw-text-gray-400"
+            >
+              <option value="all">{t.allWeeks}</option>
+              {Array.from({ length: weekCount }, (_, i) => <option key={i} value={String(i + 1)}>{t.weekOption(i + 1)}</option>)}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Toolbar : station / company / statut / lignes par page ── */}
+      <div className="tw-mb-3 tw-flex tw-flex-wrap tw-items-center tw-gap-3">
+        <div className="tw-flex tw-items-center tw-gap-1.5">
+          <label htmlFor="station-filter" className="tw-text-xs tw-font-medium tw-text-gray-500">{t.stationFilterLabel}</label>
+          <select
+            id="station-filter" value={stationFilter}
+            onChange={(e) => { setStationFilter(e.target.value); setPage(0); }}
+            className="tw-max-w-[220px] tw-rounded-lg tw-border tw-border-gray-200 tw-bg-white tw-px-3 tw-py-1.5 tw-text-sm tw-text-gray-700 tw-shadow-sm focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-blue-400"
+          >
+            {stations.map((s) => <option key={s}>{s}</option>)}
+          </select>
+        </div>
+        <div className="tw-flex tw-items-center tw-gap-1.5">
+          <label htmlFor="brand-filter" className="tw-text-xs tw-font-medium tw-text-gray-500">{t.brandFilterLabel}</label>
+          <select
+            id="brand-filter" value={filters.brand ?? "all"}
+            onChange={(e) => { setFilters((p) => ({ ...p, brand: e.target.value === "all" ? null : e.target.value })); setPage(0); }}
+            className="tw-rounded-lg tw-border tw-border-gray-200 tw-bg-white tw-px-3 tw-py-1.5 tw-text-sm tw-text-gray-700 tw-shadow-sm focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-blue-400"
+          >
+            <option value="all">{t.allBrands}</option>
+            {brands.map((b) => <option key={b} value={b}>{b}</option>)}
+          </select>
+        </div>
+
+        <div className="tw-flex tw-items-center tw-gap-1.5" role="group" aria-label={t.statusFilterLabel}>
+          {([
+            { key: "open", label: t.quickOpen, color: "#dc2626", bg: "#fee2e2", count: statusCounts.open },
+            { key: "in_progress", label: t.quickInProgress, color: "#ea580c", bg: "#fff7ed", count: statusCounts.in_progress },
+            { key: "completed", label: t.quickComplete, color: "#15803d", bg: "#dcfce7", count: statusCounts.completed },
+            { key: "cancelled", label: t.quickCancelled, color: "#475569", bg: "#f1f5f9", count: statusCounts.cancelled },
+          ] as const).map(({ key, label, color, bg, count }) => {
+            const isActive = filters.status === STATUS_LABELS[key];
+            return (
+              <button
+                key={key}
+                type="button"
+                onClick={() => toggleFilter("status", STATUS_LABELS[key])}
+                aria-pressed={isActive}
+                className={`tw-rounded-full tw-px-3 tw-py-1 tw-text-xs tw-font-semibold tw-transition-all ${isActive ? "tw-shadow-sm" : "hover:tw-brightness-95"}`}
+                style={isActive ? { background: color, color: "#fff" } : { background: bg, color }}
+              >
+                {label} ({count})
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="tw-flex tw-items-center tw-gap-1.5">
+          <label htmlFor="rows-per-page" className="tw-text-xs tw-font-medium tw-text-gray-500">{t.rowsPerPage}</label>
+          <input
+            id="rows-per-page" type="number" min={1} max={MAX_PAGE_SIZE} value={pageSize}
+            onChange={(e) => commitPageSize(e.target.value)}
+            list="rows-per-page-presets"
+            className="tw-w-20 tw-rounded-lg tw-border tw-border-gray-200 tw-bg-white tw-px-2.5 tw-py-1.5 tw-text-sm tw-text-gray-700 tw-shadow-sm focus:tw-border-blue-400 focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-blue-100"
+          />
+          <datalist id="rows-per-page-presets">
+            {[10, 15, 25, 50, 100].map((n) => <option key={n} value={n} />)}
+          </datalist>
+        </div>
+
+        {activeFilterCount > 0 && (
+          <button onClick={clearAll} className="tw-text-xs tw-font-semibold tw-text-red-500 hover:tw-text-red-700 tw-underline">
+            {t.clearFilters}
+          </button>
+        )}
+      </div>
+
+      {/* ── Search ── */}
+      <div className="tw-mb-3 tw-relative">
+        <span className="tw-absolute tw-left-3 tw-top-1/2 -tw-translate-y-1/2 tw-text-gray-400 tw-text-sm">🔍</span>
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder={t.searchPlaceholder}
+          className="tw-w-full tw-rounded-xl tw-border tw-border-gray-200 tw-bg-white tw-py-2.5 tw-pl-9 tw-pr-4 tw-text-sm tw-text-gray-700 tw-shadow-sm tw-transition-all focus:tw-border-blue-400 focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-blue-100"
+        />
+        {search && (
+          <button
+            onClick={() => { setSearch(""); setPage(0); }}
+            aria-label="clear search"
+            className="tw-absolute tw-right-3 tw-top-1/2 -tw-translate-y-1/2 tw-text-gray-400 hover:tw-text-gray-600 tw-text-lg tw-leading-none"
+          >
+            <span aria-hidden="true">×</span>
+          </button>
+        )}
+      </div>
+
+      <Card className="tw-overflow-hidden tw-border tw-border-blue-gray-100 tw-shadow-sm">
+        <div className="tw-overflow-x-auto">
+          <table className="tw-w-full tw-min-w-[1180px] tw-table-auto tw-text-left tw-text-sm">
+            <thead>
+              <tr className="tw-bg-gray-50 tw-text-xs tw-font-semibold tw-uppercase tw-tracking-wide tw-text-gray-500">
+                <th className="tw-px-4 tw-py-3 tw-whitespace-nowrap">#</th>
+                {columns.map((c) => {
+                  const active = sortKey === c.key;
+                  return (
+                    <th key={c.key} className="tw-px-4 tw-py-3 tw-whitespace-nowrap" aria-sort={active ? (sortDir === "asc" ? "ascending" : "descending") : "none"}>
+                      <button
+                        type="button"
+                        onClick={() => toggleSort(c.key)}
+                        title={active && sortDir === "asc" ? t.sortDesc : t.sortAsc}
+                        className={`tw-inline-flex tw-items-center tw-gap-1 tw-uppercase tw-transition-colors ${active ? "tw-text-blue-600" : "hover:tw-text-gray-700"}`}
+                      >
+                        {c.label}
+                        <span aria-hidden="true" className={`tw-text-[10px] tw-leading-none ${active ? "tw-opacity-100" : "tw-opacity-30"}`}>
+                          {active ? (sortDir === "asc" ? "▲" : "▼") : "↕"}
+                        </span>
+                      </button>
+                    </th>
+                  );
+                })}
+                <th className="tw-px-4 tw-py-3 tw-whitespace-nowrap">PDF</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tableRows.length === 0 ? (
+                <tr>
+                  <td colSpan={columns.length + 2} className="tw-p-8 tw-text-center tw-text-gray-400">
+                    {t.noResults(search || undefined)}
+                  </td>
+                </tr>
+              ) : tableRows.map((r, i) => {
+                const badge = workStatusBadge(r);
+                const canOpenPdf = normalizeStatus(r.status) === "completed";
+                const brand = brandOf(r);
+                const chargerNo = r.charger_no === null || r.charger_no === undefined || r.charger_no === "" ? "" : String(r.charger_no);
+                return (
+                  <tr
+                    key={r.id}
+                    onClick={() => openReport(r)}
+                    title={`${t.openReportTitle} · ${r.station_name || r.station_id}`}
+                    className="tw-cursor-pointer tw-border-t tw-border-gray-100 hover:tw-bg-blue-50/30"
+                  >
+                    <td className="tw-px-4 tw-py-3 tw-text-gray-400">{page * pageSize + i + 1}</td>
+                    <td className="tw-px-4 tw-py-3 tw-font-medium tw-text-gray-800">{r.station_name || r.station_id}</td>
+                    <td className="tw-px-4 tw-py-3 tw-text-gray-600">
+                      {r.charger_name || chargerNo ? (
+                        <span className="tw-block tw-max-w-[180px] tw-truncate" title={`${r.charger_name || ""}${r.charger_sn ? ` · ${r.charger_sn}` : ""}`}>
+                          {r.charger_name || "-"}
+                          {chargerNo && <span className="tw-ml-1 tw-text-xs tw-text-gray-400">#{chargerNo}</span>}
+                        </span>
+                      ) : <span className="tw-text-gray-300">-</span>}
+                    </td>
+                    <td className="tw-px-4 tw-py-3">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); toggleFilter("brand", brand); }}
+                        className={`tw-rounded tw-px-1.5 tw-py-0.5 tw-text-xs tw-transition-colors ${
+                          filters.brand === brand ? "tw-bg-blue-100 tw-text-blue-700 tw-font-bold" : "tw-text-gray-600 hover:tw-bg-gray-100"
+                        } ${brand === UNKNOWN_BRAND ? "tw-text-gray-400" : ""}`}
+                      >
+                        {brand}
+                      </button>
+                    </td>
+                    <td className="tw-px-4 tw-py-3 tw-text-gray-600">{r.issue_id || "-"}</td>
+                    <td className="tw-px-4 tw-py-3 tw-text-gray-600">
+                      <span className="tw-inline-flex tw-items-center tw-gap-1.5">
+                        {r.reported_by || "-"}
+                        {originOf(r) === "auto" && (
+                          <span className="tw-rounded tw-bg-indigo-100 tw-px-1 tw-py-0.5 tw-text-[10px] tw-font-semibold tw-text-indigo-700">AUTO</span>
+                        )}
+                      </span>
+                    </td>
+                    <td className="tw-px-4 tw-py-3">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); r.faulty_equipment && toggleFilter("equipment", r.faulty_equipment); }}
+                        className={`tw-rounded tw-px-1.5 tw-py-0.5 tw-text-xs tw-transition-colors ${
+                          filters.equipment === r.faulty_equipment ? "tw-bg-blue-100 tw-text-blue-700 tw-font-bold" : "tw-text-gray-600 hover:tw-bg-gray-100"
+                        }`}
+                      >
+                        {displayFaultyEquipment(r) || "-"}
+                      </button>
+                    </td>
+                    <td className="tw-px-4 tw-py-3 tw-text-gray-600">
+                      <span className="tw-block tw-max-w-[240px] tw-truncate tw-text-xs" title={r.problem_details || ""}>
+                        {r.problem_details || "-"}
+                      </span>
+                    </td>
+                    <td className="tw-px-4 tw-py-3">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); r.severity && toggleFilter("severity", r.severity); }}
+                        className={`tw-rounded tw-px-1.5 tw-py-0.5 tw-text-xs tw-transition-colors ${
+                          filters.severity === r.severity ? "tw-bg-blue-100 tw-text-blue-700 tw-font-bold" : "tw-text-gray-600 hover:tw-bg-gray-100"
+                        }`}
+                      >
+                        {r.severity || "-"}
+                      </button>
+                    </td>
+                    <td className="tw-px-4 tw-py-3 tw-text-gray-500 tw-whitespace-nowrap">
+                      {r.cm_date ? new Date(r.cm_date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "-"}
+                    </td>
+                    <td className="tw-px-4 tw-py-3">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); toggleFilter("workStatus", badge.ws); }}
+                        className="tw-whitespace-nowrap tw-rounded-full tw-px-2.5 tw-py-0.5 tw-text-xs tw-font-medium tw-transition-all hover:tw-opacity-80"
+                        style={{ background: badge.bg, color: badge.text, outline: filters.workStatus === badge.ws ? `2px solid ${badge.text}` : "none" }}
+                      >
+                        {workStatusLabel[badge.ws]}
+                      </button>
+                    </td>
+                    <td className="tw-px-4 tw-py-3 tw-text-center">
+                      {r.id && canOpenPdf ? (
+                        <a
+                          href={`${API_BASE}/pdf/cm/${encodeURIComponent(r.id)}/export?station_id=${encodeURIComponent(r.station_id || "")}&lang=${lang}&dl=0`}
+                          target="_blank" rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="tw-inline-flex tw-items-center tw-justify-center tw-rounded-lg tw-p-1.5 tw-text-red-600 hover:tw-bg-red-50 hover:tw-text-red-800"
+                          title="PDF" aria-label="PDF"
+                        >
+                          <DocumentArrowDownIcon className="tw-h-5 tw-w-5" />
+                        </a>
+                      ) : (
+                        <span className="tw-text-gray-300">-</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        {totalPages > 1 && (
+          <div className="tw-flex tw-flex-col tw-items-center tw-gap-3 tw-border-t tw-border-gray-100 tw-px-4 tw-py-4 sm:tw-flex-row sm:tw-justify-between">
+            <p className="tw-text-xs tw-text-gray-500">{t.pagination(from, to, sortedRows.length)}</p>
+            <div className="tw-flex tw-items-center tw-gap-1">
+              <button
+                onClick={() => setPage(page - 1)} disabled={page === 0}
+                className="tw-flex tw-h-8 tw-w-8 tw-items-center tw-justify-center tw-rounded-lg tw-border tw-border-gray-200 tw-text-sm tw-text-gray-600 hover:tw-bg-gray-50 disabled:tw-cursor-not-allowed disabled:tw-opacity-40"
+              >‹</button>
+              <span className="tw-px-2 tw-text-xs tw-text-gray-500">{page + 1} / {totalPages}</span>
+              <button
+                onClick={() => setPage(page + 1)} disabled={page >= totalPages - 1}
+                className="tw-flex tw-h-8 tw-w-8 tw-items-center tw-justify-center tw-rounded-lg tw-border tw-border-gray-200 tw-text-sm tw-text-gray-600 hover:tw-bg-gray-50 disabled:tw-cursor-not-allowed disabled:tw-opacity-40"
+              >›</button>
+            </div>
+          </div>
+        )}
+      </Card>
+    </main>
+  );
+}

@@ -14,7 +14,8 @@ import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 import { Tabs, TabsHeader, Tab } from "@material-tailwind/react";
 import { putPhoto, getPhotoByDbKey, delPhoto, type PhotoRef } from "../lib/draftPhotos";
-import { isFileReadable, isImageDecodable, resolveUsableFile, reportMissingDraftPhoto } from "@/utils/upload-safety";
+import { isFileReadable, isImageDecodable, resolveUsableFile, reportMissingDraftPhoto, reportPhotoStorageFailure } from "@/utils/upload-safety";
+import { collectPending, unrecoverablePhotos, expectedCountByGroup, findShortfall, shortfallMessage, pendingMessage, unrecoverableMessage } from "@/utils/pm-photo-sync";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
 import { apiFetch } from "@/utils/api";
 import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
@@ -757,7 +758,7 @@ async function compressImage(
     return new File([blob], ensureJpgFilename(file.name), { type: "image/jpeg" });
 }
 
- function PhotoMultiInput({ photos, setPhotos, max = 5, draftKey, qNo, lang, id }: {
+ function PhotoMultiInput({ photos, setPhotos, max = 10, draftKey, qNo, lang, id }: {
     photos: PhotoItem[]; setPhotos: React.Dispatch<React.SetStateAction<PhotoItem[]>>;
     max?: number; draftKey: string; qNo: number; lang: Lang; id?: string;
 }) {
@@ -796,8 +797,10 @@ async function compressImage(
                 console.warn("processFile: เบราว์เซอร์แสดงผลรูปนี้ไม่ได้", file.name, file.type);
             }
             const photoId = `${qNo}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${file.name}`;
-            const ref = await putPhoto(draftKey, photoId, finalFile);
-            if (!ref) return { id: photoId, file: finalFile, preview: URL.createObjectURL(finalFile), remark: "" };
+            // เขียน IndexedDB ไม่ได้ (พื้นที่เต็ม / private mode) → ห้ามทิ้งรูป เก็บใน memory ต่อแล้วเตือน
+            let ref: PhotoRef | undefined;
+            try { ref = await putPhoto(draftKey, photoId, finalFile); }
+            catch (e) { console.error("putPhoto failed:", e); reportPhotoStorageFailure(lang); }
             const now = new Date().toLocaleString("th-TH", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
             return { id: photoId, file: finalFile, preview: URL.createObjectURL(finalFile), remark: "", ref, createdAt: now, location: locationText };
         } catch (err) { console.error("processFile error:", err); return null; }
@@ -1438,15 +1441,18 @@ export default function MDBPMForm() {
     }, [postKey, stationId, rows, m4State, m5State, m6State, m7State, summary, summaryCheck, dustFilterChanged, photoRefs, isPostMode, editId]);
 
     // ==================== UPLOAD HELPERS ====================
+    // key ที่ backend ใช้เก็บใน photos_pre / photos — ต้องใช้สูตรเดียวกันทั้งตอน upload และตอน verify
+    const normalizePhotoGroup = (group: string | number) => {
+        const k = String(group);
+        if (/^\d+$/.test(k)) return `g${k}`;       // "1" -> "g1"
+        if (/^r\d+_\d+$/.test(k)) return k;         // "r4_1" -> "r4_1" (MDB backend accepts r\d+_\d+)
+        if (k.startsWith("g")) return k;             // "g1" -> "g1"
+        return `g${k}`;
+    };
+
     async function uploadSinglePhoto(reportId: string, stationId: string, group: string, file: File, side: TabId) {
         if (!file || file.size === 0) throw new Error(`Empty file: ${file?.name ?? "unknown"}`);
-        const normalizedGroup = (() => {
-            const k = String(group);
-            if (/^\d+$/.test(k)) return `g${k}`;       // "1" -> "g1"
-            if (/^r\d+_\d+$/.test(k)) return k;         // "r4_1" -> "r4_1" (MDB backend accepts r\d+_\d+)
-            if (k.startsWith("g")) return k;             // "g1" -> "g1"
-            return `g${k}`;
-        })();
+        const normalizedGroup = normalizePhotoGroup(group);
 
         console.log("[upload] reportId:", reportId, "| group:", normalizedGroup, "| side:", side);
         console.log("[upload] URL:", side === "pre"
@@ -1539,28 +1545,37 @@ export default function MDBPMForm() {
                 });
             }
 
-            // ⚡ per-photo tasks — skip รูปที่ uploaded แล้ว
-            type UploadTask = { group: string; photoId: string; file: File; ref?: PhotoRef };
-            const allPreTasks: UploadTask[] = [];
-            for (const [no, list] of Object.entries(photos)) {
-                (list || []).forEach(p => {
-                    if (p.file && !p.uploaded && !p.isNA) {
-                        allPreTasks.push({ group: no, photoId: p.id, file: p.file, ref: p.ref });
-                    }
+            const uploadedIdsPre = new Set<string>();
+
+            // เก็บ uploaded flag ลง draft ทันที — กัน user refresh ก่อน debounce ทำงาน แล้วต้องอัปซ้ำทั้งชุด
+            const flushPreDraft = () => {
+                const latestPhotoRefs: Record<string, any> = {};
+                Object.entries(photosRef.current).forEach(([k, list]) => {
+                    latestPhotoRefs[k] = (list || []).map(p => {
+                        if (p.isNA) return { isNA: true };
+                        if (!p.ref) return null;
+                        return { ...p.ref, uploaded: p.uploaded === true || uploadedIdsPre.has(p.id) };
+                    }).filter(Boolean);
                 });
-            }
-            const totalPhotos = allPreTasks.length;
+                saveDraftLocal(key, {
+                    ...loadDraftLocal(key), pendingReportId: report_id,
+                    rows, m4: m4State, m5: m5State, m6: m6State, m7: m7State,
+                    summary: summaryPre, dustFilterChanged, photoRefs: latestPhotoRefs
+                });
+            };
 
-            // Guard: มีรูปใน state แต่ไม่มี file (draft โหลดไม่สมบูรณ์)
-            const hasAnyPhotoInState = Object.values(photos).some(list => (list || []).length > 0);
-            const hasAnyFile = Object.values(photos).some(list => (list || []).some(p => p.file || p.isNA));
-            if (hasAnyPhotoInState && !hasAnyFile) {
-                throw new Error(lang === "th"
-                    ? "ไม่พบไฟล์รูปภาพ กรุณาแนบรูปใหม่อีกครั้ง"
-                    : "Photo files not found. Please re-attach photos.");
-            }
+            // ⚡ อัปโหลดหลายรอบ — รูปที่ processFile เสร็จ "หลัง" กดบันทึก จะถูกจับเข้ารอบถัดไป
+            // แทนที่จะถูกข้ามแล้วโดน cleanup ลบทิ้ง
+            const MAX_UPLOAD_PASSES = 3;
+            for (let pass = 1; pass <= MAX_UPLOAD_PASSES; pass++) {
+                if (unrecoverablePhotos(photosRef.current, uploadedIdsPre).length > 0) {
+                    throw new Error(unrecoverableMessage(lang));
+                }
 
-            if (totalPhotos > 0) {
+                const allPreTasks = collectPending(photosRef.current, uploadedIdsPre);
+                if (allPreTasks.length === 0) break;
+
+                const totalPhotos = allPreTasks.length;
                 setPreUploadState({ show: true, total: totalPhotos, completed: 0, failed: 0 });
                 let completedCount = 0, failedCount = 0;
                 const failures: { group: string; error: string }[] = [];
@@ -1569,7 +1584,7 @@ export default function MDBPMForm() {
                 const finalReportId = report_id!;
                 const finalStationId = stationId;
 
-                const tasksByGroup = new Map<string, UploadTask[]>();
+                const tasksByGroup = new Map<string, typeof allPreTasks>();
                 for (const task of allPreTasks) {
                     if (!tasksByGroup.has(task.group)) tasksByGroup.set(task.group, []);
                     tasksByGroup.get(task.group)!.push(task);
@@ -1586,6 +1601,7 @@ export default function MDBPMForm() {
                                 const usable = await resolveUploadFile(task);
                                 const compressed = await compressImage(usable);
                                 await uploadSinglePhotoWithRetry(finalReportId, finalStationId, task.group, compressed, "pre");
+                                uploadedIdsPre.add(task.photoId);
                                 setPhotos(prev => ({
                                     ...prev,
                                     [group]: (prev[group] || []).map(p =>
@@ -1606,25 +1622,35 @@ export default function MDBPMForm() {
                 setPreUploadState({ show: false, total: 0, completed: 0, failed: 0 });
 
                 if (failures.length > 0) {
-                    // Flush draft ทันที เพื่อ persist uploaded flags ก่อน debounce
-                    const latestPhotoRefs: Record<string, any> = {};
-                    Object.entries(photosRef.current).forEach(([k, list]) => {
-                        latestPhotoRefs[k] = (list || []).map(p => {
-                            if (p.isNA) return { isNA: true };
-                            if (!p.ref) return null;
-                            return { ...p.ref, uploaded: p.uploaded === true };
-                        }).filter(Boolean);
-                    });
-                    saveDraftLocal(key, {
-                        ...loadDraftLocal(key), pendingReportId: report_id,
-                        rows, m4: m4State, m5: m5State, m6: m6State, m7: m7State,
-                        summary: summaryPre, dustFilterChanged, photoRefs: latestPhotoRefs
-                    });
+                    flushPreDraft();
                     const details = failures.map(f => `${t("uploadFailedItem", lang)} ${f.group}: ${f.error}`).join("\n");
                     alert(
                         `${lang === "th" ? "อัปโหลดรูปไม่สำเร็จ" : "Photo upload failed"} ${failures.length} ${lang === "th" ? "รูป" : "photos"}\n\n`
-                        + `${lang === "th" ? "กดบันทึกอีกครั้งเพื่ออัปโหลดเฉพาะรูปที่ค้าง" : "Click save again to retry only the failed photos"}\n\n${details}`
+                        + `${lang === "th" ? "รูปในเครื่องยังอยู่ครบ กดบันทึกอีกครั้งเพื่ออัปเฉพาะรูปที่ค้าง" : "Your photos are still saved on this device. Click save again to retry only the failed photos"}\n\n${details}`
                     );
+                    return;
+                }
+            }
+
+            // ยังมีรูปค้างหลังครบทุกรอบ → หยุดไว้เฉย ๆ ห้ามลบอะไรทั้งนั้น
+            const stillPendingPre = collectPending(photosRef.current, uploadedIdsPre);
+            if (stillPendingPre.length > 0) {
+                flushPreDraft();
+                alert(pendingMessage(stillPendingPre.length, lang));
+                return;
+            }
+
+            // ⚡ ยืนยันกับ server ว่าได้รูป "ครบจำนวน" ทุกข้อ ก่อนแตะรูปในเครื่อง
+            const expectedPre = expectedCountByGroup(photosRef.current, normalizePhotoGroup);
+            if (Object.keys(expectedPre).length > 0) {
+                const verifyRes = await apiFetch(`${API_BASE}/${PM_PREFIX}/get?station_id=${encodeURIComponent(stationId)}&report_id=${report_id}`, { credentials: "include" });
+                if (!verifyRes.ok) throw new Error(await verifyRes.text());
+                const verifyDoc = await verifyRes.json() as { photos_pre?: Record<string, unknown[]> };
+                const shortfall = findShortfall(expectedPre, verifyDoc?.photos_pre);
+                if (shortfall.length > 0) {
+                    console.error("[Pre-PM verify] shortfall:", shortfall);
+                    flushPreDraft();
+                    alert(shortfallMessage(shortfall, lang));
                     return;
                 }
             }
@@ -1683,18 +1709,34 @@ export default function MDBPMForm() {
                 });
             }
 
-            // ⚡ per-photo tasks — skip รูปที่ uploaded แล้ว
-            type UploadTask = { group: string; photoId: string; file: File; ref?: PhotoRef };
-            const allPostTasks: UploadTask[] = [];
-            Object.entries(photos).forEach(([no, list]) => {
-                (list || []).forEach(p => {
-                    if (p.file && !p.uploaded && !p.isNA) {
-                        allPostTasks.push({ group: no, photoId: p.id, file: p.file, ref: p.ref });
-                    }
-                });
-            });
+            const uploadedIdsPost = new Set<string>();
 
-            if (allPostTasks.length > 0) {
+            const flushPostDraft = () => {
+                const latestPhotoRefs: Record<string, any> = {};
+                Object.entries(photosRef.current).forEach(([k, list]) => {
+                    latestPhotoRefs[k] = (list || []).map(p => {
+                        if (p.isNA) return { isNA: true };
+                        if (!p.ref) return null;
+                        return { ...p.ref, uploaded: p.uploaded === true || uploadedIdsPost.has(p.id) };
+                    }).filter(Boolean);
+                });
+                saveDraftLocal(postKey, {
+                    ...loadDraftLocal(postKey), pendingReportId: report_id,
+                    rows, m4: m4State, m5: m5State, m6: m6State, m7: m7State,
+                    summary, summaryCheck, dustFilterChanged, photoRefs: latestPhotoRefs
+                });
+            };
+
+            // ⚡ อัปโหลดหลายรอบ — รูปที่มาถึงหลังกดบันทึกต้องถูกจับเข้ารอบถัดไป ไม่ใช่ถูกข้ามแล้วโดนลบ
+            const MAX_UPLOAD_PASSES = 3;
+            for (let pass = 1; pass <= MAX_UPLOAD_PASSES; pass++) {
+                if (unrecoverablePhotos(photosRef.current, uploadedIdsPost).length > 0) {
+                    throw new Error(unrecoverableMessage(lang));
+                }
+
+                const allPostTasks = collectPending(photosRef.current, uploadedIdsPost);
+                if (allPostTasks.length === 0) break;
+
                 const totalPhotos = allPostTasks.length;
                 setPreUploadState({ show: true, total: totalPhotos, completed: 0, failed: 0 });
                 let completedCount = 0, failedCount = 0;
@@ -1703,7 +1745,7 @@ export default function MDBPMForm() {
                 const finalReportId = report_id!;
                 const finalStationId = stationId;
 
-                const tasksByGroup = new Map<string, UploadTask[]>();
+                const tasksByGroup = new Map<string, typeof allPostTasks>();
                 for (const task of allPostTasks) {
                     if (!tasksByGroup.has(task.group)) tasksByGroup.set(task.group, []);
                     tasksByGroup.get(task.group)!.push(task);
@@ -1720,6 +1762,7 @@ export default function MDBPMForm() {
                                 const usable = await resolveUploadFile(task);
                                 const compressed = await compressImage(usable);
                                 await uploadSinglePhotoWithRetry(finalReportId, finalStationId, task.group, compressed, "post");
+                                uploadedIdsPost.add(task.photoId);
                                 setPhotos(prev => ({
                                     ...prev,
                                     [group]: (prev[group] || []).map(p =>
@@ -1740,25 +1783,35 @@ export default function MDBPMForm() {
                 setPreUploadState({ show: false, total: 0, completed: 0, failed: 0 });
 
                 if (failures.length > 0) {
-                    // Flush draft ทันที
-                    const latestPhotoRefs: Record<string, any> = {};
-                    Object.entries(photosRef.current).forEach(([k, list]) => {
-                        latestPhotoRefs[k] = (list || []).map(p => {
-                            if (p.isNA) return { isNA: true };
-                            if (!p.ref) return null;
-                            return { ...p.ref, uploaded: p.uploaded === true };
-                        }).filter(Boolean);
-                    });
-                    saveDraftLocal(postKey, {
-                        ...loadDraftLocal(postKey), pendingReportId: report_id,
-                        rows, m4: m4State, m5: m5State, m6: m6State, m7: m7State,
-                        summary, summaryCheck, dustFilterChanged, photoRefs: latestPhotoRefs
-                    });
+                    flushPostDraft();
                     const details = failures.map(f => `${t("uploadFailedItem", lang)} ${f.group}: ${f.error}`).join("\n");
                     alert(
                         `${lang === "th" ? "อัปโหลดรูปไม่สำเร็จ" : "Photo upload failed"} ${failures.length}\n\n`
-                        + `${lang === "th" ? "กดบันทึกอีกครั้งเพื่ออัปโหลดเฉพาะรูปที่ค้าง" : "Click save again to retry only the failed photos"}\n\n${details}`
+                        + `${lang === "th" ? "รูปในเครื่องยังอยู่ครบ กดบันทึกอีกครั้งเพื่ออัปเฉพาะรูปที่ค้าง" : "Your photos are still saved on this device. Click save again to retry only the failed photos"}\n\n${details}`
                     );
+                    return;
+                }
+            }
+
+            // ยังมีรูปค้างหลังครบทุกรอบ → หยุดไว้ ห้ามลบ ห้าม finalize
+            const stillPendingPost = collectPending(photosRef.current, uploadedIdsPost);
+            if (stillPendingPost.length > 0) {
+                flushPostDraft();
+                alert(pendingMessage(stillPendingPost.length, lang));
+                return;
+            }
+
+            // ⚡ ยืนยันจำนวนรูป Post-PM กับ server ก่อน finalize + ล้าง draft
+            const expectedPost = expectedCountByGroup(photosRef.current, normalizePhotoGroup);
+            if (Object.keys(expectedPost).length > 0) {
+                const verifyRes = await apiFetch(`${API_BASE}/${PM_PREFIX}/get?station_id=${encodeURIComponent(stationId)}&report_id=${report_id}`, { credentials: "include" });
+                if (!verifyRes.ok) throw new Error(await verifyRes.text());
+                const verifyDoc = await verifyRes.json() as { photos?: Record<string, unknown[]> };
+                const shortfall = findShortfall(expectedPost, verifyDoc?.photos);
+                if (shortfall.length > 0) {
+                    console.error("[Post-PM verify] shortfall:", shortfall);
+                    flushPostDraft();
+                    alert(shortfallMessage(shortfall, lang));
                     return;
                 }
             }
@@ -1886,7 +1939,7 @@ export default function MDBPMForm() {
                                                     {q4Items.length > 1 && (<button type="button" onClick={() => removeQ4Item(idx)} className="tw-h-6 tw-w-6 tw-flex tw-items-center tw-justify-center tw-rounded tw-bg-red-50 tw-text-red-600 hover:tw-bg-red-100"><svg className="tw-w-3.5 tw-h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" /></svg></button>)}
                                                 </div>
                                             </div>
-                                            <div className="tw-mb-3"><PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={5} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(item.key)} /></div>
+                                            <div className="tw-mb-3"><PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(item.key)} /></div>
                                             <div id={getInputIdFromKey(item.key)} className={`tw-mb-3 tw-transition-all tw-duration-300 ${isNA ? "tw-opacity-50 tw-pointer-events-none" : ""}`}>{renderDynamicMeasureGrid(4, item.key)}</div>
                                             <div id={getRemarkIdFromKey(item.key)} className="tw-transition-all tw-duration-300"><Textarea label={t("remark", lang)} value={rows[item.key]?.remark ?? ""} onChange={e => setRows(p => ({ ...p, [item.key]: { ...(p[item.key] ?? { pf: "" }), remark: e.target.value } }))} rows={3} required containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full resize-none" /></div>
                                         </div>
@@ -1918,7 +1971,7 @@ export default function MDBPMForm() {
                                                 <Typography className="tw-font-semibold tw-text-sm tw-text-gray-800">{item.label}</Typography>
                                                 <Button id={getPfIdFromKey(item.key)} size="sm" color={isNA ? "amber" : "gray"} variant={isNA ? "filled" : "outlined"} onClick={() => setRows(p => ({ ...p, [item.key]: { ...p[item.key], pf: isNA ? "" : "NA" } }))} className="tw-text-xs tw-transition-all tw-duration-300">{isNA ? t("cancelNA", lang) : t("na", lang)}</Button>
                                             </div>
-                                            <div className="tw-mb-3"><PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={5} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(item.key)} /></div>
+                                            <div className="tw-mb-3"><PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(item.key)} /></div>
                                             <div id={getInputIdFromKey(item.key)} className={`tw-mb-3 tw-transition-all tw-duration-300 ${isNA ? "tw-opacity-50 tw-pointer-events-none" : ""}`}>{renderDynamicMeasureGrid(5, item.key)}</div>
                                             <div id={getRemarkIdFromKey(item.key)} className="tw-transition-all tw-duration-300"><Textarea label={t("remark", lang)} value={rows[item.key]?.remark ?? ""} onChange={e => setRows(p => ({ ...p, [item.key]: { ...(p[item.key] ?? { pf: "" }), remark: e.target.value } }))} rows={3} required containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full resize-none" /></div>
                                         </div>
@@ -1954,7 +2007,7 @@ export default function MDBPMForm() {
                                                     {q6Items.length > 1 && (<button type="button" onClick={() => removeQ6Item(idx)} className="tw-h-6 tw-w-6 tw-flex tw-items-center tw-justify-center tw-rounded tw-bg-red-50 tw-text-red-600 hover:tw-bg-red-100"><svg className="tw-w-3.5 tw-h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" /></svg></button>)}
                                                 </div>
                                             </div>
-                                            <div className="tw-mb-3"><PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={5} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(item.key)} /></div>
+                                            <div className="tw-mb-3"><PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(item.key)} /></div>
                                             <div id={getInputIdFromKey(item.key)} className={`tw-mb-3 tw-transition-all tw-duration-300 ${isNA ? "tw-opacity-50 tw-pointer-events-none" : ""}`}>{renderDynamicMeasureGrid(6, item.key)}</div>
                                             <div id={getRemarkIdFromKey(item.key)} className="tw-transition-all tw-duration-300"><Textarea label={t("remark", lang)} value={rows[item.key]?.remark ?? ""} onChange={e => setRows(p => ({ ...p, [item.key]: { ...(p[item.key] ?? { pf: "" }), remark: e.target.value } }))} rows={3} required containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full resize-none" /></div>
                                         </div>
@@ -1986,7 +2039,7 @@ export default function MDBPMForm() {
                                                 <Typography className="tw-font-semibold tw-text-sm tw-text-gray-800">{item.label}</Typography>
                                                 <Button id={getPfIdFromKey(item.key)} size="sm" color={isNA ? "amber" : "gray"} variant={isNA ? "filled" : "outlined"} onClick={() => setRows(p => ({ ...p, [item.key]: { ...p[item.key], pf: isNA ? "" : "NA" } }))} className="tw-text-xs tw-transition-all tw-duration-300">{isNA ? t("cancelNA", lang) : t("na", lang)}</Button>
                                             </div>
-                                            <div className="tw-mb-3"><PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={5} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(item.key)} /></div>
+                                            <div className="tw-mb-3"><PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(item.key)} /></div>
                                             <div id={getInputIdFromKey(item.key)} className={`tw-mb-3 tw-transition-all tw-duration-300 ${isNA ? "tw-opacity-50 tw-pointer-events-none" : ""}`}>{renderDynamicMeasureGrid(7, item.key)}</div>
                                             <div id={getRemarkIdFromKey(item.key)} className="tw-transition-all tw-duration-300"><Textarea label={t("remark", lang)} value={rows[item.key]?.remark ?? ""} onChange={e => setRows(p => ({ ...p, [item.key]: { ...(p[item.key] ?? { pf: "" }), remark: e.target.value } }))} rows={3} required containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full resize-none" /></div>
                                         </div>
@@ -2025,7 +2078,7 @@ export default function MDBPMForm() {
                                                 <Typography className="tw-font-semibold tw-text-sm tw-text-gray-800">{item.label}</Typography>
                                                 <Button id={getPfIdFromKey(item.key)} size="sm" color={isNA ? "amber" : "gray"} variant={isNA ? "filled" : "outlined"} onClick={() => setRows(p => ({ ...p, [item.key]: { ...p[item.key], pf: isNA ? "" : "NA" } }))} className="tw-text-xs tw-transition-all tw-duration-300">{isNA ? t("cancelNA", lang) : t("na", lang)}</Button>
                                             </div>
-                                            <div className="tw-mb-3"><PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={5} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(item.key)} /></div>
+                                            <div className="tw-mb-3"><PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(item.key)} /></div>
                                             <div id={getRemarkIdFromKey(item.key)} className="tw-transition-all tw-duration-300"><Textarea label={t("remark", lang)} value={rows[item.key]?.remark ?? ""} onChange={e => setRows(p => ({ ...p, [item.key]: { ...(p[item.key] ?? { pf: "" }), remark: e.target.value } }))} rows={3} required containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full resize-none" /></div>
                                         </div>
                                     );
@@ -2043,7 +2096,7 @@ export default function MDBPMForm() {
                         <div id={getPfIdFromKey(q.key)} className="tw-flex tw-justify-end tw-mb-3 tw-transition-all tw-duration-300">
                             <Button size="sm" color={rows[q.key]?.pf === "NA" ? "amber" : "gray"} variant={rows[q.key]?.pf === "NA" ? "filled" : "outlined"} onClick={() => setRows(p => ({ ...p, [q.key]: { ...p[q.key], pf: rows[q.key]?.pf === "NA" ? "" : "NA" } }))}>{rows[q.key]?.pf === "NA" ? t("cancelNA", lang) : t("na", lang)}</Button>
                         </div>
-                        <div className="tw-mb-3"><PhotoMultiInput photos={photos[q.no] || []} setPhotos={makePhotoSetter(q.no)} max={5} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(q.no)} /></div>
+                        <div className="tw-mb-3"><PhotoMultiInput photos={photos[q.no] || []} setPhotos={makePhotoSetter(q.no)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(q.no)} /></div>
                         <div id={getRemarkIdFromKey(q.key)} className="tw-transition-all tw-duration-300"><Textarea label={t("remark", lang)} value={rows[q.key]?.remark ?? ""} onChange={e => setRows(p => ({ ...p, [q.key]: { ...(p[q.key] ?? { pf: "" }), remark: e.target.value } }))} rows={3} required containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full resize-none" /></div>
                     </div>
                 </SectionCard>
@@ -2103,7 +2156,7 @@ export default function MDBPMForm() {
                                             remark={rows[item.key]?.remark ?? ""}
                                             onRemarkChange={v => setRows({ ...rows, [item.key]: { ...(rows[item.key] ?? { pf: "" }), remark: v } })}
                                             pfButtonsId={getPfIdFromKey(item.key)} remarkId={getRemarkIdFromKey(item.key)}
-                                            aboveRemark={<div className="tw-pb-4 tw-border-b tw-border-gray-100"><PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={5} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(item.key)} /></div>}
+                                            aboveRemark={<div className="tw-pb-4 tw-border-b tw-border-gray-100"><PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(item.key)} /></div>}
                                             beforeRemark={<><div id={getInputIdFromKey(item.key)} className="tw-mb-3 tw-transition-all tw-duration-300">{renderDynamicMeasureGridWithPre(cfg.qNo, item.key)}</div><PreRemarkElement remark={rowsPre[item.key]?.remark} lang={lang} /></>}
                                         />
                                     </div>
@@ -2156,7 +2209,7 @@ export default function MDBPMForm() {
                                             remark={rows[it.key]?.remark ?? ""}
                                             onRemarkChange={v => setRows({ ...rows, [it.key]: { ...(rows[it.key] ?? { pf: "" }), remark: v } })}
                                             pfButtonsId={getPfIdFromKey(it.key)} remarkId={getRemarkIdFromKey(it.key)}
-                                            aboveRemark={<div className="tw-pb-4 tw-border-b tw-border-gray-100"><PhotoMultiInput photos={photos[it.key] || []} setPhotos={makePhotoSetter(it.key)} max={5} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(it.key)} /></div>}
+                                            aboveRemark={<div className="tw-pb-4 tw-border-b tw-border-gray-100"><PhotoMultiInput photos={photos[it.key] || []} setPhotos={makePhotoSetter(it.key)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(it.key)} /></div>}
                                             beforeRemark={<PreRemarkElement remark={rowsPre[it.key]?.remark} lang={lang} />}
                                         />
                                     </div>
@@ -2177,7 +2230,7 @@ export default function MDBPMForm() {
                         remark={rows[q.key]?.remark ?? ""}
                         onRemarkChange={v => setRows({ ...rows, [q.key]: { ...(rows[q.key] ?? { pf: "" }), remark: v } })}
                         pfButtonsId={getPfIdFromKey(q.key)} remarkId={getRemarkIdFromKey(q.key)}
-                        aboveRemark={<>{q.hasPhoto && <div className="tw-pt-2 tw-pb-4 tw-border-b tw-mb-4 tw-border-gray-100"><PhotoMultiInput photos={photos[q.no] || []} setPhotos={makePhotoSetter(q.no)} max={5} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(q.no)} /></div>}{checkboxElement && <div className="sm:tw-hidden tw-mb-3">{checkboxElement}</div>}</>}
+                        aboveRemark={<>{q.hasPhoto && <div className="tw-pt-2 tw-pb-4 tw-border-b tw-mb-4 tw-border-gray-100"><PhotoMultiInput photos={photos[q.no] || []} setPhotos={makePhotoSetter(q.no)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(q.no)} /></div>}{checkboxElement && <div className="sm:tw-hidden tw-mb-3">{checkboxElement}</div>}</>}
                         inlineLeft={checkboxElement && <div className="tw-hidden sm:tw-flex">{checkboxElement}</div>}
                         beforeRemark={<PreRemarkElement remark={rowsPre[q.key]?.remark} lang={lang} />}
                     />

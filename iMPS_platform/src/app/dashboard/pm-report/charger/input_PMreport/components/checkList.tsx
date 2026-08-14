@@ -13,7 +13,8 @@ import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 import { Tabs, TabsHeader, Tab } from "@material-tailwind/react";
 import { putPhoto, getPhotoByDbKey, delPhoto, type PhotoRef } from "../lib/draftPhotos";
-import { isFileReadable, isImageDecodable, resolveUsableFile, reportMissingDraftPhoto } from "@/utils/upload-safety";
+import { isFileReadable, isImageDecodable, resolveUsableFile, reportMissingDraftPhoto, reportPhotoStorageFailure } from "@/utils/upload-safety";
+import { collectPending, unrecoverablePhotos, expectedCountByGroup, findShortfall, shortfallMessage, pendingMessage, unrecoverableMessage } from "@/utils/pm-photo-sync";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
 import { apiFetch } from "@/utils/api";
 import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
@@ -1520,12 +1521,15 @@ function PhotoMultiInput({
             }
 
             const photoId = `${qNo}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${file.name}`;
-            const ref = await putPhoto(draftKey, photoId, finalFile);
-
-            // ✅ เช็คว่า ref ได้จริงไหม
-            if (!ref) {
-                console.error("putPhoto failed — storing without ref");
-                return { id: photoId, file: finalFile, preview: URL.createObjectURL(finalFile), remark: "" };
+            // putPhoto throw เมื่อเขียน IndexedDB ไม่ได้ (พื้นที่เต็ม / private mode)
+            // ห้ามให้ตกไป catch ข้างล่าง เพราะรูปจะถูกทิ้งพร้อมข้อความ "ไฟล์เสียหาย" ที่บอกสาเหตุผิด
+            // เก็บรูปไว้ใน memory ต่อ (อัปโหลดได้ปกติ) แล้วเตือนว่าห้ามรีเฟรชก่อนกดบันทึก
+            let ref: PhotoRef | undefined;
+            try {
+                ref = await putPhoto(draftKey, photoId, finalFile);
+            } catch (e) {
+                console.error("putPhoto failed:", e);
+                reportPhotoStorageFailure(lang);
             }
 
             const now = new Date().toLocaleString("th-TH", {
@@ -3056,28 +3060,34 @@ export default function ChargerPMForm() {
                 });
             }
 
-            // ⚡ สร้าง tasks per-photo + skip รูปที่ upload สำเร็จไปแล้ว (uploaded=true)
-            type UploadTask = { group: string; photoId: string; file: File; ref?: PhotoRef };
-            const allPreTasks: UploadTask[] = [];
-            for (const [no, list] of Object.entries(photosRef.current)) {
-                (list || []).forEach(p => {
-                    if (p.file && !p.uploaded && !p.isNA) {
-                        allPreTasks.push({ group: no, photoId: p.id, file: p.file, ref: p.ref });
-                    }
+            const uploadedIdsPre = new Set<string>();
+
+            // เก็บ uploaded flag ลง draft ทันที — กัน user refresh ก่อน debounce ทำงาน แล้วต้องอัปซ้ำทั้งชุด
+            const flushPreDraft = () => {
+                const latestPhotoRefs: Record<string, any> = {};
+                Object.entries(photosRef.current).forEach(([k, list]) => {
+                    latestPhotoRefs[k] = (list || []).map(p => {
+                        if (p.isNA) return { isNA: true };
+                        if (!p.ref) return null;
+                        return { ...p.ref, uploaded: p.uploaded === true || uploadedIdsPre.has(p.id) };
+                    }).filter(Boolean);
                 });
-            }
+                saveDraftLocal(key, { ...loadDraftLocal(key), pendingReportId: report_id, rows, cp, m16: m16.state, summary: summaryPre, dustFilterChanged, photoRefs: latestPhotoRefs });
+            };
 
-            const totalPhotos = allPreTasks.length;
+            // ⚡ อัปโหลดหลายรอบ — รูปที่ processFile เสร็จ "หลัง" กดบันทึก (ถ่ายใบสุดท้ายแล้วกดบันทึกทันที)
+            // จะถูกจับเข้ารอบถัดไป แทนที่จะถูกข้ามแล้วโดน cleanup ลบทิ้ง
+            const MAX_UPLOAD_PASSES = 3;
+            for (let pass = 1; pass <= MAX_UPLOAD_PASSES; pass++) {
+                // รูปที่ยังไม่ขึ้น server และหาไฟล์ไม่เจอทั้ง memory และ IndexedDB → ให้แนบใหม่ ห้ามปล่อยผ่าน
+                if (unrecoverablePhotos(photosRef.current, uploadedIdsPre).length > 0) {
+                    throw new Error(unrecoverableMessage(lang));
+                }
 
-            // Guard: มี photos ใน state แต่ไม่มี file จริง (draft load ไม่สมบูรณ์)
-            // หมายเหตุ: ถ้าทุกรูป uploaded=true แล้ว totalPhotos จะเป็น 0 ซึ่ง valid (retry ครั้งที่ 2 ที่ทุกรูปผ่านแล้ว)
-            const hasAnyPhotoInState = Object.values(photosRef.current).some(list => (list || []).length > 0);
-            const hasAnyFile = Object.values(photosRef.current).some(list => (list || []).some(p => p.file || p.isNA));
-            if (hasAnyPhotoInState && !hasAnyFile) {
-                throw new Error(lang === "th" ? "ไม่พบไฟล์รูปภาพ กรุณาแนบรูปใหม่อีกครั้ง" : "Photo files not found. Please re-attach photos.");
-            }
+                const allPreTasks = collectPending(photosRef.current, uploadedIdsPre);
+                if (allPreTasks.length === 0) break;
 
-            if (totalPhotos > 0) {
+                const totalPhotos = allPreTasks.length;
                 setUploadProgress({ show: true, total: totalPhotos, completed: 0, failed: 0, side: "pre" });
                 let completedCount = 0;
                 let failedCount = 0;
@@ -3087,7 +3097,7 @@ export default function ChargerPMForm() {
                 const CONCURRENCY = 3;
                 const finalReportId = report_id!;
 
-                const tasksByGroup = new Map<string, UploadTask[]>();
+                const tasksByGroup = new Map<string, typeof allPreTasks>();
                 for (const task of allPreTasks) {
                     if (!tasksByGroup.has(task.group)) tasksByGroup.set(task.group, []);
                     tasksByGroup.get(task.group)!.push(task);
@@ -3105,6 +3115,7 @@ export default function ChargerPMForm() {
                                 const usable = await resolveUploadFile(task);
                                 const compressed = await compressImage(usable);
                                 await uploadSinglePhotoWithRetry(finalReportId, sn, `g${group}`, compressed, "pre");
+                                uploadedIdsPre.add(task.photoId);
                                 setPhotos(prev => ({
                                     ...prev,
                                     [group]: (prev[group] || []).map(p =>
@@ -3126,21 +3137,35 @@ export default function ChargerPMForm() {
                 setUploadProgress({ show: false, total: 0, completed: 0, failed: 0, side: "" });
 
                 if (failures.length > 0) {
-                    // ⚡ Flush draft ทันที เพื่อ persist uploaded flag ที่สำเร็จแล้ว — กันกรณี user refresh ก่อน debounce ทำงาน
-                    const latestPhotoRefs: Record<string, any> = {};
-                    Object.entries(photosRef.current).forEach(([k, list]) => {
-                        latestPhotoRefs[k] = (list || []).map(p => {
-                            if (p.isNA) return { isNA: true };
-                            if (!p.ref) return null;
-                            return { ...p.ref, uploaded: p.uploaded === true };
-                        }).filter(Boolean);
-                    });
-                    saveDraftLocal(key, { ...loadDraftLocal(key), pendingReportId: report_id, rows, cp, m16: m16.state, summary: summaryPre, dustFilterChanged, photoRefs: latestPhotoRefs });
-
+                    flushPreDraft();
                     const details = failures.map(f => `${t("uploadFailedItem", lang)} ${f.group}: ${f.error}`).join("\n");
                     alert(
-                        `${lang === "th" ? "อัปโหลดรูปไม่สำเร็จ" : "Photo upload failed"} ${failures.length} ${lang === "th" ? "รูป" : "photos"}\n\n${lang === "th" ? "กดบันทึกอีกครั้งเพื่ออัปโหลดเฉพาะรูปที่ค้าง" : "Click save again to retry only the failed photos"}\n\n${details}`
+                        `${lang === "th" ? "อัปโหลดรูปไม่สำเร็จ" : "Photo upload failed"} ${failures.length} ${lang === "th" ? "รูป" : "photos"}\n\n${lang === "th" ? "รูปในเครื่องยังอยู่ครบ กดบันทึกอีกครั้งเพื่ออัปเฉพาะรูปที่ค้าง" : "Your photos are still saved on this device. Click save again to retry only the failed photos"}\n\n${details}`
                     );
+                    return;
+                }
+            }
+
+            // ยังมีรูปค้างหลังครบทุกรอบ → หยุดไว้เฉย ๆ ห้ามลบอะไรทั้งนั้น
+            const stillPendingPre = collectPending(photosRef.current, uploadedIdsPre);
+            if (stillPendingPre.length > 0) {
+                flushPreDraft();
+                alert(pendingMessage(stillPendingPre.length, lang));
+                return;
+            }
+
+            // ⚡ ยืนยันกับ server ว่าได้รูป "ครบจำนวน" ทุกข้อ ก่อนแตะรูปในเครื่อง
+            // เช็คจำนวน ไม่ใช่แค่ว่ามีรูปไหม — ไม่งั้นรูปใบที่ 2 ของข้อเดิมหายไปโดยไม่มีใครรู้
+            const expectedPre = expectedCountByGroup(photosRef.current, k => `g${k}`);
+            if (Object.keys(expectedPre).length > 0) {
+                const verifyRes = await apiFetch(`${API_BASE}/pmreport/get?sn=${encodeURIComponent(sn)}&report_id=${report_id}`);
+                if (!verifyRes.ok) throw new Error(await verifyRes.text());
+                const verifyDoc = await verifyRes.json() as { photos_pre?: Record<string, unknown[]> };
+                const shortfall = findShortfall(expectedPre, verifyDoc?.photos_pre);
+                if (shortfall.length > 0) {
+                    console.error("[Pre-PM verify] shortfall:", shortfall);
+                    flushPreDraft();
+                    alert(shortfallMessage(shortfall, lang));
                     return;
                 }
             }
@@ -3187,18 +3212,30 @@ export default function ChargerPMForm() {
                 saveDraftLocal(postKey, { ...loadDraftLocal(postKey), pendingReportId: report_id, rows, cp, m16: m16.state, summary, summaryCheck, dustFilterChanged, photoRefs });
             }
 
-            // ⚡ เตรียม entries สำหรับ upload (เฉพาะกลุ่มที่มี file จริง)
-            type UploadTask = { group: string; photoId: string; file: File; ref?: PhotoRef };
-            const allPostTasks: UploadTask[] = [];
-            Object.entries(photosRef.current).forEach(([no, list]) => {
-                (list || []).forEach(p => {
-                    if (p.file && !p.uploaded && !p.isNA) {
-                        allPostTasks.push({ group: no, photoId: p.id, file: p.file, ref: p.ref });
-                    }
-                });
-            });
+            const uploadedIdsPost = new Set<string>();
 
-            if (allPostTasks.length > 0) {
+            const flushPostDraft = () => {
+                const latestPhotoRefs: Record<string, any> = {};
+                Object.entries(photosRef.current).forEach(([k, list]) => {
+                    latestPhotoRefs[k] = (list || []).map(p => {
+                        if (p.isNA) return { isNA: true };
+                        if (!p.ref) return null;
+                        return { ...p.ref, uploaded: p.uploaded === true || uploadedIdsPost.has(p.id) };
+                    }).filter(Boolean);
+                });
+                saveDraftLocal(postKey, { ...loadDraftLocal(postKey), pendingReportId: report_id, rows, cp, m16: m16.state, summary, summaryCheck, dustFilterChanged, photoRefs: latestPhotoRefs });
+            };
+
+            // ⚡ อัปโหลดหลายรอบ — รูปที่มาถึงหลังกดบันทึกต้องถูกจับเข้ารอบถัดไป ไม่ใช่ถูกข้ามแล้วโดนลบ
+            const MAX_UPLOAD_PASSES = 3;
+            for (let pass = 1; pass <= MAX_UPLOAD_PASSES; pass++) {
+                if (unrecoverablePhotos(photosRef.current, uploadedIdsPost).length > 0) {
+                    throw new Error(unrecoverableMessage(lang));
+                }
+
+                const allPostTasks = collectPending(photosRef.current, uploadedIdsPost);
+                if (allPostTasks.length === 0) break;
+
                 const totalPhotos = allPostTasks.length;
                 setUploadProgress({ show: true, total: totalPhotos, completed: 0, failed: 0, side: "post" });
                 let completedCount = 0;
@@ -3208,7 +3245,7 @@ export default function ChargerPMForm() {
                 const CONCURRENCY = 3;
                 const finalReportId = report_id!;
 
-                const tasksByGroup = new Map<string, UploadTask[]>();
+                const tasksByGroup = new Map<string, typeof allPostTasks>();
                 for (const task of allPostTasks) {
                     if (!tasksByGroup.has(task.group)) tasksByGroup.set(task.group, []);
                     tasksByGroup.get(task.group)!.push(task);
@@ -3226,6 +3263,7 @@ export default function ChargerPMForm() {
                                 const usable = await resolveUploadFile(task);
                                 const compressed = await compressImage(usable);
                                 await uploadSinglePhotoWithRetry(finalReportId, sn, `g${group}`, compressed, "post");
+                                uploadedIdsPost.add(task.photoId);
                                 setPhotos(prev => ({
                                     ...prev,
                                     [group]: (prev[group] || []).map(p =>
@@ -3247,26 +3285,40 @@ export default function ChargerPMForm() {
                 setUploadProgress({ show: false, total: 0, completed: 0, failed: 0, side: "" });
 
                 if (failures.length > 0) {
-                    // ⚡ Flush draft ทันทีเพื่อ persist uploaded flag
-                    const latestPhotoRefs: Record<string, any> = {};
-                    Object.entries(photosRef.current).forEach(([k, list]) => {
-                        latestPhotoRefs[k] = (list || []).map(p => {
-                            if (p.isNA) return { isNA: true };
-                            if (!p.ref) return null;
-                            return { ...p.ref, uploaded: p.uploaded === true };
-                        }).filter(Boolean);
-                    });
-                    saveDraftLocal(postKey, { ...loadDraftLocal(postKey), pendingReportId: report_id, rows, cp, m16: m16.state, summary, summaryCheck, dustFilterChanged, photoRefs: latestPhotoRefs });
-
+                    flushPostDraft();
                     const groupNums = failures.map(f => f.group).join(", ");
                     const details = failures.map(f => `${t("uploadFailedItem", lang)} ${f.group}: ${f.error}`).join("\n");
                     console.error("[Post-PM upload failures]", failures);
                     alert(
-                        `${lang === "th" ? "อัปโหลดรูปไม่สำเร็จในข้อ" : "Photo upload failed for group"}: ${groupNums}\n\n${lang === "th" ? "กดบันทึกอีกครั้งเพื่ออัปโหลดเฉพาะรูปที่ค้าง" : "Click save again to retry only the failed photos"}\n\n${details}`
+                        `${lang === "th" ? "อัปโหลดรูปไม่สำเร็จในข้อ" : "Photo upload failed for group"}: ${groupNums}\n\n${lang === "th" ? "รูปในเครื่องยังอยู่ครบ กดบันทึกอีกครั้งเพื่ออัปเฉพาะรูปที่ค้าง" : "Your photos are still saved on this device. Click save again to retry only the failed photos"}\n\n${details}`
                     );
                     return;
                 }
             }
+
+            // ยังมีรูปค้างหลังครบทุกรอบ → หยุดไว้ ห้ามลบ ห้าม finalize
+            const stillPendingPost = collectPending(photosRef.current, uploadedIdsPost);
+            if (stillPendingPost.length > 0) {
+                flushPostDraft();
+                alert(pendingMessage(stillPendingPost.length, lang));
+                return;
+            }
+
+            // ⚡ ยืนยันจำนวนรูป Post-PM กับ server ก่อน finalize + ล้าง draft
+            const expectedPost = expectedCountByGroup(photosRef.current, k => `g${k}`);
+            if (Object.keys(expectedPost).length > 0) {
+                const verifyRes = await apiFetch(`${API_BASE}/pmreport/get?sn=${encodeURIComponent(sn)}&report_id=${report_id}`);
+                if (!verifyRes.ok) throw new Error(await verifyRes.text());
+                const verifyDoc = await verifyRes.json() as { photos?: Record<string, unknown[]> };
+                const shortfall = findShortfall(expectedPost, verifyDoc?.photos);
+                if (shortfall.length > 0) {
+                    console.error("[Post-PM verify] shortfall:", shortfall);
+                    flushPostDraft();
+                    alert(shortfallMessage(shortfall, lang));
+                    return;
+                }
+            }
+
             const finalizeRes = await apiFetch(`${API_BASE}/pmreport/${report_id}/finalize`, { method: "POST", body: new URLSearchParams({ sn: sn }) });
             if (!finalizeRes.ok) throw new Error(await finalizeRes.text());
             postReportIdRef.current = null; // ⚡ สำเร็จแล้ว → reset

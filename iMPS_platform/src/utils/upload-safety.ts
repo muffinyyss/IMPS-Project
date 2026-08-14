@@ -197,6 +197,31 @@ export function reportMissingDraftPhoto(lang: string = "th") {
     }, 500);
 }
 
+let storageFailCount = 0;
+let storageFailTimer: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * เตือนตอนเขียนรูปลง IndexedDB ไม่สำเร็จ (พื้นที่เต็ม / private mode / storage ถูก evict)
+ *
+ * เดิมเคสนี้ตกไปรวมกับ "ไฟล์ว่าง/เสียหาย" ทำให้ช่างถ่ายใหม่วนไปเรื่อย ๆ แล้วก็ fail เหมือนเดิม
+ * ตัวรูปยังอยู่ใน memory และอัปโหลดได้ปกติ — ที่หายคือความสามารถกู้คืนหลังรีเฟรช
+ */
+export function reportPhotoStorageFailure(lang: string = "th") {
+    storageFailCount++;
+    if (storageFailTimer) clearTimeout(storageFailTimer);
+    storageFailTimer = setTimeout(() => {
+        const n = storageFailCount;
+        storageFailCount = 0;
+        storageFailTimer = null;
+        if (typeof window === "undefined") return;
+        window.alert(
+            lang === "th"
+                ? `บันทึกรูป ${n} รูป ลงหน่วยความจำเครื่องไม่ได้ (พื้นที่เต็มหรือเบราว์เซอร์ไม่อนุญาต)\n\nรูปยังอัปโหลดได้ตามปกติ แต่ถ้าปิดหรือรีเฟรชหน้านี้ก่อนกดบันทึก รูปจะหาย\nกรุณากดบันทึกทันที และลบไฟล์ในเครื่องเพื่อเพิ่มพื้นที่`
+                : `Could not store ${n} photo(s) on this device (storage full or blocked by the browser).\n\nThey can still be uploaded, but will be lost if you refresh or close this page before saving. Please save now and free up storage.`,
+        );
+    }, 500);
+}
+
 export function installUploadSafetyPatch() {
     if (installed) return;
     if (typeof window === "undefined" || typeof window.fetch !== "function") return;

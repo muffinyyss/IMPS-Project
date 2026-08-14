@@ -1,7 +1,7 @@
 """
 ขอบเขตการเห็นข้อมูลตามยี่ห้อตู้ชาร์จที่บริษัทผู้ดูแลรับผิดชอบ
 
-EDS ดูแลเฉพาะตู้ FlexxFast → พนักงาน EDS (cs/engineer/technician) เห็นเฉพาะตู้ยี่ห้อนี้
+EDS ดูแลเฉพาะตู้ FlexxFast → พนักงาน EDS (cs/planner/technician) เห็นเฉพาะตู้ยี่ห้อนี้
 EGAT และบริษัทอื่นเห็นทุกยี่ห้อ | admin/owner ไม่ถูกจำกัดไม่ว่าสังกัดไหน
 
 สถานีที่มีตู้ปนหลายยี่ห้อ → ยังเห็นสถานีได้ แต่รายการตู้ถูกกรองเหลือเฉพาะยี่ห้อที่ดูแล
@@ -26,7 +26,7 @@ from deps import UserClaims
 FLEXXFAST_BRAND = "flexxfast"
 
 # role ที่ผูกกับบริษัทผู้ดูแล — admin/owner ดูภาพรวมทั้งระบบจึงไม่ถูกจำกัด
-BRAND_SCOPED_ROLES = {"engineer", "technician", "cs"}
+BRAND_SCOPED_ROLES = {"planner", "technician", "cs"}
 
 # company (ตัวพิมพ์เล็ก) → ยี่ห้อที่บริษัทนั้นดูแล
 COMPANY_BRAND_SCOPE: Dict[str, str] = {"eds": FLEXXFAST_BRAND}

@@ -19,7 +19,8 @@ import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 import { Tabs, TabsHeader, Tab } from "@material-tailwind/react";
 import { putPhoto, getPhotoByDbKey, delPhoto, type PhotoRef } from "../lib/draftPhotos";
-import { isFileReadable, isImageDecodable, resolveUsableFile, reportMissingDraftPhoto } from "@/utils/upload-safety";
+import { isFileReadable, isImageDecodable, resolveUsableFile, reportMissingDraftPhoto, reportPhotoStorageFailure } from "@/utils/upload-safety";
+import { collectPending, unrecoverablePhotos, expectedCountByGroup, findShortfall, shortfallMessage, pendingMessage, unrecoverableMessage } from "@/utils/pm-photo-sync";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
 import { apiFetch } from "@/utils/api";
 import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
@@ -1114,7 +1115,7 @@ function subItemQuotaLabel(itemCount: number, groupTotal: number, itemMax: numbe
         : `This question is full (${groupMax} photos across all sub-items)`;
 }
 
-function PhotoMultiInput({ photos, setPhotos, max = 5, draftKey, qNo, lang, id, hideMaxLabel = false, maxLabel }: {
+function PhotoMultiInput({ photos, setPhotos, max = 10, draftKey, qNo, lang, id, hideMaxLabel = false, maxLabel }: {
     photos: PhotoItem[]; setPhotos: React.Dispatch<React.SetStateAction<PhotoItem[]>>;
     max?: number; draftKey: string; qNo: number; lang: Lang; id?: string; hideMaxLabel?: boolean; maxLabel?: string;
 }) {
@@ -1153,8 +1154,10 @@ function PhotoMultiInput({ photos, setPhotos, max = 5, draftKey, qNo, lang, id, 
                 console.warn("processFile: เบราว์เซอร์แสดงผลรูปนี้ไม่ได้", file.name, file.type);
             }
             const photoId = `${qNo}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${file.name}`;
-            const ref = await putPhoto(draftKey, photoId, finalFile);
-            if (!ref) return { id: photoId, file: finalFile, preview: URL.createObjectURL(finalFile), remark: "" };
+            // เขียน IndexedDB ไม่ได้ (พื้นที่เต็ม / private mode) → ห้ามทิ้งรูป เก็บใน memory ต่อแล้วเตือน
+            let ref: PhotoRef | undefined;
+            try { ref = await putPhoto(draftKey, photoId, finalFile); }
+            catch (e) { console.error("putPhoto failed:", e); reportPhotoStorageFailure(lang); }
             return { id: photoId, file: finalFile, preview: URL.createObjectURL(finalFile), remark: "", ref };
         } catch (err) { console.error("processFile error:", err); return null; }
     };
@@ -1961,8 +1964,18 @@ export default function CCBPMReport() {
 
     // รับ PhotoItem แทน File[] เพื่อให้รู้ว่ารูปไหนอัปสำเร็จแล้ว — ตอนกดบันทึกซ้ำหลังอัปหลุด
     // จะได้ข้ามรูปเดิม ไม่อัปซ้ำจนรูปโผล่ซ้ำในรายงาน (และไม่ไปชนเพดาน 10 รูป/ข้อ)
-    async function uploadGroupPhotos(reportId: string, stationId: string, group: string, items: PhotoItem[], side: TabId, stateKey: string) {
-        const pending = (items || []).filter(p => !p.isNA && !p.uploaded && (p.file || p.ref));
+    /** key ที่ backend ใช้เก็บใน photos_pre / photos — ต้องใช้สูตรเดียวกันทั้งตอน upload และตอน verify */
+    const toGroupKey = (stateKey: string | number) => {
+        const no = Number(stateKey);
+        if (no === 90) return "g9";
+        if (no >= 101 && no <= 106) return `g10_${no - 100}`;
+        if (no >= 30 && no < 90) return `g${Math.floor(no / 10)}_${no % 10}`;
+        return `g${no}`;
+    };
+
+    async function uploadGroupPhotos(reportId: string, stationId: string, group: string, items: PhotoItem[], side: TabId, stateKey: string, uploadedIds: Set<string>) {
+        // uploadedIds จำเป็นเพราะ setPhotos() ยังไม่ flush เข้า photosRef ภายใน tick เดียวกัน
+        const pending = (items || []).filter(p => !p.isNA && !p.uploaded && !uploadedIds.has(p.id) && (p.file || p.ref));
         if (pending.length === 0) return;
         const token = localStorage.getItem("access_token");
         const url = side === "pre" ? `${API_BASE}/${PM_PREFIX}/${reportId}/pre/photos` : `${API_BASE}/${PM_PREFIX}/${reportId}/post/photos`;
@@ -1976,8 +1989,56 @@ export default function CCBPMReport() {
             form.append("files", compressed);
             const res = await fetch(url, { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : undefined, body: form, credentials: "include" });
             if (!res.ok) throw new Error(await res.text());
+            uploadedIds.add(p.id);
             setPhotos(prev => ({ ...prev, [stateKey]: ((prev as any)[stateKey] || []).map((x: PhotoItem) => x.id === p.id ? { ...x, uploaded: true } : x) }));
         }
+    }
+
+    /** อัปโหลดหลายรอบ + ยืนยันจำนวนกับ server ก่อนให้ caller ไปลบรูปในเครื่อง
+     *  คืน true = ปลอดภัยที่จะลบ, false = ยังไม่ครบ (แจ้ง user แล้ว) ห้ามลบ */
+    async function syncPhotosAndVerify(reportId: string, side: TabId): Promise<boolean> {
+        const sid = stationId;
+        if (!sid) throw new Error(t("alertNoStation", lang));
+        const uploadedIds = new Set<string>();
+        for (let pass = 1; pass <= 3; pass++) {
+            if (unrecoverablePhotos(photosRef.current as any, uploadedIds).length > 0) {
+                throw new Error(unrecoverableMessage(lang));
+            }
+            const pending = collectPending(photosRef.current as any, uploadedIds);
+            if (pending.length === 0) break;
+            setPreUploadState({ show: true, total: pending.length, completed: 0, failed: 0 });
+            try {
+                // อัปไม่ผ่าน → throw ทะลุขึ้นไป catch ของ handler โดยยังไม่ได้ลบอะไร
+                await Promise.all(
+                    Object.entries(photosRef.current).map(([noStr, list]) =>
+                        uploadGroupPhotos(reportId, sid, toGroupKey(noStr), list || [], side, noStr, uploadedIds))
+                );
+            } finally {
+                setPreUploadState({ show: false, total: 0, completed: 0, failed: 0 });
+            }
+        }
+
+        const stillPending = collectPending(photosRef.current as any, uploadedIds);
+        if (stillPending.length > 0) {
+            alert(pendingMessage(stillPending.length, lang));
+            return false;
+        }
+
+        const expected = expectedCountByGroup(photosRef.current as any, toGroupKey);
+        if (Object.keys(expected).length === 0) return true;
+
+        const token = localStorage.getItem("access_token");
+        const res = await fetch(`${API_BASE}/${PM_PREFIX}/get?station_id=${encodeURIComponent(sid)}&report_id=${reportId}`,
+            { headers: token ? { Authorization: `Bearer ${token}` } : undefined, credentials: "include" });
+        if (!res.ok) throw new Error(await res.text());
+        const doc = await res.json() as { photos_pre?: Record<string, unknown[]>; photos?: Record<string, unknown[]> };
+        const shortfall = findShortfall(expected, side === "pre" ? doc?.photos_pre : doc?.photos);
+        if (shortfall.length > 0) {
+            console.error(`[CCB ${side} verify] shortfall:`, shortfall);
+            alert(shortfallMessage(shortfall, lang));
+            return false;
+        }
+        return true;
     }
 
     const scrollToFirstError = (elementId: string) => {
@@ -2079,25 +2140,10 @@ export default function CCBPMReport() {
             preReportIdRef.current = report_id;
             setReportId(report_id);
 
-            const uploadPromises: Promise<void>[] = [];
-            for (const [noStr, list] of Object.entries(photos)) {
-                {
-                    const no = Number(noStr);
-                    let groupKey = `g${no}`;
-                    if (no === 90) { groupKey = "g9"; }
-                    else if (no >= 101 && no <= 106) { groupKey = `g10_${no - 100}`; }
-                    else if (no >= 30 && no < 90) { const qNo = Math.floor(no / 10); const subNo = no % 10; groupKey = `g${qNo}_${subNo}`; }
-                    uploadPromises.push(uploadGroupPhotos(report_id, stationId, groupKey, list, "pre", noStr));
-                }
-            }
-            const totalPhotos = uploadPromises.length;
-            if (totalPhotos > 0) {
-                setPreUploadState({ show: true, total: totalPhotos, completed: 0, failed: 0 });
-                await Promise.all(uploadPromises);
-                setPreUploadState({ show: false, total: 0, completed: 0, failed: 0 });
-            }
+            // ลบรูปในเครื่องได้ต่อเมื่อ server ยืนยันว่ามีครบจำนวนแล้วเท่านั้น
+            if (!(await syncPhotosAndVerify(report_id, "pre"))) return;
 
-            const allPhotos = Object.values(photos).flat();
+            const allPhotos = Object.values(photosRef.current).flat();
             await Promise.all(allPhotos.map(p => delPhoto(key, p.id)));
             preReportIdRef.current = null;
             await clearDraftLocal(key);
@@ -2197,23 +2243,8 @@ export default function CCBPMReport() {
             if (!res.ok) throw new Error(await res.text());
             const { report_id } = await res.json() as { report_id: string };
 
-            const uploadPromises: Promise<void>[] = [];
-            for (const [noStr, list] of Object.entries(photos)) {
-                {
-                    const no = Number(noStr);
-                    let groupKey = `g${no}`;
-                    if (no === 90) { groupKey = "g9"; }
-                    else if (no >= 101 && no <= 106) { groupKey = `g10_${no - 100}`; }
-                    else if (no >= 30 && no < 90) { const qNo = Math.floor(no / 10); const subNo = no % 10; groupKey = `g${qNo}_${subNo}`; }
-                    uploadPromises.push(uploadGroupPhotos(finalReportId, stationId, groupKey, list, "post", noStr));
-                }
-            }
-            const totalPostPhotos = uploadPromises.length;
-            if (totalPostPhotos > 0) {
-                setPreUploadState({ show: true, total: totalPostPhotos, completed: 0, failed: 0 });
-                await Promise.all(uploadPromises);
-                setPreUploadState({ show: false, total: 0, completed: 0, failed: 0 });
-            }
+            // ต้องยืนยันรูปครบก่อน ถึงจะ finalize + ลบรูปในเครื่อง
+            if (!(await syncPhotosAndVerify(finalReportId, "post"))) return;
 
             const finalizeRes = await fetch(`${API_BASE}/${PM_PREFIX}/${finalReportId}/finalize`, {
                 method: "POST",
@@ -2223,7 +2254,7 @@ export default function CCBPMReport() {
             });
             if (!finalizeRes.ok) throw new Error(await finalizeRes.text());
 
-            const allPhotos = Object.values(photos).flat();
+            const allPhotos = Object.values(photosRef.current).flat();
             await Promise.all(allPhotos.map(p => delPhoto(postKey, p.id)));
             await clearDraftLocal(postKey);
             router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&tab=ccb`);
@@ -2264,7 +2295,7 @@ export default function CCBPMReport() {
                             {q.hasPhoto && (
                                 <div className="tw-mb-3">
                                     <PhotoMultiInput photos={photos[q.no] || []} setPhotos={makePhotoSetter(q.no)}
-                                        max={5} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(q.no)} />
+                                        max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(q.no)} />
                                 </div>
                             )}
                             <div id={getRemarkIdFromKey(q.key)}>
@@ -2296,7 +2327,7 @@ export default function CCBPMReport() {
                                 const isItemNA = rows[item.key]?.pf === "NA";
                                 const subLabel = `${q.no}.${idx + 1}) ${t(item.labelKey, lang)}`;
                                 // max = รูปที่แนบไว้แล้วใน slot นี้ + ส่วนที่เหลือในกลุ่ม
-                                const itemMax = Math.min(5, (photos[photoKey]?.length ?? 0) + groupRemaining);
+                                const itemMax = Math.min(10, (photos[photoKey]?.length ?? 0) + groupRemaining);
                                 return (
                                     <div key={item.key} className={`tw-py-4 first:tw-pt-2 ${isItemNA ? "tw-bg-amber-50/50" : ""}`}>
                                         <div className="tw-flex tw-items-center tw-justify-between tw-mb-3">
@@ -2310,7 +2341,7 @@ export default function CCBPMReport() {
                                         {q.hasPhoto && (
                                             <div className="tw-mb-3">
                                                 <PhotoMultiInput photos={photos[photoKey] || []} setPhotos={makePhotoSetter(photoKey)}
-                                                    max={itemMax} maxLabel={subItemQuotaLabel(photos[photoKey]?.length ?? 0, totalGroupPhotos, 5, 20, lang)} draftKey={currentDraftKey} qNo={photoKey} lang={lang} id={getPhotoIdFromKey(photoKey)} />
+                                                    max={itemMax} maxLabel={subItemQuotaLabel(photos[photoKey]?.length ?? 0, totalGroupPhotos, 10, 20, lang)} draftKey={currentDraftKey} qNo={photoKey} lang={lang} id={getPhotoIdFromKey(photoKey)} />
                                             </div>
                                         )}
                                         <div id={getRemarkIdFromKey(item.key)}>
@@ -2343,7 +2374,7 @@ export default function CCBPMReport() {
                             {q.hasPhoto && (
                                 <div className="tw-mb-3">
                                     <PhotoMultiInput photos={photos[90] || []} setPhotos={makePhotoSetter(90)}
-                                        max={5} draftKey={currentDraftKey} qNo={90} lang={lang} id={getPhotoIdFromKey(90)} />
+                                        max={10} draftKey={currentDraftKey} qNo={90} lang={lang} id={getPhotoIdFromKey(90)} />
                                 </div>
                             )}
                             <div id={getInputIdFromKey("r9_main")} className={`tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 tw-gap-4 tw-mb-3 ${isNA ? "tw-opacity-50 tw-pointer-events-none" : ""}`}>
@@ -2394,7 +2425,7 @@ export default function CCBPMReport() {
                                 const rowKey = `r10_sub${i}`;
                                 const isItemNA = rows[rowKey]?.pf === "NA";
                                 const m = M_SUB_LIST[idx];
-                                const itemMax = Math.min(5, (photos[photoKey]?.length ?? 0) + subRemaining);
+                                const itemMax = Math.min(10, (photos[photoKey]?.length ?? 0) + subRemaining);
                                 return (
                                     <div key={rowKey} className={`tw-py-4 first:tw-pt-2 ${isItemNA ? "tw-bg-amber-50/50" : ""}`}>
                                         <div className="tw-flex tw-items-center tw-justify-between tw-mb-3">
@@ -2421,7 +2452,7 @@ export default function CCBPMReport() {
                                         {q.hasPhoto && (
                                             <div className="tw-mb-3">
                                                 <PhotoMultiInput photos={photos[photoKey] || []} setPhotos={makePhotoSetter(photoKey)}
-                                                    max={itemMax} maxLabel={subItemQuotaLabel(photos[photoKey]?.length ?? 0, totalSubPhotos, 5, 20, lang)} draftKey={currentDraftKey} qNo={photoKey} lang={lang} id={getPhotoIdFromKey(photoKey)} />
+                                                    max={itemMax} maxLabel={subItemQuotaLabel(photos[photoKey]?.length ?? 0, totalSubPhotos, 10, 20, lang)} draftKey={currentDraftKey} qNo={photoKey} lang={lang} id={getPhotoIdFromKey(photoKey)} />
                                             </div>
                                         )}
                                         <div id={getInputIdFromKey(rowKey)} className={`tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 tw-gap-3 tw-mb-3 ${isItemNA ? "tw-opacity-50 tw-pointer-events-none" : ""}`}>
@@ -2469,7 +2500,7 @@ export default function CCBPMReport() {
                                 q.hasPhoto && (
                                     <div className="tw-pb-4 tw-border-b tw-mb-4 tw-border-gray-100">
                                         <PhotoMultiInput photos={photos[q.no] || []} setPhotos={makePhotoSetter(q.no)}
-                                            max={5} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(q.no)} />
+                                            max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(q.no)} />
                                     </div>
                                 )
                             }
@@ -2509,7 +2540,7 @@ export default function CCBPMReport() {
                                         );
                                     }
                                     const photoKey = getPhotoKeyForQuestion(q, item.key);
-                                    const itemMax = Math.min(5, (photos[photoKey]?.length ?? 0) + groupRemaining);
+                                    const itemMax = Math.min(10, (photos[photoKey]?.length ?? 0) + groupRemaining);
                                     return (
                                         <div key={item.key} className="tw-py-4 first:tw-pt-2">
                                             <PassFailRow label={subLabel} value={rows[item.key]?.pf ?? ""}
@@ -2520,7 +2551,7 @@ export default function CCBPMReport() {
                                                     q.hasPhoto && (
                                                         <div className="tw-pb-4 tw-border-b tw-border-gray-100">
                                                             <PhotoMultiInput photos={photos[photoKey] || []} setPhotos={makePhotoSetter(photoKey)}
-                                                                max={itemMax} maxLabel={subItemQuotaLabel(photos[photoKey]?.length ?? 0, totalGroupPhotos, 5, 20, lang)} draftKey={currentDraftKey} qNo={photoKey} lang={lang} id={getPhotoIdFromKey(photoKey)} />
+                                                                max={itemMax} maxLabel={subItemQuotaLabel(photos[photoKey]?.length ?? 0, totalGroupPhotos, 10, 20, lang)} draftKey={currentDraftKey} qNo={photoKey} lang={lang} id={getPhotoIdFromKey(photoKey)} />
                                                         </div>
                                                     )
                                                 }
@@ -2546,7 +2577,7 @@ export default function CCBPMReport() {
                                     onChange={(v) => setRows({ ...rows, [rowKey]: { ...rows[rowKey], pf: v } })}
                                     remark={rows[rowKey]?.remark || ""} onRemarkChange={(v) => setRows({ ...rows, [rowKey]: { ...rows[rowKey], remark: v } })}
                                     lang={lang} id={getPfIdFromKey(rowKey)} remarkId={getRemarkIdFromKey(rowKey)}
-                                    aboveRemark={q.hasPhoto ? <div className="tw-pb-4 tw-border-b tw-border-gray-100"><PhotoMultiInput photos={photos[90] || []} setPhotos={makePhotoSetter(90)} max={5} draftKey={currentDraftKey} qNo={90} lang={lang} id={getPhotoIdFromKey(90)} /></div> : undefined}
+                                    aboveRemark={q.hasPhoto ? <div className="tw-pb-4 tw-border-b tw-border-gray-100"><PhotoMultiInput photos={photos[90] || []} setPhotos={makePhotoSetter(90)} max={10} draftKey={currentDraftKey} qNo={90} lang={lang} id={getPhotoIdFromKey(90)} /></div> : undefined}
                                     beforeRemark={<>
                                         <div id={getInputIdFromKey(rowKey)} className="tw-mb-3 tw-transition-all tw-duration-300">
                                             <div className="tw-space-y-3">
@@ -2600,7 +2631,7 @@ export default function CCBPMReport() {
                                     const mPre = M_SUB_PRE_LIST[idx];
                                     const m = M_SUB_LIST[idx];
                                     const breakerLabel = `10.${i}) ${lang === "th" ? "เบรกเกอร์วงจรย่อยตัวที่" : "Sub-circuit Breaker"} ${i}`;
-                                    const itemMax = Math.min(5, (photos[photoKey]?.length ?? 0) + subRemaining);
+                                    const itemMax = Math.min(10, (photos[photoKey]?.length ?? 0) + subRemaining);
 
                                     if (rowsPre[rowKey]?.pf === "NA") {
                                         return (
@@ -2625,7 +2656,7 @@ export default function CCBPMReport() {
                                                 onChange={(v) => setRows({ ...rows, [rowKey]: { ...rows[rowKey], pf: v } })}
                                                 remark={rows[rowKey]?.remark || ""} onRemarkChange={(v) => setRows({ ...rows, [rowKey]: { ...rows[rowKey], remark: v } })}
                                                 lang={lang} id={getPfIdFromKey(rowKey)} remarkId={getRemarkIdFromKey(rowKey)}
-                                                aboveRemark={q.hasPhoto ? <div className="tw-pb-4 tw-border-b tw-border-gray-100"><PhotoMultiInput photos={photos[photoKey] || []} setPhotos={makePhotoSetter(photoKey)} max={itemMax} maxLabel={subItemQuotaLabel(photos[photoKey]?.length ?? 0, totalSubPhotos, 5, 20, lang)} draftKey={currentDraftKey} qNo={photoKey} lang={lang} id={getPhotoIdFromKey(photoKey)} /></div> : undefined}
+                                                aboveRemark={q.hasPhoto ? <div className="tw-pb-4 tw-border-b tw-border-gray-100"><PhotoMultiInput photos={photos[photoKey] || []} setPhotos={makePhotoSetter(photoKey)} max={itemMax} maxLabel={subItemQuotaLabel(photos[photoKey]?.length ?? 0, totalSubPhotos, 10, 20, lang)} draftKey={currentDraftKey} qNo={photoKey} lang={lang} id={getPhotoIdFromKey(photoKey)} /></div> : undefined}
                                                 beforeRemark={<>
                                                     <div id={getInputIdFromKey(rowKey)} className="tw-mb-3 tw-transition-all tw-duration-300">
                                                         <div className="tw-space-y-3">

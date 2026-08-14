@@ -8,7 +8,7 @@
 
 export const FLEXXFAST_BRAND = "flexxfast";
 
-const BRAND_SCOPED_ROLES = ["engineer", "technician", "cs"];
+const BRAND_SCOPED_ROLES = ["planner", "technician", "cs"];
 
 /** company (ตัวพิมพ์เล็ก) → ยี่ห้อที่บริษัทนั้นดูแล */
 const COMPANY_BRAND_SCOPE: Record<string, string> = { eds: FLEXXFAST_BRAND };

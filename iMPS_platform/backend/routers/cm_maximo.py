@@ -146,7 +146,7 @@ async def cm_sync_status(
 
 
 # ยิงซ้ำได้เฉพาะคนที่คุมใบงาน — ช่างทั่วไปไม่ต้องยุ่งกับ integration
-CM_SYNC_ROLES: set[str] = {"admin", "owner", "engineer"}
+CM_SYNC_ROLES: set[str] = {"admin", "owner", "planner"}
 
 
 @router.post("/cm-maximo/{report_id}/sync")
@@ -157,7 +157,7 @@ async def cm_sync_retry(
 ):
     """ยิงทุก interface ที่ถึงจังหวะของใบงานนี้ใหม่ (ใช้เมื่อรอบก่อนล้มเพราะ Maximo ล่ม)"""
     if (current.role or "").lower() not in CM_SYNC_ROLES and not current.is_super_admin:
-        raise HTTPException(status_code=403, detail="Only engineer, owner or admin can re-sync")
+        raise HTTPException(status_code=403, detail="Only planner, owner or admin can re-sync")
 
     coll, oid, doc = await _load_report(station_id, report_id, current)
     result = await cm_maximo.safe_sync_report(
@@ -256,7 +256,7 @@ async def maximo_cm_work_order(
     รับใบงาน CM ที่ Maximo เปิด → สร้างใบงานในระบบ iMPS ให้อัตโนมัติ
 
     ใบที่เข้ามาทางนี้ข้ามด่านอนุมัติของ CS (Maximo อนุมัติมาแล้ว) จึงเริ่มที่
-    "Wait for schedule" ให้ engineer วางแผนต่อได้เลย
+    "Wait for schedule" ให้ planner วางแผนต่อได้เลย
     ยิง wonum เดิมซ้ำ = อัปเดตใบเดิม ไม่สร้างซ้ำ
     """
     if not MAXIMO_WEBHOOK_SECRET:
@@ -315,7 +315,7 @@ async def maximo_cm_work_order(
         "severity": _PRIORITY_TO_SEVERITY.get(body.priority or 0, "Medium"),
         "problem_details": body.description or "",
         "remarks_open": "",
-        # Maximo อนุมัติมาแล้ว → ข้ามด่าน CS ไปรอ engineer วางแผน
+        # Maximo อนุมัติมาแล้ว → ข้ามด่าน CS ไปรอ planner วางแผน
         "status": "Wait for schedule",
         "photos_problem": {},
         "origin": "maximo",

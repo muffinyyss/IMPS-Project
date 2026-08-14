@@ -5,7 +5,9 @@ import { Button, Input, Textarea } from "@material-tailwind/react";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
-import { cameFromDashboard, CM_DASHBOARD_ROUTE } from "@/app/dashboard/cm-report/lib/origin";
+import { cmBackRoute } from "@/app/dashboard/cm-report/lib/origin";
+import ChargerIdentity, { type ChargerIdentityData } from "@/app/dashboard/cm-report/components/ChargerIdentity";
+import { ZoomableImg, AttachmentFileRow, isImageAttachment } from "@/app/dashboard/cm-report/components/photo-viewer";
 
 // ==================== TRANSLATIONS ====================
 const T = {
@@ -197,7 +199,8 @@ export default function CMForm() {
 
     // เข้ามาจากหน้าไหนก็กลับหน้านั้น — จาก CM Dashboard → dashboard, จากตาราง list → แท็บเดิม
     const buildListUrl = () => {
-        if (cameFromDashboard(searchParams)) return CM_DASHBOARD_ROUTE;
+        const backRoute = cmBackRoute(searchParams);
+        if (backRoute) return backRoute;
         const params = new URLSearchParams();
         if (stationId) params.set("station_id", stationId);
         const tab = (searchParams.get("tab") ?? "open"); // กลับแท็บเดิม (default = open)
@@ -206,6 +209,8 @@ export default function CMForm() {
     };
 
     const [job, setJob] = useState<Job>({ ...INITIAL_JOB });
+    // ตัวตนของตู้ที่ backend resolve มาให้ — ชื่อ / เลขตู้ / S/N / บริษัทผู้ถือครอง
+    const [chargerIdentity, setChargerIdentity] = useState<ChargerIdentityData | null>(null);
     const [summary, setSummary] = useState<string>("");
     const [saving, setSaving] = useState(false);
 
@@ -787,6 +792,15 @@ export default function CMForm() {
                 }
                 const data = await res.json();
 
+                setChargerIdentity({
+                    charger_name: data.charger_name ?? "",
+                    charger_no: data.charger_no ?? null,
+                    charger_sn: data.charger_sn ?? "",
+                    charger_model: data.charger_model ?? "",
+                    charger_brand: data.charger_brand ?? "",
+                    auto_generated: !!data.auto_generated,
+                });
+
                 // map ข้อมูลจาก backend (flat fields) → job state
                 const correctionList = Array.isArray(data.repaired_equipment) ? data.repaired_equipment : [];
                 setJob(prev => ({
@@ -1034,6 +1048,9 @@ export default function CMForm() {
                             </div>
                         </div>
 
+                        {/* ตู้ชาร์จที่ใบงานนี้เกี่ยวข้อง — ชื่อ / เลขตู้ / S/N / บริษัทผู้ถือครอง */}
+                        <ChargerIdentity data={chargerIdentity} lang={lang} className="!tw-mb-0" />
+
                         {/* 2 คอลัมน์: อุปกรณ์ */}
                         <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-6">
                             {/* อุปกรณ์ – หลายรายการ */}
@@ -1277,7 +1294,7 @@ export default function CMForm() {
                                                                 key={j}
                                                                 className="tw-relative tw-aspect-video tw-rounded-md tw-overflow-hidden tw-border tw-border-blue-gray-100"
                                                             >
-                                                                <img src={img.url} alt={`action-${i}-img-${j}`} className="tw-w-full tw-h-full tw-object-cover" />
+                                                                <ZoomableImg src={img.url} alt={`action-${i}-img-${j}`} className="tw-w-full tw-h-full tw-object-cover" />
                                                                 <button
                                                                     type="button"
                                                                     onClick={() => removeCorrectiveImage(i, j)}
@@ -1303,7 +1320,7 @@ export default function CMForm() {
                                                                     rel="noreferrer"
                                                                     className="tw-relative tw-aspect-video tw-rounded-md tw-overflow-hidden tw-border tw-border-blue-gray-100 hover:tw-shadow"
                                                                 >
-                                                                    <img src={p.url} alt={`photo-${groupKey}-${k}`} className="tw-w-full tw-h-full tw-object-cover" />
+                                                                    <ZoomableImg src={p.url} alt={`photo-${groupKey}-${k}`} className="tw-w-full tw-h-full tw-object-cover" />
                                                                     {p.remark && (
                                                                         <div className="tw-absolute tw-bottom-0 tw-left-0 tw-right-0 tw-bg-black/50 tw-text-white tw-text-xs tw-px-2 tw-py-1">
                                                                             {p.remark}
@@ -1341,7 +1358,7 @@ export default function CMForm() {
                                                                 rel="noreferrer"
                                                                 className="tw-relative tw-aspect-video tw-rounded-md tw-overflow-hidden tw-border tw-border-blue-gray-100 hover:tw-shadow"
                                                             >
-                                                                <img
+                                                                <ZoomableImg
                                                                     src={p.url}
                                                                     alt={`photo-${groupKey}-${i}`}
                                                                     className="tw-w-full tw-h-full tw-object-cover"
@@ -1475,17 +1492,26 @@ export default function CMForm() {
                             </div>
                         </div>
 
-                        {/* รูปภาพปัญหา (จากตอนแจ้ง) */}
+                        {/* รูปภาพ/ไฟล์แนบตอนแจ้ง — ไฟล์ (PDF) พรีวิวไม่ได้ แยกไปเป็นรายการแถวใต้กริดรูป */}
                         {(photos["problem"]?.length ?? 0) > 0 && (
                             <div>
                                 <div className="tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-3">{t("problemPhotos", lang)}</div>
-                                <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 md:tw-grid-cols-4 tw-gap-3">
-                                    {photos["problem"].map((p, k) => (
-                                        <a key={`problem-${k}`} href={p.url} target="_blank" rel="noreferrer" className="tw-relative tw-aspect-video tw-rounded-md tw-overflow-hidden tw-border tw-border-blue-gray-100 hover:tw-shadow">
-                                            <img src={p.url} alt={`problem-${k}`} className="tw-w-full tw-h-full tw-object-cover" />
-                                        </a>
-                                    ))}
-                                </div>
+                                {photos["problem"].some(p => isImageAttachment(p.url)) && (
+                                    <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 md:tw-grid-cols-4 tw-gap-3">
+                                        {photos["problem"].filter(p => isImageAttachment(p.url)).map((p, k) => (
+                                            <div key={`problem-${k}`} className="tw-relative tw-aspect-video tw-rounded-md tw-overflow-hidden tw-border tw-border-blue-gray-100 hover:tw-shadow">
+                                                <ZoomableImg src={p.url} alt={`problem-${k}`} className="tw-w-full tw-h-full tw-object-cover" />
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                                {photos["problem"].some(p => !isImageAttachment(p.url)) && (
+                                    <div className="tw-mt-2 tw-flex tw-flex-wrap tw-gap-2">
+                                        {photos["problem"].filter(p => !isImageAttachment(p.url)).map((p, k) => (
+                                            <AttachmentFileRow key={`problem-file-${k}`} src={p.url} />
+                                        ))}
+                                    </div>
+                                )}
                             </div>
                         )}
 
