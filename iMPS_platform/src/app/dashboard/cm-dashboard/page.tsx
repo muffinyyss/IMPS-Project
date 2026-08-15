@@ -110,6 +110,17 @@ function FilterChip({ label, onRemove, lang = "th" }: { label: string; onRemove:
   );
 }
 
+// Pastille « filtre actif » d'une carte. Posée DANS le flux de l'en-tête et non en
+// absolute : au coin haut-droit elle recouvrait la bascule « Total / Par entreprise ».
+function FilterBadge({ label }: { label: string }) {
+  return (
+    <span className="tw-inline-flex tw-max-w-full tw-shrink-0 tw-items-center tw-gap-1 tw-rounded-full tw-bg-blue-50 tw-px-2 tw-py-0.5 tw-text-[10px] tw-font-bold tw-text-blue-600 tw-ring-1 tw-ring-blue-200">
+      <span aria-hidden="true">🔍</span>
+      <span className="tw-truncate" title={label}>{label}</span>
+    </span>
+  );
+}
+
 // สามดรอปดาวน์เลือกช่วงวิเคราะห์: ปี / เดือน / สัปดาห์ของเดือน
 function DateSelect({ id, label, value, onChange, options, disabled }: {
   id: string; label: string; value: string; onChange: (v: string) => void;
@@ -272,8 +283,11 @@ export default function CMDashboardPage() {
 
   // ── Monthly stacked chart: filtre année + station + chart-filters, mais PAS le mois/semaine
   // (เห็นครบ 12 เดือนเสมอ — คลิกแท่งเพื่อเลือกเดือน)
+  // ignore son propre filtre statut : la légende du graphe pose ce filtre, les trois
+  // séries doivent rester visibles pour pouvoir en choisir une autre (même règle que
+  // le donut Success Rate et les cartes KPI)
   const monthRows = useMemo(
-    () => applyFilters(excludeCancelled(filterByDate(stationRows, yearSel, "all", "all")), filters),
+    () => applyFilters(excludeCancelled(filterByDate(stationRows, yearSel, "all", "all")), filters, "status"),
     [stationRows, yearSel, filters]
   );
   const monthData = useMemo(() => groupByMonth(monthRows), [monthRows]);
@@ -637,11 +651,17 @@ export default function CMDashboardPage() {
           const label = causeData.keys[dataPointIndex];
           if (label) toggleFilter("cause", label);
         },
+        // la légende filtre tout le dashboard comme une part du camembert —
+        // par défaut Apex se contentait de masquer la part dans CE graphe
+        legendClick: (_ctx: any, seriesIndex: number) => {
+          const label = causeData.keys[seriesIndex];
+          if (label) toggleFilter("cause", label);
+        },
       },
     },
     colors: EQUIPMENT_COLORS,
     labels: causeData.keys,
-    legend: { show: true, position: "bottom", fontSize: "11px" },
+    legend: { show: true, position: "bottom", fontSize: "11px", onItemClick: { toggleDataSeries: false } },
     states: { active: { filter: { type: "darken", value: 0.7 } } },
     dataLabels: { enabled: false },
     plotOptions: {
@@ -680,6 +700,12 @@ export default function CMDashboardPage() {
         type: "bar", stacked: true, toolbar: { show: false },
         events: {
           dataPointSelection: (_e: any, _ctx: any, { dataPointIndex }: any) => onSelect(dataPointIndex),
+          // cliquer « EGAT » / « iMPS » dans la légende = cliquer la pastille de la
+          // même entreprise en haut de page : tout le dashboard se filtre
+          legendClick: (_ctx: any, seriesIndex: number) => {
+            const brand = seriesBrands[seriesIndex];
+            if (brand) toggleFilter("brand", brand);
+          },
         },
       },
       colors: seriesBrands.map(brandColorOf),
@@ -690,13 +716,19 @@ export default function CMDashboardPage() {
         labels: { formatter: (v: string) => String(Math.round(Number(v))), style: { fontSize: "11px" } },
       },
       yaxis: { labels: { maxWidth: 220, style: { fontSize: "11px" } } },
-      legend: { show: true, position: "bottom", fontSize: "11px" },
+      // showForSingleSeries : une fois filtré sur une entreprise il ne reste qu'une
+      // série — sans ça Apex masque la légende et on ne peut plus recliquer pour
+      // enlever le filtre
+      legend: {
+        show: true, showForSingleSeries: true, position: "bottom", fontSize: "11px",
+        onItemClick: { toggleDataSeries: false },
+      },
       dataLabels: { enabled: false },
       grid: { borderColor: "#f1f5f9" },
       states: { active: { filter: { type: "darken", value: 0.7 } } },
       tooltip: { y: { formatter: (v: number) => `${v} case${v !== 1 ? "s" : ""}` } },
     }),
-    [brandColorOf]
+    [brandColorOf, toggleFilter]
   );
 
   const causeBrandOptions = useMemo(
@@ -724,11 +756,15 @@ export default function CMDashboardPage() {
           const code = remedyData.keys[dataPointIndex];
           if (code) toggleFilter("remedy", code);
         },
+        legendClick: (_ctx: any, seriesIndex: number) => {
+          const code = remedyData.keys[seriesIndex];
+          if (code) toggleFilter("remedy", code);
+        },
       },
     },
     colors: REMEDY_COLORS,
     labels: remedyData.keys.map(remedyLabel),
-    legend: { show: true, position: "bottom", fontSize: "11px" },
+    legend: { show: true, position: "bottom", fontSize: "11px", onItemClick: { toggleDataSeries: false } },
     states: { active: { filter: { type: "darken", value: 0.7 } } },
     dataLabels: { enabled: false },
     plotOptions: {
@@ -818,19 +854,24 @@ export default function CMDashboardPage() {
           setMonthSel((prev) => (prev === dataPointIndex ? "all" : dataPointIndex));
           setWeekSel("all");
         },
+        // même ordre que monthlyBarSeries — la légende filtre le dashboard par statut
+        legendClick: (_ctx: any, seriesIndex: number) => {
+          const key = (["open", "in_progress", "completed"] as const)[seriesIndex];
+          if (key) toggleFilter("status", STATUS_LABELS[key]);
+        },
       },
     },
     colors: ["#ef4444", "#f97316", "#22c55e"],
     xaxis: { categories: t.monthsShort, labels: { rotate: 0, style: { fontSize: "12px" } } },
     // compte de tickets = entier, jamais 0.5
     yaxis: { labels: { formatter: (v: number) => String(Math.round(v)) } },
-    legend: { position: "top" },
+    legend: { position: "top", onItemClick: { toggleDataSeries: false } },
     dataLabels: { enabled: false },
     grid: { borderColor: "#f1f5f9" },
     states: { active: { filter: { type: "darken", value: 0.7 } } },
     plotOptions: { bar: { borderRadius: 3, columnWidth: "55%" } },
     tooltip: { y: { formatter: (v: number) => `${v} ${t.taskUnit}` } },
-  }), [t]);
+  }), [t, toggleFilter]);
 
   const monthlyBarSeries = useMemo(() => [
     { name: t.statusLabel.open, data: monthData.open },
@@ -1028,16 +1069,14 @@ export default function CMDashboardPage() {
             gardent ainsi la même largeur d'une section à l'autre */}
         <div className="tw-grid tw-grid-cols-1 tw-gap-6 lg:tw-grid-cols-2">
 
-          <Card className="tw-relative tw-border tw-border-blue-gray-100 tw-shadow-sm">
-            {filters.workStatus && (
-              <div className="tw-absolute tw-right-3 tw-top-3 tw-z-10 tw-rounded-full tw-bg-blue-50 tw-px-2 tw-py-0.5 tw-text-[10px] tw-font-bold tw-text-blue-600 tw-ring-1 tw-ring-blue-200">
-                🔍 {workStatusLabel[filters.workStatus]}
-              </div>
-            )}
+          <Card className="tw-border tw-border-blue-gray-100 tw-shadow-sm">
             <CardBody className="!tw-p-4 md:!tw-p-6">
               {/* โดนัท + legend — หนึ่งช่องต่อหนึ่งการ์ด KPI (bucket เดียวกัน สีเดียวกัน) */}
               <div className="tw-min-w-0">
-                <p className="tw-mb-1 tw-text-xs tw-text-blue-gray-400">{t.clickToFilter}</p>
+                <div className="tw-mb-1 tw-flex tw-min-w-0 tw-items-center tw-justify-between tw-gap-2">
+                  <p className="tw-truncate tw-text-xs tw-text-blue-gray-400">{t.clickToFilter}</p>
+                  {filters.workStatus && <FilterBadge label={workStatusLabel[filters.workStatus]} />}
+                </div>
                 {/* key บังคับ remount ตอนเปอร์เซ็นต์เปลี่ยน — ApexCharts ไม่รีเฟรช formatter ของ total label ผ่าน updateOptions */}
                 <Chart
                   key={`sr-${successRate}-${bucketSlices.length}`}
@@ -1116,20 +1155,20 @@ export default function CMDashboardPage() {
         <div className="tw-grid tw-grid-cols-1 tw-gap-6 lg:tw-grid-cols-2">
 
           {/* Cause pie — CAUSE CODE des fiches CM */}
-          <Card className="tw-relative tw-border tw-border-blue-gray-100 tw-shadow-sm">
-            {filters.cause && (
-              <div className="tw-absolute tw-right-3 tw-top-3 tw-z-10 tw-rounded-full tw-bg-blue-50 tw-px-2 tw-py-0.5 tw-text-[10px] tw-font-bold tw-text-blue-600 tw-ring-1 tw-ring-blue-200">
-                🔍 {filters.cause}
-              </div>
-            )}
+          <Card className="tw-border tw-border-blue-gray-100 tw-shadow-sm">
             <CardHeader floated={false} shadow={false} className="tw-m-4 tw-mb-0 tw-flex tw-items-start tw-justify-between tw-gap-3">
               <div className="tw-min-w-0">
                 <Typography variant="h6" color="blue-gray">
                   {t.eqTitle}
                 </Typography>
-                <Typography variant="small" className="!tw-font-normal !tw-text-blue-gray-500">
-                  {t.eqSubtitle(causeData.vals.reduce((s, v) => s + v, 0))}
-                </Typography>
+                {/* sous-titre + pastille de filtre sur la même ligne : la hauteur de
+                    l'en-tête ne bouge pas quand un filtre s'active */}
+                <div className="tw-flex tw-min-w-0 tw-flex-wrap tw-items-center tw-gap-2">
+                  <Typography variant="small" className="!tw-font-normal !tw-text-blue-gray-500">
+                    {t.eqSubtitle(causeData.vals.reduce((s, v) => s + v, 0))}
+                  </Typography>
+                  {filters.cause && <FilterBadge label={filters.cause} />}
+                </div>
               </div>
               <ViewToggle value={causeView} onChange={setCauseView} totalLabel={t.viewTotal} brandLabel={t.viewByBrand} />
             </CardHeader>
@@ -1149,16 +1188,12 @@ export default function CMDashboardPage() {
           </Card>
 
           {/* Severity bar */}
-          <Card className="tw-relative tw-border tw-border-blue-gray-100 tw-shadow-sm">
-            {filters.severity && (
-              <div className="tw-absolute tw-right-3 tw-top-3 tw-z-10 tw-rounded-full tw-bg-blue-50 tw-px-2 tw-py-0.5 tw-text-[10px] tw-font-bold tw-text-blue-600 tw-ring-1 tw-ring-blue-200">
-                🔍 {filters.severity}
-              </div>
-            )}
-            <CardHeader floated={false} shadow={false} className="tw-m-4 tw-mb-0">
-              <Typography variant="h6" color="blue-gray">
+          <Card className="tw-border tw-border-blue-gray-100 tw-shadow-sm">
+            <CardHeader floated={false} shadow={false} className="tw-m-4 tw-mb-0 tw-flex tw-min-w-0 tw-items-center tw-justify-between tw-gap-3">
+              <Typography variant="h6" color="blue-gray" className="tw-truncate">
                 {t.sevTitle}
               </Typography>
+              {filters.severity && <FilterBadge label={filters.severity} />}
             </CardHeader>
             <CardBody className="!tw-px-4 !tw-pt-2 !tw-pb-4">
               {sevData.vals.length === 0 ? (
@@ -1182,18 +1217,16 @@ export default function CMDashboardPage() {
         <div className="tw-grid tw-grid-cols-1 tw-gap-6 lg:tw-grid-cols-2">
 
           {/* Remedy pie */}
-          <Card className="tw-relative tw-border tw-border-blue-gray-100 tw-shadow-sm">
-            {filters.remedy && (
-              <div className="tw-absolute tw-right-3 tw-top-3 tw-z-10 tw-rounded-full tw-bg-blue-50 tw-px-2 tw-py-0.5 tw-text-[10px] tw-font-bold tw-text-blue-600 tw-ring-1 tw-ring-blue-200">
-                🔍 {remedyLabel(filters.remedy)}
-              </div>
-            )}
+          <Card className="tw-border tw-border-blue-gray-100 tw-shadow-sm">
             <CardHeader floated={false} shadow={false} className="tw-m-4 tw-mb-0 tw-flex tw-items-start tw-justify-between tw-gap-3">
               <div className="tw-min-w-0">
                 <Typography variant="h6" color="blue-gray">{t.remedyTitle}</Typography>
-                <Typography variant="small" className="!tw-font-normal !tw-text-blue-gray-500">
-                  {t.remedySubtitle(remedyData.vals.reduce((s, v) => s + v, 0))}
-                </Typography>
+                <div className="tw-flex tw-min-w-0 tw-flex-wrap tw-items-center tw-gap-2">
+                  <Typography variant="small" className="!tw-font-normal !tw-text-blue-gray-500">
+                    {t.remedySubtitle(remedyData.vals.reduce((s, v) => s + v, 0))}
+                  </Typography>
+                  {filters.remedy && <FilterBadge label={remedyLabel(filters.remedy)} />}
+                </div>
               </div>
               <ViewToggle value={remedyView} onChange={setRemedyView} totalLabel={t.viewTotal} brandLabel={t.viewByBrand} />
             </CardHeader>
