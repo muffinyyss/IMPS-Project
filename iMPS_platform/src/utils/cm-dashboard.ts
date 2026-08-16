@@ -44,6 +44,7 @@ export type CMRow = {
 /** บริษัทผู้ถือครองตู้ของใบงานนี้ — ใบที่ระบุไม่ได้จัดกลุ่มเป็น UNKNOWN_BRAND */
 export const UNKNOWN_BRAND = "Unknown";
 export const UNKNOWN_COMPANY = "Unknown";
+export const FLEXXFAST_BRAND = "FlexxFast";
 export const COMPANY_FILTER_OPTIONS = ["EGAT", "EDS"] as const;
 
 export function companyOf(r: CMRow): string {
@@ -51,7 +52,9 @@ export function companyOf(r: CMRow): string {
 }
 
 export function brandOf(r: CMRow): string {
-  return (r.charger_brand || "").trim() || UNKNOWN_BRAND;
+  const brand = (r.charger_brand || "").trim();
+  if (brand.toLowerCase() === FLEXXFAST_BRAND.toLowerCase()) return FLEXXFAST_BRAND;
+  return brand || UNKNOWN_BRAND;
 }
 
 /** ที่มาของใบงาน — ระบบเปิดเอง vs ผู้ใช้กรอกเอง */
@@ -381,7 +384,7 @@ export function applyFilters(
       if (!remedyCodesOf(r).includes(filters.remedy)) return false;
     }
     if (filters.brand && exclude !== "brand") {
-      if (brandOf(r) !== filters.brand) return false;
+      if (brandOf(r).toLowerCase() !== filters.brand.toLowerCase()) return false;
     }
     if (filters.company && exclude !== "company") {
       if (companyOf(r).toLowerCase() !== filters.company.toLowerCase()) return false;
