@@ -2039,8 +2039,6 @@ def _draw_action_block(
     w: float,
     idx: int,
     action: dict,
-    problem_text: str = "",
-    cause_text: str = "",
     correction_text: str = "",
 ) -> float:
     """วาดรายละเอียดการดำเนินการแก้ไข 1 ชุด (ข้อความ + รูปก่อน/หลัง)"""
@@ -2050,10 +2048,6 @@ def _draw_action_block(
 
     action_text = action.get("text", "") or "-"
     fields: List[Tuple[str, str, float]] = []
-    if (problem_text or "").strip():
-        fields.append((_t("problem"), problem_text, 8))
-    if (cause_text or "").strip():
-        fields.append((_t("cause"), cause_text, 8))
     if (correction_text or "").strip():
         fields.append((_t("correction"), correction_text, 8))
     fields.append((_t("action_details"), action_text, 10))
@@ -2137,7 +2131,6 @@ def make_cm_report_pdf_bytes(
     failure_codes = doc.get("_maximo_failure_codes")
     failure_class_code = doc.get("_maximo_failure_class") or doc.get("faulty_equipment")
     corrective_actions = _pdf_corrective_actions(doc)
-    multiple_actions = len(corrective_actions) > 1
     status_bucket = _cm_status_bucket(doc)
     is_repair_form = status_bucket == "in_progress"
     issue_id = str(doc.get("issue_id", "-"))
@@ -2359,7 +2352,7 @@ def make_cm_report_pdf_bytes(
         })
 
     # ฟอร์ม Open ยังไม่มีช่องปัญหา/สาเหตุจากช่าง จึงไม่พิมพ์หมวดนี้จนกว่าจะมีข้อมูลจริง
-    if (is_repair_form or problem_type_text != "-" or cause) and not multiple_actions:
+    if is_repair_form or problem_type_text != "-" or cause:
         y = _new_page_if_needed(
             pdf, y,
             SECTION_BAR_H + sum(_measure_part_height(pdf, page_w, p) for p in section3_parts),
@@ -2452,22 +2445,6 @@ def make_cm_report_pdf_bytes(
             action_cause = action_cause_codes[idx - 1] if idx - 1 < len(action_cause_codes) else ""
             context_problems = [action_problem] if action_problem else problem_codes
             context_causes = [action_cause] if action_cause else cause_codes
-            problem_text = problem_label(
-                action_problem,
-                failure_codes,
-                failure_class_code,
-            ) if action_problem else _join_labels(
-                context_problems,
-                lambda code: problem_label(code, failure_codes, failure_class_code),
-            )
-            cause_text = cause_label(
-                action_cause,
-                failure_codes,
-                failure_class_code,
-            ) if action_cause else _join_labels(
-                context_causes,
-                lambda code: cause_label(code, failure_codes, failure_class_code),
-            )
             correction_code = action_codes[idx - 1] if idx - 1 < len(action_codes) else str(action.get("code") or "")
             correction_labels = remedy_descriptions(
                 failure_code,
@@ -2479,10 +2456,6 @@ def make_cm_report_pdf_bytes(
             ) if correction_code else []
             correction_text = "\n".join(correction_labels) or correction_code
             action_fields: List[Tuple[str, str, float]] = []
-            if (problem_text or "").strip():
-                action_fields.append((_t("problem"), problem_text, 8))
-            if (cause_text or "").strip():
-                action_fields.append((_t("cause"), cause_text, 8))
             if (correction_text or "").strip():
                 action_fields.append((_t("correction"), correction_text, 8))
             action_fields.append((_t("action_details"), action.get("text", "") or "-", 10))
@@ -2499,8 +2472,6 @@ def make_cm_report_pdf_bytes(
                 page_w,
                 idx,
                 action,
-                problem_text=problem_text,
-                cause_text=cause_text,
                 correction_text=correction_text,
             )
 
