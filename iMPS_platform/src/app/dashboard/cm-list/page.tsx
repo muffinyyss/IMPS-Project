@@ -89,6 +89,7 @@ export default function CMListPage() {
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [userRole, setUserRole] = useState("");
   const [userCompany, setUserCompany] = useState("");
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
 
   const router = useRouter();
   const { lang } = useLanguage();
@@ -127,6 +128,7 @@ export default function CMListPage() {
         if (alive) {
           setUserRole(user?.role ?? "");
           setUserCompany(user?.company ?? "");
+          setIsSuperAdmin(!!user?.is_super_admin);
         }
       } catch (err) {
         console.error("fetch /me error:", err);
@@ -188,6 +190,7 @@ export default function CMListPage() {
 
   const activeFilterCount = Object.values(filters).filter(Boolean).length;
   const isEgatCompany = userCompany.trim().toLowerCase() === "egat";
+  const canSeeAllCompanies = isSuperAdmin || isEgatCompany;
 
   const stations = useMemo(() => {
     const names = Array.from(new Set(rows.map((r) => r.station_name || r.station_id))).filter(Boolean);
@@ -481,7 +484,7 @@ export default function CMListPage() {
             {stations.map((s) => <option key={s}>{s}</option>)}
           </select>
         </div>
-        {isEgatCompany && (
+        {canSeeAllCompanies && (
           <div className="tw-flex tw-items-center tw-gap-1.5">
             <label htmlFor="company-filter" className="tw-text-xs tw-font-medium tw-text-gray-500">{t.companyFilterLabel}</label>
             <select

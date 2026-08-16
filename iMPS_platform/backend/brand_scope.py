@@ -56,6 +56,8 @@ def _company_of(current: UserClaims) -> str:
 
 def brand_scope_of(current: UserClaims) -> Optional[str]:
     """ยี่ห้อที่ user คนนี้ถูกจำกัดให้เห็น — None = เห็นทุกยี่ห้อ"""
+    if getattr(current, "is_super_admin", False):
+        return None
     if (current.role or "").strip().lower() not in BRAND_SCOPED_ROLES:
         return None
     return COMPANY_BRAND_SCOPE.get(_company_of(current).lower())

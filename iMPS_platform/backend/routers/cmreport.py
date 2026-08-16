@@ -306,7 +306,13 @@ async def _charger_index_for_station(station_id: str) -> dict:
     }
 
 
-def _charger_identity(index: dict, faulty_equipment: str, charger_sn: str, charger_no=None) -> dict:
+def _charger_identity(
+    index: dict,
+    faulty_equipment: str,
+    charger_sn: str,
+    charger_no=None,
+    fallback: dict | None = None,
+) -> dict:
     """ชื่อ/เลข/ยี่ห้อของตู้บนใบงานหนึ่งใบ — คีย์ SN มาก่อนเพราะแม่นกว่าเลขตู้"""
     by_key = index.get("by_key") or {}
     sn = (charger_sn or "").strip()
@@ -314,6 +320,7 @@ def _charger_identity(index: dict, faulty_equipment: str, charger_sn: str, charg
     info = (by_key.get(f"sn:{sn.lower()}") if sn else None) \
         or (by_key.get(f"charger_{no.lower()}") if no else None) \
         or by_key.get(str(faulty_equipment or "").strip().lower()) \
+        or (fallback or {}) \
         or {}
     return {
         "chargeBoxID": info.get("chargeBoxID", ""),
@@ -372,7 +379,14 @@ async def _brand_clause_for_station(station_id: str, current: UserClaims) -> dic
     • ใบที่ไม่ระบุตู้ (failure code ระดับสถานี เช่น DCCHARGER) → เห็นเฉพาะสถานี
       ที่ตู้ทุกตู้เป็นยี่ห้อนั้น เพราะพิสูจน์ไม่ได้ว่าใบนี้เป็นของตู้ไหน
     """
-    brand = brand_scope_of(current)
+    # CM rule: EDS เห็นเฉพาะ FlexxFast ทุก role ยกเว้น super_admin
+    # ใช้ lower-case เทียบทั้งสองฝั่งเพื่อไม่ผูกกับรูปแบบตัวพิมพ์ใน user/charger data
+    if getattr(current, "is_super_admin", False):
+        brand = None
+    elif (current.company or "").strip().lower() == "eds":
+        brand = "flexxfast"
+    else:
+        brand = brand_scope_of(current)
     if not brand:
         return None
 
@@ -589,6 +603,8 @@ async def _cm_items_for_station(station_id: str, station_name: str, status: str 
         "stage": 1, "reject_remark": 1,
         "reported_by": 1, "inspector": 1, "approved_by": 1, "faulty_equipment": 1, "severity": 1, "company": 1,
         "charger_no": 1, "charger_sn": 1,
+        "chargeBoxID": 1, "chargebox_id": 1, "charger_name": 1,
+        "charger_model": 1, "charger_brand": 1,
         "problem_details": 1, "location": 1, "job": 1, "repair_result": 1,
         # analyse CM dashboard : cause / correction (codes Maximo)
         "cause": 1, "problem_type": 1, "repaired_equipment": 1,
@@ -645,10 +661,19 @@ async def _cm_items_for_station(station_id: str, station_name: str, status: str 
         job = it.get("job", {})
         faulty_equipment = it.get("faulty_equipment") or job.get("faulty_equipment") or ""
         charger = _charger_identity(
-        charger_index,
-        faulty_equipment,
-        it.get("charger_sn") or job.get("charger_sn") or "",
-        it.get("charger_no") or job.get("charger_no") or "",
+            charger_index,
+            faulty_equipment,
+            it.get("charger_sn") or job.get("charger_sn") or "",
+            it.get("charger_no") or job.get("charger_no") or "",
+            fallback={
+                "chargeBoxID": it.get("chargeBoxID") or it.get("chargebox_id") or job.get("chargeBoxID") or job.get("chargebox_id") or "",
+                "charger_name": it.get("charger_name") or job.get("charger_name") or "",
+                "charger_no": it.get("charger_no") or job.get("charger_no"),
+                "charger_sn": it.get("charger_sn") or job.get("charger_sn") or "",
+                "charger_model": it.get("charger_model") or job.get("charger_model") or "",
+                "charger_brand": it.get("charger_brand") or job.get("charger_brand") or "",
+                "label": it.get("charger_name") or job.get("charger_name") or "",
+            },
         )
         out.append({
             "id": str(it["_id"]),
@@ -1386,6 +1411,15 @@ async def cmreport_detail_path(
         doc.get("faulty_equipment") or nested_job.get("faulty_equipment") or "",
         doc.get("charger_sn") or nested_job.get("charger_sn") or "",
         doc.get("charger_no") or nested_job.get("charger_no") or "",
+        fallback={
+            "chargeBoxID": doc.get("chargeBoxID") or doc.get("chargebox_id") or nested_job.get("chargeBoxID") or nested_job.get("chargebox_id") or "",
+            "charger_name": doc.get("charger_name") or nested_job.get("charger_name") or "",
+            "charger_no": doc.get("charger_no") or nested_job.get("charger_no"),
+            "charger_sn": doc.get("charger_sn") or nested_job.get("charger_sn") or "",
+            "charger_model": doc.get("charger_model") or nested_job.get("charger_model") or "",
+            "charger_brand": doc.get("charger_brand") or nested_job.get("charger_brand") or "",
+            "label": doc.get("charger_name") or nested_job.get("charger_name") or "",
+        },
     )
 
     return {
