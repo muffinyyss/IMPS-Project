@@ -154,6 +154,7 @@ export default function CMDashboardPage() {
   const router = useRouter();
   const [userRole, setUserRole] = useState("");
   const [userCompany, setUserCompany] = useState("");
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   // tant que le rôle n'est pas connu on ne peut pas savoir si l'utilisateur a droit
   // à l'analytique — on garde le spinner plutôt que de la faire clignoter
   const [roleLoaded, setRoleLoaded] = useState(false);
@@ -181,6 +182,7 @@ export default function CMDashboardPage() {
         if (alive) {
           setUserRole(user?.role ?? "");
           setUserCompany(user?.company ?? "");
+          setIsSuperAdmin(!!user?.is_super_admin);
         }
       } catch (err) {
         console.error("fetch /me error:", err);
@@ -224,6 +226,7 @@ export default function CMDashboardPage() {
 
   const activeFilterCount = Object.values(filters).filter(Boolean).length;
   const isEgatCompany = userCompany.trim().toLowerCase() === "egat";
+  const canSeeAllCompanies = isSuperAdmin || isEgatCompany;
 
   const stations = useMemo(() => {
     const names = Array.from(new Set(rows.map((r) => r.station_name || r.station_id))).filter(Boolean);
@@ -930,7 +933,7 @@ export default function CMDashboardPage() {
       {!isListOnlyRole && (
         <div className="tw-mb-4 tw-flex tw-flex-col tw-gap-3 tw-rounded-xl tw-border tw-border-blue-gray-100 tw-bg-white tw-px-4 tw-py-3 tw-shadow-sm lg:tw-flex-row lg:tw-items-center lg:tw-justify-between">
           <div className="tw-flex tw-min-w-0 tw-flex-wrap tw-items-center tw-gap-2">
-            {isEgatCompany && (
+            {canSeeAllCompanies && (
               <div className="tw-flex tw-items-center tw-gap-1.5">
                 <label htmlFor="company-filter" className="tw-text-xs tw-font-semibold tw-uppercase tw-tracking-wide tw-text-gray-400">
                   {t.companyFilterLabel}
@@ -1034,7 +1037,7 @@ export default function CMDashboardPage() {
           {filters.equipment && <FilterChip label={`Equipment: ${filters.equipment}`} lang={lang} onRemove={() => clearFilter("equipment")} />}
           {filters.severity && <FilterChip label={`Severity: ${filters.severity}`} lang={lang} onRemove={() => clearFilter("severity")} />}
           {filters.station && <FilterChip label={`Station: ${filters.station}`} lang={lang} onRemove={() => clearFilter("station")} />}
-          {isEgatCompany && filters.company && <FilterChip label={`${t.companyFilterLabel}: ${filters.company === UNKNOWN_COMPANY ? t.unknownCompany : filters.company}`} lang={lang} onRemove={() => clearFilter("company")} />}
+          {canSeeAllCompanies && filters.company && <FilterChip label={`${t.companyFilterLabel}: ${filters.company === UNKNOWN_COMPANY ? t.unknownCompany : filters.company}`} lang={lang} onRemove={() => clearFilter("company")} />}
           {filters.brand && <FilterChip label={`${t.brandFilterLabel}: ${filters.brand === UNKNOWN_BRAND ? t.unknownBrand : filters.brand}`} lang={lang} onRemove={() => clearFilter("brand")} />}
           {filters.origin && <FilterChip label={`${t.originFilterLabel}: ${filters.origin === "auto" ? t.originAuto : t.originUser}`} lang={lang} onRemove={() => clearFilter("origin")} />}
           <button onClick={clearAll} aria-label={t.clearAllAria} className="tw-text-xs tw-font-semibold tw-text-red-500 hover:tw-text-red-700 tw-underline">

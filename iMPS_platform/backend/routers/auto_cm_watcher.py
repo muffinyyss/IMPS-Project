@@ -126,10 +126,14 @@ async def _lookup_station(sn: str) -> dict | None:
 
     info = {
         "station_id": doc.get("station_id", ""),
+        "station_name": station_doc.get("station_name", "") if station_doc else "",
+        "company": station_doc.get("company", "") if station_doc else "",
         "maximo_location": charger_maximo or station_maximo,  # ← charger > station
         "charger_name": doc.get("charger_name", ""),
         "charger_no": doc.get("chargerNo") or doc.get("charger_no", ""),
         "chargebox_id": doc.get("chargeBoxID", ""),
+        "charger_model": doc.get("model", ""),
+        "charger_brand": doc.get("brand", ""),
         "sn": sn,
     }
     _sn_cache[sn] = info
@@ -153,14 +157,22 @@ async def _create_auto_cm(
     problem_text: str, remarks_text: str,
 ) -> bool:
     """Shared: สร้าง CM report สำหรับทุก trigger type"""
-    faulty = f"charger_{info.get('charger_no', '1')}"
-    found_date = datetime.now(th_tz).date().isoformat()
+    detected_at = datetime.now(th_tz)
+    found_date = detected_at.date().isoformat()
+    found_time = detected_at.strftime("%H:%M")
+    charger_no = info.get("charger_no")
+    faulty = f"charger_{charger_no or '1'}"
 
     issue_id = await get_next_cm_issue_id(station_id, found_date)
     doc_name = await get_next_cm_doc_name(station_id, found_date)
 
     station_doc = await _stations_col.find_one({"station_id": station_id})
     location = station_doc.get("station_name", station_id) if station_doc else station_id
+    company = (
+        info.get("company")
+        or (station_doc.get("company", "") if station_doc else "")
+    )
+    now_utc = datetime.now(timezone.utc)
 
     coll = get_cmreport_collection_for(station_id)
     await _ensure_cm_indexes(coll)
@@ -170,29 +182,42 @@ async def _create_auto_cm(
         "doc_name": doc_name,
         "station_id": station_id,
         "found_date": found_date,
+        "found_time": found_time,
+        "cm_date": found_date,
         "faulty_equipment": faulty,
+        "charger_no": charger_no,
+        "charger_sn": sn,
+        "chargeBoxID": info.get("chargebox_id", ""),
+        "charger_name": info.get("charger_name", ""),
+        "charger_model": info.get("charger_model", ""),
+        "charger_brand": info.get("charger_brand", ""),
+        "chargebox_id": info.get("chargebox_id", ""),
+        "company": company,
         "severity": severity,
-        "status": "Open",
+        # ให้ Auto เดินสถานะเดียวกับใบที่เปิดผ่าน Manual ใน flow ปัจจุบัน
+        "status": "Wait for approve",
+        "stage": "cs_approval",
         "problem_details": problem_text,
         "remarks_open": remarks_text,
         "location": location,
         "reported_by": "System (Auto CM)",
         "auto_generated": True,
         "auto_trigger": trigger_key,
-        "charger_sn": sn,
         "photos_problem": {},
-        "createdAt": datetime.now(timezone.utc),
-        "updatedAt": datetime.now(timezone.utc),
+        "maximo_ticket_id": None,
+        "createdAt": now_utc,
+        "updatedAt": now_utc,
     }
 
     try:
         insert_result = await coll.insert_one(cm_doc)
 
-        cm_doc["maximo_ticket_id"] = None
-        
         maximo_loc = info.get("maximo_location", "")
         if maximo_loc:
-            desc = f"[iMPS Auto CM] {location} / {info.get('charger_name', 'Unknown')} (SN: {sn}) / {trigger_key}"
+            # ใช้รูปแบบเดียวกับการเปิด CM แบบ Manual:
+            # [iMPS CM] สถานี / หมายเลขตู้หรือ S/N / รายละเอียดปัญหา
+            charger_label = info.get("charger_no") or sn or faulty
+            desc = f"[iMPS CM] {location} / {charger_label} / {problem_text}"
             sr_result = maximo_create_sr(
                 description=desc[:250],
                 location=maximo_loc,

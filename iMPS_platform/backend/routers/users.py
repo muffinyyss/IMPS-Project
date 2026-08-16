@@ -551,7 +551,7 @@ def get_history(
     current: UserClaims = Depends(get_current_user),
 ):
     # ✅ เช็คสิทธิ์ก่อนคิวรีทุกครั้ง — อ่านจาก DB ไม่ใช่ JWT ให้ตรงกับสถานีที่เห็นในหน้า EV Station
-    if station_id not in set(get_user_station_ids(current)):
+    if not current.is_super_admin and station_id not in set(get_user_station_ids(current)):
         raise HTTPException(status_code=403, detail="Forbidden station_id")
 
 class RefreshIn(BaseModel):
