@@ -194,7 +194,7 @@ type ValidationItem = { key: string; label: string; isValid: boolean; message: s
 const SEVERITY_OPTIONS: Severity[] = ["", "Low", "Medium", "High", "Urgent"];
 const LOGO_SRC = "/img/logo_egat.png";
 const LIST_ROUTE = "/dashboard/cm-report";
-const MAX_PHOTOS = 5;
+const MAX_PHOTOS = 10;
 
 // ใช้ตัวแปลง value → label ชุดเดียวกับฟอร์ม InProgress จะได้ไม่ต้องดูแลลิสต์ซ้ำสองที่
 import { problemLabelOf, causeLabelOf } from "@/app/dashboard/cm-report/inprogress/input_CMreport/components/checkList";

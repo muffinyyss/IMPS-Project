@@ -27,6 +27,7 @@ ALLOWED_EXTS = {
     "mp4", "mov", "mkv", "avi", "webm", "wmv",
 }
 MAX_FILE_MB = 20
+MAX_CM_PHOTOS_PER_GROUP = 10
 from deps import UserClaims, get_current_user
 from brand_scope import brand_scope_of
 from uploads_access import assert_station_access, assert_sn_access
@@ -946,11 +947,23 @@ async def cmreport_upload_photos(
     except Exception:
         raise HTTPException(status_code=400, detail="Bad report_id")
 
-    doc = await coll.find_one({"_id": oid}, {"_id":1, "station_id":1})
+    doc = await coll.find_one(
+        {"_id": oid},
+        {"_id": 1, "station_id": 1, photo_field: 1},
+    )
     if not doc:
         raise HTTPException(status_code=404, detail="Report not found")
     if doc.get("station_id") != station_id:
         raise HTTPException(status_code=400, detail="station_id mismatch")
+
+    existing_groups = doc.get(photo_field) or {}
+    existing_photos = existing_groups.get(group) if isinstance(existing_groups, dict) else []
+    existing_count = len(existing_photos) if isinstance(existing_photos, list) else 0
+    if existing_count + len(files) > MAX_CM_PHOTOS_PER_GROUP:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Maximum {MAX_CM_PHOTOS_PER_GROUP} photos per group",
+        )
 
     dest_dir = pathlib.Path(UPLOADS_ROOT) / "cm" / station_id / report_id / group
     dest_dir.mkdir(parents=True, exist_ok=True)
@@ -983,10 +996,35 @@ async def cmreport_upload_photos(
             "uploadedAt": created_at or uploaded_at.isoformat(),
         })
 
-    await coll.update_one(
-        {"_id": oid},
+    # Re-check atomically so concurrent uploads cannot push a group beyond the limit.
+    result = await coll.update_one(
+        {
+            "_id": oid,
+            "station_id": station_id,
+            "$expr": {
+                "$lte": [
+                    {
+                        "$add": [
+                            {"$size": {"$ifNull": [f"${photo_field}.{group}", []]}},
+                            len(saved),
+                        ]
+                    },
+                    MAX_CM_PHOTOS_PER_GROUP,
+                ]
+            },
+        },
         {"$push": {f"{photo_field}.{group}": {"$each": saved}}}
     )
+    if result.matched_count == 0:
+        for item in saved:
+            try:
+                (dest_dir / item["filename"]).unlink(missing_ok=True)
+            except OSError:
+                pass
+        raise HTTPException(
+            status_code=400,
+            detail=f"Maximum {MAX_CM_PHOTOS_PER_GROUP} photos per group",
+        )
 
     return {
         "ok": True,
