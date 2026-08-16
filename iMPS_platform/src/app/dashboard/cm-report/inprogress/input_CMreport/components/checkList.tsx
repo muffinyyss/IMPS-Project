@@ -91,6 +91,10 @@ const T = {
     // Buttons
     saving: { th: "กำลังบันทึก...", en: "Saving..." },
     closed: { th: "Closed", en: "Closed" },
+    cancelWorkOrder: { th: "ยกเลิกใบงาน", en: "Cancel work order" },
+    cancelReason: { th: "เหตุผลที่ยกเลิก", en: "Cancellation reason" },
+    confirmCancel: { th: "ยืนยันยกเลิก", en: "Confirm cancel" },
+    cancelling: { th: "กำลังยกเลิก...", en: "Cancelling..." },
     save: { th: "บันทึก", en: "Save" },
     repairRound: { th: "แก้ไขครั้งที่", en: "Repair round" },
     rrResult: { th: "ผลหลังซ่อม", en: "Repair result" },
@@ -1007,6 +1011,9 @@ export default function CMInProgressForm() {
     const [approvalStage, setApprovalStage] = useState("");
     const [approving, setApproving] = useState(false);
     const [approveOpen, setApproveOpen] = useState(false);
+    const [cancelOpen, setCancelOpen] = useState(false);
+    const [cancelRemark, setCancelRemark] = useState("");
+    const [cancelling, setCancelling] = useState(false);
     const [plannerEditMode, setPlannerEditMode] = useState(false);
     const [editConfirmOpen, setEditConfirmOpen] = useState(false);
     // ตีกลับใบงาน — ต้องกรอกเหตุผลให้ช่างรู้ว่าต้องแก้อะไร
@@ -1070,7 +1077,23 @@ export default function CMInProgressForm() {
     const canApprove =
         isWoCloseApproval &&
         ["admin", "planner"].includes(currentRole.trim().toLowerCase());
+    const canCancelJob =
+        isEdit &&
+        !isClosedStatus &&
+        normalizedJobStatus !== "cancelled" &&
+        ["admin", "owner", "planner", "technician", "super_admin"].includes(currentRole.trim().toLowerCase());
     const reviewerName = isClosedStatus ? approvedBy : currentUsername;
+
+    const cancelAction = canCancelJob ? (
+        <Button
+            type="button"
+            onClick={() => { setCancelRemark(""); setCancelOpen(true); }}
+            disabled={saving || approving || rejecting || cancelling}
+            className="tw-bg-red-600 hover:tw-bg-red-700 tw-text-white tw-font-semibold tw-text-base tw-px-8 tw-py-3 tw-rounded-xl hover:tw-shadow-xl hover:tw-shadow-red-500/30 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed tw-transition-all"
+        >
+            {t("cancelWorkOrder", lang)}
+        </Button>
+    ) : null;
 
     const approvalActions = canApprove ? (
         <>
@@ -2299,6 +2322,32 @@ export default function CMInProgressForm() {
         }
     };
 
+    const onCancelJob = async () => {
+        if (!canCancelJob || !editId || !stationId || cancelling) return;
+        setCancelling(true);
+        try {
+            const res = await fetch(
+                `${API_BASE}/cmreport/${encodeURIComponent(editId)}/cancel?station_id=${encodeURIComponent(stationId)}`,
+                {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    credentials: "include",
+                    body: JSON.stringify({ remark: cancelRemark.trim() }),
+                }
+            );
+            if (!res.ok) {
+                const j = await res.json().catch(() => ({}));
+                throw new Error(j?.detail || `HTTP ${res.status}`);
+            }
+            setCancelOpen(false);
+            router.push(buildListUrl("cancelled"));
+        } catch (e: any) {
+            alert((lang === "th" ? "ยกเลิกไม่สำเร็จ: " : "Cancel failed: ") + (e?.message ?? e));
+        } finally {
+            setCancelling(false);
+        }
+    };
+
     // ตีกลับใบงานของช่างกลับเข้าคิววางแผน (Wait for approve → Wait for schedule) พร้อมเหตุผล
     const onReject = async () => {
         if (!canApprove || !editId || !stationId || rejecting) return;
@@ -3458,6 +3507,7 @@ export default function CMInProgressForm() {
                                 >
                                     {lang === "th" ? "กลับ" : "Back"}
                                 </Button>
+                                {cancelAction}
                                 {canEditTechnicianData && (
                                     <Button
                                         type="button"
@@ -3473,6 +3523,7 @@ export default function CMInProgressForm() {
                             </>
                         ) : (
                             <>
+                            {cancelAction}
                             {/* planner เข้าโหมดแก้ไขข้อมูลของช่าง — ต้องถอยออกได้โดยไม่บันทึก */}
                             {isPlannerEditing && (
                                 <Button
@@ -3554,6 +3605,51 @@ export default function CMInProgressForm() {
             )}
 
             {/* Modal ตีกลับ — บังคับกรอกเหตุผลก่อนส่งกลับให้ช่าง */}
+            {cancelOpen && (
+                <div
+                    className="tw-fixed tw-inset-0 tw-z-[9999] tw-flex tw-items-center tw-justify-center tw-bg-black/50 tw-p-4"
+                    onClick={() => { if (!cancelling) setCancelOpen(false); }}
+                >
+                    <div className="tw-w-full tw-max-w-lg tw-rounded-2xl tw-bg-white tw-p-6 tw-shadow-2xl" onClick={e => e.stopPropagation()}>
+                        <h3 className="tw-text-lg tw-font-bold tw-text-red-700 tw-mb-2">
+                            {t("cancelWorkOrder", lang)}
+                        </h3>
+                        <p className="tw-text-sm tw-text-blue-gray-600 tw-mb-4">
+                            {lang === "th" ? "ระบุเหตุผลที่ยกเลิกใบงานนี้ (ถ้ามี)" : "Enter the reason for cancelling this work order (optional)."}
+                        </p>
+                        <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-2">
+                            {t("cancelReason", lang)}
+                        </label>
+                        <textarea
+                            value={cancelRemark}
+                            onChange={e => setCancelRemark(e.target.value)}
+                            rows={4}
+                            autoFocus
+                            className="tw-w-full tw-px-3 tw-py-2 tw-border tw-border-blue-gray-200 tw-rounded-lg tw-text-sm tw-bg-white focus:tw-outline-none focus:tw-border-red-400 tw-transition-colors tw-resize-y"
+                        />
+                        <div className="tw-flex tw-items-center tw-justify-end tw-gap-3 tw-mt-5">
+                            <Button
+                                type="button"
+                                variant="outlined"
+                                disabled={cancelling}
+                                onClick={() => setCancelOpen(false)}
+                                className="tw-border-blue-gray-200 tw-text-blue-gray-700 hover:tw-border-blue-gray-300"
+                            >
+                                {lang === "th" ? "กลับ" : "Back"}
+                            </Button>
+                            <Button
+                                type="button"
+                                onClick={onCancelJob}
+                                disabled={cancelling}
+                                className="tw-bg-red-600 hover:tw-bg-red-700 tw-text-white tw-font-semibold disabled:tw-opacity-50 disabled:tw-cursor-not-allowed"
+                            >
+                                {cancelling ? t("cancelling", lang) : t("confirmCancel", lang)}
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {rejectOpen && (
                 <div className="tw-fixed tw-inset-0 tw-z-[9999] tw-flex tw-items-center tw-justify-center tw-bg-black/50 tw-p-4"
                     onClick={() => { if (!rejecting) setRejectOpen(false); }}>
