@@ -157,7 +157,8 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
   // planner (หรือ admin) ยกเลิกใบงานที่ยังไม่ปิด → Cancelled
   // หน้า In Progress list ไม่มีปุ่มยกเลิกด้านนอกแล้ว (จัดการยกเลิก/ตีกลับตั้งแต่ด่าน SR/วางแผน)
   // planner/admin และ technician ที่ได้รับมอบหมาย ยกเลิก WO จากหน้า In Progress ได้
-  const canCancel = currentRole.trim().toLowerCase() === "technician";
+  // Cancellation is handled from the In Progress form; the list has no Cancel column.
+  const canCancel = false;
 
   const todayStr = useMemo(() => {
     const d = new Date();
@@ -318,12 +319,15 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
       // แท็บ In Progress = กำลังซ่อม + รออนุมัติปิดงาน
       // "wait for approve" ต้องเป็นด่านปิดงาน (stage != cs_approval) เท่านั้น — ด่าน cs ไปอยู่แท็บ Open
       const filterByStatus = (it: any) => {
-        const s = String(it?.status ?? it?.job?.status ?? "").trim().toLowerCase();
+        const rawStatuses = [it?.status, it?.job?.status]
+          .filter((value) => value != null)
+          .map((value) => String(value).trim().toLowerCase());
+        const s = rawStatuses[0] || "";
         const stage = String(it?.stage ?? "").trim().toLowerCase();
         const repairResult = String(it?.repair_result ?? it?.job?.repair_result ?? "").trim().toLowerCase();
-        if (s === "wo - wait for approve" || repairResult === "wo - wait for approve") return true;
-        if (s === "in progress") return true;
-        if (s === "wait for approve") return stage !== "cs_approval";
+        if (rawStatuses.includes("wo - wait for approve") || repairResult === "wo - wait for approve") return true;
+        if (rawStatuses.includes("in progress")) return true;
+        if (rawStatuses.includes("wait for approve")) return stage !== "cs_approval";
         return false;
       };
 

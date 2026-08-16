@@ -424,15 +424,18 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
       // แท็บ Open = ด่านก่อนเริ่มซ่อม: รอ head cs อนุมัติ + รอ planner วางแผน
       // "wait for approve" ต้องเป็น stage cs_approval เท่านั้น (ด่านปิดงานไปอยู่แท็บ In Progress)
       const isOpen = (it: any) => {
-        const hasStatus = it?.status != null || it?.job?.status != null;
+        const rawStatuses = [it?.status, it?.job?.status]
+          .filter((value) => value != null)
+          .map((value) => String(value).trim().toLowerCase());
+        const hasStatus = rawStatuses.length > 0 || it?.repair_result != null || it?.job?.repair_result != null;
         if (!hasStatus) return true;
-        const s = String(it?.status ?? it?.job?.status ?? "").trim().toLowerCase();
+        const s = rawStatuses[0] || "";
         const stage = String(it?.stage ?? "").trim().toLowerCase();
         const repairResult = String(it?.repair_result ?? it?.job?.repair_result ?? "").trim().toLowerCase();
-        if (s === "wo - wait for approve" || repairResult === "wo - wait for approve") return false;
-        if (s === "open") return true;
-        if (s === "wait for schedule") return true;
-        if (s === "wait for approve") return stage === "cs_approval";
+        if (rawStatuses.includes("wo - wait for approve") || repairResult === "wo - wait for approve") return false;
+        if (rawStatuses.includes("wait for approve")) return stage === "cs_approval";
+        if (rawStatuses.includes("open") || s === "open") return true;
+        if (rawStatuses.includes("wait for schedule")) return true;
         return false;
       };
 

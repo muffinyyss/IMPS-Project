@@ -201,6 +201,10 @@ def _status_or_conditions(status: str) -> list[dict]:
         rx = {"$regex": f"^{re.escape(w)}$", "$options": "i"}
         conds.append({"status": rx})
         conds.append({"job.status": rx})
+        if w.lower() in {"wait for approve", "wo - wait for approve"}:
+            wo_rx = {"$regex": r"^WO\s*-\s*wait\s+for\s+approve$", "$options": "i"}
+            conds.append({"repair_result": wo_rx})
+            conds.append({"job.repair_result": wo_rx})
     return conds
 
 
@@ -568,7 +572,7 @@ async def cmreport_list(
             "inspector": it.get("inspector") or job.get("inspector") or "",
             "approved_by": it.get("approved_by") or "",
             "status": it.get("status") or job.get("status") or "",
-            "stage": it.get("stage") or "",
+            "stage": it.get("stage") or job.get("stage") or "",
             "reject_remark": it.get("reject_remark") or "",
             "faulty_equipment": it.get("faulty_equipment") or job.get("faulty_equipment") or "",
             "charger_no": it.get("charger_no") or job.get("charger_no") or "",
