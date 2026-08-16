@@ -570,6 +570,7 @@ async def cmreport_list(
 
 
 async def _cm_items_for_station(station_id: str, station_name: str, status: str | None,
+                                station_company: str = "",
                                 scope: dict | None = None,
                                 current: UserClaims | None = None) -> list[dict]:
     """ดึง CM report ของสถานีเดียว (merge กับ CMUrl ด้วย cm_date) + ใส่ station info"""
@@ -586,7 +587,7 @@ async def _cm_items_for_station(station_id: str, station_name: str, status: str 
     cursor = coll.find(mongo_filter, {
         "_id": 1, "doc_name": 1, "issue_id": 1, "cm_date": 1, "found_date": 1, "status": 1,
         "stage": 1, "reject_remark": 1,
-        "reported_by": 1, "inspector": 1, "approved_by": 1, "faulty_equipment": 1, "severity": 1,
+        "reported_by": 1, "inspector": 1, "approved_by": 1, "faulty_equipment": 1, "severity": 1, "company": 1,
         "charger_no": 1, "charger_sn": 1,
         "problem_details": 1, "location": 1, "job": 1, "repair_result": 1,
         # analyse CM dashboard : cause / correction (codes Maximo)
@@ -653,6 +654,7 @@ async def _cm_items_for_station(station_id: str, station_name: str, status: str 
             "id": str(it["_id"]),
             "station_id": station_id,
             "station_name": station_name,
+            "company": str(it.get("company") or job.get("company") or station_company).strip(),
             "doc_name": it.get("doc_name") or "",
             "issue_id": it.get("issue_id") or job.get("issue_id") or "",
             "cm_date": resolve_cm_date(it, job),
@@ -711,7 +713,7 @@ async def cmreport_list_all(
         stations = await loop.run_in_executor(
             None,
             lambda: list(station_collection.find(
-                station_query, {"_id": 0, "station_id": 1, "station_name": 1}
+                station_query, {"_id": 0, "station_id": 1, "station_name": 1, "company": 1, "user_id": 1, "username": 1}
             )),
         )
     except Exception:
@@ -720,9 +722,35 @@ async def cmreport_list_all(
     if not stations:
         return {"items": [], "total": 0, "stations_count": 0}
 
+    # Company ของ CM คือ company ของ owner ที่ผูกกับสถานี ไม่ใช่ brand ของ charger
+    # รองรับทั้งข้อมูลสถานีรุ่นใหม่ที่เก็บ company ตรง ๆ และข้อมูลเดิมที่อ้าง owner user
+    try:
+        owner_ids = [s.get("user_id") for s in stations if isinstance(s.get("user_id"), ObjectId)]
+        owner_names = [str(s.get("username") or "").strip() for s in stations if s.get("username")]
+        owner_query = []
+        if owner_ids:
+            owner_query.append({"_id": {"$in": owner_ids}})
+        if owner_names:
+            owner_query.append({"username": {"$in": owner_names}})
+        owner_docs = await users_coll_async.find(
+            {"$or": owner_query} if owner_query else {"_id": None},
+            {"_id": 1, "username": 1, "company": 1},
+        ).to_list(length=10_000)
+    except Exception:
+        owner_docs = []
+
+    company_by_id = {str(u.get("_id")): str(u.get("company") or "").strip() for u in owner_docs}
+    company_by_name = {str(u.get("username") or "").strip().lower(): str(u.get("company") or "").strip() for u in owner_docs}
+    for station in stations:
+        station["company"] = (
+            str(station.get("company") or "").strip()
+            or company_by_id.get(str(station.get("user_id")), "")
+            or company_by_name.get(str(station.get("username") or "").strip().lower(), "")
+        )
+
     scope = _assignee_scope(current)
     tasks = [
-        _cm_items_for_station(s["station_id"], s.get("station_name", "-"), status, scope, current)
+        _cm_items_for_station(s["station_id"], s.get("station_name", "-"), status, s.get("company", ""), scope, current)
         for s in stations
         if s.get("station_id")
     ]

@@ -18,6 +18,8 @@ import {
   STATUS_LABELS,
   CMRow,
   ActiveFilters,
+  companyOf,
+  listCompanies,
 } from "./cm-dashboard";
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
@@ -46,6 +48,21 @@ function makeRow(overrides: Partial<CMRow> = {}): CMRow {
 }
 
 const noFilters: ActiveFilters = EMPTY_FILTERS;
+
+describe("company filter helpers", () => {
+  it("uses the station company separately from charger brand", () => {
+    const row = makeRow({ company: "Company A", charger_brand: "Brand X" });
+    expect(companyOf(row)).toBe("Company A");
+    expect(listCompanies([row])).toEqual(["Company A"]);
+    expect(applyFilters([row], { ...EMPTY_FILTERS, company: "Company A" })).toEqual([row]);
+    expect(applyFilters([row], { ...EMPTY_FILTERS, company: "Company B" })).toEqual([]);
+  });
+
+  it("puts unknown companies last", () => {
+    const rows = [makeRow({ id: "a", company: "" }), makeRow({ id: "b", company: "Company A" })];
+    expect(listCompanies(rows)).toEqual(["Company A", "Unknown"]);
+  });
+});
 
 // ─── normalizeStatus ─────────────────────────────────────────────────────────
 

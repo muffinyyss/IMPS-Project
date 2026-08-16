@@ -1688,7 +1688,7 @@ def _draw_photo_grid(
     cols: int = 3,
     img_h: float = 40.0,
     gap: float = 2.0,
-    draw_outer: bool = True,
+    draw_outer: bool = False,
 ) -> float:
     """วาด grid รูปภาพในกรอบที่มี label (optional)
     draw_outer → วาดกรอบรอบ grid (ปิดได้เมื่ออยู่ภายใน group box)
@@ -1745,9 +1745,6 @@ def _draw_photo_grid(
                         pass
                     finally:
                         img_buf.seek(0)
-                pdf.set_draw_color(200, 200, 200)
-                pdf.rect(cx, cy, img_w, img_h)
-                pdf.set_draw_color(0, 0, 0)
                 pdf.image(
                     img_buf,
                     x=cx + (img_w - draw_w) / 2.0,
@@ -1825,9 +1822,6 @@ def _draw_links_block(
 
 
 def _draw_placeholder(pdf: FPDF, base_font: str, x: float, y: float, w: float, h: float):
-    pdf.set_draw_color(180, 180, 180)
-    pdf.rect(x, y, w, h)
-    pdf.set_draw_color(0, 0, 0)
     pdf.set_font(base_font, "", FONT_SMALL)
     pdf.set_text_color(150, 150, 150)
     pdf.set_xy(x, y + (h - LINE_H) / 2.0)
@@ -2315,7 +2309,7 @@ def make_cm_report_pdf_bytes(
     # รูปที่เกินขอบหน้าจึงถูกตัดหาย — บล็อกนี้ย้ายไปทั้งก้อน รูปทุกใบจึงอยู่ที่เดียวกันเสมอ
     photos_obj = doc.get("photos", {}) or doc.get("photos_problem", {}) or {}
     cm_attachments = photos_obj.get("cm_photos", []) if isinstance(photos_obj, dict) else []
-    cm_images, cm_files = _split_attachments(cm_attachments)
+    cm_images, _ = _split_attachments(cm_attachments)
 
     attachment_parts: List[Dict[str, Any]] = []
     if cm_images:
@@ -2325,14 +2319,6 @@ def make_cm_report_pdf_bytes(
             "cols": 3,
             "img_h": 45,
         })
-    if cm_files:
-        attachment_parts.append({
-            "kind": "links",
-            # มีรูปอยู่ด้วยต้องมีป้ายคั่นว่าส่วนนี้คือไฟล์แนบ ถ้ามีแต่ไฟล์ หัวบล็อกบอกอยู่แล้ว
-            "label": _t("attached_files") if cm_images else "",
-            "items": cm_files,
-        })
-
     if attachment_parts:
         y = _new_page_if_needed(
             pdf, y,
@@ -2340,7 +2326,7 @@ def make_cm_report_pdf_bytes(
         )
         y = _draw_section_group(
             pdf, base_font, x0, y, page_w,
-            _t("problem_photos") if cm_images else _t("attachments"),
+            _t("problem_photos"),
             parts=attachment_parts,
         )
         y += 3

@@ -3503,7 +3503,7 @@ export default function CMInProgressForm() {
                                 onClick={() => { void onFinalSave(); }}
     disabled={saving || ((isClosedResult || plannerAutoClose) ? !canClose : !canSave)}
                                 className={`tw-text-white tw-font-semibold tw-text-base tw-px-8 tw-py-3 tw-rounded-xl hover:tw-shadow-xl disabled:tw-opacity-50 disabled:tw-cursor-not-allowed disabled:tw-shadow-none tw-transition-all tw-transform hover:tw-scale-[1.02] ${isClosing || plannerAutoClose
-                                    ? "tw-bg-gray-700 hover:tw-bg-red-800 hover:tw-shadow-red-500/30"
+                                    ? "tw-bg-green-600 hover:tw-bg-green-700 hover:tw-shadow-green-500/30"
                                     : "tw-bg-amber-500 hover:tw-bg-amber-600 hover:tw-shadow-amber-500/30"
                                     }`}
                             >
