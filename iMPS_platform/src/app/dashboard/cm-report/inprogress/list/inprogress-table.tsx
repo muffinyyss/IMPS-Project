@@ -156,8 +156,8 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
   const [deleting, setDeleting] = useState(false);
   // planner (หรือ admin) ยกเลิกใบงานที่ยังไม่ปิด → Cancelled
   // หน้า In Progress list ไม่มีปุ่มยกเลิกด้านนอกแล้ว (จัดการยกเลิก/ตีกลับตั้งแต่ด่าน SR/วางแผน)
-  // technician ยกเลิก WO ของตัวเองจากหน้า In Progress ได้
-  const canCancel = currentRole.trim().toLowerCase() === "technician";
+  // planner/admin และ technician ที่ได้รับมอบหมาย ยกเลิก WO จากหน้า In Progress ได้
+  const canCancel = ["admin", "planner", "technician"].includes(currentRole.trim().toLowerCase());
 
   const todayStr = useMemo(() => {
     const d = new Date();

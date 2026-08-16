@@ -7,7 +7,7 @@ from datetime import datetime, timezone, date
 from bson.objectid import ObjectId
 from pymongo import ReturnDocument
 from typing import List, Dict, Any, Optional, Literal
-import re, json, uuid, pathlib, secrets, os
+import re, json, uuid, pathlib, secrets, os, shutil
 
 from config import (
     normalize_pm_date, _ensure_utc_iso,
@@ -1430,6 +1430,44 @@ async def cmreport_submit(body: CMSubmitIn, current: UserClaims = Depends(get_cu
         "issue_id": issue_id,
         "maximo_ticket_id": maximo_ticket_id,                      # ← B) เพิ่ม
     }
+
+
+@router.delete("/cmreport/{report_id}/rollback")
+async def cmreport_rollback_new(
+    report_id: str,
+    station_id: str = Query(...),
+    current: UserClaims = Depends(get_current_user),
+):
+    """ลบใบ CM ที่เพิ่งสร้างไว้ชั่วคราว เมื่อไฟล์แนบหรือการบันทึกขั้นถัดไปล้มเหลว"""
+    station_id = station_id.strip()
+    assert_station_access(current, station_id)
+    try:
+        oid = ObjectId(report_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bad report_id")
+
+    coll = get_cmreport_collection_for(station_id)
+    doc = await coll.find_one({"_id": oid, "station_id": station_id})
+    if not doc:
+        return {"ok": True, "deleted": False}
+
+    role_lower = (current.role or "").lower()
+    is_owner = (doc.get("reported_by") or "").strip().lower() == (current.username or "").strip().lower()
+    if role_lower not in {"admin", "planner"} and not current.is_super_admin and not is_owner:
+        raise HTTPException(status_code=403, detail="Only the creator can rollback this report")
+
+    status = str(doc.get("status") or "").strip().lower()
+    stage = str(doc.get("stage") or "").strip().lower()
+    if status != "wait for approve" or stage != "cs_approval":
+        raise HTTPException(status_code=409, detail="Report is no longer in the initial save state")
+
+    result = await coll.delete_one({"_id": oid, "station_id": station_id})
+    if result.deleted_count:
+        report_dir = (pathlib.Path(UPLOADS_ROOT) / "cm" / station_id / report_id).resolve()
+        uploads_root = pathlib.Path(UPLOADS_ROOT).resolve()
+        if report_dir.is_relative_to(uploads_root):
+            shutil.rmtree(report_dir, ignore_errors=True)
+    return {"ok": True, "deleted": bool(result.deleted_count)}
 
 @router.get("/cmreport/{report_id}")
 async def cmreport_detail_path(
