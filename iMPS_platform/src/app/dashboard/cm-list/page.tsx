@@ -223,7 +223,7 @@ export default function CMListPage() {
   const statusCounts = useMemo(() => {
     const base = applySearch(applyFilters(periodRows, filters, "status"), search);
     const counts = { open: 0, in_progress: 0, completed: 0, cancelled: 0 };
-    for (const r of base) counts[normalizeStatus(r.status)]++;
+    for (const r of base) counts[normalizeStatus(r.status, r.stage, r.repair_result)]++;
     return counts;
   }, [periodRows, filters, search]);
 
@@ -664,7 +664,7 @@ export default function CMListPage() {
                 </tr>
               ) : tableRows.map((r, i) => {
                 const badge = workStatusBadge(r);
-                const canOpenPdf = normalizeStatus(r.status) === "completed";
+                const canOpenPdf = normalizeStatus(r.status, r.stage, r.repair_result) === "completed";
                 const brand = brandOf(r);
                 return (
                   <tr

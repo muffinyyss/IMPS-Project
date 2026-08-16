@@ -301,7 +301,7 @@ export default function CMDashboardPage() {
   const srStats = useMemo(() => {
     let completed = 0, inProgress = 0, open = 0;
     for (const r of srRows) {
-      const s = normalizeStatus(r.status);
+      const s = normalizeStatus(r.status, r.stage, r.repair_result);
       if (s === "completed") completed++;
       else if (s === "in_progress") inProgress++;
       else open++;
