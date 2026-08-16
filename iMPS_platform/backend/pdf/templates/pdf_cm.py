@@ -628,6 +628,7 @@ def _repair_history_parts(
                     "title": f"{title} ({_t('round_label', n=_num(i))})",
                     "cols": 3,
                     "img_h": 38,
+                    "draw_outer": True,
                 })
 
     if not rows:
@@ -1641,7 +1642,7 @@ def _draw_section_group(
                 cols=int(p.get("cols", 3)),
                 img_h=float(p.get("img_h", 40.0)),
                 gap=float(p.get("gap", 2.0)),
-                draw_outer=False,
+                draw_outer=bool(p.get("draw_outer", False)),
             )
         elif kind == "links":
             items = p.get("items") or []
@@ -1716,7 +1717,8 @@ def _draw_photo_grid(
 
     # กรอบ grid
     if draw_outer:
-        pdf.rect(x, y + label_h, w, grid_h)
+        # กรอบเดียวครอบทั้งช่องแสดงรูป รวมแถบหัวข้อก่อน/หลังแก้ไข
+        pdf.rect(x, y, w, total_h)
 
     # วาดรูป — แถวที่ไม่เต็มคอลัมน์จะจัดกึ่งกลาง ไม่ให้รูปกองซ้ายแล้วเหลือที่ว่างข้างขวา
     for i, photo in enumerate(photos):
@@ -2066,13 +2068,13 @@ def _draw_action_block(
         if before_imgs:
             max_y = max(max_y, _draw_photo_grid(
                 pdf, base_font, x, start_y, col_w, before_imgs,
-                title=_t("photos_before"), cols=2, img_h=38,
+                title=_t("photos_before"), cols=2, img_h=38, draw_outer=True,
             ))
 
         if after_imgs:
             max_y = max(max_y, _draw_photo_grid(
                 pdf, base_font, x + col_w + 4, start_y, col_w, after_imgs,
-                title=_t("photos_after"), cols=2, img_h=38,
+                title=_t("photos_after"), cols=2, img_h=38, draw_outer=True,
             ))
 
         y = max_y
