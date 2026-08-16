@@ -2326,46 +2326,9 @@ def make_cm_report_pdf_bytes(
         )
         y += 3
 
-    # ===== ส่วนที่ 3: ประเภทและสาเหตุของปัญหา =====
-    # ฟิลด์เหล่านี้เก็บเป็นรหัส Maximo — เอกสารต้องแสดงคำอธิบาย ไม่ใช่รหัส
+    # เตรียมรหัสปัญหา/สาเหตุไว้ใช้แปลคำอธิบายของ corrective action
     problem_codes = _as_code_list(doc.get("problem_type"))
     cause_codes = _as_code_list(doc.get("cause"))
-
-    problem_type_text = _join_labels(
-        problem_codes,
-        lambda code: problem_label(code, failure_codes, failure_class_code),
-    ) or "-"
-    section3_parts: List[Dict[str, Any]] = [
-        {
-            "kind": "info",
-            "data": [(_t("problem"), problem_type_text)],
-            "cols": 1,
-        },
-    ]
-    cause = _join_labels(
-        cause_codes,
-        lambda code: cause_label(code, failure_codes, failure_class_code),
-    )
-    if cause and cause != "-":
-        section3_parts.append({
-            "kind": "info",
-            "data": [(_t("cause"), cause)],
-            "cols": 1,
-        })
-
-    # ฟอร์ม Open ยังไม่มีช่องปัญหา/สาเหตุจากช่าง จึงไม่พิมพ์หมวดนี้จนกว่าจะมีข้อมูลจริง
-    if is_repair_form or problem_type_text != "-" or cause:
-        y = _new_page_if_needed(
-            pdf, y,
-            SECTION_BAR_H + sum(_measure_part_height(pdf, page_w, p) for p in section3_parts),
-        )
-        y = _draw_section_group(
-            pdf, base_font, x0, y, page_w,
-            _t("sec3_repair" if is_repair_form else "sec3"),
-            parts=section3_parts,
-        )
-        y += 3
-
     # ===== ส่วนที่ 4: การดำเนินการแก้ไข =====
     # repaired_equipment เก็บ remedy code — คำอธิบายขึ้นกับบริบท (failure code + ปัญหา + สาเหตุ)
     # เช่น REPLACE ของ POWBOAFA = "Replace (Power Board)" คนละเรื่องกับ REPLACE ของ OVERHEAT
@@ -2476,6 +2439,43 @@ def make_cm_report_pdf_bytes(
                 action,
                 correction_text=correction_text,
             )
+
+    # ===== ส่วนที่ 3: ประเภทและสาเหตุของปัญหา =====
+    # แสดงหลังรายละเอียด corrective action ตามลำดับของแบบฟอร์ม PDF
+    problem_type_text = _join_labels(
+        problem_codes,
+        lambda code: problem_label(code, failure_codes, failure_class_code),
+    ) or "-"
+    section3_parts: List[Dict[str, Any]] = [
+        {
+            "kind": "info",
+            "data": [(_t("problem"), problem_type_text)],
+            "cols": 1,
+        },
+    ]
+    cause = _join_labels(
+        cause_codes,
+        lambda code: cause_label(code, failure_codes, failure_class_code),
+    )
+    if cause and cause != "-":
+        section3_parts.append({
+            "kind": "info",
+            "data": [(_t("cause"), cause)],
+            "cols": 1,
+        })
+
+    # ฟอร์ม Open ยังไม่มีช่องปัญหา/สาเหตุจากช่าง จึงไม่พิมพ์หมวดนี้จนกว่าจะมีข้อมูลจริง
+    if is_repair_form or problem_type_text != "-" or cause:
+        y = _new_page_if_needed(
+            pdf, y,
+            SECTION_BAR_H + sum(_measure_part_height(pdf, page_w, p) for p in section3_parts),
+        )
+        y = _draw_section_group(
+            pdf, base_font, x0, y, page_w,
+            _t("sec3_repair" if is_repair_form else "sec3"),
+            parts=section3_parts,
+        )
+        y += 3
 
     # ===== ส่วนที่ 5: การป้องกันและผลการซ่อม =====
     section5_parts: List[Dict[str, Any]] = []
