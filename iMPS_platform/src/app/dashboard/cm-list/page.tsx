@@ -19,7 +19,7 @@ import useLanguage from "@/utils/useLanguage";
 import {
   CMRow, ActiveFilters, DateSel, STATUS_LABELS, WorkStatusFilter, EMPTY_FILTERS, CmOrigin,
   normalizeStatus, workStatusOf, workStatusBadge, filterByDate, listYears, listBrands,
-  weeksInMonth, applyFilters, applySearch, brandOf, originOf, UNKNOWN_BRAND,
+  weeksInMonth, applyFilters, applySearch, brandOf, originOf, listCompanies, companyOf, UNKNOWN_BRAND, UNKNOWN_COMPANY,
 } from "@/utils/cm-dashboard";
 import { CM_ORIGIN_LIST } from "@/app/dashboard/cm-report/lib/origin";
 import { failureCodeLabel } from "@/app/dashboard/cm-report/lib/failureCode";
@@ -88,6 +88,7 @@ export default function CMListPage() {
   const [sortKey, setSortKey] = useState<SortKey>("date");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [userRole, setUserRole] = useState("");
+  const [userCompany, setUserCompany] = useState("");
 
   const router = useRouter();
   const { lang } = useLanguage();
@@ -123,7 +124,10 @@ export default function CMListPage() {
         const res = await apiFetch(`/me`);
         if (!res.ok) return;
         const user = await res.json();
-        if (alive) setUserRole(user?.role ?? "");
+        if (alive) {
+          setUserRole(user?.role ?? "");
+          setUserCompany(user?.company ?? "");
+        }
       } catch (err) {
         console.error("fetch /me error:", err);
       }
@@ -183,6 +187,7 @@ export default function CMListPage() {
   };
 
   const activeFilterCount = Object.values(filters).filter(Boolean).length;
+  const isEgatCompany = userCompany.trim().toLowerCase() === "egat";
 
   const stations = useMemo(() => {
     const names = Array.from(new Set(rows.map((r) => r.station_name || r.station_id))).filter(Boolean);
@@ -214,7 +219,12 @@ export default function CMListPage() {
     return counts;
   }, [periodRows, filters, search]);
 
-  const brands = useMemo(() => listBrands(rows), [rows]);
+  const companies = useMemo(() => listCompanies(rows), [rows]);
+  const brandRows = useMemo(
+    () => (filters.company ? rows.filter((r) => companyOf(r) === filters.company) : rows),
+    [rows, filters.company]
+  );
+  const brands = useMemo(() => listBrands(brandRows), [brandRows]);
   const originCounts = useMemo(() => {
     const base = applyFilters(periodRows, filters, "origin");
     let auto = 0;
@@ -291,8 +301,11 @@ export default function CMListPage() {
       weekOption: (n: number) => `สัปดาห์ที่ ${n}`,
       monthsLong: ["มกราคม","กุมภาพันธ์","มีนาคม","เมษายน","พฤษภาคม","มิถุนายน","กรกฎาคม","สิงหาคม","กันยายน","ตุลาคม","พฤศจิกายน","ธันวาคม"],
       stationFilterLabel: "กรองตามสถานี",
-      brandFilterLabel: "บริษัทผู้ถือครอง",
-      allBrands: "ทุกบริษัท",
+      companyFilterLabel: "บริษัท",
+      allCompanies: "ทุกบริษัท",
+      unknownCompany: "ไม่ระบุบริษัท",
+      brandFilterLabel: "Brand",
+      allBrands: "ทุก Brand",
       rowsPerPage: "แถวต่อหน้า",
       statusFilterLabel: "กรองตามสถานะ",
       tableCount: (n: number, q?: string) => `${n} รายการ${q ? ` · "${q}"` : ""}`,
@@ -327,8 +340,11 @@ export default function CMListPage() {
       weekOption: (n: number) => `Week ${n}`,
       monthsLong: ["January","February","March","April","May","June","July","August","September","October","November","December"],
       stationFilterLabel: "Filter by station",
-      brandFilterLabel: "Owning company",
-      allBrands: "All companies",
+      companyFilterLabel: "Company",
+      allCompanies: "All companies",
+      unknownCompany: "Unknown company",
+      brandFilterLabel: "Brand",
+      allBrands: "All brands",
       rowsPerPage: "Rows per page",
       statusFilterLabel: "Filter by status",
       tableCount: (n: number, q?: string) => `${n} records${q ? ` · "${q}"` : ""}`,
@@ -465,6 +481,29 @@ export default function CMListPage() {
             {stations.map((s) => <option key={s}>{s}</option>)}
           </select>
         </div>
+        {isEgatCompany && (
+          <div className="tw-flex tw-items-center tw-gap-1.5">
+            <label htmlFor="company-filter" className="tw-text-xs tw-font-medium tw-text-gray-500">{t.companyFilterLabel}</label>
+            <select
+              id="company-filter"
+              value={filters.company ?? "all"}
+              onChange={(e) => {
+                setFilters((p) => ({
+                  ...p,
+                  company: e.target.value === "all" ? null : e.target.value,
+                  brand: null,
+                }));
+                setPage(0);
+              }}
+              className="tw-rounded-lg tw-border tw-border-gray-200 tw-bg-white tw-px-3 tw-py-1.5 tw-text-sm tw-text-gray-700 tw-shadow-sm focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-blue-400"
+            >
+              <option value="all">{t.allCompanies}</option>
+              {companies.map((company) => (
+                <option key={company} value={company}>{company === UNKNOWN_COMPANY ? t.unknownCompany : company}</option>
+              ))}
+            </select>
+          </div>
+        )}
         <div className="tw-flex tw-items-center tw-gap-1.5">
           <label htmlFor="brand-filter" className="tw-text-xs tw-font-medium tw-text-gray-500">{t.brandFilterLabel}</label>
           <select

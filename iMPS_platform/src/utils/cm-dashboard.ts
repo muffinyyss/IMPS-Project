@@ -4,6 +4,8 @@ export type CMRow = {
   id: string;
   station_id: string;
   station_name: string;
+  /** บริษัทเจ้าของสถานี (แยกจาก brand ของ charger) */
+  company?: string;
   status: string;
   stage?: string;
   reject_remark?: string;
@@ -41,6 +43,11 @@ export type CMRow = {
 
 /** บริษัทผู้ถือครองตู้ของใบงานนี้ — ใบที่ระบุไม่ได้จัดกลุ่มเป็น UNKNOWN_BRAND */
 export const UNKNOWN_BRAND = "Unknown";
+export const UNKNOWN_COMPANY = "Unknown";
+
+export function companyOf(r: CMRow): string {
+  return (r.company || "").trim() || UNKNOWN_COMPANY;
+}
 
 export function brandOf(r: CMRow): string {
   return (r.charger_brand || "").trim() || UNKNOWN_BRAND;
@@ -70,6 +77,21 @@ export function listBrands(rows: CMRow[]): string[] {
     .map((e) => e[0]);
 }
 
+export function listCompanies(rows: CMRow[]): string[] {
+  const counts = new Map<string, number>();
+  for (const r of rows) {
+    const company = companyOf(r);
+    counts.set(company, (counts.get(company) ?? 0) + 1);
+  }
+  return Array.from(counts.entries())
+    .sort((a, b) => {
+      if (a[0] === UNKNOWN_COMPANY) return 1;
+      if (b[0] === UNKNOWN_COMPANY) return -1;
+      return a[0].localeCompare(b[0]);
+    })
+    .map(([company]) => company);
+}
+
 export type Period = "yearly" | "monthly" | "weekly";
 
 export type ActiveFilters = {
@@ -85,13 +107,15 @@ export type ActiveFilters = {
   remedy: string | null;
   /** บริษัทผู้ถือครองตู้ (ยี่ห้อ) — ปุ่มกรองแถวบนของแดชบอร์ด */
   brand: string | null;
+  /** บริษัทเจ้าของสถานี — แสดง/ใช้งานเฉพาะผู้ใช้ company EGAT */
+  company: string | null;
   /** ที่มาของใบ: ระบบเปิดเอง / ผู้ใช้เปิดเอง */
   origin: CmOrigin | null;
 };
 
 export const EMPTY_FILTERS: ActiveFilters = {
   status: null, equipment: null, severity: null, station: null,
-  workStatus: null, cause: null, remedy: null, brand: null, origin: null,
+  workStatus: null, cause: null, remedy: null, brand: null, company: null, origin: null,
 };
 
 /** Champs multi-valeurs : le backend renvoie un tableau, les fiches anciennes une chaîne. */
@@ -357,6 +381,9 @@ export function applyFilters(
     }
     if (filters.brand && exclude !== "brand") {
       if (brandOf(r) !== filters.brand) return false;
+    }
+    if (filters.company && exclude !== "company") {
+      if (companyOf(r) !== filters.company) return false;
     }
     if (filters.origin && exclude !== "origin") {
       if (originOf(r) !== filters.origin) return false;

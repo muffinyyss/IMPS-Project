@@ -8,7 +8,7 @@ import { apiFetch } from "@/utils/api";
 import useLanguage from "@/utils/useLanguage";
 import {
   CMRow, ActiveFilters, DateSel, STATUS_LABELS, WorkStatusFilter, EMPTY_FILTERS, CmOrigin,
-  normalizeStatus, workStatusOf, filterByDate, listYears, listBrands, UNKNOWN_BRAND,
+  normalizeStatus, workStatusOf, filterByDate, listYears, listBrands, listCompanies, companyOf, UNKNOWN_BRAND, UNKNOWN_COMPANY,
   excludeCancelled, isCancelled,
   weeksInMonth, applyFilters, groupCount, groupCountMulti, groupCountMultiByBrand, groupByMonth,
   causeLabelsOf, remedyCodesOf, remedyDescriptionsOf,
@@ -153,6 +153,7 @@ export default function CMDashboardPage() {
 
   const router = useRouter();
   const [userRole, setUserRole] = useState("");
+  const [userCompany, setUserCompany] = useState("");
   // tant que le rôle n'est pas connu on ne peut pas savoir si l'utilisateur a droit
   // à l'analytique — on garde le spinner plutôt que de la faire clignoter
   const [roleLoaded, setRoleLoaded] = useState(false);
@@ -177,7 +178,10 @@ export default function CMDashboardPage() {
         const res = await apiFetch(`/me`);
         if (!res.ok) return;
         const user = await res.json();
-        if (alive) setUserRole(user?.role ?? "");
+        if (alive) {
+          setUserRole(user?.role ?? "");
+          setUserCompany(user?.company ?? "");
+        }
       } catch (err) {
         console.error("fetch /me error:", err);
       } finally {
@@ -219,6 +223,7 @@ export default function CMDashboardPage() {
   };
 
   const activeFilterCount = Object.values(filters).filter(Boolean).length;
+  const isEgatCompany = userCompany.trim().toLowerCase() === "egat";
 
   const stations = useMemo(() => {
     const names = Array.from(new Set(rows.map((r) => r.station_name || r.station_id))).filter(Boolean);
@@ -252,7 +257,12 @@ export default function CMDashboardPage() {
   // ── Marques (= entreprises détentrices) et origine des fiches ────────────────
   // Chaque compteur ignore SON PROPRE filtre : les autres boutons restent cliquables
   // et affichent un nombre non nul même quand une marque est déjà sélectionnée.
-  const brands = useMemo(() => listBrands(rows), [rows]);
+  const companies = useMemo(() => listCompanies(rows), [rows]);
+  const brandRows = useMemo(
+    () => (filters.company ? rows.filter((r) => companyOf(r) === filters.company) : rows),
+    [rows, filters.company]
+  );
+  const brands = useMemo(() => listBrands(brandRows), [brandRows]);
   const brandCounts = useMemo(() => {
     const counts = new Map<string, number>();
     for (const r of applyFilters(periodRows, filters, "brand")) {
@@ -394,16 +404,19 @@ export default function CMDashboardPage() {
       weekOption: (n: number) => `สัปดาห์ที่ ${n}`,
       monthsShort: ["ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."],
       monthsLong: ["มกราคม","กุมภาพันธ์","มีนาคม","เมษายน","พฤษภาคม","มิถุนายน","กรกฎาคม","สิงหาคม","กันยายน","ตุลาคม","พฤศจิกายน","ธันวาคม"],
-      brandFilterLabel: "บริษัทผู้ถือครองตู้",
-      allBrands: "ทุกบริษัท",
+      companyFilterLabel: "บริษัท",
+      allCompanies: "ทุกบริษัท",
+      unknownCompany: "ไม่ระบุบริษัท",
+      brandFilterLabel: "Brand",
+      allBrands: "ทุก Brand",
       originFilterLabel: "ที่มาของใบงาน",
       originAuto: "ระบบเปิดอัตโนมัติ",
       originUser: "ผู้ใช้เปิดเอง",
       allOrigins: "ทุกที่มา",
-      unknownBrand: "ไม่ระบุบริษัท",
+      unknownBrand: "ไม่ระบุ Brand",
       viewTotal: "รวม",
-      viewByBrand: "แยกตามบริษัท",
-      brandSplitEmpty: "ยังไม่มีข้อมูลบริษัทผู้ถือครอง",
+      viewByBrand: "แยกตาม Brand",
+      brandSplitEmpty: "ยังไม่มีข้อมูล Brand",
       tableMovedHint: "ตารางใบงานย้ายไปหน้าใหม่ — กรอง In Progress เป็นค่าเริ่มต้น และเรียงได้ทุกคอลัมน์",
       openTablePage: "เปิดตารางใบงาน",
       s2Title: "Failure Mode Analysis",
@@ -474,16 +487,19 @@ export default function CMDashboardPage() {
       weekOption: (n: number) => `Week ${n}`,
       monthsShort: ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"],
       monthsLong: ["January","February","March","April","May","June","July","August","September","October","November","December"],
-      brandFilterLabel: "Owning company",
-      allBrands: "All companies",
+      companyFilterLabel: "Company",
+      allCompanies: "All companies",
+      unknownCompany: "Unknown company",
+      brandFilterLabel: "Brand",
+      allBrands: "All brands",
       originFilterLabel: "Created by",
       originAuto: "Auto-generated",
       originUser: "Created by user",
       allOrigins: "All sources",
-      unknownBrand: "Unknown company",
+      unknownBrand: "Unknown brand",
       viewTotal: "Total",
-      viewByBrand: "By company",
-      brandSplitEmpty: "No owning-company data yet",
+      viewByBrand: "By brand",
+      brandSplitEmpty: "No brand data yet",
       tableMovedHint: "The work-order table moved to its own page — defaults to In Progress and every column is sortable",
       openTablePage: "Open the table",
       s2Title: "Failure Mode Analysis",
@@ -914,6 +930,28 @@ export default function CMDashboardPage() {
       {!isListOnlyRole && (
         <div className="tw-mb-4 tw-flex tw-flex-col tw-gap-3 tw-rounded-xl tw-border tw-border-blue-gray-100 tw-bg-white tw-px-4 tw-py-3 tw-shadow-sm lg:tw-flex-row lg:tw-items-center lg:tw-justify-between">
           <div className="tw-flex tw-min-w-0 tw-flex-wrap tw-items-center tw-gap-2">
+            {isEgatCompany && (
+              <div className="tw-flex tw-items-center tw-gap-1.5">
+                <label htmlFor="company-filter" className="tw-text-xs tw-font-semibold tw-uppercase tw-tracking-wide tw-text-gray-400">
+                  {t.companyFilterLabel}
+                </label>
+                <select
+                  id="company-filter"
+                  value={filters.company ?? "all"}
+                  onChange={(e) => setFilters((prev) => ({
+                    ...prev,
+                    company: e.target.value === "all" ? null : e.target.value,
+                    brand: null,
+                  }))}
+                  className="tw-rounded-lg tw-border tw-border-gray-200 tw-bg-white tw-px-3 tw-py-1.5 tw-text-sm tw-text-gray-700 tw-shadow-sm focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-blue-400"
+                >
+                  <option value="all">{t.allCompanies}</option>
+                  {companies.map((company) => (
+                    <option key={company} value={company}>{company === UNKNOWN_COMPANY ? t.unknownCompany : company}</option>
+                  ))}
+                </select>
+              </div>
+            )}
             <span className="tw-text-xs tw-font-semibold tw-uppercase tw-tracking-wide tw-text-gray-400">
               {t.brandFilterLabel}
             </span>
@@ -996,6 +1034,7 @@ export default function CMDashboardPage() {
           {filters.equipment && <FilterChip label={`Equipment: ${filters.equipment}`} lang={lang} onRemove={() => clearFilter("equipment")} />}
           {filters.severity && <FilterChip label={`Severity: ${filters.severity}`} lang={lang} onRemove={() => clearFilter("severity")} />}
           {filters.station && <FilterChip label={`Station: ${filters.station}`} lang={lang} onRemove={() => clearFilter("station")} />}
+          {isEgatCompany && filters.company && <FilterChip label={`${t.companyFilterLabel}: ${filters.company === UNKNOWN_COMPANY ? t.unknownCompany : filters.company}`} lang={lang} onRemove={() => clearFilter("company")} />}
           {filters.brand && <FilterChip label={`${t.brandFilterLabel}: ${filters.brand === UNKNOWN_BRAND ? t.unknownBrand : filters.brand}`} lang={lang} onRemove={() => clearFilter("brand")} />}
           {filters.origin && <FilterChip label={`${t.originFilterLabel}: ${filters.origin === "auto" ? t.originAuto : t.originUser}`} lang={lang} onRemove={() => clearFilter("origin")} />}
           <button onClick={clearAll} aria-label={t.clearAllAria} className="tw-text-xs tw-font-semibold tw-text-red-500 hover:tw-text-red-700 tw-underline">
