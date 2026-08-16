@@ -392,7 +392,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
     try {
       // แท็บ Open รวม: ใบเปิดใหม่รอ head cs อนุมัติ (Wait for approve/cs_approval),
       // ใบเก่า/auto ที่เป็น Open, และใบที่รอ planner วางแผน (Wait for schedule)
-      const requestStatus = "open,wait for approve,wait for schedule";
+      const requestStatus = "open,wait for approve,wait for schedule,wo - wait for approve";
       const makeURL = (path: string) => {
         const u = new URL(`${apiBase}${path}`);
         u.searchParams.set("station_id", stationId);
@@ -428,6 +428,8 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
         if (!hasStatus) return true;
         const s = String(it?.status ?? it?.job?.status ?? "").trim().toLowerCase();
         const stage = String(it?.stage ?? "").trim().toLowerCase();
+        const repairResult = String(it?.repair_result ?? it?.job?.repair_result ?? "").trim().toLowerCase();
+        if (s === "wo - wait for approve" || repairResult === "wo - wait for approve") return false;
         if (s === "open") return true;
         if (s === "wait for schedule") return true;
         if (s === "wait for approve") return stage === "cs_approval";
@@ -506,6 +508,8 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
           charger_sn: chargerField(it.charger_sn),
           problem_details: it.problem_details || "",
           status: getStatusText(it) || "-",
+          stage: it.stage || "",
+          repair_result: it.repair_result || it.job?.repair_result || "",
         };
       });
 

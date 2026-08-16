@@ -194,7 +194,7 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
   }, [searchParams]);
 
   // หน้า WO แสดงทั้งงานที่กำลังซ่อมและงานที่รออนุมัติ (backend รองรับหลายค่า คั่นด้วย ,)
-  const statusFromTab = "in progress,wait for approve";
+  const statusFromTab = "in progress,wait for approve,wo - wait for approve";
 
   const router = useRouter();
   const pathname = usePathname();
@@ -320,6 +320,8 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
       const filterByStatus = (it: any) => {
         const s = String(it?.status ?? it?.job?.status ?? "").trim().toLowerCase();
         const stage = String(it?.stage ?? "").trim().toLowerCase();
+        const repairResult = String(it?.repair_result ?? it?.job?.repair_result ?? "").trim().toLowerCase();
+        if (s === "wo - wait for approve" || repairResult === "wo - wait for approve") return true;
         if (s === "in progress") return true;
         if (s === "wait for approve") return stage !== "cs_approval";
         return false;
@@ -402,6 +404,7 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
           charger_sn: chargerField(it.charger_sn),
           problem_details: it.problem_details || "",
           status: getStatusText(it) || "-",
+          repair_result: it.repair_result || it.job?.repair_result || "",
           source: "url" as const,
         };
       });
