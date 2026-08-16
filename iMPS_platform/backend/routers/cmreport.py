@@ -1215,6 +1215,8 @@ async def cmurl_list(
         "urls": 1, 
         "createdAt": 1,
         "status": 1, 
+        "stage": 1,
+        "repair_result": 1,
         "job": 1,
         "inspector": 1,
         "reported_by": 1,
@@ -1266,6 +1268,8 @@ async def cmurl_list(
             "faulty_equipment": it.get("faulty_equipment") or "",
             "createdAt": _ensure_utc_iso(it.get("createdAt")),
             "status": (it.get("status") or (it.get("job") or {}).get("status") or ""),
+            "stage": it.get("stage") or (it.get("job") or {}).get("stage") or "",
+            "repair_result": it.get("repair_result") or (it.get("job") or {}).get("repair_result") or "",
             "file_url": first_url,
             "urls": urls,
         })
