@@ -1279,34 +1279,63 @@ export default function CMOpenForm() {
     }, [editId, stationId]);
 
     // ==================== HANDLERS ====================
-    async function uploadPhotosForReport(reportId: string) {
-        if (!stationId) return;
+    async function deleteUploadedPhotosForReport(reportId: string, urls: string[]) {
+        for (const url of urls) {
+            const q = new URLSearchParams({
+                station_id: stationId || "",
+                group: "cm_photos",
+                url,
+                phase: "problem",
+            });
+            try {
+                await apiFetch(`${API_BASE}/cmreport/${encodeURIComponent(reportId)}/photos?${q.toString()}`, {
+                    method: "DELETE",
+                    credentials: "include",
+                });
+            } catch (error) {
+                console.error("[CM] Attachment rollback failed:", error);
+            }
+        }
+    }
+
+    async function uploadPhotosForReport(reportId: string): Promise<string[]> {
+        if (!stationId) return [];
         const newPhotos = photos_open.filter(p => !p.isServer);
-        if (newPhotos.length === 0) return;
+        if (newPhotos.length === 0) return [];
 
         setUploadState({ show: true, total: newPhotos.length, completed: 0 });
+        const uploadedUrls: string[] = [];
 
-        // ส่งทีละไฟล์เพื่อไม่ให้ไฟล์แนบหลายไฟล์รวมกันจน request ชนเพดานของ Nginx
-        for (let index = 0; index < newPhotos.length; index += 1) {
-            const photo = newPhotos[index];
-            const fd = new FormData();
-            fd.append("station_id", stationId);
-            fd.append("group", "cm_photos");
-            fd.append("phase", "problem");
-            fd.append("files", photo.file, photo.file.name);
-            if (photo.location) fd.append("location", photo.location);
-            fd.append("created_at", new Date().toISOString());
+        try {
+            // ส่งทีละไฟล์เพื่อไม่ให้ไฟล์แนบหลายไฟล์รวมกันจน request ชนเพดานของ Nginx
+            for (let index = 0; index < newPhotos.length; index += 1) {
+                const photo = newPhotos[index];
+                const fd = new FormData();
+                fd.append("station_id", stationId);
+                fd.append("group", "cm_photos");
+                fd.append("phase", "problem");
+                fd.append("files", photo.file, photo.file.name);
+                if (photo.location) fd.append("location", photo.location);
+                fd.append("created_at", new Date().toISOString());
 
-            const res = await apiFetch(
-                `${API_BASE}/cmreport/${encodeURIComponent(reportId)}/photos`,
-                { method: "POST", body: fd, credentials: "include" }
-            );
-            if (!res.ok) {
-                const reason = await responseErrorMessage(res, "Upload failed");
-                throw new Error(`${photo.file.name}: ${reason}`);
+                const res = await apiFetch(
+                    `${API_BASE}/cmreport/${encodeURIComponent(reportId)}/photos`,
+                    { method: "POST", body: fd, credentials: "include" }
+                );
+                if (!res.ok) {
+                    const reason = await responseErrorMessage(res, "Upload failed");
+                    throw new Error(`${photo.file.name}: ${reason}`);
+                }
+                const uploadData = await res.json().catch(() => ({}));
+                const uploadedUrl = uploadData?.files?.[0]?.url;
+                if (typeof uploadedUrl === "string" && uploadedUrl) uploadedUrls.push(uploadedUrl);
+
+                setUploadState({ show: true, total: newPhotos.length, completed: index + 1 });
             }
-
-            setUploadState({ show: true, total: newPhotos.length, completed: index + 1 });
+            return uploadedUrls;
+        } catch (error) {
+            await deleteUploadedPhotosForReport(reportId, uploadedUrls);
+            throw error;
         }
     }
 
@@ -1333,6 +1362,8 @@ ${in01.error ?? ""}`);
         if (!canSave && (!isEdit || isOwner)) return;
         setSaving(true);
         setOverlayText(lang === "th" ? "กำลังบันทึก..." : "Saving...");
+        const createdReportIds: string[] = [];
+        let uploadedEditUrls: string[] = [];
         try {
             if (isEdit && editId) {
                 const payload: Record<string, any> = { station_id: stationId, status: nextStatus };
@@ -1374,6 +1405,12 @@ ${in01.error ?? ""}`);
                         stage,
                     };
                 }
+                // ต้องอัปโหลดไฟล์ให้สำเร็จก่อน จึงค่อยเปลี่ยนสถานะ/บันทึกข้อมูลใบงาน
+                if (isOwner) {
+                    setOverlayText(lang === "th" ? "กำลังอัปโหลดไฟล์แนบ..." : "Uploading attachments...");
+                    uploadedEditUrls = await uploadPhotosForReport(editId);
+                }
+
                 const res = await apiFetch(`${API_BASE}/cmreport/${encodeURIComponent(editId)}/status`, {
                     method: "PATCH",
                     headers: { "Content-Type": "application/json" },
@@ -1384,9 +1421,7 @@ ${in01.error ?? ""}`);
                 reportMaximoResult((await res.json().catch(() => ({})))?.maximo);
 
                 if (isOwner) {
-                    // อัปโหลดรูปที่เพิ่มใหม่ระหว่างแก้ไข
-                    setOverlayText(lang === "th" ? "กำลังอัปโหลดรูปภาพ..." : "Uploading photos...");
-                    await uploadPhotosForReport(editId);
+                    // Upload was completed before the status update above.
                     setUploadState({ show: false, total: 0, completed: 0 });
                 }
 
@@ -1401,8 +1436,6 @@ ${in01.error ?? ""}`);
                 // ถ้าเลือก failure class ระดับ Charger ระบบจะเปิดใบแยกตามตู้ที่ตรงประเภท
                 // ถ้าเป็นตำแหน่งระดับสถานี หรือไม่มีข้อมูลตู้ ให้ทำงานแบบเดิมคือเปิดใบเดียว
                 const splitTargets: Array<ChargerInfo | null> = chargerTargets.length > 0 ? chargerTargets : [null];
-                const createdReportIds: string[] = [];
-
                 for (const charger of splitTargets) {
                     const chargerNo = charger
                         ? (charger.chargerNo ?? charger.charger_no ?? charger.charger_id)
@@ -1431,6 +1464,10 @@ ${in01.error ?? ""}`);
 
                     const { report_id } = await submitRes.json();
                     createdReportIds.push(report_id);
+
+                    // ใบใหม่ต้องแนบไฟล์ให้สำเร็จก่อน จึงค่อย PATCH สถานะ/ข้อมูลแผน
+                    setOverlayText(lang === "th" ? "กำลังอัปโหลดไฟล์แนบ..." : "Uploading attachments...");
+                    await uploadPhotosForReport(report_id);
 
                     // /cmreport/submit เปิดใบเป็น "Wait for approve" (cs_approval) และไม่รับฟิลด์แผน — ถ้ากรอกแผนมาด้วยต้อง PATCH ต่อ
                     if (canPlan && (hasPlanInput || nextStatus === "In Progress")) {
@@ -1464,12 +1501,6 @@ ${in01.error ?? ""}`);
                     }
                 }
 
-                // อัปโหลดรูป
-                setOverlayText(lang === "th" ? "กำลังอัปโหลดรูปภาพ..." : "Uploading photos...");
-                setUploadState({ show: true, total: photos_open.filter(p => !p.isServer).length * createdReportIds.length, completed: 0 });
-                for (const reportId of createdReportIds) {
-                    await uploadPhotosForReport(reportId);
-                }
                 setUploadState({ show: false, total: 0, completed: 0 });
 
                 // cleanup draft
@@ -1484,6 +1515,20 @@ ${in01.error ?? ""}`);
                 router.push(buildListUrl(isRePlan ? "in-progress" : "open"));
             }
         } catch (e: any) {
+            if (isEdit && editId && uploadedEditUrls.length) {
+                await deleteUploadedPhotosForReport(editId, uploadedEditUrls);
+            }
+            // ใบใหม่ถูกสร้างก่อนอัปโหลดเพื่อให้มี report_id — ถ้าขั้นตอนไหนล้มเหลวให้ rollback ทันที
+            for (const reportId of createdReportIds.reverse()) {
+                try {
+                    await apiFetch(`${API_BASE}/cmreport/${encodeURIComponent(reportId)}/rollback?station_id=${encodeURIComponent(stationId)}`, {
+                        method: "DELETE",
+                        credentials: "include",
+                    });
+                } catch (rollbackError) {
+                    console.error("[CM] Rollback failed:", rollbackError);
+                }
+            }
             setUploadState({ show: false, total: 0, completed: 0 });
             alert(`${t("alertSaveFailed", lang)} ${e.message || e}`);
         } finally {
