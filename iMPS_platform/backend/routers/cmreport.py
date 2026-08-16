@@ -386,20 +386,31 @@ async def _brand_clause_for_station(station_id: str, current: UserClaims) -> dic
         brand = None
     elif (current.company or "").strip().lower() == "eds":
         brand = "flexxfast"
+    elif (current.company or "").strip().lower() == "egat":
+        # EGAT can load every brand; the selected Company/Brand filters are
+        # applied afterward by the CM Dashboard and CM List.
+        brand = None
     else:
         brand = brand_scope_of(current)
     if not brand:
         return None
+
+    direct_brand_clauses = [
+        {"charger_brand": {"$regex": f"^{re.escape(brand)}$", "$options": "i"}},
+        {"job.charger_brand": {"$regex": f"^{re.escape(brand)}$", "$options": "i"}},
+    ]
 
     chargers = await charger_coll_async.find(
         {"station_id": station_id},
         {"brand": 1, "chargerNo": 1, "charger_id": 1, "charger_no": 1, "SN": 1, "sn": 1},
     ).to_list(length=1000)
     if not chargers:
+        return {"$or": direct_brand_clauses}
         return _MATCH_NOTHING  # ไม่มีข้อมูลตู้ = พิสูจน์ยี่ห้อไม่ได้
 
     in_brand = [c for c in chargers if str(c.get("brand") or "").strip().lower() == brand]
     if not in_brand:
+        return {"$or": direct_brand_clauses}
         return _MATCH_NOTHING
     if len(in_brand) == len(chargers):
         return None  # ทั้งสถานีเป็นยี่ห้อนี้ → เห็นได้ทุกใบ
@@ -411,7 +422,7 @@ async def _brand_clause_for_station(station_id: str, current: UserClaims) -> dic
         return _MATCH_NOTHING
     # รองรับทั้งใบเก่าที่ใช้ faulty_equipment=charger_N และใบใหม่ที่เก็บ
     # failure class เดิมไว้ พร้อม charger_no/charger_sn เพื่อแยกใบตามตู้
-    clauses = []
+    clauses = list(direct_brand_clauses)
     if keys:
         clauses.extend([
             {"faulty_equipment": {"$in": keys}},
