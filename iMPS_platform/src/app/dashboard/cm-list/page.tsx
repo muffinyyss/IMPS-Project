@@ -233,8 +233,10 @@ export default function CMListPage() {
     [rows, filters.company]
   );
   const brands = useMemo(() => {
-    if (!isSuperAdmin && filters.company?.trim().toLowerCase() === "eds") return [FLEXXFAST_BRAND];
-    return listBrands(brandRows);
+    const listed = listBrands(brandRows);
+    if (filters.company?.trim().toLowerCase() !== "eds") return listed;
+    if (!isSuperAdmin) return [FLEXXFAST_BRAND];
+    return [FLEXXFAST_BRAND, ...listed.filter((brand) => brand.toLowerCase() !== FLEXXFAST_BRAND.toLowerCase())];
   }, [brandRows, filters.company, isSuperAdmin]);
   const originCounts = useMemo(() => {
     const base = applyFilters(periodRows, filters, "origin");
