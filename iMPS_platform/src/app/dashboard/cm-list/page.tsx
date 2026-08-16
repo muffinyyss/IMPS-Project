@@ -514,7 +514,7 @@ export default function CMListPage() {
             >
               <option value="all">{t.allCompanies}</option>
               {companies.map((company) => (
-                <option key={company} value={company}>{company === UNKNOWN_COMPANY ? t.unknownCompany : company}</option>
+                <option key={company} value={company}>{company}</option>
               ))}
             </select>
           </div>

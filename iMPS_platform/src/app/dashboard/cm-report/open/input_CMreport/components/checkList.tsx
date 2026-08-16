@@ -16,7 +16,7 @@ import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
 import { cmBackRoute } from "@/app/dashboard/cm-report/lib/origin";
 import { brandScopeOf, canOpenCmAtStation } from "@/utils/brandScope";
 import ChargerIdentity, { type ChargerIdentityData } from "@/app/dashboard/cm-report/components/ChargerIdentity";
-import { ZoomableImg, AttachmentFileRow, isImageAttachment, isAllowedCmAttachment, CM_ACCEPT_ATTACH } from "@/app/dashboard/cm-report/components/photo-viewer";
+import { ZoomableImg, AttachmentFileRow, isImageAttachment, isVideoAttachment, isAllowedCmAttachment, CM_ACCEPT_ATTACH } from "@/app/dashboard/cm-report/components/photo-viewer";
 
 // ==================== TRANSLATIONS ====================
 const T = {
@@ -474,12 +474,47 @@ function PhotoUpload({ photos_open, onAdd, onRemove, max, disabled, lang, id }: 
             {files.length > 0 && (
                 <div className="tw-flex tw-flex-wrap tw-gap-2">
                     {files.map(f => (
-                        <AttachmentFileRow
-                            key={f.id}
-                            src={f.preview}
-                            name={f.name}
-                            onRemove={disabled ? undefined : () => onRemove(f.id)}
-                        />
+                        isVideoAttachment(f.preview, f.mime, f.name) ? (
+                            <div key={f.id} className="tw-w-64 tw-max-w-full tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-p-2">
+                                <video
+                                    controls
+                                    playsInline
+                                    preload="metadata"
+                                    src={f.preview}
+                                    className="tw-w-full tw-rounded-md tw-bg-black"
+                                    onClick={(e) => e.stopPropagation()}
+                                />
+                                <div className="tw-mt-1 tw-flex tw-items-center tw-gap-2">
+                                    <a
+                                        href={f.preview}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        onClick={(e) => e.stopPropagation()}
+                                        className="tw-min-w-0 tw-flex-1 tw-truncate tw-text-xs tw-text-blue-gray-700 hover:tw-text-blue-600 hover:tw-underline"
+                                        title={f.name || f.file?.name || "Video"}
+                                    >
+                                        {f.name || f.file?.name || "Video"}
+                                    </a>
+                                    {!disabled && (
+                                        <button
+                                            type="button"
+                                            onClick={(e) => { e.stopPropagation(); onRemove(f.id); }}
+                                            className="tw-shrink-0 tw-w-5 tw-h-5 tw-rounded-full tw-text-blue-gray-400 hover:tw-text-white hover:tw-bg-red-500 tw-flex tw-items-center tw-justify-center"
+                                            aria-label="Remove video"
+                                        >
+                                            <XMarkIcon className="tw-w-3 tw-h-3" />
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        ) : (
+                            <AttachmentFileRow
+                                key={f.id}
+                                src={f.preview}
+                                name={f.name}
+                                onRemove={disabled ? undefined : () => onRemove(f.id)}
+                            />
+                        )
                     ))}
                 </div>
             )}
