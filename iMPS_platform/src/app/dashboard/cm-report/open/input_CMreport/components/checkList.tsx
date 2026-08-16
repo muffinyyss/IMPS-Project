@@ -200,6 +200,20 @@ const MAX_PHOTOS = 10;
 import { problemLabelOf, causeLabelOf } from "@/app/dashboard/cm-report/inprogress/input_CMreport/components/checkList";
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
+async function responseErrorMessage(res: Response, fallback: string): Promise<string> {
+    const raw = await res.text().catch(() => "");
+    try {
+        const payload = raw ? JSON.parse(raw) : null;
+        const detail = payload?.detail;
+        if (typeof detail === "string" && detail.trim()) return detail.trim();
+        if (detail !== undefined && detail !== null) return JSON.stringify(detail);
+    } catch {
+        // The proxy may return HTML/plain text instead of the API JSON error.
+    }
+    const plain = raw.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+    return plain ? `${fallback} (HTTP ${res.status}): ${plain.slice(0, 300)}` : `${fallback} (HTTP ${res.status})`;
+}
+
 // ==================== VALIDATION CARD ====================
 // การ์ดแสดงแผนรอบก่อนหน้า — อ่านอย่างเดียว ใช้ในหน้าวางแผนเมื่อใบถูกวางแผนใหม่หลายรอบ
 // ข้อมูลที่ช่างบันทึกไว้ — อ่านอย่างเดียว ใช้ตอน planner กลับมาวางแผนรอบใหม่
@@ -1285,7 +1299,7 @@ export default function CMOpenForm() {
             `${API_BASE}/cmreport/${encodeURIComponent(reportId)}/photos`,
             { method: "POST", body: fd, credentials: "include" }
         );
-        if (!res.ok) throw new Error(`Upload failed`);
+        if (!res.ok) throw new Error(await responseErrorMessage(res, "Upload failed"));
 
         setUploadState({ show: true, total: newPhotos.length, completed: newPhotos.length });
     }
