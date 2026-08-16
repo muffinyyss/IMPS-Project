@@ -1022,6 +1022,7 @@ export default function CMInProgressForm() {
     const [rejecting, setRejecting] = useState(false);
     // เหตุผลที่ใบนี้เคยถูกตีกลับ (โหลดจาก server) — แสดงให้ช่างเห็นว่าต้องแก้อะไร
     const [rejectedInfo, setRejectedInfo] = useState<{ remark: string; by: string }>({ remark: "", by: "" });
+    const [cancelledInfo, setCancelledInfo] = useState<{ remark: string; by: string }>({ remark: "", by: "" });
     const [saving, setSaving] = useState(false);
     // ผลหลังซ่อมที่มีอยู่ใน DB ก่อนช่างแก้ — ใช้กันไม่ให้ค่าถูกล้างตอนบันทึกโดยไม่ได้เลือกผลใหม่
     const originalRepairResultRef = useRef<string>("");
@@ -1053,6 +1054,7 @@ export default function CMInProgressForm() {
     // รองรับทั้ง Closed ใหม่และ Complete เดิมที่ยังอยู่ในฐานข้อมูล
     const normalizedJobStatus = job.status.trim().toLowerCase();
     const isClosedStatus = normalizedJobStatus === "closed" || normalizedJobStatus === "complete";
+    const isCancelledStatus = normalizedJobStatus === "cancelled";
     // ใช้ status จริงเป็นตัวกำหนด Read only เท่านั้น
     // การเลือก Repair Result = WO - wait for approve ยังต้องแก้ไข/บันทึกได้ก่อน
     const isWaitForApprove = normalizedJobStatus === "wait for approve";
@@ -1068,6 +1070,7 @@ export default function CMInProgressForm() {
     const viewOnly =
         isCs ||
         isClosedStatus ||
+        isCancelledStatus ||
         isTechnicianWaitForApprove ||
         (isWaitForApprove && !canEditTechnicianData) ||
         (isPlanner && (!canEditTechnicianData || !plannerEditMode)) ||
@@ -1089,7 +1092,7 @@ export default function CMInProgressForm() {
             type="button"
             onClick={() => { setCancelRemark(""); setCancelOpen(true); }}
             disabled={saving || approving || rejecting || cancelling}
-            className="tw-bg-red-600 hover:tw-bg-red-700 tw-text-white tw-font-semibold tw-text-base tw-px-8 tw-py-3 tw-rounded-xl hover:tw-shadow-xl hover:tw-shadow-red-500/30 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed tw-transition-all"
+            className="tw-bg-amber-500 hover:tw-bg-amber-600 tw-text-white tw-font-semibold tw-text-base tw-px-8 tw-py-3 tw-rounded-xl hover:tw-shadow-xl hover:tw-shadow-amber-500/30 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed tw-transition-all"
         >
             {t("cancelWorkOrder", lang)}
         </Button>
@@ -2210,6 +2213,7 @@ export default function CMInProgressForm() {
                 setApprovedBy(data.approved_by ?? "");
                 setApprovalStage(data.stage ?? "");
                 setRejectedInfo({ remark: data.reject_remark ?? "", by: data.rejected_by ?? "" });
+                setCancelledInfo({ remark: data.cancel_remark ?? "", by: data.cancelled_by ?? "" });
                 setJobLoaded(true);
 
                 // ✅ ดึง inspector จาก data ถ้ามี (ไม่ override จาก /me)
@@ -2810,6 +2814,22 @@ export default function CMInProgressForm() {
                 <div className="tw-mx-auto tw-max-w-6xl tw-bg-white tw-border tw-border-blue-gray-100 tw-rounded-xl tw-shadow-md tw-shadow-blue-gray-500/5 tw-p-6 md:tw-p-8">
 
                     {/* ใบงานถูกตีกลับ — ช่างต้องเห็นเหตุผลก่อนแก้ (ซ่อนเมื่อรออนุมัติรอบใหม่แล้ว) */}
+                    {isCancelledStatus && (
+                        <div className="tw-mb-6 tw-flex tw-gap-3 tw-rounded-xl tw-border tw-border-amber-200 tw-bg-amber-50 tw-p-4">
+                            <ExclamationTriangleIcon className="tw-w-5 tw-h-5 tw-text-amber-600 tw-flex-shrink-0 tw-mt-0.5" />
+                            <div className="tw-min-w-0">
+                                <p className="tw-text-sm tw-font-bold tw-text-amber-800">
+                                    {lang === "th" ? "ใบงานถูกยกเลิก" : "Work order was cancelled"}
+                                    {cancelledInfo.by && <span className="tw-font-normal tw-text-amber-700"> — {lang === "th" ? "โดย" : "by"} {cancelledInfo.by}</span>}
+                                </p>
+                                <p className="tw-text-sm tw-text-amber-900 tw-mt-1 tw-whitespace-pre-wrap tw-break-words">
+                                    <span className="tw-font-semibold">{lang === "th" ? "เหตุผล:" : "Reason:"}</span>{" "}
+                                    {cancelledInfo.remark || (lang === "th" ? "ไม่ได้ระบุเหตุผล" : "No reason provided")}
+                                </p>
+                            </div>
+                        </div>
+                    )}
+
                     {rejectedInfo.remark && job.status !== "Wait for approve" && (
                         <div className="tw-mb-6 tw-flex tw-gap-3 tw-rounded-xl tw-border tw-border-red-200 tw-bg-red-50 tw-p-4">
                             <ArrowUturnLeftIcon className="tw-w-5 tw-h-5 tw-text-red-600 tw-flex-shrink-0 tw-mt-0.5" />
@@ -3641,7 +3661,7 @@ export default function CMInProgressForm() {
                                 type="button"
                                 onClick={onCancelJob}
                                 disabled={cancelling}
-                                className="tw-bg-red-600 hover:tw-bg-red-700 tw-text-white tw-font-semibold disabled:tw-opacity-50 disabled:tw-cursor-not-allowed"
+                                className="tw-bg-amber-500 hover:tw-bg-amber-600 tw-text-white tw-font-semibold disabled:tw-opacity-50 disabled:tw-cursor-not-allowed"
                             >
                                 {cancelling ? t("cancelling", lang) : t("confirmCancel", lang)}
                             </Button>
