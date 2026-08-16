@@ -2019,9 +2019,19 @@ def _measure_action_block_height(
     w: float,
     fields: List[Tuple[str, str, float]],
     action: dict,
+    include_photos: bool = True,
 ) -> float:
-    """Measure a complete action, including both photo grids."""
+    """Measure an action details block, optionally including both photo grids."""
     height = SECTION_BAR_H + _measure_action_details_group_height(pdf, base_font, w, fields) + 2
+    if not include_photos:
+        return height + 3
+
+    height += _measure_action_photos_height(action)
+    return height + 3
+
+
+def _measure_action_photos_height(action: dict) -> float:
+    """Measure the two-column before/after photo area for one action."""
     photo_heights = []
     for photos in (action.get("beforeImages") or [], action.get("afterImages") or []):
         if not photos:
@@ -2029,8 +2039,8 @@ def _measure_action_block_height(
         rows = math.ceil(len(photos) / 2)
         photo_heights.append((LINE_H + 1.0) + rows * 38 + (rows + 1) * 2)
     if photo_heights:
-        height += max(photo_heights)
-    return height + 3
+        return max(photo_heights)
+    return 0.0
 
 
 def _draw_action_block(
@@ -2042,6 +2052,7 @@ def _draw_action_block(
     idx: int,
     action: dict,
     correction_text: str = "",
+    include_photos: bool = True,
 ) -> float:
     """วาดรายละเอียดการดำเนินการแก้ไข 1 ชุด (ข้อความ + รูปก่อน/หลัง)"""
     # แถบหัวข้อย่อยมีพื้นและกรอบ ให้เป็นส่วนหนึ่งของฟอร์ม ไม่ใช่ข้อความลอย
@@ -2057,29 +2068,43 @@ def _draw_action_block(
     y = _draw_action_details_group(pdf, base_font, x, y, w, fields)
     y += 2
 
-    before_imgs = action.get("beforeImages") or []
-    after_imgs = action.get("afterImages") or []
-
-    if before_imgs or after_imgs:
-        col_w = (w - 4) / 2
-        start_y = y
-        max_y = y
-
-        if before_imgs:
-            max_y = max(max_y, _draw_photo_grid(
-                pdf, base_font, x, start_y, col_w, before_imgs,
-                title=_t("photos_before"), cols=2, img_h=38, draw_outer=True,
-            ))
-
-        if after_imgs:
-            max_y = max(max_y, _draw_photo_grid(
-                pdf, base_font, x + col_w + 4, start_y, col_w, after_imgs,
-                title=_t("photos_after"), cols=2, img_h=38, draw_outer=True,
-            ))
-
-        y = max_y
+    if include_photos:
+        y = _draw_action_photos(pdf, base_font, x, y, w, action)
 
     return y + 3
+
+
+def _draw_action_photos(
+    pdf: FPDF,
+    base_font: str,
+    x: float,
+    y: float,
+    w: float,
+    action: dict,
+) -> float:
+    """Draw the before/after photo area for one action without repeating its text header."""
+    before_imgs = action.get("beforeImages") or []
+    after_imgs = action.get("afterImages") or []
+    if not before_imgs and not after_imgs:
+        return y
+
+    col_w = (w - 4) / 2
+    start_y = y
+    max_y = y
+
+    if before_imgs:
+        max_y = max(max_y, _draw_photo_grid(
+            pdf, base_font, x, start_y, col_w, before_imgs,
+            title=_t("photos_before"), cols=2, img_h=38, draw_outer=True,
+        ))
+
+    if after_imgs:
+        max_y = max(max_y, _draw_photo_grid(
+            pdf, base_font, x + col_w + 4, start_y, col_w, after_imgs,
+            title=_t("photos_after"), cols=2, img_h=38, draw_outer=True,
+        ))
+
+    return max_y
 
 
 # -------------------- Report PDF class --------------------
@@ -2427,7 +2452,10 @@ def make_cm_report_pdf_bytes(
             y = _new_page_if_needed(
                 pdf,
                 y,
-                _measure_action_block_height(pdf, base_font, page_w, action_fields, action),
+                _measure_action_block_height(
+                    pdf, base_font, page_w, action_fields, action,
+                    include_photos=False,
+                ),
             )
             y = _draw_action_block(
                 pdf,
@@ -2438,6 +2466,7 @@ def make_cm_report_pdf_bytes(
                 idx,
                 action,
                 correction_text=correction_text,
+                include_photos=False,
             )
 
     # ===== ส่วนที่ 3: ประเภทและสาเหตุของปัญหา =====
@@ -2476,6 +2505,16 @@ def make_cm_report_pdf_bytes(
             parts=section3_parts,
         )
         y += 3
+
+    # วางรูปก่อน/หลังแก้ไขหลัง Problem and Cause Details
+    if corrective_actions:
+        for action in corrective_actions:
+            photo_height = _measure_action_photos_height(action)
+            if not photo_height:
+                continue
+            y = _new_page_if_needed(pdf, y, photo_height + 3)
+            y = _draw_action_photos(pdf, base_font, x0, y, page_w, action)
+            y += 3
 
     # ===== ส่วนที่ 5: การป้องกันและผลการซ่อม =====
     section5_parts: List[Dict[str, Any]] = []
