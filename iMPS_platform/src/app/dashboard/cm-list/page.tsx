@@ -19,7 +19,7 @@ import useLanguage from "@/utils/useLanguage";
 import {
   CMRow, ActiveFilters, DateSel, STATUS_LABELS, WorkStatusFilter, EMPTY_FILTERS, CmOrigin,
   normalizeStatus, workStatusOf, workStatusBadge, filterByDate, listYears, listBrands,
-  weeksInMonth, applyFilters, applySearch, brandOf, originOf, companyOf, UNKNOWN_BRAND, UNKNOWN_COMPANY, FLEXXFAST_BRAND, COMPANY_FILTER_OPTIONS,
+  weeksInMonth, applyFilters, applySearch, brandOf, originOf, matchesCompanyFilter, UNKNOWN_BRAND, UNKNOWN_COMPANY, FLEXXFAST_BRAND, COMPANY_FILTER_OPTIONS,
 } from "@/utils/cm-dashboard";
 import { CM_ORIGIN_LIST } from "@/app/dashboard/cm-report/lib/origin";
 import { failureCodeLabel } from "@/app/dashboard/cm-report/lib/failureCode";
@@ -229,7 +229,7 @@ export default function CMListPage() {
 
   const companies = COMPANY_FILTER_OPTIONS;
   const brandRows = useMemo(
-    () => (filters.company ? rows.filter((r) => companyOf(r).toLowerCase() === filters.company!.toLowerCase()) : rows),
+    () => rows.filter((r) => matchesCompanyFilter(r, filters.company)),
     [rows, filters.company]
   );
   const brands = useMemo(() => {

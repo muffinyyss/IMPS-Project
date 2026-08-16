@@ -8,7 +8,7 @@ import { apiFetch } from "@/utils/api";
 import useLanguage from "@/utils/useLanguage";
 import {
   CMRow, ActiveFilters, DateSel, STATUS_LABELS, WorkStatusFilter, EMPTY_FILTERS, CmOrigin,
-  normalizeStatus, workStatusOf, filterByDate, listYears, listBrands, companyOf, brandOf, UNKNOWN_BRAND, UNKNOWN_COMPANY, FLEXXFAST_BRAND, COMPANY_FILTER_OPTIONS,
+  normalizeStatus, workStatusOf, filterByDate, listYears, listBrands, brandOf, matchesCompanyFilter, UNKNOWN_BRAND, UNKNOWN_COMPANY, FLEXXFAST_BRAND, COMPANY_FILTER_OPTIONS,
   excludeCancelled, isCancelled,
   weeksInMonth, applyFilters, groupCount, groupCountMulti, groupCountMultiByBrand, groupByMonth,
   causeLabelsOf, remedyCodesOf, remedyDescriptionsOf,
@@ -262,7 +262,7 @@ export default function CMDashboardPage() {
   // et affichent un nombre non nul même quand une marque est déjà sélectionnée.
   const companies = COMPANY_FILTER_OPTIONS;
   const brandRows = useMemo(
-    () => (filters.company ? rows.filter((r) => companyOf(r).toLowerCase() === filters.company!.toLowerCase()) : rows),
+    () => rows.filter((r) => matchesCompanyFilter(r, filters.company)),
     [rows, filters.company]
   );
   const brands = useMemo(() => {

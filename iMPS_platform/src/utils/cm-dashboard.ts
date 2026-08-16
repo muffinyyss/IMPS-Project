@@ -57,6 +57,14 @@ export function brandOf(r: CMRow): string {
   return brand || UNKNOWN_BRAND;
 }
 
+export function matchesCompanyFilter(r: CMRow, company: string | null): boolean {
+  if (!company) return true;
+  if (company.trim().toLowerCase() === "eds") {
+    return brandOf(r).toLowerCase() === FLEXXFAST_BRAND.toLowerCase();
+  }
+  return companyOf(r).toLowerCase() === company.trim().toLowerCase();
+}
+
 /** ที่มาของใบงาน — ระบบเปิดเอง vs ผู้ใช้กรอกเอง */
 export type CmOrigin = "auto" | "user";
 
@@ -387,7 +395,7 @@ export function applyFilters(
       if (brandOf(r).toLowerCase() !== filters.brand.toLowerCase()) return false;
     }
     if (filters.company && exclude !== "company") {
-      if (companyOf(r).toLowerCase() !== filters.company.toLowerCase()) return false;
+      if (!matchesCompanyFilter(r, filters.company)) return false;
     }
     if (filters.origin && exclude !== "origin") {
       if (originOf(r) !== filters.origin) return false;
