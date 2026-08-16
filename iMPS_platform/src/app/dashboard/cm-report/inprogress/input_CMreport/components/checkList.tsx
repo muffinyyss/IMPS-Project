@@ -2625,6 +2625,7 @@ export default function CMInProgressForm() {
                         preventive_action: job.preventive_action,
                         inprogress_remarks: job.inprogress_remarks,
                         repair_result_remark: job.repair_result_remark,
+                        ...(targetStatus === "Wait for approve" ? { stage: "close_approval" } : {}),
                         start_repair_date: job.start_repair_date || localTodayISO(),
                         // ช่องกรอกวันที่/เวลาเสร็จเองมีเฉพาะตอน "แก้ไขสำเร็จ/ไม่สำเร็จ" — กรอกมาก็เคารพค่านั้น
                         // กรณีอื่น (รออนุมัติ/ไม่พบปัญหา) ประทับเวลาตอนกดบันทึกเสมอ ไม่ใช้ค่าเก่าที่ค้างจากใบที่เคยถูกตีกลับ
