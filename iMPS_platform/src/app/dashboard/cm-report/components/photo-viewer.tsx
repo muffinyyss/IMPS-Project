@@ -101,7 +101,6 @@ export function isImageAttachment(src?: string | null, mime?: string | null): bo
 export function isVideoAttachment(src?: string | null, mime?: string | null, name?: string | null): boolean {
     const type = (mime || "").toLowerCase();
     if (type.startsWith("video/")) return true;
-    if (type) return false;
     return VIDEO_EXT.test(String(name || src || ""));
 }
 
