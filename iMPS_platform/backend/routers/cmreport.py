@@ -2030,7 +2030,7 @@ async def cmreport_cs_reject(
 
 # ── ยกเลิกใบงานที่ยังไม่ปิด → Cancelled (ไปแสดงใน tab Closed)
 #    planner/admin ยกเลิกตอนรีวิว/วางแผนได้
-PLANNER_CANCEL_ROLES: set[str] = {"admin", "planner"}
+PLANNER_CANCEL_ROLES: set[str] = {"admin", "owner", "planner"}
 TECHNICIAN_CANCEL_ROLE = "technician"
 
 
