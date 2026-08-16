@@ -162,7 +162,6 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
   const { lang } = useLanguage();
   const [userRole, setUserRole] = useState<string>("");
   const isTechnician = userRole.toLowerCase() === "technician";
-  const isPlanner = userRole.trim().toLowerCase() === "planner";
   const [loading, setLoading] = useState(false);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [data, setData] = useState<TData[]>([]);
@@ -772,13 +771,8 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
   const visibleData = useMemo(() => {
     // planner เป็นผู้อนุมัติ SR → เห็นทั้ง Wait for approve (รออนุมัติ) และ Wait for schedule (วางแผน)
     // ซ่อนเฉพาะใบที่ตีกลับไปหา CS แล้ว (Wait for approve + reject_remark) — ยังไม่ใช่คิว จนกว่า CS จะแก้แล้วบันทึกกลับ
-    if (isPlanner) {
-      return data.filter(
-        (r) => !(String(r.status || "").trim().toLowerCase() === "wait for approve" && (r.reject_remark || "").trim())
-      );
-    }
     return data;
-  }, [data, isPlanner]);
+  }, [data]);
 
   const table = useReactTable({
     data: visibleData,

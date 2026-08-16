@@ -174,10 +174,14 @@ export const STATUS_LABELS = {
   cancelled: "ยกเลิก",
 } as const;
 
-export function normalizeStatus(s: string): keyof typeof STATUS_LABELS {
+export function normalizeStatus(s: string, stage = "", repairResult = ""): keyof typeof STATUS_LABELS {
   const v = (s || "").trim().toLowerCase().replace(/[-_\s]+/g, " ");
+  const stageValue = (stage || "").trim().toLowerCase();
+  const repairValue = (repairResult || "").trim().toLowerCase();
   if (v === "complete" || v === "completed" || v === "closed" || v === "close") return "completed";
   if (v === "in progress" || v === "inprogress") return "in_progress";
+  if (v === "wo wait for approve") return "in_progress";
+  if (v === "wait for approve" && (stageValue !== "cs_approval" || repairValue === "wo - wait for approve")) return "in_progress";
   // ใบที่ถูกยกเลิก — ต้องแยกจาก open ไม่งั้นจะถูกนับเป็นงานค้างทั้งที่ไม่มีใครต้องทำแล้ว
   if (v === "cancelled" || v === "canceled" || v === "cancel" || v === "void" || v === "ยกเลิก") return "cancelled";
   return "open";
@@ -185,7 +189,7 @@ export function normalizeStatus(s: string): keyof typeof STATUS_LABELS {
 
 /** ใบที่ถูกยกเลิก = ไม่ใช่ภาระงานซ่อม → ตัดออกจากกราฟและ KPI ทุกตัว (ยังโชว์ในตาราง) */
 export function isCancelled(r: CMRow): boolean {
-  return normalizeStatus(r.status) === "cancelled";
+  return normalizeStatus(r.status, r.stage, r.repair_result) === "cancelled";
 }
 
 export function excludeCancelled(rows: CMRow[]): CMRow[] {
@@ -351,7 +355,7 @@ export function groupByMonth(rows: CMRow[]): { open: number[]; inProgress: numbe
     const d = rowDate(r);
     if (!d) continue;
     const m = d.getMonth();
-    const s = normalizeStatus(r.status);
+    const s = normalizeStatus(r.status, r.stage, r.repair_result);
     if (s === "cancelled") continue;
     if (s === "completed") completed[m]++;
     else if (s === "in_progress") inProgress[m]++;
@@ -367,7 +371,7 @@ export function applyFilters(
 ): CMRow[] {
   return rows.filter((r) => {
     if (filters.status && exclude !== "status") {
-      if (STATUS_LABELS[normalizeStatus(r.status)] !== filters.status) return false;
+      if (STATUS_LABELS[normalizeStatus(r.status, r.stage, r.repair_result)] !== filters.status) return false;
     }
     if (filters.equipment && exclude !== "equipment") {
       if ((r.faulty_equipment || "Unknown") !== filters.equipment) return false;
