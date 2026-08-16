@@ -1286,22 +1286,28 @@ export default function CMOpenForm() {
 
         setUploadState({ show: true, total: newPhotos.length, completed: 0 });
 
-        const fd = new FormData();
-        fd.append("station_id", stationId);
-        fd.append("group", "cm_photos");
-        fd.append("phase", "problem");
-        newPhotos.forEach(p => fd.append("files", p.file, p.file.name));
-        const photoLocation = newPhotos.find(p => p.location)?.location || "";
-        if (photoLocation) fd.append("location", photoLocation);
-        fd.append("created_at", new Date().toISOString());
+        // ส่งทีละไฟล์เพื่อไม่ให้ไฟล์แนบหลายไฟล์รวมกันจน request ชนเพดานของ Nginx
+        for (let index = 0; index < newPhotos.length; index += 1) {
+            const photo = newPhotos[index];
+            const fd = new FormData();
+            fd.append("station_id", stationId);
+            fd.append("group", "cm_photos");
+            fd.append("phase", "problem");
+            fd.append("files", photo.file, photo.file.name);
+            if (photo.location) fd.append("location", photo.location);
+            fd.append("created_at", new Date().toISOString());
 
-        const res = await apiFetch(
-            `${API_BASE}/cmreport/${encodeURIComponent(reportId)}/photos`,
-            { method: "POST", body: fd, credentials: "include" }
-        );
-        if (!res.ok) throw new Error(await responseErrorMessage(res, "Upload failed"));
+            const res = await apiFetch(
+                `${API_BASE}/cmreport/${encodeURIComponent(reportId)}/photos`,
+                { method: "POST", body: fd, credentials: "include" }
+            );
+            if (!res.ok) {
+                const reason = await responseErrorMessage(res, "Upload failed");
+                throw new Error(`${photo.file.name}: ${reason}`);
+            }
 
-        setUploadState({ show: true, total: newPhotos.length, completed: newPhotos.length });
+            setUploadState({ show: true, total: newPhotos.length, completed: index + 1 });
+        }
     }
 
     // ผลการยิงเข้า Maximo แนบมากับ response ของ PATCH /status — เปิด WO ไม่ผ่านต้องบอกให้รู้
