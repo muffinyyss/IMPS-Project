@@ -44,6 +44,7 @@ export type CMRow = {
 /** บริษัทผู้ถือครองตู้ของใบงานนี้ — ใบที่ระบุไม่ได้จัดกลุ่มเป็น UNKNOWN_BRAND */
 export const UNKNOWN_BRAND = "Unknown";
 export const UNKNOWN_COMPANY = "Unknown";
+export const COMPANY_FILTER_OPTIONS = ["EGAT", "EDS"] as const;
 
 export function companyOf(r: CMRow): string {
   return (r.company || "").trim() || UNKNOWN_COMPANY;
@@ -383,7 +384,7 @@ export function applyFilters(
       if (brandOf(r) !== filters.brand) return false;
     }
     if (filters.company && exclude !== "company") {
-      if (companyOf(r) !== filters.company) return false;
+      if (companyOf(r).toLowerCase() !== filters.company.toLowerCase()) return false;
     }
     if (filters.origin && exclude !== "origin") {
       if (originOf(r) !== filters.origin) return false;

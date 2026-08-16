@@ -19,7 +19,7 @@ import useLanguage from "@/utils/useLanguage";
 import {
   CMRow, ActiveFilters, DateSel, STATUS_LABELS, WorkStatusFilter, EMPTY_FILTERS, CmOrigin,
   normalizeStatus, workStatusOf, workStatusBadge, filterByDate, listYears, listBrands,
-  weeksInMonth, applyFilters, applySearch, brandOf, originOf, listCompanies, companyOf, UNKNOWN_BRAND, UNKNOWN_COMPANY,
+  weeksInMonth, applyFilters, applySearch, brandOf, originOf, companyOf, UNKNOWN_BRAND, UNKNOWN_COMPANY, COMPANY_FILTER_OPTIONS,
 } from "@/utils/cm-dashboard";
 import { CM_ORIGIN_LIST } from "@/app/dashboard/cm-report/lib/origin";
 import { failureCodeLabel } from "@/app/dashboard/cm-report/lib/failureCode";
@@ -65,11 +65,16 @@ function statusSlug(status: string, stage?: string, repairResult?: string): "ope
 // L'accesseur renvoie la valeur comparée : string pour un tri alphabétique,
 // number pour un tri numérique. `null`/"" finit toujours en bas quel que soit le sens.
 type SortKey =
-  | "station" | "charger" | "brand" | "issue_id" | "reported_by"
+  | "station" | "charger" | "brand" | "sr" | "wo" | "reported_by"
   | "equipment" | "problem" | "severity" | "date" | "status";
 type SortDir = "asc" | "desc";
 
 const SEVERITY_RANK: Record<string, number> = { urgent: 4, high: 3, medium: 2, low: 1 };
+
+function workNumberOf(issueId: string | undefined, prefix: "SR" | "WO"): string {
+  const match = String(issueId || "").match(/(\d+)/);
+  return match ? `${prefix}${match[1].padStart(3, "0")}` : "";
+}
 
 export default function CMListPage() {
   const [rows, setRows] = useState<CMRow[]>([]);
@@ -222,9 +227,9 @@ export default function CMListPage() {
     return counts;
   }, [periodRows, filters, search]);
 
-  const companies = useMemo(() => listCompanies(rows), [rows]);
+  const companies = COMPANY_FILTER_OPTIONS;
   const brandRows = useMemo(
-    () => (filters.company ? rows.filter((r) => companyOf(r) === filters.company) : rows),
+    () => (filters.company ? rows.filter((r) => companyOf(r).toLowerCase() === filters.company!.toLowerCase()) : rows),
     [rows, filters.company]
   );
   const brands = useMemo(() => listBrands(brandRows), [brandRows]);
@@ -245,7 +250,8 @@ export default function CMListPage() {
         return (r.charger_name || "").toLowerCase();
       }
       case "brand": return brandOf(r).toLowerCase();
-      case "issue_id": return (r.issue_id || "").toLowerCase();
+      case "sr": return workNumberOf(r.issue_id, "SR");
+      case "wo": return workNumberOf(r.issue_id, "WO");
       case "reported_by": return (r.reported_by || "").toLowerCase();
       case "equipment": return (displayFaultyEquipment(r) || "").toLowerCase();
       case "problem": return (r.problem_details || "").toLowerCase();
@@ -323,7 +329,7 @@ export default function CMListPage() {
       quickOpen: "รอจัดซื้อ", quickInProgress: "รอดำเนินการ", quickComplete: "เสร็จสิ้น", quickCancelled: "ยกเลิก",
       sortAsc: "เรียงน้อย→มาก", sortDesc: "เรียงมาก→น้อย",
       headers: {
-        station: "สถานี", charger: "ตู้ชาร์จ", brand: "บริษัท", issue_id: "รหัสเอกสาร",
+        station: "สถานี", charger: "ตู้ชาร์จ", brand: "บริษัท", sr: "เลขที่ SR", wo: "เลขที่ WO",
         reported_by: "ผู้แจ้งปัญหา", equipment: "อุปกรณ์ที่ผิดปกติ", problem: "ปัญหาที่พบ",
         severity: "ความรุนแรง", date: "วันที่", status: "สถานะ",
       },
@@ -351,7 +357,7 @@ export default function CMListPage() {
       rowsPerPage: "Rows per page",
       statusFilterLabel: "Filter by status",
       tableCount: (n: number, q?: string) => `${n} records${q ? ` · "${q}"` : ""}`,
-      searchPlaceholder: "Search by station, issue ID, charger, company, equipment, severity…",
+      searchPlaceholder: "Search by station, SR, WO, charger, company, equipment, severity…",
       clearFilters: "Clear filters",
       pagination: (from: number, to: number, total: number) => `Showing ${from}–${to} of ${total} records`,
       loading: "Loading",
@@ -362,7 +368,7 @@ export default function CMListPage() {
       quickOpen: "Open", quickInProgress: "In Progress", quickComplete: "Complete", quickCancelled: "Cancelled",
       sortAsc: "Sort ascending", sortDesc: "Sort descending",
       headers: {
-        station: "Station", charger: "Charger", brand: "Company", issue_id: "Issue ID",
+        station: "Station", charger: "Charger", brand: "Company", sr: "SR No.", wo: "WO No.",
         reported_by: "Reported By", equipment: "Faulty Equipment", problem: "Problem Found",
         severity: "Severity", date: "Date", status: "Status",
       },
@@ -383,7 +389,8 @@ export default function CMListPage() {
   const columns: { key: SortKey; label: string; className?: string }[] = [
     { key: "station", label: t.headers.station },
     { key: "brand", label: "Brand" },
-    { key: "issue_id", label: t.headers.issue_id },
+    { key: "sr", label: t.headers.sr },
+    { key: "wo", label: t.headers.wo },
     { key: "reported_by", label: t.headers.reported_by },
     { key: "equipment", label: t.headers.equipment },
     { key: "problem", label: t.headers.problem },
@@ -673,7 +680,8 @@ export default function CMListPage() {
                         {brand}
                       </button>
                     </td>
-                    <td className="tw-px-4 tw-py-3 tw-text-gray-600">{r.issue_id || "-"}</td>
+                    <td className="tw-px-4 tw-py-3 tw-text-gray-600">{workNumberOf(r.issue_id, "SR") || "-"}</td>
+                    <td className="tw-px-4 tw-py-3 tw-text-gray-600">{workNumberOf(r.issue_id, "WO") || "-"}</td>
                     <td className="tw-px-4 tw-py-3 tw-text-gray-600">
                       <span className="tw-inline-flex tw-items-center tw-gap-1.5">
                         {r.reported_by || "-"}

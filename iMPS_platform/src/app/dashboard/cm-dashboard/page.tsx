@@ -8,7 +8,7 @@ import { apiFetch } from "@/utils/api";
 import useLanguage from "@/utils/useLanguage";
 import {
   CMRow, ActiveFilters, DateSel, STATUS_LABELS, WorkStatusFilter, EMPTY_FILTERS, CmOrigin,
-  normalizeStatus, workStatusOf, filterByDate, listYears, listBrands, listCompanies, companyOf, UNKNOWN_BRAND, UNKNOWN_COMPANY,
+  normalizeStatus, workStatusOf, filterByDate, listYears, listBrands, companyOf, UNKNOWN_BRAND, UNKNOWN_COMPANY, COMPANY_FILTER_OPTIONS,
   excludeCancelled, isCancelled,
   weeksInMonth, applyFilters, groupCount, groupCountMulti, groupCountMultiByBrand, groupByMonth,
   causeLabelsOf, remedyCodesOf, remedyDescriptionsOf,
@@ -260,9 +260,9 @@ export default function CMDashboardPage() {
   // ── Marques (= entreprises détentrices) et origine des fiches ────────────────
   // Chaque compteur ignore SON PROPRE filtre : les autres boutons restent cliquables
   // et affichent un nombre non nul même quand une marque est déjà sélectionnée.
-  const companies = useMemo(() => listCompanies(rows), [rows]);
+  const companies = COMPANY_FILTER_OPTIONS;
   const brandRows = useMemo(
-    () => (filters.company ? rows.filter((r) => companyOf(r) === filters.company) : rows),
+    () => (filters.company ? rows.filter((r) => companyOf(r).toLowerCase() === filters.company!.toLowerCase()) : rows),
     [rows, filters.company]
   );
   const brands = useMemo(() => listBrands(brandRows), [brandRows]);
