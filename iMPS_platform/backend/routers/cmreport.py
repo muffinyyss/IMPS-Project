@@ -1699,8 +1699,13 @@ async def cmreport_update_status(
 
     # PATCH /status ใช้โดยฟอร์มซ่อม — ถ้าใบขึ้นเป็น "Wait for approve" จากด่านนี้ = ด่านปิดงาน
     # ปั๊ม stage ให้อัตโนมัติเพื่อแยกจากด่าน cs (คงค่าที่ส่งมาโดยตรงถ้ามี)
-    if str(updates.get("status", "")).strip().lower() == "wait for approve" and "stage" not in updates:
-        updates["stage"] = "close_approval"
+    if str(updates.get("status", "")).strip().lower() == "wait for approve":
+        # cs_approval is reserved for the initial CS approval queue.
+        # Any later save from the repair flow must be the close-approval queue.
+        if role_lower != "cs" and str(updates.get("stage", "")).strip().lower() == "cs_approval":
+            updates["stage"] = "close_approval"
+        elif "stage" not in updates:
+            updates["stage"] = "close_approval"
 
     # ปิดงานตรงจากฟอร์มซ่อม (planner กรอกผลเอง = ไม่ต้องรออนุมัติ)
     # — สิทธิ์และการประทับผู้อนุมัติต้องเหมือนเส้นทาง POST /approve
