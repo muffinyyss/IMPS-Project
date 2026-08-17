@@ -823,6 +823,11 @@ def _serialize_open(doc: dict) -> dict:
             doc["selected_at"].isoformat() if isinstance(doc.get("selected_at"), datetime) else None
         ),
         "selected_by": doc.get("selected_by"),
+        "assignees": doc.get("assignees") or [],
+        "planned_at": doc.get("planned_at"),
+        "planned_by": doc.get("planned_by"),
+        "sched_start": doc.get("sched_start"),
+        "sched_finish": doc.get("sched_finish"),
         "planning_status": doc.get("planning_status") or "pending",
         "receivedAt": (
             doc["receivedAt"].isoformat() if isinstance(doc.get("receivedAt"), datetime) else None
@@ -905,6 +910,10 @@ class EquipmentItem(BaseModel):
 
 class SelectEquipmentIn(BaseModel):
     equipment: list[EquipmentItem] = Field(default_factory=list)
+    planned_at: Optional[str] = None
+    sched_start: Optional[str] = None
+    sched_finish: Optional[str] = None
+    assignees: list[str] = Field(default_factory=list)
 
 
 async def _find_open_wo(wonum: str) -> dict | None:
@@ -1030,6 +1039,11 @@ async def set_pm_equipment(
         items.append(item)
 
     now = datetime.now(timezone.utc)
+    planned_at_value = (body.planned_at or now.isoformat()).strip()
+    sched_start_value = (body.sched_start or "").strip()
+    sched_finish_value = (body.sched_finish or "").strip()
+    assignees = [str(x).strip() for x in body.assignees if str(x or "").strip()]
+
     res = await _open_coll().update_one(
         {"wonum": wonum},
         {"$set": {
@@ -1037,8 +1051,11 @@ async def set_pm_equipment(
             "selected_at": now,
             "selected_by": current.username or current.sub,
             "planning_status": "planned" if items else "pending",
-            "planned_at": now,
+            "planned_at": planned_at_value,
             "planned_by": current.username or current.sub,
+            "sched_start": sched_start_value,
+            "sched_finish": sched_finish_value,
+            "assignees": assignees,
         }},
     )
     if res.matched_count == 0:
