@@ -2,7 +2,7 @@
 export type UserRole = "owner" | "admin" | "technician" | "cs" | "planner";
 
 // role สายปฏิบัติงาน — UI แบบเดียวกับ technician (ซ่อนปุ่มจัดการสถานี/กระดิ่ง, เข้าตู้แล้วไป PM report)
-// เฉพาะ technician เท่านั้นที่ต้องเลือกสถานี — cs/planner เห็นทุกสถานี
+// staff ไม่จำกัดด้วย station assignment; company EDS ยังถูกกรองเฉพาะยี่ห้อ FlexxFast
 export const STAFF_ROLES: UserRole[] = ["technician", "cs", "planner"];
 
 export const isStaffRole = (role?: string | null) =>

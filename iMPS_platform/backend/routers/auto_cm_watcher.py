@@ -15,6 +15,7 @@ import inspect
 import os
 import asyncio
 import logging
+import re
 from datetime import datetime, timezone, timedelta
 
 from config import client, CBM_DB, charger_onoff, CMReportDB, th_tz
@@ -254,15 +255,26 @@ async def _create_auto_cm(
         return False
 
 
-async def _has_open_auto_cm(station_id: str, sn: str, trigger_key: str) -> bool:
-    """Shared: เช็ค duplicate สำหรับทุก trigger type"""
+_CLOSED_CM_STATUS_PATTERN = r"^\s*(?:complete|completed|closed|close)\s*$"
+
+
+async def _has_unclosed_auto_cm(station_id: str, sn: str, trigger_key: str) -> bool:
+    """เช็คใบ Auto CM เดิม โดยอนุญาตใบใหม่เฉพาะเมื่อใบเดิมปิดแล้วเท่านั้น"""
     col = CMReportDB[station_id]
     existing = await col.find_one({
         "auto_trigger": trigger_key,
-        "status": {"$in": ["Open", "In Progress"]},
+        # ใบงานระหว่างทางมีหลายสถานะ (เช่น Wait for approve / Wait for
+        # schedule / Pending) จึงเช็คแบบ "ยังไม่ปิด" แทนการไล่ชื่อสถานะเปิด
+        # ทั้งหมด ส่วน Cancelled ยังถือว่าไม่ได้ปิดและจะไม่ถูกเปิดซ้ำอัตโนมัติ
+        "status": {
+            "$not": {
+                "$regex": _CLOSED_CM_STATUS_PATTERN,
+                "$options": "i",
+            }
+        },
         "$or": [
             {"charger_sn": sn},
-            {"problem_details": {"$regex": sn, "$options": "i"}},
+            {"problem_details": {"$regex": re.escape(sn), "$options": "i"}},
         ],
     })
     return existing is not None
@@ -318,8 +330,8 @@ async def _check_all_edgebox():
 
         station_id = info["station_id"]
 
-        if await _has_open_auto_cm(station_id, sn, "edgebox_offline"):
-            log.info(f"  📋 Edge Box {sn} → CM already open, skip")
+        if await _has_unclosed_auto_cm(station_id, sn, "edgebox_offline"):
+            log.info(f"  📋 Edge Box {sn} → CM is not closed, skip")
             continue
 
         charger_label = info.get("charger_name") or f"Charger {info.get('charger_no', sn)}"
@@ -433,8 +445,8 @@ async def _check_all_router_temp():
 
         station_id = info["station_id"]
 
-        if await _has_open_auto_cm(station_id, sn, "router_temp_high"):
-            log.info(f"  📋 Router {sn} → CM already open, skip")
+        if await _has_unclosed_auto_cm(station_id, sn, "router_temp_high"):
+            log.info(f"  📋 Router {sn} → CM is not closed, skip")
             continue
 
         charger_label = info.get("charger_name") or f"Charger {info.get('charger_no', sn)}"
@@ -556,8 +568,8 @@ async def _check_all_gun_temp():
 
         station_id = info["station_id"]
 
-        if await _has_open_auto_cm(station_id, sn, "gun_temp_high"):
-            log.info(f"  📋 Gun {sn} → CM already open, skip")
+        if await _has_unclosed_auto_cm(station_id, sn, "gun_temp_high"):
+            log.info(f"  📋 Gun {sn} → CM is not closed, skip")
             continue
 
         charger_label = info.get("charger_name") or f"Charger {info.get('charger_no', sn)}"
@@ -645,8 +657,6 @@ async def _auto_note_gun_temp_normal():
 # ▶ TRIGGER 4+: Generic Fault Triggers (PE CUT, IMD SELF CHECK, ...)
 #   แยกนับต่อหัว — ≥N ครั้ง/วัน/หัว หรือ เกิดติดต่อกัน M วัน/หัว
 # ══════════════════════════════════════════════════════════════════
-import re
-
 _HEAD_PATTERN = re.compile(r"Head\s*(\d+)", re.IGNORECASE)
 
 
@@ -701,21 +711,6 @@ async def _has_fault_for_head_in_range(
         col_name, fault_regex, start_str, end_str
     )
     return counts.get(head, 0) > 0
-
-
-async def _has_open_auto_cm_fault(
-    station_id: str, sn: str, trigger_key: str,
-) -> bool:
-    col = CMReportDB[station_id]
-    existing = await col.find_one({
-        "auto_trigger": trigger_key,
-        "status": {"$in": ["Open", "In Progress"]},
-        "$or": [
-            {"charger_sn": sn},
-            {"problem_details": {"$regex": sn, "$options": "i"}},
-        ],
-    })
-    return existing is not None
 
 
 async def _check_all_fault_triggers():
@@ -813,9 +808,9 @@ async def _check_all_fault_triggers():
                 station_id = info["station_id"]
                 trigger_key = f"{trigger_prefix}_head_{head}"
 
-                if await _has_open_auto_cm_fault(station_id, sn, trigger_key):
+                if await _has_unclosed_auto_cm(station_id, sn, trigger_key):
                     log.info(
-                        f"  📋 {fault_name} {sn} Head {head} → CM already open, skip"
+                        f"  📋 {fault_name} {sn} Head {head} → CM is not closed, skip"
                     )
                     continue
 

@@ -25,6 +25,7 @@ export type StationInfoProps = {
   SN?: string | null;
   WO?: string | null;
   brand?: string | null;
+  manufacturer?: string | null;
   power?: string | null;
   status?: boolean | null;
   commissioningDate?: string | null;
@@ -44,6 +45,7 @@ const translations = {
     stationInfo: "ข้อมูลสถานี",
     stationName: "ชื่อสถานี",
     brand: "ยี่ห้อ",
+    manufacturer: "ผู้ผลิตตู้ Charger",
     serialNumber: "หมายเลขเครื่อง",
     workOrder: "ใบสั่งงาน",
     model: "รุ่น",
@@ -96,6 +98,7 @@ const translations = {
     stationInfo: "Station Information",
     stationName: "Station Name",
     brand: "Brand",
+    manufacturer: "Charger Manufacturer",
     serialNumber: "Serial Number",
     workOrder: "Work Order",
     model: "Model",
@@ -257,7 +260,7 @@ const RefreshIcon = () => (
 // Component
 // =============================================================================
 export default function StationInfo({
-  station_name, SN, WO, brand, model, power, status,
+  station_name, SN, WO, brand, manufacturer, model, power, status,
   commissioningDate, warrantyYears, PLCFirmware, PIFirmware, RTFirmware,
   chargerSN, apiBaseUrl = "", onAddSetting, onConfig,
 }: StationInfoProps) {
@@ -694,8 +697,9 @@ export default function StationInfo({
                   )}
                 </div>
               </div>
-              <InfoRow label={t.stationName} value={station_name} />
-              <InfoRow label={t.brand} value={brand} />
+      <InfoRow label={t.stationName} value={station_name} />
+      <InfoRow label={t.brand} value={brand} />
+      <InfoRow label={t.manufacturer} value={manufacturer} />
               <InfoRow label={t.serialNumber} value={SN} />
               {isFlexxFast && <InfoRow label={t.workOrder} value={WO} />}
               <InfoRow label={t.model} value={model} />

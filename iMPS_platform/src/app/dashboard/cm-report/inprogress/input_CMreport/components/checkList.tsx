@@ -1036,6 +1036,7 @@ export default function CMInProgressForm() {
 
     const editId = searchParams.get("edit_id") ?? "";
     const isEdit = !!editId;
+    const plannerSelfCloseRequested = searchParams.get("self_close") === "1";
 
     // เปิดใบงานที่ปิดแล้ว (Closed) = โหมดดูอย่างเดียว (อ่านไม่แก้, ปิดฟีเจอร์ร่าง)
     // สิทธิ์กรอกใบงานเฟสซ่อม = ต้องเป็นช่างที่ planner มอบหมายตอนวางแผน (อยู่ใน assignees) หรือ admin
@@ -1055,6 +1056,7 @@ export default function CMInProgressForm() {
     const normalizedJobStatus = job.status.trim().toLowerCase();
     const isClosedStatus = normalizedJobStatus === "closed" || normalizedJobStatus === "complete";
     const isCancelledStatus = normalizedJobStatus === "cancelled";
+    const isWaitForSchedule = normalizedJobStatus === "wait for schedule";
     // ใช้ status จริงเป็นตัวกำหนด Read only เท่านั้น
     // การเลือก Repair Result = WO - wait for approve ยังต้องแก้ไข/บันทึกได้ก่อน
     const isWaitForApprove = normalizedJobStatus === "wait for approve";
@@ -1064,6 +1066,8 @@ export default function CMInProgressForm() {
         isWaitForApprove &&
         approvalStage.trim().toLowerCase() !== "cs_approval";
     const canEditTechnicianData = isPlanner && isWoCloseApproval;
+    // เปิดให้ Planner กรอกผลได้เฉพาะเมื่อเลือก "สามารถปิดใบงานได้เลย" จากหน้าวางแผน
+    const plannerSelfCloseMode = plannerSelfCloseRequested && isPlanner && isWaitForSchedule;
     const isTechnicianWaitForApprove = isTechnician && isWaitForApprove;
     // ด่านรออนุมัติจาก CS เป็นหน้าตรวจอย่างเดียว
     // ส่วนด่านปิดงานเปิดให้ Planner แก้ข้อมูลของช่างแล้วบันทึก/อนุมัติได้
@@ -1073,7 +1077,7 @@ export default function CMInProgressForm() {
         isCancelledStatus ||
         isTechnicianWaitForApprove ||
         (isWaitForApprove && !canEditTechnicianData) ||
-        (isPlanner && (!canEditTechnicianData || !plannerEditMode)) ||
+        (isPlanner && !plannerSelfCloseMode && (!canEditTechnicianData || !plannerEditMode)) ||
         (!isPlanner && !isJobOwner);
 
     // อนุมัติปิดใบงาน (Wait for approve → Closed) — เฉพาะ admin/planner และเฉพาะใบที่รออนุมัติอยู่จริง
@@ -1166,6 +1170,13 @@ export default function CMInProgressForm() {
     };
 
     const goBackToList = () => router.push(buildListUrl(currentTab));
+
+    const returnToPlannerSchedule = () => {
+        const params = new URLSearchParams(searchParams.toString());
+        params.delete("self_close");
+        params.set("view", "form");
+        router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    };
 
     // ==================== DRAFT MANAGEMENT ====================
     const { status: draftStatus, hasDraft, saveNow: saveDraftNow, load: loadDraft, deleteDraft } = useDraft(
@@ -1576,13 +1587,9 @@ export default function CMInProgressForm() {
     }, [validations, hasChosenResult, isNoProblem, isRepairCompleted]);
     const canSave = useMemo(() => effectiveValidations.filter(v => v.isRequired).every(v => v.isValid), [effectiveValidations]);
     // ผล "แก้ไขสำเร็จ" ต้องผ่าน validation ครบทุกข้อก่อนเปลี่ยนสถานะเป็น Closed
-    const canClose = !isClosedResult || canSave;
+    const canClose = !(isClosedResult || isNoProblem) || canSave;
 
     // ใบที่ planner ยังไม่ได้วางแผน/assign — ช่างยังปิดงานไม่ได้ แต่ต้องเก็บสิ่งที่กรอกไว้ได้
-    // ไม่มีใน type Status เดิมเพราะสถานะนี้เพิ่งเพิ่มทีหลัง จึงเทียบด้วยข้อความ
-    const isWaitForSchedule = job.status.trim().toLowerCase() === "wait for schedule";
-
-
     // บันทึกความคืบหน้าใช้เกณฑ์ขั้นต่ำ: ต้องระบุอาการและสาเหตุ
     // (ไม่ใช้ canSave เพราะนั่นบังคับครบทุกช่องสำหรับ "ปิดงาน")
     const canSaveProgress = useMemo(() => {
@@ -1599,19 +1606,19 @@ export default function CMInProgressForm() {
     // การ์ดสรุปต้องสะท้อนสิ่งที่ "ปุ่มที่กดได้จริง" ต้องการ ไม่งั้นจะขึ้นแดงว่ายังไม่เลือก
     // ผลหลังซ่อม ทั้งที่สถานะนี้ไม่ต้องเลือก — canSave ยังใช้ validations ชุดเต็มเหมือนเดิม
     const displayValidations = useMemo(
-        () => isWaitForSchedule
+        () => isWaitForSchedule && !plannerSelfCloseMode
             ? validations.map(v => PROGRESS_REQUIRED_KEYS.includes(v.key) ? v : { ...v, isRequired: false })
             : effectiveValidations,
-        [validations, effectiveValidations, isWaitForSchedule],
+        [validations, effectiveValidations, isWaitForSchedule, plannerSelfCloseMode],
     );
 
     // ซ่อมเสร็จ ("แก้ไขสำเร็จ/ไม่สำเร็จ" หรือ "ไม่พบปัญหา") หรือเลือก "WO - wait for approve"
     // → เข้าคิวรออนุมัติ (Wait for approve) ให้ planner/admin กดปิดงาน | ติดตามผล/รออะไหล่ → In Progress
     const isClosing = isClosedResult || isNoProblem;
-    // planner เป็นผู้อนุมัติปิดงานอยู่แล้ว — ถ้ากรอกผลซ่อมเองและเลือก "แก้ไขสำเร็จ"
+    // planner เป็นผู้อนุมัติปิดงานอยู่แล้ว — ถ้ากรอกผลสุดท้ายเอง (รวมไม่พบปัญหา)
     // ก็ไม่ต้องเข้าคิวรออนุมัติ ปิดเป็น Closed ไปเลย (role อื่นยังต้องรอ planner/admin อนุมัติ)
     const isRepairSuccess = job.repair_result === "WO - wait for approve" || isClosedResult;
-    const plannerAutoClose = isPlanner && isRepairSuccess;
+    const plannerAutoClose = isPlanner && (isRepairSuccess || isNoProblem);
     const targetStatus = plannerAutoClose
         ? "Closed"
         : (isClosing || job.repair_result === "WO - wait for approve" ? "Wait for approve" : "In Progress");
@@ -1619,7 +1626,9 @@ export default function CMInProgressForm() {
     // ป้าย Job Status ต้องบอก "สถานะตอนนี้" ของใบงาน ไม่ใช่สถานะที่จะกลายเป็นตอนกดบันทึก
     // ด่านปิดงาน targetStatus ของ planner เป็น "Closed" ตั้งแต่เปิดหน้า (กดบันทึกแล้วปิดเลย)
     // ถ้าเอามาโชว์ตรง ๆ จะดูเหมือนใบถูกปิดไปแล้วทั้งที่ยังรออนุมัติอยู่
-    const jobStatusLabel = isWoCloseApproval ? "WO - wait for approve" : targetStatus;
+    const jobStatusLabel = isWoCloseApproval
+        ? "WO - wait for approve"
+        : (plannerSelfCloseMode ? "Wait for schedule" : targetStatus);
     // ใบที่ซ่อมจบแล้ว (รออนุมัติ หรือปิดเลย) → ต้องมีวันที่แก้ไขเสร็จเสมอ
     // (ครอบคลุมทั้ง แก้ไขสำเร็จ/ไม่สำเร็จ, ไม่พบปัญหา และ WO - wait for approve)
     const hasResolvedDate = targetStatus === "Wait for approve" || targetStatus === "Closed";
@@ -2391,7 +2400,11 @@ export default function CMInProgressForm() {
             alert(lang === "th" ? "กรุณาเลือกผลหลังซ่อมก่อนบันทึก" : "Select a repair result before saving.");
             return;
         }
-        if (!keepStatus && isClosedResult && !canClose) {
+        if (plannerSelfCloseMode && !keepStatus && !plannerAutoClose) {
+            alert(lang === "th" ? "กรุณาเลือกผลสุดท้ายที่สามารถปิดใบงานได้" : "Select a final result that can close the work order.");
+            return;
+        }
+        if (!keepStatus && (isClosedResult || isNoProblem) && !canClose) {
             alert(lang === "th" ? "กรุณากรอกข้อมูลการซ่อมให้ครบก่อนปิดงาน" : "Complete all required repair data before closing.");
             return;
         }
@@ -2813,6 +2826,40 @@ export default function CMInProgressForm() {
 
             <form noValidate onSubmit={e => e.preventDefault()} onKeyDown={e => e.key === "Enter" && e.target instanceof HTMLInputElement && e.preventDefault()}>
                 <div className="tw-mx-auto tw-max-w-6xl tw-bg-white tw-border tw-border-blue-gray-100 tw-rounded-xl tw-shadow-md tw-shadow-blue-gray-500/5 tw-p-6 md:tw-p-8">
+
+                    {plannerSelfCloseMode && (
+                        <div className="tw-mb-6 tw-rounded-xl tw-border tw-border-green-200 tw-bg-green-50/60 tw-p-5">
+                            <h3 className="tw-text-base tw-font-bold tw-text-blue-gray-900">
+                                {lang === "th" ? "เลือกแนวทางดำเนินงาน" : "Choose handling method"}
+                            </h3>
+                            <div className="tw-mt-4 tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-3">
+                                <label className="tw-flex tw-cursor-pointer tw-items-start tw-gap-3 tw-rounded-xl tw-border tw-border-blue-gray-200 tw-bg-white tw-p-4 hover:tw-border-indigo-400 hover:tw-bg-indigo-50/40 tw-transition-colors">
+                                    <input
+                                        type="checkbox"
+                                        checked={false}
+                                        onChange={returnToPlannerSchedule}
+                                        className="tw-mt-0.5 tw-h-5 tw-w-5 tw-rounded tw-border-blue-gray-300 tw-text-indigo-600 focus:tw-ring-indigo-500"
+                                    />
+                                    <span>
+                                        <span className="tw-block tw-text-sm tw-font-bold tw-text-blue-gray-900">{lang === "th" ? "ต้องวางแผนคนเข้า" : "Schedule onsite staff"}</span>
+                                        <span className="tw-mt-1 tw-block tw-text-xs tw-text-blue-gray-600">{lang === "th" ? "กลับไปกำหนดวัน เวลา และผู้ปฏิบัติงาน" : "Return to scheduling and assignee selection."}</span>
+                                    </span>
+                                </label>
+                                <label className="tw-flex tw-items-start tw-gap-3 tw-rounded-xl tw-border-2 tw-border-green-500 tw-bg-white tw-p-4 tw-shadow-sm">
+                                    <input
+                                        type="checkbox"
+                                        checked
+                                        onChange={() => undefined}
+                                        className="tw-mt-0.5 tw-h-5 tw-w-5 tw-rounded tw-border-blue-gray-300 tw-text-green-600 focus:tw-ring-green-500"
+                                    />
+                                    <span>
+                                        <span className="tw-block tw-text-sm tw-font-bold tw-text-blue-gray-900">{lang === "th" ? "สามารถปิดใบงานได้เลย" : "Planner can close directly"}</span>
+                                        <span className="tw-mt-1 tw-block tw-text-xs tw-text-blue-gray-600">{lang === "th" ? "กรอกรายละเอียดและเลือกผลสุดท้ายให้ครบเพื่อปิดใบงาน" : "Complete the details and select a final result to close the work order."}</span>
+                                    </span>
+                                </label>
+                            </div>
+                        </div>
+                    )}
 
                     {/* ใบงานถูกตีกลับ — ช่างต้องเห็นเหตุผลก่อนแก้ (ซ่อนเมื่อรออนุมัติรอบใหม่แล้ว) */}
                     {isCancelledStatus && (
@@ -3560,7 +3607,7 @@ export default function CMInProgressForm() {
                             {/* โหมดแก้ไขข้อมูลเหลือแค่ ยกเลิกแก้ไข + ปิดงาน — อนุมัติ/ตีกลับ เป็นของหน้าตรวจ
                                 กดตอนแก้ไขค้างอยู่จะทิ้งสิ่งที่แก้ไปโดยไม่ได้บันทึก */}
                             {!isPlannerEditing && approvalActions}
-                            {isWaitForSchedule && !hasChosenResult && !isNoProblem && (
+                            {isWaitForSchedule && !plannerSelfCloseMode && !hasChosenResult && !isNoProblem && (
                                 <Button
                                     onClick={() => { void onFinalSave({ keepStatus: true }); }}
                                     disabled={saving || !canSaveProgress}
@@ -3570,16 +3617,17 @@ export default function CMInProgressForm() {
                                     {saving ? t("saving", lang) : (lang === "th" ? "บันทึกความคืบหน้า" : "Save progress")}
                                 </Button>
                             )}
-                            {(!isWaitForSchedule || hasChosenResult || isNoProblem) && (
+                            {(plannerSelfCloseMode || !isWaitForSchedule || hasChosenResult || isNoProblem) && (
                             <Button
                                 onClick={() => { void onFinalSave(); }}
-    disabled={saving || ((isClosedResult || plannerAutoClose) ? !canClose : !canSave)}
-                                className={`tw-text-white tw-font-semibold tw-text-base tw-px-8 tw-py-3 tw-rounded-xl hover:tw-shadow-xl disabled:tw-opacity-50 disabled:tw-cursor-not-allowed disabled:tw-shadow-none tw-transition-all tw-transform hover:tw-scale-[1.02] ${isClosing || plannerAutoClose
+                                disabled={saving || (plannerSelfCloseMode ? (!plannerAutoClose || !canClose) : ((isClosedResult || plannerAutoClose) ? !canClose : !canSave))}
+                                title={plannerSelfCloseMode && !plannerAutoClose ? (lang === "th" ? "กรุณาเลือกผลสุดท้ายที่สามารถปิดใบงานได้" : "Select a final result that can close the work order") : undefined}
+                                className={`tw-text-white tw-font-semibold tw-text-base tw-px-8 tw-py-3 tw-rounded-xl hover:tw-shadow-xl disabled:tw-opacity-50 disabled:tw-cursor-not-allowed disabled:tw-shadow-none tw-transition-all tw-transform hover:tw-scale-[1.02] ${plannerSelfCloseMode || isClosing || plannerAutoClose
                                     ? "tw-bg-green-600 hover:tw-bg-green-700 hover:tw-shadow-green-500/30"
                                     : "tw-bg-amber-500 hover:tw-bg-amber-600 hover:tw-shadow-amber-500/30"
                                     }`}
                             >
-                                {saving ? t("saving", lang) : (isClosing || plannerAutoClose ? t("closed", lang) : t("save", lang))}
+                                {saving ? t("saving", lang) : (plannerSelfCloseMode || isClosing || plannerAutoClose ? t("closed", lang) : t("save", lang))}
                             </Button>
                             )}
                             </>

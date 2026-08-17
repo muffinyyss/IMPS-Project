@@ -1,6 +1,7 @@
 "use client";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import CMOpenForm from "@/app/dashboard/cm-report/open/input_CMreport/components/checkList";
+import CMInProgressForm from "@/app/dashboard/cm-report/inprogress/input_CMreport/components/checkList";
 import {
   getCoreRowModel,
   getPaginationRowModel,
@@ -898,6 +899,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
     const params = new URLSearchParams(searchParams.toString());
     params.delete("view");
     params.delete("edit_id");
+    params.delete("self_close");
     router.push(`${pathname}?${params.toString()}`, { scroll: false });
   };
 
@@ -906,6 +908,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
     const params = new URLSearchParams(searchParams.toString());
     params.set("view", "form");
     params.set("edit_id", row.id);
+    params.delete("self_close");
     // WO - wait for scheduled มีแผน/ช่างแล้ว ให้เปิดฟอร์มกรอกผลซ่อมเหมือน technician
     // แม้ข้อมูลเก่าจะยังค้างอยู่ใน status Wait for schedule
     if (
@@ -927,9 +930,10 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
   };
 
   if (mode === "form") {
+    const plannerSelfClose = searchParams.get("self_close") === "1";
     return (
       <div className="tw-mt-4 sm:tw-mt-6 lg:tw-mt-8">
-        <CMOpenForm />
+        {plannerSelfClose ? <CMInProgressForm /> : <CMOpenForm />}
       </div>
     );
   }

@@ -16,12 +16,12 @@ from config import (
     SECRET_KEY, ALGORITHM, ACCESS_COOKIE_NAME, FRONTEND_BASE_URL,
     ACCESS_TOKEN_EXPIRE_MINUTES_TECHNICIAN, ACCESS_TOKEN_EXPIRE_MINUTES_DEFAULT,
     SESSION_IDLE_MINUTES_TECHNICIAN, SESSION_IDLE_MINUTES_DEFAULT,
-    REFRESH_TOKEN_EXPIRE_DAYS, STAFF_ROLES, ALL_STATIONS_ROLES,
+    REFRESH_TOKEN_EXPIRE_DAYS, STAFF_ROLES,
     users_collection, station_collection, charger_collection,
     create_access_token, canonical_role,
     SUPER_ADMIN_ROLE, SUPER_ADMIN_USERNAME, SWITCHABLE_ROLES,
 )
-from deps import UserClaims, get_current_user, get_user_station_ids
+from deps import UserClaims, get_current_user
 from brand_scope import assert_charger_in_scope, brand_regex, brand_scope_of
 
 router = APIRouter()
@@ -94,9 +94,9 @@ def login(body: LoginRequest, response: Response):
     else:
         token_expire_minutes = ACCESS_TOKEN_EXPIRE_MINUTES_DEFAULT  # 15 นาที
 
-    # ไม่แนบ station_ids ลง JWT: ช่างที่ถูก assign หลายสถานี (เช่น 40+) จะทำให้ token/คุกกี้ใหญ่จน
+    # ไม่แนบ station_ids ลง JWT: เป็นข้อมูล legacy และอาจทำให้ token/คุกกี้ใหญ่จน
     # response header เกิน proxy_buffer_size ของ nginx → 502 (หน้า HTML) → frontend login พัง
-    # สิทธิ์สถานีอ่านสดจาก DB ผ่าน get_user_station_ids() อยู่แล้ว (ค่าใน token เดิมก็ stale)
+    # สิทธิ์สถานีใช้กฎกลางตาม role ไม่ได้อิงรายการนี้
     jwt_token = create_access_token({
         "sub": user["email"],
         "user_id": str(user["_id"]),
@@ -480,6 +480,7 @@ def station_info_public(
                 "chargeBoxID": 1,
                 "station_id": 1,
                 "brand": 1,
+                "manufacturer": 1,
                 "model": 1,
                 "power": 1,
                 "chargerNo": 1,
@@ -510,6 +511,7 @@ def station_info_public(
             "SN": charger_doc.get("SN"),
             "chargeBoxID": charger_doc.get("chargeBoxID"),
             "brand": charger_doc.get("brand"),
+            "manufacturer": charger_doc.get("manufacturer"),
             "model": charger_doc.get("model"),
             "power": charger_doc.get("power"),
             "chargerNo": charger_doc.get("chargerNo"),
@@ -550,8 +552,14 @@ def get_history(
     end: str = Query(...),
     current: UserClaims = Depends(get_current_user),
 ):
-    # ✅ เช็คสิทธิ์ก่อนคิวรีทุกครั้ง — อ่านจาก DB ไม่ใช่ JWT ให้ตรงกับสถานีที่เห็นในหน้า EV Station
-    if not current.is_super_admin and station_id not in set(get_user_station_ids(current)):
+    # ใช้กฎกลางเดียวกับหน้า EV Station เพื่อให้ technician เข้าดูทุกสถานีได้จริง
+    from routers.stations import station_match_query
+
+    match_query = station_match_query(current)
+    allowed = match_query is not None and station_collection.count_documents(
+        {"$and": [match_query, {"station_id": station_id}]}, limit=1
+    ) > 0
+    if not allowed:
         raise HTTPException(status_code=403, detail="Forbidden station_id")
 
 class RefreshIn(BaseModel):
@@ -596,7 +604,7 @@ def refresh(body: RefreshIn, response: Response):
             token_expire_minutes = ACCESS_TOKEN_EXPIRE_MINUTES_DEFAULT  # 15 นาที
 
         # สร้าง access ใหม่ (คง sid เดิม) — ไม่แนบ station_ids ลง token เช่นเดียวกับตอน login
-        # (กัน token/คุกกี้ใหญ่เกิน proxy_buffer_size; สิทธิ์สถานีอ่านสดจาก DB ผ่าน get_user_station_ids())
+        # (กัน token/คุกกี้ใหญ่เกิน proxy_buffer_size; สิทธิ์สถานีใช้กฎกลางตาม role)
         new_access = create_access_token({
             "sub": user["email"],
             "user_id": str(user["_id"]),

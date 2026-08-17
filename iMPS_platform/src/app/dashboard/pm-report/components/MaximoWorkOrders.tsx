@@ -24,6 +24,7 @@ export type MaximoWorkOrder = {
   selected_equipment?: EquipmentItem[] | null;
   selected_at?: string | null;
   selected_by?: string | null;
+  planning_status?: string | null;
   receivedAt?: string | null;
 };
 
@@ -62,6 +63,9 @@ const T = {
   workOrder: { th: "WO", en: "WO" },
   selectedEquipment: { th: "อุปกรณ์ที่เลือกใน IMPS", en: "Selected equipment in IMPS" },
   noneSelected: { th: "ยังไม่ได้เลือกอุปกรณ์", en: "No equipment selected yet" },
+  awaitingPlanner: { th: "รอ Planner วางแผนอุปกรณ์", en: "Awaiting planner equipment plan" },
+  plannedBy: { th: "วางแผนโดย", en: "Planned by" },
+  plannerOnly: { th: "ให้ Planner วางแผนอุปกรณ์", en: "Equipment planning is for planner" },
   pickEquipment: { th: "เลือกอุปกรณ์ที่จะ PM", en: "Choose equipment to PM" },
   chargers: { th: "ตู้ชาร์จ", en: "Chargers" },
   stationLevel: { th: "อุปกรณ์ระดับสถานี", en: "Station-level equipment" },
@@ -136,6 +140,27 @@ export default function MaximoWorkOrders({ source, identifier }: Props) {
   const [saving, setSaving] = useState(false);
   const [dialogError, setDialogError] = useState<string>("");
   const [checked, setChecked] = useState<Record<string, boolean>>({});
+  const [canPlan, setCanPlan] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadRole() {
+      try {
+        const res = await apiFetch("/me");
+        const me = await res.json().catch(() => ({} as any));
+        const role = String(me?.role ?? "").trim().toLowerCase();
+        if (active) {
+          setCanPlan(["admin", "owner", "planner"].includes(role));
+        }
+      } catch (err) {
+        console.error("maximo pm role error:", err);
+      }
+    }
+
+    loadRole();
+    return () => { active = false; };
+  }, []);
 
   const load = useCallback(
     async (signal?: AbortSignal) => {
@@ -177,7 +202,7 @@ export default function MaximoWorkOrders({ source, identifier }: Props) {
   }, [load]);
 
   async function openSelectionDialog(wo: MaximoWorkOrder) {
-    if (!wo.wonum) return;
+    if (!wo.wonum || !canPlan) return;
     setSelectedWo(wo);
     setDialogOpen(true);
     setDialogError("");
@@ -310,7 +335,8 @@ export default function MaximoWorkOrders({ source, identifier }: Props) {
                   <button
                     type="button"
                     onClick={() => openSelectionDialog(wo)}
-                    disabled={!wo.wonum}
+                    disabled={!wo.wonum || !canPlan}
+                    title={canPlan ? t("pickEquipment", lang) : t("plannerOnly", lang)}
                     className="tw-w-full tw-text-left disabled:tw-cursor-default"
                   >
                     <div className="tw-min-w-0 tw-flex-1">
@@ -359,7 +385,7 @@ export default function MaximoWorkOrders({ source, identifier }: Props) {
                         </span>
                         {selected.length === 0 ? (
                           <span className="tw-text-[11px] tw-text-blue-gray-400">
-                            {t("noneSelected", lang)}
+                            {canPlan ? t("noneSelected", lang) : t("awaitingPlanner", lang)}
                           </span>
                         ) : (
                           selected.map((e, k) => (
@@ -372,6 +398,16 @@ export default function MaximoWorkOrders({ source, identifier }: Props) {
                           ))
                         )}
                       </div>
+                      {wo.selected_by && (
+                        <div className="tw-mt-1 tw-text-[11px] tw-text-blue-gray-400">
+                          {t("plannedBy", lang)}: {wo.selected_by}
+                        </div>
+                      )}
+                      {!canPlan && (
+                        <div className="tw-mt-1 tw-text-[11px] tw-font-medium tw-text-blue-gray-400">
+                          {t("plannerOnly", lang)}
+                        </div>
+                      )}
                     </div>
                   </button>
                 </li>

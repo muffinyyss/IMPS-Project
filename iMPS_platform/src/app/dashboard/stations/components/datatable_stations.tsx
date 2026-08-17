@@ -34,6 +34,7 @@ type ChargerData = {
   chargeBoxID: string;
   chargerNo: number;
   brand: string;
+  manufacturer: string;
   model: string;
   SN: string;
   WO: string;
@@ -69,7 +70,7 @@ export type StationUpdatePayload = {
 };
 
 export type ChargerUpdatePayload = {
-  chargeBoxID?: string; chargerNo?: number; brand?: string; model?: string;
+  chargeBoxID?: string; chargerNo?: number; brand?: string; manufacturer?: string; model?: string;
   SN?: string; WO?: string; power?: string;
   PLCFirmware?: string; PIFirmware?: string; RTFirmware?: string;
   commissioningDate?: string; warrantyYears?: number; numberOfCables?: number;
@@ -351,7 +352,7 @@ export function SearchDataTables() {
   const [openEditCharger, setOpenEditCharger] = useState(false);
   const [editingCharger, setEditingCharger] = useState<{ stationId: string; charger: ChargerData } | null>(null);
   const [editChargerForm, setEditChargerForm] = useState({
-    chargeBoxID: "", chargerNo: 1, brand: "", model: "", SN: "", WO: "", power: "",
+    chargeBoxID: "", chargerNo: 1, brand: "", manufacturer: "", model: "", SN: "", WO: "", power: "",
     PLCFirmware: "", PIFirmware: "", RTFirmware: "", commissioningDate: "",
     warrantyYears: 1, numberOfCables: 1, is_active: true, maximo_location: "", maximo_desc: "", ocppUrl: "", chargerType: "DC",
   });
@@ -359,7 +360,7 @@ export function SearchDataTables() {
   const [openAddCharger, setOpenAddCharger] = useState(false);
   const [addingChargerStationId, setAddingChargerStationId] = useState<string>("");
   const [addChargerForm, setAddChargerForm] = useState({
-    chargeBoxID: "", chargerNo: 1, brand: "", model: "", SN: "", WO: "", power: "",
+    chargeBoxID: "", chargerNo: 1, brand: "", manufacturer: "", model: "", SN: "", WO: "", power: "",
     PLCFirmware: "", PIFirmware: "", RTFirmware: "", commissioningDate: getTodayDate(),
     warrantyYears: 1, numberOfCables: 1, is_active: true, maximo_location: "", maximo_desc: "", ocppUrl: "", chargerType: "DC",
   });
@@ -467,7 +468,7 @@ export function SearchDataTables() {
         maximoLocation: "Maximo Location", maximoDescription: "Maximo Description", ocppUrl: "OCPP URL", ocppSection: "🔌 OCPP",
         maximoSearch: "ค้นหา location...", maximoEmpty: "ไม่พบ location",
         chargerBoxId: "รหัสตู้ชาร์จ (Charge Box ID)", chargerType: "ประเภทตู้ชาร์จ",
-        brand: "ยี่ห้อ", model: "รุ่น", serialNumber: "S/N", workOrder: "W/O", power: "กำลังไฟ",
+        brand: "ยี่ห้อ", manufacturer: "ผู้ผลิตตู้ Charger", model: "รุ่น", serialNumber: "S/N", workOrder: "W/O", power: "กำลังไฟ",
         cables: "สายชาร์จ", warranty: "รับประกัน", year: "ปี", firmware: "เฟิร์มแวร์",
         addCharger: "+ เพิ่มตู้ชาร์จ", noChargersYet: "ยังไม่มีตู้ชาร์จ", addFirstCharger: "+ เพิ่มตู้ชาร์จแรก",
         editStation: "แก้ไขสถานี", editCharger: "แก้ไขตู้ชาร์จ", addChargerTitle: "เพิ่มตู้ชาร์จ",
@@ -505,7 +506,7 @@ export function SearchDataTables() {
         maximoLocation: "Maximo Location", maximoDescription: "Maximo Description", ocppUrl: "OCPP URL", ocppSection: "🔌 OCPP",
         maximoSearch: "Search location...", maximoEmpty: "No location found",
         chargerBoxId: "Charge Box ID", chargerType: "Charger Type",
-        brand: "Brand", model: "Model", serialNumber: "S/N", workOrder: "W/O", power: "Power",
+        brand: "Brand", manufacturer: "Charger Manufacturer", model: "Model", serialNumber: "S/N", workOrder: "W/O", power: "Power",
         cables: "Cables", warranty: "Warranty", year: "y", firmware: "Firmware",
         addCharger: "+ Add Charger", noChargersYet: "No chargers yet", addFirstCharger: "+ Add First Charger",
         editStation: "Edit Station", editCharger: "Edit Charger", addChargerTitle: "Add Charger",
@@ -672,7 +673,7 @@ export function SearchDataTables() {
   useEffect(() => {
     if (openEditCharger && editingCharger) {
       const c = editingCharger.charger;
-      setEditChargerForm({ chargeBoxID: c.chargeBoxID ?? "", chargerNo: c.chargerNo ?? 1, brand: c.brand ?? "", model: c.model ?? "", SN: c.SN ?? "", WO: c.WO ?? "", power: c.power ?? "", PLCFirmware: c.PLCFirmware ?? "", PIFirmware: c.PIFirmware ?? "", RTFirmware: c.RTFirmware ?? "", commissioningDate: c.commissioningDate ?? "", warrantyYears: c.warrantyYears ?? 1, numberOfCables: c.numberOfCables ?? 1, is_active: c.is_active ?? true, maximo_location: c.maximo_location ?? "", maximo_desc: c.maximo_desc ?? "", ocppUrl: c.ocppUrl ?? "", chargerType: c.chargerType ?? "DC" });
+      setEditChargerForm({ chargeBoxID: c.chargeBoxID ?? "", chargerNo: c.chargerNo ?? 1, brand: c.brand ?? "", manufacturer: c.manufacturer ?? "", model: c.model ?? "", SN: c.SN ?? "", WO: c.WO ?? "", power: c.power ?? "", PLCFirmware: c.PLCFirmware ?? "", PIFirmware: c.PIFirmware ?? "", RTFirmware: c.RTFirmware ?? "", commissioningDate: c.commissioningDate ?? "", warrantyYears: c.warrantyYears ?? 1, numberOfCables: c.numberOfCables ?? 1, is_active: c.is_active ?? true, maximo_location: c.maximo_location ?? "", maximo_desc: c.maximo_desc ?? "", ocppUrl: c.ocppUrl ?? "", chargerType: c.chargerType ?? "DC" });
       resetEditChargerImages();
     }
   }, [openEditCharger, editingCharger]);
@@ -726,7 +727,7 @@ export function SearchDataTables() {
     return {
       id: c.id, charger_id: c.charger_id, station_id: c.station_id,
       chargeBoxID: c.chargeBoxID ?? "-", chargerNo: c.chargerNo ?? (index + 1),
-      brand: c.brand ?? "-", model: c.model ?? "-", SN: c.SN ?? "-", WO: c.WO ?? "-",
+      brand: c.brand ?? "-", manufacturer: c.manufacturer ?? "-", model: c.model ?? "-", SN: c.SN ?? "-", WO: c.WO ?? "-",
       power: c.power ?? "-", PLCFirmware: c.PLCFirmware ?? "-", PIFirmware: c.PIFirmware ?? "-",
       RTFirmware: c.RTFirmware ?? "-", commissioningDate: c.commissioningDate ?? "-",
       warrantyYears: c.warrantyYears ?? 1, numberOfCables: c.numberOfCables ?? 1,
@@ -895,7 +896,7 @@ export function SearchDataTables() {
     try {
       setSaving(true);
       const currentExpanded = table.getState().expanded;
-      const payload: ChargerUpdatePayload = { chargeBoxID: editChargerForm.chargeBoxID.trim(), chargerNo: editChargerForm.chargerNo, brand: editChargerForm.brand.trim(), model: editChargerForm.model.trim(), SN: editChargerForm.SN.trim(), WO: editChargerForm.WO.trim(), power: editChargerForm.power.trim(), PLCFirmware: editChargerForm.PLCFirmware.trim(), PIFirmware: editChargerForm.PIFirmware.trim(), RTFirmware: editChargerForm.RTFirmware.trim(), commissioningDate: editChargerForm.commissioningDate, warrantyYears: editChargerForm.warrantyYears, numberOfCables: editChargerForm.numberOfCables, is_active: editChargerForm.is_active, maximo_location: editChargerForm.maximo_location.trim(), maximo_desc: editChargerForm.maximo_desc.trim(), ocppUrl: editChargerForm.ocppUrl.trim(), chargerType: editChargerForm.chargerType };
+      const payload: ChargerUpdatePayload = { chargeBoxID: editChargerForm.chargeBoxID.trim(), chargerNo: editChargerForm.chargerNo, brand: editChargerForm.brand.trim(), manufacturer: editChargerForm.manufacturer.trim(), model: editChargerForm.model.trim(), SN: editChargerForm.SN.trim(), WO: editChargerForm.WO.trim(), power: editChargerForm.power.trim(), PLCFirmware: editChargerForm.PLCFirmware.trim(), PIFirmware: editChargerForm.PIFirmware.trim(), RTFirmware: editChargerForm.RTFirmware.trim(), commissioningDate: editChargerForm.commissioningDate, warrantyYears: editChargerForm.warrantyYears, numberOfCables: editChargerForm.numberOfCables, is_active: editChargerForm.is_active, maximo_location: editChargerForm.maximo_location.trim(), maximo_desc: editChargerForm.maximo_desc.trim(), ocppUrl: editChargerForm.ocppUrl.trim(), chargerType: editChargerForm.chargerType };
       const res = await apiFetch(`/update_charger/${editingCharger.charger.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       if (!res.ok) { const errBody = await res.json().catch(() => ({})); throw new Error(errBody?.detail || `Update failed: ${res.status}`); }
       const chargerImgsToDelete = (editingCharger.charger.chargerImages || []).filter((_, i) => deletedExistingChargerIdxs.has(i));
@@ -952,7 +953,7 @@ export function SearchDataTables() {
     const station = data.find(s => s.station_id === stationId);
     const nextChargerNo = station ? station.chargers.length + 1 : 1;
     setAddingChargerStationId(stationId);
-    setAddChargerForm({ chargeBoxID: "", chargerNo: nextChargerNo, brand: "", model: "", SN: "", WO: "", power: "", PLCFirmware: "", PIFirmware: "", RTFirmware: "", commissioningDate: getTodayDate(), warrantyYears: 1, numberOfCables: 1, is_active: true, maximo_location: "", maximo_desc: "", ocppUrl: "", chargerType: "DC" });
+    setAddChargerForm({ chargeBoxID: "", chargerNo: nextChargerNo, brand: "", manufacturer: "", model: "", SN: "", WO: "", power: "", PLCFirmware: "", PIFirmware: "", RTFirmware: "", commissioningDate: getTodayDate(), warrantyYears: 1, numberOfCables: 1, is_active: true, maximo_location: "", maximo_desc: "", ocppUrl: "", chargerType: "DC" });
     resetAddChargerImages(); setOpenAddCharger(true);
   };
 
@@ -960,7 +961,7 @@ export function SearchDataTables() {
     if (!addingChargerStationId) return;
     try {
       setSaving(true);
-      const payload = { chargeBoxID: addChargerForm.chargeBoxID.trim(), chargerNo: addChargerForm.chargerNo, brand: addChargerForm.brand.trim(), model: addChargerForm.model.trim(), SN: addChargerForm.SN.trim(), WO: addChargerForm.WO.trim(), power: addChargerForm.power.trim(), PLCFirmware: addChargerForm.PLCFirmware.trim(), PIFirmware: addChargerForm.PIFirmware.trim(), RTFirmware: addChargerForm.RTFirmware.trim(), commissioningDate: addChargerForm.commissioningDate, warrantyYears: addChargerForm.warrantyYears, numberOfCables: addChargerForm.numberOfCables, is_active: addChargerForm.is_active, maximo_location: addChargerForm.maximo_location.trim(), maximo_desc: addChargerForm.maximo_desc.trim(), ocppUrl: addChargerForm.ocppUrl.trim(), chargerType: addChargerForm.chargerType };
+      const payload = { chargeBoxID: addChargerForm.chargeBoxID.trim(), chargerNo: addChargerForm.chargerNo, brand: addChargerForm.brand.trim(), manufacturer: addChargerForm.manufacturer.trim(), model: addChargerForm.model.trim(), SN: addChargerForm.SN.trim(), WO: addChargerForm.WO.trim(), power: addChargerForm.power.trim(), PLCFirmware: addChargerForm.PLCFirmware.trim(), PIFirmware: addChargerForm.PIFirmware.trim(), RTFirmware: addChargerForm.RTFirmware.trim(), commissioningDate: addChargerForm.commissioningDate, warrantyYears: addChargerForm.warrantyYears, numberOfCables: addChargerForm.numberOfCables, is_active: addChargerForm.is_active, maximo_location: addChargerForm.maximo_location.trim(), maximo_desc: addChargerForm.maximo_desc.trim(), ocppUrl: addChargerForm.ocppUrl.trim(), chargerType: addChargerForm.chargerType };
       const res = await apiFetch(`/add_charger/${addingChargerStationId}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       if (!res.ok) { const errBody = await res.json().catch(() => ({})); throw new Error(errBody?.detail || `Create failed: ${res.status}`); }
       const created = await res.json();
@@ -1058,7 +1059,7 @@ export function SearchDataTables() {
             </div>
           </div>
           <div className="tw-grid tw-grid-cols-2 tw-gap-x-3 tw-gap-y-1 tw-text-[10px] tw-mb-3">
-            {[[t.brand, charger.brand], [t.model, charger.model], [t.serialNumber, charger.SN, true], [t.power, formatPower(charger.power)], [t.cables, charger.numberOfCables || "-"], [t.warranty, `${charger.warrantyYears || "-"}${t.year}`]].map(([label, value, mono], i) => (
+            {[[t.brand, charger.brand], [t.manufacturer, charger.manufacturer], [t.model, charger.model], [t.serialNumber, charger.SN, true], [t.power, formatPower(charger.power)], [t.cables, charger.numberOfCables || "-"], [t.warranty, `${charger.warrantyYears || "-"}${t.year}`]].map(([label, value, mono], i) => (
               <div key={i} className="tw-truncate"><span className="tw-text-blue-gray-400">{label as string}: </span><span className={`tw-text-blue-gray-700 tw-font-medium ${mono ? "tw-font-mono" : ""}`}>{(value as string) || "-"}</span></div>
             ))}
           </div>
@@ -1382,8 +1383,9 @@ export function SearchDataTables() {
                   )}
                   <div className="tw-relative"><Input label={`${t.chargerNo} (${t.auto})`} type="number" value={editChargerForm.chargerNo} readOnly className="!tw-bg-gray-50" crossOrigin={undefined} /><span className="tw-absolute tw-right-3 tw-top-1/2 tw--translate-y-1/2 tw-text-[9px] tw-text-blue-gray-300 tw-font-medium">({t.auto})</span></div>
                   <Select label={t.chargerType} value={editChargerForm.chargerType} onChange={(v) => setEditChargerForm(s => ({ ...s, chargerType: v ?? "DC" }))}><Option value="DC">DC</Option><Option value="AC">AC</Option><Option value="DC & AC">DC & AC</Option></Select>
-                  <Input label={t.brand} required value={editChargerForm.brand} onChange={(e) => setEditChargerForm(s => ({ ...s, brand: e.target.value }))} crossOrigin={undefined} />
-                  <Input label={t.model} required value={editChargerForm.model} onChange={(e) => setEditChargerForm(s => ({ ...s, model: e.target.value }))} crossOrigin={undefined} />
+                   <Input label={t.brand} required value={editChargerForm.brand} onChange={(e) => setEditChargerForm(s => ({ ...s, brand: e.target.value }))} crossOrigin={undefined} />
+                   <Input label={t.manufacturer} value={editChargerForm.manufacturer} onChange={(e) => setEditChargerForm(s => ({ ...s, manufacturer: e.target.value }))} crossOrigin={undefined} />
+                   <Input label={t.model} required value={editChargerForm.model} onChange={(e) => setEditChargerForm(s => ({ ...s, model: e.target.value }))} crossOrigin={undefined} />
                   <Input label={t.serialNumber} required value={editChargerForm.SN} onChange={(e) => setEditChargerForm(s => ({ ...s, SN: e.target.value }))} crossOrigin={undefined} />
                   <Input label={`${t.power} (kW)`} required value={editChargerForm.power} onChange={(e) => setEditChargerForm(s => ({ ...s, power: e.target.value }))} crossOrigin={undefined} />
                   {isFlexxfast(editChargerForm.brand) && (<>
@@ -1469,8 +1471,9 @@ export function SearchDataTables() {
                   )}
                   <div className="tw-relative"><Input label={`${t.chargerNo} (${t.auto})`} type="number" value={addChargerForm.chargerNo} readOnly className="!tw-bg-gray-50 !tw-cursor-not-allowed" crossOrigin={undefined} /><span className="tw-absolute tw-right-3 tw-top-1/2 tw--translate-y-1/2 tw-text-[9px] tw-text-blue-gray-300 tw-font-medium">({t.auto})</span></div>
                   <Select label={t.chargerType} value={addChargerForm.chargerType} onChange={(v) => setAddChargerForm(s => ({ ...s, chargerType: v ?? "DC" }))}><Option value="DC">DC</Option><Option value="AC">AC</Option></Select>
-                  <Input label={t.brand} required value={addChargerForm.brand} onChange={(e) => setAddChargerForm(s => ({ ...s, brand: e.target.value }))} crossOrigin={undefined} />
-                  <Input label={t.model} required value={addChargerForm.model} onChange={(e) => setAddChargerForm(s => ({ ...s, model: e.target.value }))} crossOrigin={undefined} />
+                   <Input label={t.brand} required value={addChargerForm.brand} onChange={(e) => setAddChargerForm(s => ({ ...s, brand: e.target.value }))} crossOrigin={undefined} />
+                   <Input label={t.manufacturer} value={addChargerForm.manufacturer} onChange={(e) => setAddChargerForm(s => ({ ...s, manufacturer: e.target.value }))} crossOrigin={undefined} />
+                   <Input label={t.model} required value={addChargerForm.model} onChange={(e) => setAddChargerForm(s => ({ ...s, model: e.target.value }))} crossOrigin={undefined} />
                   <Input label={t.serialNumber} required value={addChargerForm.SN} onChange={(e) => setAddChargerForm(s => ({ ...s, SN: e.target.value }))} crossOrigin={undefined} />
                   <Input label={`${t.power} (kW)`} required value={addChargerForm.power} onChange={(e) => setAddChargerForm(s => ({ ...s, power: e.target.value }))} crossOrigin={undefined} />
                   {isFlexxfast(addChargerForm.brand) && (<>

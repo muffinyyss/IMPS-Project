@@ -55,7 +55,7 @@ def _station_id_for_charger_id(charger_id: str) -> Optional[str]:
 
 
 def user_can_access_station(current: UserClaims, station_id: str) -> bool:
-    """ใช้ match query เดียวกับหน้า EV Station — admin/cs/planner เห็นหมด, technician ตามที่ถูก assign, owner ตามสถานีที่เป็นเจ้าของ"""
+    """ใช้ match query เดียวกับหน้า EV Station — staff เห็นหมด, owner ตามสถานีที่เป็นเจ้าของ"""
     q = station_match_query(current)
     if q is None:
         return False

@@ -17,7 +17,7 @@ from config import (
     charger_onoff, charger_onoff_sync, _validate_station_id, th_tz, settingDB,
     CBM_DB, ALL_STATIONS_ROLES,
 )
-from deps import UserClaims, get_current_user, get_user_station_ids
+from deps import UserClaims, get_current_user
 from brand_scope import (
     brand_regex, assert_charger_in_scope, brand_scope_of, filter_chargers,
     station_brand_clause,
@@ -276,6 +276,7 @@ class ChargerCreate(BaseModel):
     chargeBoxID: Optional[str] = ""
     chargerNo: Optional[int] = None
     brand: str
+    manufacturer: Optional[str] = ""
     model: str
     SN: str
     WO: Optional[str] = ""
@@ -296,6 +297,7 @@ class ChargerUpdate(BaseModel):
     chargeBoxID: Optional[str] = None
     chargerNo: Optional[int] = None
     brand: Optional[str] = None
+    manufacturer: Optional[str] = None
     model: Optional[str] = None
     SN: Optional[str] = None
     WO: Optional[str] = None
@@ -320,6 +322,7 @@ class ChargerOut(BaseModel):
     chargerNo: Optional[int] = None
     charger_name: Optional[str] = ""
     brand: str
+    manufacturer: Optional[str] = ""
     model: str
     SN: str
     WO: Optional[str] = ""
@@ -518,6 +521,7 @@ def format_charger(doc: dict, include_status: bool = True) -> ChargerOut:
         chargerNo=doc.get("chargerNo"),
         charger_name=doc.get("charger_name", ""),
         brand=doc.get("brand", ""),
+        manufacturer=doc.get("manufacturer", ""),
         model=doc.get("model", ""),
         SN=doc.get("SN", ""),
         WO=doc.get("WO", ""),
@@ -665,15 +669,9 @@ def to_object_id_safe(s: str):
 
 def _station_role_query(current: UserClaims) -> Optional[Dict[str, Any]]:
     """match query ตาม role ล้วน ๆ (ยังไม่คิดเรื่องยี่ห้อ) — คืน None ถ้ามองไม่เห็นสถานีเลย"""
-    # Admin/CS/Planner → เห็นทุกสถานี
+    # ไม่จำกัดตาม station_id; company/brand scope จะถูกประกอบเพิ่มใน station_match_query
     if current.role in ALL_STATIONS_ROLES:
         return {}
-    if current.role == "technician":
-        # อ่านจาก DB — สถานีที่เพิ่งถูก assign ผ่านงาน CM ต้องเห็นทันทีโดยไม่ต้อง login ใหม่
-        station_ids = get_user_station_ids(current)
-        if station_ids:
-            return {"station_id": {"$in": station_ids}}
-        return None
     return {
         "$or": [
             {"user_id": current.user_id},
@@ -697,7 +695,7 @@ def station_match_query(current: UserClaims) -> Optional[Dict[str, Any]]:
         return base
     if not base:
         return brand_clause
-    # ต้องใช้ $and — ทั้งสองฝั่งมีคีย์ station_id ได้ (technician) การ merge ตรง ๆ จะทับกัน
+    # ต้องใช้ $and — ทั้งสองฝั่งอาจมีคีย์ station_id การ merge ตรง ๆ จะทับกัน
     return {"$and": [base, brand_clause]}
 
 
@@ -808,6 +806,7 @@ def create_station_with_chargers(
             # ชื่อตู้ชาร์จ = segment ท้ายของ maximo_location (เช่น BTL01GU201) — ไม่ใช่ทั้ง chain
             "charger_name": maximo_charger_name(charger.maximo_location),
             "brand": charger.brand.strip(),
+            "manufacturer": charger.manufacturer.strip() if charger.manufacturer else "",
             "model": charger.model.strip(),
             "SN": charger.SN.strip(),
             "WO": charger.WO.strip() if charger.WO else "",
@@ -942,6 +941,7 @@ def add_charger_to_station(
         "chargeBoxID": body.chargeBoxID.strip() if body.chargeBoxID else "",
         "chargerNo": charger_no,
         "brand": body.brand.strip(),
+        "manufacturer": body.manufacturer.strip() if body.manufacturer else "",
         "model": body.model.strip(),
         "SN": body.SN.strip(),
         "WO": body.WO.strip() if body.WO else "",
@@ -1021,7 +1021,7 @@ def update_charger(
     )
 
     update_data = {}
-    for field in ["chargeBoxID", "brand", "model", "SN", "WO", "power", "PLCFirmware",
+    for field in ["chargeBoxID", "brand", "manufacturer", "model", "SN", "WO", "power", "PLCFirmware",
                   "PIFirmware", "RTFirmware", "commissioningDate", "maximo_location",
                   "maximo_desc", "ocppUrl", "chargerType"]:
         value = getattr(body, field, None)
@@ -1304,6 +1304,7 @@ def get_charger_info(
             "SN":                doc.get("SN", "-"),
             "WO":                doc.get("WO", "-"),
             "brand":             doc.get("brand", "-"),
+            "manufacturer":      doc.get("manufacturer", "-"),
             "model":             doc.get("model", "-"),
             "power":             doc.get("power", "-"),
             "chargeBoxID":       doc.get("chargeBoxID", "-"),
