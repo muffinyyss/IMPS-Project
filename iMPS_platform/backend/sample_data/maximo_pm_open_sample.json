@@ -1,0 +1,20 @@
+{
+  "workorders": [
+    {
+      "location": "PTG0236",
+      "pm_date": "2026-08-17",
+      "wonum": "WO26080023",
+      "status": "OPEN",
+      "company": "PTG",
+      "description": "PM preventive maintenance for station PTG0236"
+    },
+    {
+      "location": "PTG0236-EV",
+      "pm_date": "2026-08-18",
+      "wonum": "WO26080024",
+      "status": "APPR",
+      "company": "PTG",
+      "description": "PM inspection for station PTG0236-EV"
+    }
+  ]
+}

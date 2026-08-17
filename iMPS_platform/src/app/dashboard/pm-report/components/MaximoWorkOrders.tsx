@@ -24,6 +24,11 @@ export type MaximoWorkOrder = {
   selected_equipment?: EquipmentItem[] | null;
   selected_at?: string | null;
   selected_by?: string | null;
+  assignees?: string[] | null;
+  planned_at?: string | null;
+  planned_by?: string | null;
+  sched_start?: string | null;
+  sched_finish?: string | null;
   planning_status?: string | null;
   receivedAt?: string | null;
 };
@@ -84,6 +89,12 @@ const T = {
   pickEquipment: { th: "เลือกอุปกรณ์ที่จะ PM", en: "Choose equipment to PM" },
   planningSection: { th: "ข้อมูลการวางแผน", en: "Planning details" },
   planningStatus: { th: "สถานะวางแผน", en: "Planning status" },
+  plannedAt: { th: "วันที่/เวลาที่วางแผน", en: "Planned at" },
+  schedStart: { th: "วันที่เริ่มตามแผน", en: "Scheduled Start" },
+  schedFinish: { th: "วันที่เสร็จตามแผน", en: "Scheduled Finish" },
+  technician: { th: "ช่างผู้รับผิดชอบ", en: "Technician" },
+  allTechnicians: { th: "ทั้งหมด", en: "All" },
+  noTechnicians: { th: "ไม่พบช่าง", en: "No technicians found" },
   planned: { th: "วางแผนแล้ว", en: "Planned" },
   pending: { th: "รอวางแผน", en: "Pending" },
   selectedCount: { th: "จำนวนอุปกรณ์ที่เลือก", en: "Selected equipment count" },
@@ -151,6 +162,23 @@ function planningChipClass(status: "pending" | "planned") {
     : "tw-bg-amber-50 tw-text-amber-700 tw-border-amber-200";
 }
 
+function toDateTimeLocalValue(value?: string | null) {
+  if (!value) return "";
+  const cleaned = value.replace(" ", "T");
+  const date = new Date(cleaned);
+  if (Number.isNaN(date.getTime())) return "";
+
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+type TechnicianOption = {
+  id?: string | null;
+  username?: string | null;
+  email?: string | null;
+  company?: string | null;
+};
+
 export default function MaximoWorkOrders({ source, identifier }: Props) {
   const { lang } = useLanguage();
   const [items, setItems] = useState<MaximoWorkOrder[]>([]);
@@ -160,6 +188,7 @@ export default function MaximoWorkOrders({ source, identifier }: Props) {
 
   // ── dialog เลือกอุปกรณ์ที่จะ PM ──
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [plannerFormOpen, setPlannerFormOpen] = useState(false);
   const [selectedWo, setSelectedWo] = useState<MaximoWorkOrder | null>(null);
   const [choices, setChoices] = useState<EquipmentChoices | null>(null);
   const [choicesLoading, setChoicesLoading] = useState(false);
@@ -167,6 +196,11 @@ export default function MaximoWorkOrders({ source, identifier }: Props) {
   const [dialogError, setDialogError] = useState<string>("");
   const [checked, setChecked] = useState<Record<string, boolean>>({});
   const [canPlan, setCanPlan] = useState(false);
+  const [plannedAt, setPlannedAt] = useState("");
+  const [schedStart, setSchedStart] = useState("");
+  const [schedFinish, setSchedFinish] = useState("");
+  const [assignees, setAssignees] = useState<string[]>([]);
+  const [technicians, setTechnicians] = useState<TechnicianOption[]>([]);
 
   useEffect(() => {
     let active = true;
@@ -230,11 +264,17 @@ export default function MaximoWorkOrders({ source, identifier }: Props) {
   async function openSelectionDialog(wo: MaximoWorkOrder) {
     if (!wo.wonum || !canPlan) return;
     setSelectedWo(wo);
-    setDialogOpen(true);
+    setPlannerFormOpen(true);
+    setDialogOpen(false);
     setDialogError("");
     setChoices(null);
     setChecked({});
     setChoicesLoading(true);
+    setPlannedAt(wo.planned_at ? toDateTimeLocalValue(wo.planned_at) : toDateTimeLocalValue(new Date().toISOString()));
+    setSchedStart(wo.sched_start ? toDateTimeLocalValue(wo.sched_start) : "");
+    setSchedFinish(wo.sched_finish ? toDateTimeLocalValue(wo.sched_finish) : "");
+    setAssignees(Array.isArray(wo.assignees) ? wo.assignees.filter(Boolean) : []);
+
     try {
       const res = await apiFetch(
         `/maximo/pm/${encodeURIComponent(wo.wonum)}/equipment-choices`
@@ -266,10 +306,25 @@ export default function MaximoWorkOrders({ source, identifier }: Props) {
     } finally {
       setChoicesLoading(false);
     }
+
+    try {
+      const techRes = await apiFetch("/users/by-role?role=technician");
+      const techJson = await techRes.json().catch(() => ({} as any));
+      if (techRes.ok) {
+        setTechnicians(Array.isArray(techJson?.users) ? techJson.users : []);
+      }
+    } catch (err) {
+      console.error("maximo pm technicians error:", err);
+      setTechnicians([]);
+    }
   }
 
   function toggle(key: string) {
     setChecked((prev) => ({ ...prev, [key]: !prev[key] }));
+  }
+
+  function toggleAssignee(username: string) {
+    setAssignees((prev) => (prev.includes(username) ? prev.filter((u) => u !== username) : [...prev.filter(Boolean), username]));
   }
 
   async function handleSaveEquipment() {
@@ -283,6 +338,15 @@ export default function MaximoWorkOrders({ source, identifier }: Props) {
         ...(e.label ? { label: e.label } : {}),
       }));
 
+    if (!schedStart || !schedFinish) {
+      setDialogError("Please select scheduled start and finish");
+      return;
+    }
+    if (assignees.length === 0) {
+      setDialogError("Please select at least one technician");
+      return;
+    }
+
     setSaving(true);
     setDialogError("");
     try {
@@ -291,7 +355,13 @@ export default function MaximoWorkOrders({ source, identifier }: Props) {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ equipment }),
+          body: JSON.stringify({
+            equipment,
+            planned_at: plannedAt || new Date().toISOString(),
+            sched_start: schedStart,
+            sched_finish: schedFinish,
+            assignees,
+          }),
         }
       );
       const j = await res.json().catch(() => ({} as any));
@@ -300,8 +370,9 @@ export default function MaximoWorkOrders({ source, identifier }: Props) {
         return;
       }
       const nextStatus = derivePlanningStatus(equipment.length, selectedWo.planning_status ?? "pending");
-      setSelectedWo((prev) => prev ? { ...prev, planning_status: nextStatus, selected_equipment: equipment } : prev);
+      setSelectedWo((prev) => prev ? { ...prev, planning_status: nextStatus, selected_equipment: equipment, sched_start: schedStart, sched_finish: schedFinish, assignees, planned_at: plannedAt || new Date().toISOString() } : prev);
       setDialogOpen(false);
+      setPlannerFormOpen(false);
       setNotice(t("saved", lang));
       await load();
     } catch (err) {
@@ -456,10 +527,147 @@ export default function MaximoWorkOrders({ source, identifier }: Props) {
         )}
       </div>
 
+      {plannerFormOpen && selectedWo && (
+        <div className="tw-mt-4 tw-mx-3 sm:tw-mx-4 lg:tw-mx-6 tw-rounded-2xl tw-border tw-border-blue-gray-200 tw-bg-white tw-p-3 sm:tw-p-4 tw-shadow-sm">
+          <div className="tw-flex tw-items-center tw-justify-between tw-gap-3 tw-mb-4">
+            <div>
+              <div className="tw-text-[11px] sm:tw-text-xs tw-font-semibold tw-text-blue-gray-500">{t("planningSection", lang)}</div>
+              <div className="tw-mt-1 tw-text-base sm:tw-text-lg tw-font-bold tw-text-blue-gray-900">{selectedWo.wonum || selectedWo.location || "WO"}</div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setPlannerFormOpen(false);
+                setSelectedWo(null);
+              }}
+              className="tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-px-2.5 tw-py-1.5 tw-text-xs tw-font-medium tw-text-blue-gray-700 hover:tw-bg-blue-gray-50"
+            >
+              {t("close", lang)}
+            </button>
+          </div>
+
+          <div className="tw-rounded-xl tw-border tw-border-blue-gray-100 tw-bg-blue-gray-50 tw-px-3 tw-py-2 tw-text-[11px] sm:tw-text-xs tw-text-blue-gray-700 tw-mb-4">
+            <div><span className="tw-font-semibold">{t("workOrder", lang)}:</span> {selectedWo.wonum || "-"}</div>
+            <div><span className="tw-font-semibold">{t("location", lang)}:</span> {selectedWo.location || "-"}</div>
+            <div><span className="tw-font-semibold">{t("pmDate", lang)}:</span> {formatDate(selectedWo.pm_date, lang)}</div>
+            {selectedWo.company && (
+              <div><span className="tw-font-semibold">{t("company", lang)}:</span> {selectedWo.company}</div>
+            )}
+          </div>
+
+          {dialogError && (
+            <div className="tw-mb-4 tw-rounded-lg tw-border tw-border-red-200 tw-bg-red-50 tw-px-3 tw-py-2 tw-text-xs tw-text-red-700">
+              {dialogError}
+            </div>
+          )}
+
+          {choicesLoading ? (
+            <div className="tw-flex tw-items-center tw-gap-2 tw-text-xs tw-text-blue-gray-500 tw-py-4">
+              <span className="tw-w-4 tw-h-4 tw-border-2 tw-border-blue-500 tw-border-t-transparent tw-rounded-full tw-animate-spin" />
+              {t("loading", lang)}
+            </div>
+          ) : choices ? (
+            <div className="tw-space-y-4">
+              <div className="tw-rounded-xl tw-border tw-border-indigo-200 tw-bg-indigo-50/70 tw-p-3">
+                <div className="tw-flex tw-items-center tw-justify-between tw-gap-3">
+                  <div>
+                    <div className="tw-text-[11px] sm:tw-text-xs tw-font-semibold tw-text-blue-gray-500">{t("planningStatus", lang)}</div>
+                    <div className="tw-mt-1 tw-text-sm tw-font-semibold tw-text-blue-gray-900">{t("planningSection", lang)}</div>
+                  </div>
+                  <span className={`tw-inline-flex tw-items-center tw-rounded-full tw-border tw-px-2.5 tw-py-1 tw-text-[11px] tw-font-semibold ${planningChipClass(derivePlanningStatus(Object.values(checked).filter(Boolean).length, selectedWo?.planning_status ?? "pending"))}`}>
+                    {derivePlanningStatus(Object.values(checked).filter(Boolean).length, selectedWo?.planning_status ?? "pending") === "planned" ? t("planned", lang) : t("pending", lang)}
+                  </span>
+                </div>
+                <div className="tw-mt-2 tw-flex tw-items-center tw-gap-2 tw-text-xs tw-text-blue-gray-600">
+                  <span>{t("selectedCount", lang)}:</span>
+                  <span className="tw-font-semibold tw-text-blue-gray-800">{Object.values(checked).filter(Boolean).length}</span>
+                </div>
+              </div>
+
+              <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-3">
+                <div>
+                  <label className="tw-mb-1.5 tw-block tw-text-[11px] sm:tw-text-xs tw-font-semibold tw-text-blue-gray-700">{t("plannedAt", lang)}</label>
+                  <input type="datetime-local" value={plannedAt} onChange={(e) => setPlannedAt(e.target.value)} className="tw-w-full tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-px-3 tw-py-2 tw-text-xs sm:tw-text-sm tw-text-blue-gray-800 focus:tw-outline-none focus:tw-border-blue-500" />
+                </div>
+                <div>
+                  <label className="tw-mb-1.5 tw-block tw-text-[11px] sm:tw-text-xs tw-font-semibold tw-text-blue-gray-700">{t("schedStart", lang)} <span className="tw-text-red-500">*</span></label>
+                  <input type="datetime-local" value={schedStart} min={plannedAt || undefined} onChange={(e) => setSchedStart(e.target.value)} className="tw-w-full tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-px-3 tw-py-2 tw-text-xs sm:tw-text-sm tw-text-blue-gray-800 focus:tw-outline-none focus:tw-border-blue-500" />
+                </div>
+                <div>
+                  <label className="tw-mb-1.5 tw-block tw-text-[11px] sm:tw-text-xs tw-font-semibold tw-text-blue-gray-700">{t("schedFinish", lang)} <span className="tw-text-red-500">*</span></label>
+                  <input type="datetime-local" value={schedFinish} min={schedStart || undefined} onChange={(e) => setSchedFinish(e.target.value)} className="tw-w-full tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-px-3 tw-py-2 tw-text-xs sm:tw-text-sm tw-text-blue-gray-800 focus:tw-outline-none focus:tw-border-blue-500" />
+                </div>
+                <div>
+                  <label className="tw-mb-1.5 tw-block tw-text-[11px] sm:tw-text-xs tw-font-semibold tw-text-blue-gray-700">{t("technician", lang)} <span className="tw-text-red-500">*</span></label>
+                  {technicians.length === 0 ? (
+                    <div className="tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-px-3 tw-py-2 tw-text-[11px] tw-text-blue-gray-500">{t("noTechnicians", lang)}</div>
+                  ) : (
+                    <div className="tw-max-h-40 tw-overflow-y-auto tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-divide-y tw-divide-blue-gray-100">
+                      <label className="tw-flex tw-items-center tw-gap-2 tw-px-3 tw-py-2 tw-cursor-pointer hover:tw-bg-blue-gray-50">
+                        <input type="checkbox" checked={technicians.length > 0 && technicians.every((tech) => (tech.username ? assignees.includes(tech.username) : true))} onChange={() => { const allUsernames = technicians.map((tech) => tech.username).filter(Boolean) as string[]; if (allUsernames.length > 0 && allUsernames.every((name) => assignees.includes(name))) setAssignees([]); else setAssignees(allUsernames); }} className="tw-h-4 tw-w-4 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500" />
+                        <span className="tw-text-xs sm:tw-text-sm tw-font-medium tw-text-blue-gray-700">{t("allTechnicians", lang)}</span>
+                      </label>
+                      {technicians.map((tech) => {
+                        const username = tech.username || "";
+                        if (!username) return null;
+                        return (
+                          <label key={username} className="tw-flex tw-items-center tw-gap-2 tw-px-3 tw-py-2 tw-cursor-pointer hover:tw-bg-blue-gray-50">
+                            <input type="checkbox" checked={assignees.includes(username)} onChange={() => toggleAssignee(username)} className="tw-h-4 tw-w-4 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500" />
+                            <span className="tw-text-xs sm:tw-text-sm tw-text-blue-gray-700">{username}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="tw-mt-4">
+                <Typography className="tw-mb-1.5 tw-text-[11px] sm:tw-text-xs tw-font-semibold tw-text-blue-gray-700">{t("chargers", lang)}</Typography>
+                {choices.chargers.length === 0 ? (
+                  <Typography className="tw-text-[11px] tw-text-blue-gray-400">{t("noChargers", lang)}</Typography>
+                ) : (
+                  <div className="tw-flex tw-flex-col tw-gap-2">
+                    {choices.chargers.map((c) => {
+                      const k = equipKey(c);
+                      return (
+                        <label key={k} className="tw-inline-flex tw-items-center tw-gap-2 tw-text-xs sm:tw-text-sm tw-text-blue-gray-700">
+                          <input type="checkbox" checked={!!checked[k]} onChange={() => toggle(k)} className="tw-h-4 tw-w-4 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500" />
+                          <span>{equipLabel(c)}</span>
+                          {c.sn && <span className="tw-text-[11px] tw-text-blue-gray-400">({c.sn})</span>}
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div className="tw-mt-4">
+                <Typography className="tw-mb-1.5 tw-text-[11px] sm:tw-text-xs tw-font-semibold tw-text-blue-gray-700">{t("stationLevel", lang)}</Typography>
+                <div className="tw-flex tw-flex-col tw-gap-2">
+                  {choices.fixed.map((f) => {
+                    const k = equipKey(f);
+                    return (
+                      <label key={k} className="tw-inline-flex tw-items-center tw-gap-2 tw-text-xs sm:tw-text-sm tw-text-blue-gray-700">
+                        <input type="checkbox" checked={!!checked[k]} onChange={() => toggle(k)} className="tw-h-4 tw-w-4 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500" />
+                        {equipLabel(f)}
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="tw-flex tw-justify-end tw-gap-2 tw-pt-2">
+                <Button variant="text" color="gray" onClick={() => { setPlannerFormOpen(false); setSelectedWo(null); }} className="tw-normal-case">{t("close", lang)}</Button>
+                <Button onClick={handleSaveEquipment} disabled={saving || choicesLoading || !choices} className="tw-normal-case">{saving ? t("saving", lang) : t("confirm", lang)}</Button>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      )}
+
       <Dialog open={dialogOpen} handler={() => setDialogOpen(false)} size="md">
-        <DialogHeader className="tw-text-sm sm:tw-text-base">
-          {t("pickEquipment", lang)}
-        </DialogHeader>
+        <DialogHeader className="tw-text-sm sm:tw-text-base">{t("pickEquipment", lang)}</DialogHeader>
         <DialogBody divider className="tw-space-y-3 tw-max-h-[60vh] tw-overflow-y-auto">
           {selectedWo && (
             <div className="tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-blue-gray-50 tw-px-3 tw-py-2 tw-text-[11px] sm:tw-text-xs tw-text-blue-gray-700">
@@ -473,118 +681,34 @@ export default function MaximoWorkOrders({ source, identifier }: Props) {
           )}
 
           {dialogError && (
-            <div className="tw-rounded-lg tw-border tw-border-red-200 tw-bg-red-50 tw-px-3 tw-py-2 tw-text-xs tw-text-red-700">
-              {dialogError}
-            </div>
+            <div className="tw-rounded-lg tw-border tw-border-red-200 tw-bg-red-50 tw-px-3 tw-py-2 tw-text-xs tw-text-red-700">{dialogError}</div>
           )}
 
           {choicesLoading ? (
-            <div className="tw-flex tw-items-center tw-gap-2 tw-text-xs tw-text-blue-gray-500 tw-py-2">
-              <span className="tw-w-4 tw-h-4 tw-border-2 tw-border-blue-500 tw-border-t-transparent tw-rounded-full tw-animate-spin" />
-              {t("loading", lang)}
-            </div>
+            <div className="tw-flex tw-items-center tw-gap-2 tw-text-xs tw-text-blue-gray-500 tw-py-2"><span className="tw-w-4 tw-h-4 tw-border-2 tw-border-blue-500 tw-border-t-transparent tw-rounded-full tw-animate-spin" />{t("loading", lang)}</div>
           ) : choices ? (
             <>
               <div className="tw-rounded-xl tw-border tw-border-indigo-200 tw-bg-indigo-50/70 tw-p-3">
-                <div className="tw-flex tw-items-center tw-justify-between tw-gap-3">
-                  <div>
-                    <div className="tw-text-[11px] sm:tw-text-xs tw-font-semibold tw-text-blue-gray-500">
-                      {t("planningSection", lang)}
-                    </div>
-                    <div className="tw-mt-1 tw-text-sm tw-font-semibold tw-text-blue-gray-900">
-                      {t("planningStatus", lang)}
-                    </div>
-                  </div>
-                  <span
-                    className={`tw-inline-flex tw-items-center tw-rounded-full tw-border tw-px-2.5 tw-py-1 tw-text-[11px] tw-font-semibold ${planningChipClass(
-                      derivePlanningStatus(Object.values(checked).filter(Boolean).length, selectedWo?.planning_status ?? "pending")
-                    )}`}
-                  >
-                    {derivePlanningStatus(Object.values(checked).filter(Boolean).length, selectedWo?.planning_status ?? "pending") === "planned"
-                      ? t("planned", lang)
-                      : t("pending", lang)}
-                  </span>
-                </div>
-                <div className="tw-mt-2 tw-flex tw-items-center tw-gap-2 tw-text-xs tw-text-blue-gray-600">
-                  <span>{t("selectedCount", lang)}:</span>
-                  <span className="tw-font-semibold tw-text-blue-gray-800">
-                    {Object.values(checked).filter(Boolean).length}
-                  </span>
-                </div>
+                <div className="tw-flex tw-items-center tw-justify-between tw-gap-3"><div><div className="tw-text-[11px] sm:tw-text-xs tw-font-semibold tw-text-blue-gray-500">{t("planningSection", lang)}</div><div className="tw-mt-1 tw-text-sm tw-font-semibold tw-text-blue-gray-900">{t("planningStatus", lang)}</div></div><span className={`tw-inline-flex tw-items-center tw-rounded-full tw-border tw-px-2.5 tw-py-1 tw-text-[11px] tw-font-semibold ${planningChipClass(derivePlanningStatus(Object.values(checked).filter(Boolean).length, selectedWo?.planning_status ?? "pending"))}`}>{derivePlanningStatus(Object.values(checked).filter(Boolean).length, selectedWo?.planning_status ?? "pending") === "planned" ? t("planned", lang) : t("pending", lang)}</span></div>
+                <div className="tw-mt-2 tw-flex tw-items-center tw-gap-2 tw-text-xs tw-text-blue-gray-600"><span>{t("selectedCount", lang)}:</span><span className="tw-font-semibold tw-text-blue-gray-800">{Object.values(checked).filter(Boolean).length}</span></div>
               </div>
 
-              <div>
-                <Typography className="tw-mb-1.5 tw-text-[11px] sm:tw-text-xs tw-font-semibold tw-text-blue-gray-700">
-                  {t("chargers", lang)}
-                </Typography>
-                {choices.chargers.length === 0 ? (
-                  <Typography className="tw-text-[11px] tw-text-blue-gray-400">
-                    {t("noChargers", lang)}
-                  </Typography>
-                ) : (
-                  <div className="tw-flex tw-flex-col tw-gap-2">
-                    {choices.chargers.map((c) => {
-                      const k = equipKey(c);
-                      return (
-                        <label
-                          key={k}
-                          className="tw-inline-flex tw-items-center tw-gap-2 tw-text-xs sm:tw-text-sm tw-text-blue-gray-700"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={!!checked[k]}
-                            onChange={() => toggle(k)}
-                            className="tw-h-4 tw-w-4 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500"
-                          />
-                          <span>{equipLabel(c)}</span>
-                          {c.sn && (
-                            <span className="tw-text-[11px] tw-text-blue-gray-400">({c.sn})</span>
-                          )}
-                        </label>
-                      );
-                    })}
-                  </div>
-                )}
+              <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-3">
+                <div><label className="tw-mb-1.5 tw-block tw-text-[11px] sm:tw-text-xs tw-font-semibold tw-text-blue-gray-700">{t("plannedAt", lang)}</label><input type="datetime-local" value={plannedAt} onChange={(e) => setPlannedAt(e.target.value)} className="tw-w-full tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-px-3 tw-py-2 tw-text-xs sm:tw-text-sm tw-text-blue-gray-800 focus:tw-outline-none focus:tw-border-blue-500" /></div>
+                <div><label className="tw-mb-1.5 tw-block tw-text-[11px] sm:tw-text-xs tw-font-semibold tw-text-blue-gray-700">{t("schedStart", lang)} <span className="tw-text-red-500">*</span></label><input type="datetime-local" value={schedStart} min={plannedAt || undefined} onChange={(e) => setSchedStart(e.target.value)} className="tw-w-full tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-px-3 tw-py-2 tw-text-xs sm:tw-text-sm tw-text-blue-gray-800 focus:tw-outline-none focus:tw-border-blue-500" /></div>
+                <div><label className="tw-mb-1.5 tw-block tw-text-[11px] sm:tw-text-xs tw-font-semibold tw-text-blue-gray-700">{t("schedFinish", lang)} <span className="tw-text-red-500">*</span></label><input type="datetime-local" value={schedFinish} min={schedStart || undefined} onChange={(e) => setSchedFinish(e.target.value)} className="tw-w-full tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-px-3 tw-py-2 tw-text-xs sm:tw-text-sm tw-text-blue-gray-800 focus:tw-outline-none focus:tw-border-blue-500" /></div>
+                <div><label className="tw-mb-1.5 tw-block tw-text-[11px] sm:tw-text-xs tw-font-semibold tw-text-blue-gray-700">{t("technician", lang)} <span className="tw-text-red-500">*</span></label>{technicians.length === 0 ? <div className="tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-px-3 tw-py-2 tw-text-[11px] tw-text-blue-gray-500">{t("noTechnicians", lang)}</div> : <div className="tw-max-h-40 tw-overflow-y-auto tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-divide-y tw-divide-blue-gray-100"><label className="tw-flex tw-items-center tw-gap-2 tw-px-3 tw-py-2 tw-cursor-pointer hover:tw-bg-blue-gray-50"><input type="checkbox" checked={technicians.length > 0 && technicians.every((tech) => (tech.username ? assignees.includes(tech.username) : true))} onChange={() => { const allUsernames = technicians.map((tech) => tech.username).filter(Boolean) as string[]; if (allUsernames.length > 0 && allUsernames.every((name) => assignees.includes(name))) setAssignees([]); else setAssignees(allUsernames); }} className="tw-h-4 tw-w-4 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500" /><span className="tw-text-xs sm:tw-text-sm tw-font-medium tw-text-blue-gray-700">{t("allTechnicians", lang)}</span></label>{technicians.map((tech) => { const username = tech.username || ""; if (!username) return null; return <label key={username} className="tw-flex tw-items-center tw-gap-2 tw-px-3 tw-py-2 tw-cursor-pointer hover:tw-bg-blue-gray-50"><input type="checkbox" checked={assignees.includes(username)} onChange={() => toggleAssignee(username)} className="tw-h-4 tw-w-4 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500" /><span className="tw-text-xs sm:tw-text-sm tw-text-blue-gray-700">{username}</span></label>; })}</div>}</div>
               </div>
 
-              <div>
-                <Typography className="tw-mb-1.5 tw-text-[11px] sm:tw-text-xs tw-font-semibold tw-text-blue-gray-700">
-                  {t("stationLevel", lang)}
-                </Typography>
-                <div className="tw-flex tw-flex-col tw-gap-2">
-                  {choices.fixed.map((f) => {
-                    const k = equipKey(f);
-                    return (
-                      <label
-                        key={k}
-                        className="tw-inline-flex tw-items-center tw-gap-2 tw-text-xs sm:tw-text-sm tw-text-blue-gray-700"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={!!checked[k]}
-                          onChange={() => toggle(k)}
-                          className="tw-h-4 tw-w-4 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500"
-                        />
-                        {equipLabel(f)}
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
+              <div className="tw-mt-4"><Typography className="tw-mb-1.5 tw-text-[11px] sm:tw-text-xs tw-font-semibold tw-text-blue-gray-700">{t("chargers", lang)}</Typography>{choices.chargers.length === 0 ? <Typography className="tw-text-[11px] tw-text-blue-gray-400">{t("noChargers", lang)}</Typography> : <div className="tw-flex tw-flex-col tw-gap-2">{choices.chargers.map((c) => { const k = equipKey(c); return <label key={k} className="tw-inline-flex tw-items-center tw-gap-2 tw-text-xs sm:tw-text-sm tw-text-blue-gray-700"><input type="checkbox" checked={!!checked[k]} onChange={() => toggle(k)} className="tw-h-4 tw-w-4 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500" /><span>{equipLabel(c)}</span>{c.sn && <span className="tw-text-[11px] tw-text-blue-gray-400">({c.sn})</span>}</label>; })}</div>}</div>
+
+              <div className="tw-mt-4"><Typography className="tw-mb-1.5 tw-text-[11px] sm:tw-text-xs tw-font-semibold tw-text-blue-gray-700">{t("stationLevel", lang)}</Typography><div className="tw-flex tw-flex-col tw-gap-2">{choices.fixed.map((f) => { const k = equipKey(f); return <label key={k} className="tw-inline-flex tw-items-center tw-gap-2 tw-text-xs sm:tw-text-sm tw-text-blue-gray-700"><input type="checkbox" checked={!!checked[k]} onChange={() => toggle(k)} className="tw-h-4 tw-w-4 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500" />{equipLabel(f)}</label>; })}</div></div>
             </>
           ) : null}
         </DialogBody>
         <DialogFooter className="tw-gap-2">
-          <Button variant="text" color="gray" onClick={() => setDialogOpen(false)} className="tw-normal-case">
-            {t("close", lang)}
-          </Button>
-          <Button
-            onClick={handleSaveEquipment}
-            disabled={saving || choicesLoading || !choices}
-            className="tw-normal-case"
-          >
-            {saving ? t("saving", lang) : t("confirm", lang)}
-          </Button>
+          <Button variant="text" color="gray" onClick={() => setDialogOpen(false)} className="tw-normal-case">{t("close", lang)}</Button>
+          <Button onClick={handleSaveEquipment} disabled={saving || choicesLoading || !choices} className="tw-normal-case">{saving ? t("saving", lang) : t("confirm", lang)}</Button>
         </DialogFooter>
       </Dialog>
     </Card>
