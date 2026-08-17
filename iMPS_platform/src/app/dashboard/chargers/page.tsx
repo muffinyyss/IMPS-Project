@@ -38,6 +38,7 @@ export default function ChargersPage() {
     WO: string | null;
     power: string | null;
     brand: string | null;
+    manufacturer: string | null;
     status: boolean | null;
     commissioningDate: string | null;
     warrantyYears: string | null;
@@ -55,6 +56,7 @@ export default function ChargersPage() {
     WO: null,
     power: null,
     brand: null,
+    manufacturer: null,
     status: null,
     commissioningDate: null,
     warrantyYears: null,
@@ -231,6 +233,7 @@ export default function ChargersPage() {
           WO: chargerInfo?.WO ?? null,
           power: chargerInfo?.power ?? null,
           brand: chargerInfo?.brand ?? null,
+          manufacturer: chargerInfo?.manufacturer ?? null,
           PLCFirmware: chargerInfo?.PLCFirmware ?? null,
           PIFirmware: chargerInfo?.PIFirmware ?? null,
           RTFirmware: chargerInfo?.RTFirmware ?? null,
@@ -339,6 +342,7 @@ export default function ChargersPage() {
                   SN={stationDetail.SN}
                   WO={stationDetail.WO}
                   brand={stationDetail.brand}
+                  manufacturer={stationDetail.manufacturer}
                   power={stationDetail.power}
                   status={stationDetail.status}
                   commissioningDate={stationDetail.commissioningDate}

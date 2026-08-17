@@ -464,6 +464,7 @@ def _open_coll():
 
 # ประเภทอุปกรณ์ที่เลือก PM ได้ในสถานีหนึ่ง ๆ (ตรงกับ tab ใน PM report)
 EQUIP_TYPES = {"charger", "mdb", "ccb", "cbbox", "station"}
+PM_PLANNING_ROLES = {"admin", "owner", "planner"}
 # alias ที่ frontend/Maximo อาจส่งมา → normalize เป็น key มาตรฐาน
 EQUIP_ALIASES = {"cb_box": "cbbox", "cbbox": "cbbox", "cb-box": "cbbox"}
 
@@ -822,6 +823,7 @@ def _serialize_open(doc: dict) -> dict:
             doc["selected_at"].isoformat() if isinstance(doc.get("selected_at"), datetime) else None
         ),
         "selected_by": doc.get("selected_by"),
+        "planning_status": doc.get("planning_status") or "pending",
         "receivedAt": (
             doc["receivedAt"].isoformat() if isinstance(doc.get("receivedAt"), datetime) else None
         ),
@@ -930,12 +932,12 @@ async def pm_equipment_choices(
         # charger_collection เป็น pymongo (sync) — วนตรง ๆ ได้
         for c in charger_collection.find(
             {"station_id": station_id},
-            {"_id": 0, "SN": 1, "chargeBoxID": 1, "name": 1, "maximo_location": 1},
+            {"_id": 0, "SN": 1, "chargeBoxID": 1, "name": 1, "charger_name": 1, "maximo_location": 1},
         ):
             chargers.append({
                 "type": "charger",
                 "sn": c.get("SN"),
-                "label": c.get("name") or c.get("chargeBoxID") or c.get("SN"),
+                "label": c.get("name") or c.get("charger_name") or c.get("chargeBoxID") or c.get("SN"),
                 "location": c.get("maximo_location"),
             })
 
@@ -965,7 +967,19 @@ async def set_pm_equipment(
     if not wonum:
         raise HTTPException(status_code=400, detail="wonum is required")
 
+    role = (current.role or "").strip().lower()
+    if role not in PM_PLANNING_ROLES:
+        raise HTTPException(
+            status_code=403,
+            detail="Only planner, owner or admin can plan PM equipment",
+        )
+
+    wo = await _find_open_wo(wonum)
+    if not wo:
+        raise HTTPException(status_code=404, detail=f"PM work order not found: {wonum}")
+
     items: list[dict] = []
+    seen: set[str] = set()
     for e in body.equipment:
         etype = _norm_equip_type(e.type)
         if etype not in EQUIP_TYPES:
@@ -977,21 +991,54 @@ async def set_pm_equipment(
             raise HTTPException(
                 status_code=400, detail="charger ต้องระบุ sn ของตู้ที่จะ PM"
             )
+        key = f"charger:{(e.sn or '').strip()}" if etype == "charger" else etype
+        if key in seen:
+            raise HTTPException(status_code=400, detail="Duplicate equipment in PM plan")
+        seen.add(key)
+
         item = {"type": etype}
-        if e.sn:
-            item["sn"] = e.sn.strip()
-        if e.location:
-            item["location"] = e.location.strip()
-        if e.label:
-            item["label"] = e.label
+        if etype == "charger":
+            station_id = wo.get("station_id")
+            if not station_id:
+                raise HTTPException(
+                    status_code=409,
+                    detail="This PM work order is not mapped to an iMPS station",
+                )
+            sn = (e.sn or "").strip()
+            charger = charger_collection.find_one(
+                {"station_id": station_id, "SN": sn},
+                {"SN": 1, "chargeBoxID": 1, "name": 1, "charger_name": 1, "maximo_location": 1},
+            )
+            if not charger:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Charger SN={sn} is not in this work order station",
+                )
+            item["sn"] = sn
+            item["location"] = (charger.get("maximo_location") or "").strip() or None
+            item["label"] = (
+                charger.get("name")
+                or charger.get("charger_name")
+                or charger.get("chargeBoxID")
+                or sn
+            )
+        else:
+            if e.location:
+                item["location"] = e.location.strip()
+            if e.label:
+                item["label"] = e.label
         items.append(item)
 
+    now = datetime.now(timezone.utc)
     res = await _open_coll().update_one(
         {"wonum": wonum},
         {"$set": {
             "selected_equipment": items,
-            "selected_at": datetime.now(timezone.utc),
+            "selected_at": now,
             "selected_by": current.username or current.sub,
+            "planning_status": "planned" if items else "pending",
+            "planned_at": now,
+            "planned_by": current.username or current.sub,
         }},
     )
     if res.matched_count == 0:

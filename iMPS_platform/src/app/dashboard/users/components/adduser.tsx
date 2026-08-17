@@ -105,11 +105,6 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
-        if (form.role === "technician" && selectedStations.length === 0) {
-            alert("Please select at least one station for technician role");
-            return;
-        }
-
         const payload: NewUserPayload = {
             ...form,
             username: form.username.trim(),
@@ -238,12 +233,12 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
                             </div>
                         )}
 
-                        {/* แสดง Station Search เฉพาะเมื่อ role = technician (cs/planner เห็นทุกสถานี ไม่ต้องเลือก) */}
+                        {/* station assignment เป็นข้อมูลประกอบแบบ optional; สิทธิ์จริงอิง role/company/brand */}
                         {form.role === "technician" && (
                             <div className="tw-relative">
                                 <div className="tw-flex tw-items-center tw-gap-1">
                                     <Input
-                                        label="Select Station *"
+                                        label="Assigned Stations (optional)"
                                         placeholder="Type to search..."
                                         value={stationSearchValue}
                                         onChange={(e) => {
@@ -351,7 +346,7 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
 
                 <DialogFooter className="tw-gap-2">
                     <Button variant="outlined" onClick={resetAndClose} type="button" disabled={loading}>Cancel</Button>
-                    <Button type="submit" className="tw-bg-blue-600" disabled={loading || (form.role === "technician" && selectedStations.length === 0)}>
+                    <Button type="submit" className="tw-bg-blue-600" disabled={loading}>
                         {loading ? "Saving..." : "Create User"}
                     </Button>
                 </DialogFooter>

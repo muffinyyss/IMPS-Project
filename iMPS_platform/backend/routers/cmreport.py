@@ -37,11 +37,10 @@ router = APIRouter()
 # ---------------------------------------------------------------------
 def grant_station_to_assignees(usernames: list[str], station_id: str) -> int:
     """
-    ช่างที่ถูก assign งาน CM ต้องเห็นสถานีนั้นในหน้า EV Station
+    จดความสัมพันธ์ระหว่างช่างกับสถานีเมื่อถูก assign งาน CM
 
-    technician เห็นเฉพาะสถานีใน station_id ของตัวเอง — ตอน assign จึงต้องเติมสถานีเข้าไปให้
-    $addToSet = เพิ่มอย่างเดียว ไม่ซ้ำ และไม่ถอนคืนตอนงานปิด (สิทธิ์สะสม)
-    จำกัดที่ role technician เท่านั้น — role อื่นเห็นสถานีตามกติกาของตัวเองอยู่แล้ว ไม่ต้องยุ่ง
+    สิทธิ์สถานีของ technician อิง role/company/brand; station_id จึงเป็น metadata สำหรับแสดง
+    ประวัติการมอบหมาย ไม่ใช่เงื่อนไขสิทธิ์อีกต่อไป และ $addToSet ช่วยไม่ให้ข้อมูลซ้ำ
     """
     names = [u for u in (usernames or []) if isinstance(u, str) and u.strip()]
     if not names or not station_id:

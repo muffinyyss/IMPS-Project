@@ -639,6 +639,16 @@ export default function CMOpenForm() {
     const isCsStage = statusLower === "open" || (statusLower === "wait for approve" && stageLower === "cs_approval");
     // ด่านวางแผน: head cs อนุมัติแล้ว รอ planner วางแผน
     const isPlanningStage = statusLower === "wait for schedule";
+    const showPlannerHandlingChoice = isEdit && isPlanner && isPlanningStage;
+
+    const selectPlannerHandling = (mode: "schedule" | "self_close") => {
+        if (mode === "schedule") return;
+        const params = new URLSearchParams(searchParams.toString());
+        params.set("view", "form");
+        params.set("self_close", "1");
+        params.delete("planning");
+        router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    };
     // ใบที่รอ head cs อนุมัติจริง ๆ (ยังไม่ถูกตีกลับ) — ใช้คุมปุ่มอนุมัติ/ตีกลับของ head cs
     const isCsPending = statusLower === "wait for approve" && stageLower === "cs_approval";
     // ใบที่ถูกตีกลับแล้ว (มี reject_remark) = รอ cs ผู้เปิดแก้ไขก่อน ยังไม่ใช่คิวของ planner
@@ -1899,6 +1909,44 @@ ${in01.error ?? ""}`);
 
                     {/* ข้อมูลที่ช่างกรอกไว้ — โชว์เฉพาะเมื่อมีจริง (การ์ดคืน null เองถ้าว่าง) */}
                     {canPlan && repairInfo && <RepairInfoCard info={repairInfo} lang={lang} />}
+
+                    {/* Planner ต้องระบุแนวทางของเคสก่อน: ส่งคนเข้า หรือกรอกผลและปิดใบงานเอง */}
+                    {showPlannerHandlingChoice && (
+                        <div className="tw-mb-6 tw-rounded-xl tw-border tw-border-indigo-200 tw-bg-indigo-50/50 tw-p-5">
+                            <h3 className="tw-text-base tw-font-bold tw-text-blue-gray-900">
+                                {lang === "th" ? "เลือกแนวทางดำเนินงาน" : "Choose handling method"}
+                            </h3>
+                            <p className="tw-mt-1 tw-text-sm tw-text-blue-gray-600">
+                                {lang === "th" ? "เลือกว่าต้องวางแผนส่งผู้ปฏิบัติงานเข้าพื้นที่ หรือ Planner สามารถดำเนินการและปิดใบงานได้เลย" : "Choose whether to schedule onsite staff or let the planner complete and close this work order directly."}
+                            </p>
+                            <div className="tw-mt-4 tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-3">
+                                <label className="tw-flex tw-cursor-pointer tw-items-start tw-gap-3 tw-rounded-xl tw-border-2 tw-border-indigo-500 tw-bg-white tw-p-4 tw-shadow-sm">
+                                    <input
+                                        type="checkbox"
+                                        checked
+                                        onChange={() => selectPlannerHandling("schedule")}
+                                        className="tw-mt-0.5 tw-h-5 tw-w-5 tw-rounded tw-border-blue-gray-300 tw-text-indigo-600 focus:tw-ring-indigo-500"
+                                    />
+                                    <span>
+                                        <span className="tw-block tw-text-sm tw-font-bold tw-text-blue-gray-900">{lang === "th" ? "ต้องวางแผนคนเข้า" : "Schedule onsite staff"}</span>
+                                        <span className="tw-mt-1 tw-block tw-text-xs tw-text-blue-gray-600">{lang === "th" ? "กำหนดวัน เวลา และผู้ปฏิบัติงาน" : "Set the date, time, and assignees."}</span>
+                                    </span>
+                                </label>
+                                <label className="tw-flex tw-cursor-pointer tw-items-start tw-gap-3 tw-rounded-xl tw-border tw-border-blue-gray-200 tw-bg-white tw-p-4 hover:tw-border-green-400 hover:tw-bg-green-50/40 tw-transition-colors">
+                                    <input
+                                        type="checkbox"
+                                        checked={false}
+                                        onChange={() => selectPlannerHandling("self_close")}
+                                        className="tw-mt-0.5 tw-h-5 tw-w-5 tw-rounded tw-border-blue-gray-300 tw-text-green-600 focus:tw-ring-green-500"
+                                    />
+                                    <span>
+                                        <span className="tw-block tw-text-sm tw-font-bold tw-text-blue-gray-900">{lang === "th" ? "สามารถปิดใบงานได้เลย" : "Planner can close directly"}</span>
+                                        <span className="tw-mt-1 tw-block tw-text-xs tw-text-blue-gray-600">{lang === "th" ? "เปิดฟอร์ม In Progress เพื่อกรอกรายละเอียดผลการดำเนินงาน" : "Open the In Progress form to enter the work details."}</span>
+                                    </span>
+                                </label>
+                            </div>
+                        </div>
+                    )}
 
                     {/* Planning Section — เห็นเฉพาะ role ที่วางแผนได้ (admin/owner/planner) ข้อมูลด้านบนเป็น read-only สำหรับคนกลุ่มนี้อยู่แล้ว */}
                     {canPlan && (

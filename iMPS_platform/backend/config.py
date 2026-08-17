@@ -45,8 +45,9 @@ def canonical_role(role: str | None) -> str:
 
 # บทบาทสายปฏิบัติงาน — ใช้อายุ session แบบ technician (token 24 ชม. ไม่มี idle timeout)
 STAFF_ROLES = ("technician", "cs", "planner")
-# บทบาทที่เห็นทุกสถานี (technician เห็นเฉพาะสถานีที่ถูก assign ผ่าน station_id)
-ALL_STATIONS_ROLES = ("admin", "cs", "planner")
+# บทบาทที่ไม่จำกัดด้วย station_id — technician ของ EDS ยังถูกกรองตามยี่ห้อ FlexxFast
+# ส่วน station_id ของ technician คงไว้เป็นข้อมูลเดิม ไม่ใช้จำกัดสิทธิ์อีกต่อไป
+ALL_STATIONS_ROLES = ("admin", "cs", "planner", "technician")
 # super admin — role จริงใน DB ทำได้เหมือน admin + สิทธิ์พิเศษ (สลับ role, จัดการผู้ใช้, ลบถาวร)
 SUPER_ADMIN_ROLE = "super_admin"
 SUPER_ADMIN_USERNAME = "thatsawan"
