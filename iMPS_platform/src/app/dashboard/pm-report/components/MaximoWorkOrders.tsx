@@ -35,6 +35,21 @@ export type EquipmentItem = {
   label?: string | null;
 };
 
+export function derivePlanningStatus(
+  selectedCountOrItems: number | Array<EquipmentItem | null | undefined> | null | undefined,
+  current?: string | null
+): "pending" | "planned" {
+  const normalized = String(current ?? "").trim().toLowerCase();
+  if (normalized === "planned") return "planned";
+  if (normalized === "pending") return "pending";
+
+  const count = Array.isArray(selectedCountOrItems)
+    ? selectedCountOrItems.filter(Boolean).length
+    : Number(selectedCountOrItems ?? 0);
+
+  return count > 0 ? "planned" : "pending";
+}
+
 type EquipmentChoices = {
   wonum: string;
   station_id?: string | null;
@@ -67,6 +82,11 @@ const T = {
   plannedBy: { th: "วางแผนโดย", en: "Planned by" },
   plannerOnly: { th: "ให้ Planner วางแผนอุปกรณ์", en: "Equipment planning is for planner" },
   pickEquipment: { th: "เลือกอุปกรณ์ที่จะ PM", en: "Choose equipment to PM" },
+  planningSection: { th: "ข้อมูลการวางแผน", en: "Planning details" },
+  planningStatus: { th: "สถานะวางแผน", en: "Planning status" },
+  planned: { th: "วางแผนแล้ว", en: "Planned" },
+  pending: { th: "รอวางแผน", en: "Pending" },
+  selectedCount: { th: "จำนวนอุปกรณ์ที่เลือก", en: "Selected equipment count" },
   chargers: { th: "ตู้ชาร์จ", en: "Chargers" },
   stationLevel: { th: "อุปกรณ์ระดับสถานี", en: "Station-level equipment" },
   noChargers: { th: "ไม่พบตู้ชาร์จในสถานีนี้", en: "No chargers found in this station" },
@@ -123,6 +143,12 @@ function statusChipClass(status?: string | null) {
   if (s === "CAN" || s === "CANCELLED")
     return "tw-bg-red-50 tw-text-red-700 tw-border-red-200";
   return "tw-bg-blue-gray-50 tw-text-blue-gray-700 tw-border-blue-gray-200";
+}
+
+function planningChipClass(status: "pending" | "planned") {
+  return status === "planned"
+    ? "tw-bg-emerald-50 tw-text-emerald-700 tw-border-emerald-200"
+    : "tw-bg-amber-50 tw-text-amber-700 tw-border-amber-200";
 }
 
 export default function MaximoWorkOrders({ source, identifier }: Props) {
@@ -227,10 +253,13 @@ export default function MaximoWorkOrders({ source, identifier }: Props) {
         selected_equipment: Array.isArray(j?.selected_equipment) ? j.selected_equipment : [],
       };
       setChoices(data);
-      // ติ๊กของที่เคยเลือกไว้กลับมา
       const preset: Record<string, boolean> = {};
       data.selected_equipment.forEach((e) => { preset[equipKey(e)] = true; });
       setChecked(preset);
+      if (wo.planning_status) {
+        const nextStatus = derivePlanningStatus(data.selected_equipment.length, wo.planning_status);
+        setSelectedWo({ ...wo, planning_status: nextStatus, selected_equipment: data.selected_equipment });
+      }
     } catch (err) {
       console.error("maximo pm equipment-choices error:", err);
       setDialogError(t("choicesError", lang));
@@ -270,6 +299,8 @@ export default function MaximoWorkOrders({ source, identifier }: Props) {
         setDialogError(String(j?.detail || t("saveError", lang)));
         return;
       }
+      const nextStatus = derivePlanningStatus(equipment.length, selectedWo.planning_status ?? "pending");
+      setSelectedWo((prev) => prev ? { ...prev, planning_status: nextStatus, selected_equipment: equipment } : prev);
       setDialogOpen(false);
       setNotice(t("saved", lang));
       await load();
@@ -378,8 +409,16 @@ export default function MaximoWorkOrders({ source, identifier }: Props) {
                         {wo.company && <span>{t("company", lang)}: {wo.company}</span>}
                       </div>
 
-                      {/* อุปกรณ์ที่เลือกจะ PM ในฝั่ง iMPS */}
-                      <div className="tw-mt-2 tw-flex tw-flex-wrap tw-items-center tw-gap-1.5">
+                      <div className="tw-mt-2 tw-flex tw-flex-wrap tw-items-center tw-gap-2">
+                        <span
+                          className={`tw-inline-flex tw-items-center tw-rounded-full tw-border tw-px-2 tw-py-0.5 tw-text-[11px] tw-font-semibold ${planningChipClass(
+                            derivePlanningStatus(selected.length, wo.planning_status ?? "pending")
+                          )}`}
+                        >
+                          {derivePlanningStatus(selected.length, wo.planning_status ?? "pending") === "planned"
+                            ? t("planned", lang)
+                            : t("pending", lang)}
+                        </span>
                         <span className="tw-text-[11px] tw-font-medium tw-text-blue-gray-500">
                           {t("selectedEquipment", lang)}:
                         </span>
@@ -446,6 +485,34 @@ export default function MaximoWorkOrders({ source, identifier }: Props) {
             </div>
           ) : choices ? (
             <>
+              <div className="tw-rounded-xl tw-border tw-border-indigo-200 tw-bg-indigo-50/70 tw-p-3">
+                <div className="tw-flex tw-items-center tw-justify-between tw-gap-3">
+                  <div>
+                    <div className="tw-text-[11px] sm:tw-text-xs tw-font-semibold tw-text-blue-gray-500">
+                      {t("planningSection", lang)}
+                    </div>
+                    <div className="tw-mt-1 tw-text-sm tw-font-semibold tw-text-blue-gray-900">
+                      {t("planningStatus", lang)}
+                    </div>
+                  </div>
+                  <span
+                    className={`tw-inline-flex tw-items-center tw-rounded-full tw-border tw-px-2.5 tw-py-1 tw-text-[11px] tw-font-semibold ${planningChipClass(
+                      derivePlanningStatus(Object.values(checked).filter(Boolean).length, selectedWo?.planning_status ?? "pending")
+                    )}`}
+                  >
+                    {derivePlanningStatus(Object.values(checked).filter(Boolean).length, selectedWo?.planning_status ?? "pending") === "planned"
+                      ? t("planned", lang)
+                      : t("pending", lang)}
+                  </span>
+                </div>
+                <div className="tw-mt-2 tw-flex tw-items-center tw-gap-2 tw-text-xs tw-text-blue-gray-600">
+                  <span>{t("selectedCount", lang)}:</span>
+                  <span className="tw-font-semibold tw-text-blue-gray-800">
+                    {Object.values(checked).filter(Boolean).length}
+                  </span>
+                </div>
+              </div>
+
               <div>
                 <Typography className="tw-mb-1.5 tw-text-[11px] sm:tw-text-xs tw-font-semibold tw-text-blue-gray-700">
                   {t("chargers", lang)}
