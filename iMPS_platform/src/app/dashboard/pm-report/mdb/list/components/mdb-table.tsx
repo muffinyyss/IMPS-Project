@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
 import PmPlanForm from "@/app/dashboard/pm-report/components/PmPlanForm";
+import PmWorkOrderInfo from "@/app/dashboard/pm-report/components/PmWorkOrderInfo";
 import { pmBackRoute } from "@/app/dashboard/pm-report/lib/origin";
 import {
   usePmFlow, toPmFlow, woToRow, dropWosWithReport,
@@ -396,6 +397,24 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
   // ด่านวางแผน — เข้าจากแถวในตารางเหมือน CM (?view=form&planning=1&wonum=…)
   const planningWonum = searchParams.get("planning") === "1" ? (searchParams.get("wonum") ?? "") : "";
 
+  // หน้าข้อมูลใบงานก่อนเริ่มกรอก (?wo_info=1)
+  const woInfoWonum = searchParams.get("wo_info") === "1" ? (searchParams.get("wonum") ?? "") : "";
+
+  // กด "เริ่ม PM" → เปิดฟอร์ม Pre-PM (started=1 กันไม่ให้ถามซ้ำในฟอร์ม)
+  const startPmFromInfo = () => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("wo_info");
+    params.set("started", "1");
+    params.set("pmtab", "pre");
+    router.push(`${pathname}?${params.toString()}`, { scroll: false });
+  };
+
+  const leaveWoInfo = () => {
+    const params = new URLSearchParams(searchParams.toString());
+    ["view", "wo_info", "wonum", "started", "pmtab"].forEach((k) => params.delete(k));
+    router.push(`${pathname}?${params.toString()}`, { scroll: false });
+  };
+
   const goPlan = (row: TData) => {
     if (!row.wonum) return;
     const params = new URLSearchParams(searchParams.toString());
@@ -407,7 +426,9 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
   // ช่างเริ่มกรอกเอกสารจากใบงานที่วางแผนแล้ว
   const goFillPm = (row: TData) => {
     const params = new URLSearchParams(searchParams.toString());
-    params.set("view", "form"); params.delete("planning"); params.delete("edit_id");
+    // เปิดหน้าข้อมูลใบงาน (อ่านอย่างเดียว) ก่อน ช่างกด "เริ่ม PM" ถึงจะเข้าฟอร์ม
+    params.set("view", "form"); params.set("wo_info", "1");
+    params.delete("planning"); params.delete("edit_id");
     if (row.wonum) params.set("wonum", row.wonum);
     router.push(`${pathname}?${params.toString()}`, { scroll: false });
   };
@@ -744,6 +765,15 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
   const goAdd = () => setView("form");
 
   if (mode === "form") {
+    // ช่างกดเข้าใบงานที่ถูก assign → เห็นข้อมูลก่อน ยังไม่เปิดฟอร์ม
+    if (woInfoWonum) {
+      return (
+        <PmWorkOrderInfo
+          source="mdb" identifier={stationId} wonum={woInfoWonum}
+          onStart={startPmFromInfo} onCancel={leaveWoInfo}
+        />
+      );
+    }
     // planning=1 → ฟอร์มวางแผนของ planner ไม่ใช่ฟอร์มกรอก PM ของช่าง
     if (planningWonum) {
       return (

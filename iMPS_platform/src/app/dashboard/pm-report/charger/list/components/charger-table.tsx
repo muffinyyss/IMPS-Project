@@ -33,6 +33,7 @@ import { apiFetch } from "@/utils/api";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
 import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
 import PmPlanForm from "@/app/dashboard/pm-report/components/PmPlanForm";
+import PmWorkOrderInfo from "@/app/dashboard/pm-report/components/PmWorkOrderInfo";
 import { pmBackRoute } from "@/app/dashboard/pm-report/lib/origin";
 import {
   derivePlanningStatus,
@@ -763,6 +764,24 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     ? (searchParams.get("wonum") ?? "")
     : "";
 
+  // หน้าข้อมูลใบงานก่อนเริ่มกรอก (?wo_info=1)
+  const woInfoWonum = searchParams.get("wo_info") === "1" ? (searchParams.get("wonum") ?? "") : "";
+
+  // กด "เริ่ม PM" → เปิดฟอร์ม Pre-PM (started=1 กันไม่ให้ถามซ้ำในฟอร์ม)
+  const startPmFromInfo = () => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("wo_info");
+    params.set("started", "1");
+    params.set("pmtab", "pre");
+    router.push(`${pathname}?${params.toString()}`, { scroll: false });
+  };
+
+  const leaveWoInfo = () => {
+    const params = new URLSearchParams(searchParams.toString());
+    ["view", "wo_info", "wonum", "started", "pmtab"].forEach((k) => params.delete(k));
+    router.push(`${pathname}?${params.toString()}`, { scroll: false });
+  };
+
   const goPlan = (row: TData) => {
     if (!row.wonum) return;
     const params = new URLSearchParams(searchParams.toString());
@@ -776,7 +795,9 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
   // ช่างเริ่มกรอกเอกสาร PM จากใบงานที่วางแผนแล้ว
   const goFillPm = (row: TData) => {
     const params = new URLSearchParams(searchParams.toString());
+    // เปิดหน้าข้อมูลใบงาน (อ่านอย่างเดียว) ก่อน ช่างกด "เริ่ม PM" ถึงจะเข้าฟอร์ม
     params.set("view", "form");
+    params.set("wo_info", "1");
     params.delete("planning");
     params.delete("edit_id");
     if (row.wonum) params.set("wonum", row.wonum);
@@ -1310,6 +1331,15 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
   }
 
   if (mode === "form") {
+    // ช่างกดเข้าใบงานที่ถูก assign → เห็นข้อมูลก่อน ยังไม่เปิดฟอร์ม
+    if (woInfoWonum) {
+      return (
+        <PmWorkOrderInfo
+          source="charger" identifier={sn} wonum={woInfoWonum}
+          onStart={startPmFromInfo} onCancel={leaveWoInfo}
+        />
+      );
+    }
     // planning=1 → ฟอร์มวางแผนของ planner, ไม่ใช่ฟอร์มกรอก PM ของช่าง
     if (planningWonum) {
       return (
