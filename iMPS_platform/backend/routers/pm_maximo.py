@@ -175,15 +175,18 @@ def _resolve_owner(location: str) -> dict:
     if not variants:
         return {}
 
-    charger = charger_collection.find_one(
-        {"maximo_location": {"$in": variants}}, {"SN": 1, "station_id": 1}
-    )
+    # เทียบแบบไม่สนตัวพิมพ์เล็ก/ใหญ่ และเผื่อช่องว่างหัวท้ายที่ติดมาจากการพิมพ์
+    # (เคสจริง: ตั้ง maximo_location เป็น "hmp0002-ev " แล้วหาไม่เจอทั้งที่ตั้งถูก)
+    cond = {"$or": [
+        {"maximo_location": {"$regex": rf"^\s*{re.escape(v)}\s*$", "$options": "i"}}
+        for v in variants
+    ]}
+
+    charger = charger_collection.find_one(cond, {"SN": 1, "station_id": 1})
     if charger:
         return {"station_id": charger.get("station_id"), "sn": charger.get("SN")}
 
-    st = station_collection.find_one(
-        {"maximo_location": {"$in": variants}}, {"station_id": 1}
-    )
+    st = station_collection.find_one(cond, {"station_id": 1})
     if st:
         return {"station_id": st.get("station_id"), "sn": None}
 
