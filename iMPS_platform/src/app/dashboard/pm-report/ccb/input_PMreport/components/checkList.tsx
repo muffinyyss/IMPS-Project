@@ -534,6 +534,12 @@ const T = {
     photoPreviewAlt: { th: "ตัวอย่างรูป", en: "Photo preview" },
     removeItem: { th: "ลบรายการ", en: "Remove item" },
     takePhoto: { th: "ถ่ายรูป", en: "Take Photo" },
+    workTime: { th: "เวลาทำงานจริง", en: "Actual work time" },
+    workStart: { th: "เวลาเริ่มงาน", en: "Start time" },
+    workFinish: { th: "เวลาเสร็จงาน", en: "Finish time" },
+    workTimeHint: { th: "ใช้ส่งเวลาทำงานของช่างเข้า Maximo", en: "Sent to Maximo as actual labor time" },
+    alertWorkTime: { th: "กรุณากรอกเวลาเริ่มงานและเวลาเสร็จงาน", en: "Please fill in the start and finish time" },
+    alertWorkTimeOrder: { th: "เวลาเสร็จงานต้องไม่ก่อนเวลาเริ่มงาน", en: "Finish time must not be before the start time" },
 };
 
 const t = (key: keyof typeof T, lang: Lang): string => T[key][lang];
@@ -1398,6 +1404,12 @@ export default function CCBPMReport() {
     useEffect(() => { if (typeof window === "undefined") return; const params = new URLSearchParams(window.location.search); if (params.has("draft_id")) { params.delete("draft_id"); const url = `${window.location.pathname}?${params.toString()}`; window.history.replaceState({}, "", url); } }, []);
 
     const [summaryCheck, setSummaryCheck] = useState<PF>("");
+
+    // เวลาทำงานจริงของช่าง (datetime-local) — ส่งเข้า Maximo ทาง IN09 ตอนปิดใบงาน
+
+    const [workStart, setWorkStart] = useState<string>("");
+
+    const [workFinish, setWorkFinish] = useState<string>("");
     const [inspector, setInspector] = useState<string>("");
     const [postApiLoaded, setPostApiLoaded] = useState(false);
     const [commentPre, setCommentPre] = useState<string>("");
@@ -2231,7 +2243,7 @@ export default function CCBPMReport() {
             const payload = {
                 station_id: stationId, rows: flatRows, measures, summary,
                 ...(summaryCheck ? { summaryCheck } : {}),
-                side: "post" as TabId, report_id: finalReportId, subBreakerCount,
+                work_start: workStart, work_finish: workFinish, wonum: searchParams.get("wonum") ?? "", side: "post" as TabId, report_id: finalReportId, subBreakerCount,
             };
 
             const res = await fetch(`${API_BASE}/${PM_PREFIX}/submit`, {
@@ -2245,6 +2257,9 @@ export default function CCBPMReport() {
 
             // ต้องยืนยันรูปครบก่อน ถึงจะ finalize + ลบรูปในเครื่อง
             if (!(await syncPhotosAndVerify(finalReportId, "post"))) return;
+
+            if (!workStart || !workFinish) { alert(t("alertWorkTime", lang)); setSubmitting(false); return; }
+            if (workFinish < workStart) { alert(t("alertWorkTimeOrder", lang)); setSubmitting(false); return; }
 
             const finalizeRes = await fetch(`${API_BASE}/${PM_PREFIX}/${finalReportId}/finalize`, {
                 method: "POST",
@@ -2835,6 +2850,36 @@ export default function CCBPMReport() {
                     </div>
 
                     <div className="tw-mt-6 sm:tw-mt-8 tw-flex tw-flex-col tw-gap-3">
+                    {/* เวลาทำงานจริงของช่าง — ต้องกรอกก่อนส่งปิดใบงาน (ส่งเข้า Maximo IN09) */}
+                    {isPostMode && (
+                        <div className="tw-mt-6 tw-pt-4 tw-border-t tw-border-gray-200">
+                            <div className="tw-mb-2">
+                                <Typography variant="h6" className="tw-text-sm sm:tw-text-base">
+                                    {t("workTime", lang)} <span className="tw-text-red-500">*</span>
+                                </Typography>
+                                <Typography variant="small" className="tw-text-xs tw-font-normal tw-text-blue-gray-400">
+                                    {t("workTimeHint", lang)}
+                                </Typography>
+                            </div>
+                            <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 tw-gap-3">
+                                <div>
+                                    <label className="tw-mb-1.5 tw-block tw-text-xs tw-font-semibold tw-text-blue-gray-700">{t("workStart", lang)}</label>
+                                    <input type="datetime-local" value={workStart} onChange={(e) => setWorkStart(e.target.value)}
+                                        className="tw-w-full tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-px-3 tw-py-2.5 tw-text-sm tw-text-blue-gray-800 focus:tw-outline-none focus:tw-border-blue-500" />
+                                </div>
+                                <div>
+                                    <label className="tw-mb-1.5 tw-block tw-text-xs tw-font-semibold tw-text-blue-gray-700">{t("workFinish", lang)}</label>
+                                    {/* min กัน picker เลือกย้อนหลัง — ยังต้อง validate เพราะพิมพ์มือเลี่ยงได้ */}
+                                    <input type="datetime-local" value={workFinish} min={workStart || undefined} onChange={(e) => setWorkFinish(e.target.value)}
+                                        className={`tw-w-full tw-rounded-lg tw-border tw-bg-white tw-px-3 tw-py-2.5 tw-text-sm tw-text-blue-gray-800 focus:tw-outline-none ${workStart && workFinish && workFinish < workStart ? "tw-border-red-400 focus:tw-border-red-500" : "tw-border-blue-gray-200 focus:tw-border-blue-500"}`} />
+                                    {workStart && workFinish && workFinish < workStart && (
+                                        <p className="tw-mt-1.5 tw-text-xs tw-text-red-600">{t("alertWorkTimeOrder", lang)}</p>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                         <PMValidationCard
                             lang={lang} displayTab={displayTab} isPostMode={isPostMode}
                             allPhotosAttached={allPhotosAttached} missingPhotoItems={missingPhotoItemsFormatted}

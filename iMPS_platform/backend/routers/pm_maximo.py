@@ -28,6 +28,7 @@ from pydantic import BaseModel, Field
 
 from config import client, station_collection, charger_collection
 from deps import get_current_user, UserClaims
+from services import maximo as maximo_svc
 from services.maximo import query_workorders
 
 log = logging.getLogger("pm_maximo")
@@ -879,6 +880,7 @@ async def list_maximo_pm_open(
     location: Optional[str] = Query(None, description="กรองตาม Maximo location"),
     station_id: Optional[str] = Query(None, description="กรองตาม station_id ของ iMPS"),
     only_open: bool = Query(True, description="เอาเฉพาะใบงานที่ยังเปิดอยู่"),
+    verify: bool = Query(True, description="เช็คกับ Maximo ว่า wonum มีอยู่จริงไหม"),
     # หน้า PM List ดึงรวมทุกสถานีในครั้งเดียว จึงต้องเพดานสูงกว่าหน้า tab เดี่ยว
     limit: int = Query(50, ge=1, le=1000),
     current: UserClaims = Depends(get_current_user),
@@ -924,7 +926,64 @@ async def list_maximo_pm_open(
 
     cursor = _open_coll().find(q).sort([("pm_date", -1), ("_id", -1)]).limit(limit)
     docs = await cursor.to_list(length=limit)
-    return {"items": [_serialize_open(d) for d in docs], "total": len(docs)}
+
+    # ── กรองตามอุปกรณ์ที่ planner เลือกไว้ ──
+    # ใบงาน Maximo เป็นระดับสถานี ถ้าไม่กรอง ใบเดียวจะโผล่ครบทุก tab และทุกตู้
+    # ในสถานี ทั้งที่ planner เลือก PM แค่บางตัว
+    #   ยังไม่ได้วางแผน (selected_equipment ว่าง) → โชว์ทุก tab ให้ planner หาเจอ
+    #   วางแผนแล้ว → โชว์เฉพาะ tab/ตู้ ที่ถูกเลือก
+    if source:
+        want = _norm_equip_type(source)
+        ident = (identifier or "").strip()
+
+        def _picked(d: dict) -> bool:
+            items = d.get("selected_equipment") or []
+            if not items:
+                return True
+            for e in items:
+                if _norm_equip_type(e.get("type")) != want:
+                    continue
+                if want != "charger":
+                    return True
+                # charger เจาะจงถึงตู้ — ไม่ระบุ identifier ก็ถือว่าเอาหมด
+                if not ident or str(e.get("sn") or "").strip() == ident:
+                    return True
+            return False
+
+        docs = [d for d in docs if _picked(d)]
+
+    # ใบที่รับเข้ามาตอนสถานียังไม่ได้ตั้ง maximo_location จะมี station_id ว่างค้างอยู่
+    # ลองหาใหม่ตอนอ่าน แล้วเขียนกลับให้ถาวร (ไม่ต้องรอ Maximo ยิงซ้ำ)
+    for d in docs:
+        if not (d.get("station_id") or "").strip():
+            sid = _station_id_of_wo(d)
+            if sid:
+                d["station_id"] = sid
+                try:
+                    await _open_coll().update_one({"_id": d["_id"]}, {"$set": {"station_id": sid}})
+                except Exception as e:
+                    log.warning(f"  ⚠️ backfill station_id ของ {d.get('wonum')} ไม่สำเร็จ: {e}")
+
+    items = [_serialize_open(d) for d in docs]
+
+    # เช็คว่าใบไหนมีอยู่จริงใน Maximo — ถามทีเดียวทั้งชุด
+    # ล้มก็ปล่อยผ่าน (คืน exists_in_maximo = None = ยังไม่รู้) ไม่บล็อกการแสดงผล
+    if verify:
+        try:
+            found = await maximo_svc.workorders_exist([i.get("wonum") for i in items])
+            for i in items:
+                wn = str(i.get("wonum") or "").strip()
+                hit = found.get(wn)
+                i["exists_in_maximo"] = bool(hit) if wn else None
+                if hit:
+                    i["maximo_status"] = hit.get("status")
+                    i["maximo_worktype"] = hit.get("worktype")
+        except Exception as e:
+            log.warning(f"  ⚠️ เช็ค wonum กับ Maximo ไม่สำเร็จ: {e}")
+            for i in items:
+                i["exists_in_maximo"] = None
+
+    return {"items": items, "total": len(items)}
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -1025,8 +1084,19 @@ async def pm_wo_sync_status(
     if isinstance(inbound.get("at"), datetime):
         inbound["at"] = inbound["at"].isoformat()
 
+    # None = เช็คกับ Maximo ไม่ได้ (ไม่ใช่ "ไม่มี")
+    try:
+        found = await maximo_svc.workorders_exist([wonum])
+        exists = wonum in found
+        in_maximo = found.get(wonum) or None
+    except Exception as e:
+        log.warning(f"  ⚠️ เช็ค wonum {wonum} กับ Maximo ไม่สำเร็จ: {e}")
+        exists, in_maximo = None, None
+
     return {
         "wonum": wonum,
+        "exists_in_maximo": exists,
+        "maximo_workorder": in_maximo,
         "location": wo.get("location") or "",
         "station_id": _station_id_of_wo(wo),
         "planning_status": wo.get("planning_status") or "pending",
@@ -1166,6 +1236,21 @@ async def set_pm_equipment(
     wo = await _find_open_wo(wonum)
     if not wo:
         raise HTTPException(status_code=404, detail=f"PM work order not found: {wonum}")
+
+    # ใบที่เลขไม่มีอยู่จริงใน Maximo วางแผนไปก็ยิงสถานะกลับไม่ได้ (BMXAA1496E)
+    # เตือนตั้งแต่ตอนกด Assign ดีกว่าไปพังตอนปิดงาน
+    # เช็คกับ Maximo ไม่ได้ (ล่ม/เน็ตมีปัญหา) = ปล่อยผ่าน ไม่บล็อกงาน
+    try:
+        found = await maximo_svc.workorders_exist([wonum])
+    except Exception as e:
+        log.warning(f"  ⚠️ เช็ค wonum {wonum} กับ Maximo ไม่สำเร็จ ปล่อยผ่าน: {e}")
+        found = {wonum: {}}
+    if wonum not in found:
+        raise HTTPException(
+            status_code=409,
+            detail=f"ใบงาน {wonum} ไม่มีอยู่จริงใน Maximo — วางแผนแล้วส่งสถานะกลับไม่ได้ "
+                   f"(อาจเป็น payload ทดสอบที่ยิงเข้ามา) กรุณาตรวจกับฝั่ง Maximo ก่อน",
+        )
 
     items: list[dict] = []
     seen: set[str] = set()
