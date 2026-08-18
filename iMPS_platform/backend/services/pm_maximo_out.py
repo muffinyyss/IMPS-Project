@@ -82,6 +82,17 @@ def _err_detail(e: Exception) -> str:
     return f"{msg} | {body[:400]}" if body else msg
 
 
+def _no_ok(detail: dict) -> dict:
+    """
+    ตัด key `ok` ออกก่อนกระจายเข้า _record()
+
+    _fail()/_skip() คืน dict ที่มี `ok` อยู่แล้ว พอเอาไป `**result` ต่อท้าย
+    _record(..., ok, **result) จะชน "got multiple values for argument 'ok'"
+    (พังตั้งแต่ตอนเรียก ดักใน _record ไม่ทัน)
+    """
+    return {k: v for k, v in detail.items() if k != "ok"}
+
+
 def _skip(reason: str) -> dict:
     return {"ok": False, "skipped": True, "reason": reason}
 
@@ -137,7 +148,7 @@ async def push_status(
     except MaximoError as e:
         log.warning(f"  ⚠️ IN02 status push failed (WO {wonum} → {target}): {e}")
         result = _fail(e)
-        await _record(coll, report_id, "IN02", False, wonum=wonum, status=target, **result)
+        await _record(coll, report_id, "IN02", False, wonum=wonum, status=target, **_no_ok(result))
         return result
 
     await _record(coll, report_id, "IN02", True, wonum=wonum, status=target)
@@ -165,7 +176,7 @@ async def push_attachment(
     except MaximoError as e:
         log.warning(f"  ⚠️ IN03 attach failed (WO {wonum}): {e}")
         result = _fail(e)
-        await _record(coll, report_id, "IN03", False, wonum=wonum, url=link, **result)
+        await _record(coll, report_id, "IN03", False, wonum=wonum, url=link, **_no_ok(result))
         return result
 
     await _record(coll, report_id, "IN03", True, wonum=wonum, url=link)
