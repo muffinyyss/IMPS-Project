@@ -11,6 +11,9 @@ type DraftData = {
   m16: any;
   summary: string;
   summaryCheck?: PF;  // เพิ่มสำหรับ Post mode
+  // เวลาทำงานจริงของช่าง (datetime-local) — Post mode, ส่งเข้า Maximo ทาง IN09
+  workStart?: string;
+  workFinish?: string;
   // inspector?: string;
   dustFilterChanged?: Record<string, boolean>;
   photoRefs?: Record<number | string, (PhotoRef | { isNA: true })[]>;

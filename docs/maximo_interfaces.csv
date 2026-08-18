@@ -1,0 +1,74 @@
+﻿interface,ชื่อ,ทิศทาง,method,Object Structure / endpoint,ฟิลด์,ที่มา / ปลายทางฝั่ง iMPS,บังคับ,หมายเหตุ
+IN01,สร้าง Work Order,iMPS -> Maximo,POST (CREATE),ZAPIWO,description,problem_details (ตัด 100 ตัว),Y,หัวเรื่องงาน
+IN01,สร้าง Work Order,iMPS -> Maximo,POST (CREATE),ZAPIWO,location,maximo_location ของสถานี/ตู้,Y,ไม่มี = MaximoError
+IN01,สร้าง Work Order,iMPS -> Maximo,POST (CREATE),ZAPIWO,siteid,env MAXIMO_SITE_ID,Y,
+IN01,สร้าง Work Order,iMPS -> Maximo,POST (CREATE),ZAPIWO,orgid,env MAXIMO_ORG_ID,Y,
+IN01,สร้าง Work Order,iMPS -> Maximo,POST (CREATE),ZAPIWO,worktype,env MAXIMO_CM_WORKTYPE (default CM),N,
+IN01,สร้าง Work Order,iMPS -> Maximo,POST (CREATE),ZAPIWO,status,env MAXIMO_CM_WO_STATUS,N,สถานะตั้งต้นของ WO
+IN01,สร้าง Work Order,iMPS -> Maximo,POST (CREATE),ZAPIWO,wopriority,severity -> 1 Urgent / 2 High / 3 Medium / 4 Low,N,
+IN01,สร้าง Work Order,iMPS -> Maximo,POST (CREATE),ZAPIWO,zcostcenter,env MAXIMO_COST_CENTER,N,
+IN01,สร้าง Work Order,iMPS -> Maximo,POST (CREATE),ZAPIWO,zcraft,env MAXIMO_CRAFT,N,ส่งต่อเมื่อ MAXIMO_SEND_ZCRAFT=true
+IN01,สร้าง Work Order,iMPS -> Maximo,POST (CREATE),ZAPIWO,assetnum,asset ของตู้ (ถ้ามี),N,
+IN01,สร้าง Work Order,iMPS -> Maximo,POST (CREATE),ZAPIWO,failurecode,faulty_equipment -> DCCHARGER/ACCHARGER/STATION,N,ปิดได้ด้วย MAXIMO_SEND_WO_FAILURECODE=false (BMXAA4534E)
+IN01,สร้าง Work Order,iMPS -> Maximo,POST (CREATE),ZAPIWO,reportedby,reported_by,N,
+IN01,สร้าง Work Order,iMPS -> Maximo,POST (CREATE),ZAPIWO,supervisor,ผู้ควบคุมงาน,N,
+IN01,สร้าง Work Order,iMPS -> Maximo,POST (CREATE),ZAPIWO,zimpswonum,issue_id ของ iMPS,N,อ้างอิงกลับสองทาง
+IN01,สร้าง Work Order,iMPS -> Maximo,POST (CREATE),ZAPIWO,schedstart / schedfinish,sched_start / sched_finish จากด่านวางแผน,N,
+IN01,สร้าง Work Order,iMPS -> Maximo,POST (CREATE),ZAPIWO,targstartdate / targcompdate,target_* (ไม่ส่งใช้ sched_* แทน),N,
+IN01,สร้าง Work Order,iMPS -> Maximo,POST (CREATE),ZAPIWO,reportdate,เวลาปัจจุบัน (Asia/Bangkok),N,
+IN01,สร้าง Work Order,iMPS -> Maximo,POST (CREATE),ZAPIWO,(response) wonum,เก็บลง maximo_wonum,-,คืนกลับมาจาก Maximo
+IN02,เปลี่ยนสถานะ WO,iMPS -> Maximo,POST SYNC/MERGE,ZAPIWOSTATUS,wonum,CM: maximo_wonum / PM: wonum,Y,natural key
+IN02,เปลี่ยนสถานะ WO,iMPS -> Maximo,POST SYNC/MERGE,ZAPIWOSTATUS,siteid,env MAXIMO_SITE_ID,Y,
+IN02,เปลี่ยนสถานะ WO,iMPS -> Maximo,POST SYNC/MERGE,ZAPIWOSTATUS,orgid,env MAXIMO_ORG_ID,Y,
+IN02,เปลี่ยนสถานะ WO,iMPS -> Maximo,POST SYNC/MERGE,ZAPIWOSTATUS,status,CM: STATUS_MAP ตามสถานะใบงาน / PM: COMP เสมอ,Y,WAPPR APPR INPRG COMP CAN WMATL WSCH
+IN02,เปลี่ยนสถานะ WO,iMPS -> Maximo,POST SYNC/MERGE,ZAPIWOSTATUS,statusdate,เวลาปัจจุบัน (Asia/Bangkok),N,
+IN02,เปลี่ยนสถานะ WO,iMPS -> Maximo,POST SYNC/MERGE,ZAPIWOSTATUS,reasonforchange,memo เช่น closed by <user>,N,ตัดตาม MAXIMO_REASON_MAXLEN กัน BMXAA4049E
+IN03,แนบลิงก์เอกสาร,iMPS -> Maximo,POST SYNC/MERGE,ZAPIATTACHWO,wonum,CM: maximo_wonum / PM: wonum,Y,
+IN03,แนบลิงก์เอกสาร,iMPS -> Maximo,POST SYNC/MERGE,ZAPIATTACHWO,siteid / orgid,env,Y,
+IN03,แนบลิงก์เอกสาร,iMPS -> Maximo,POST SYNC/MERGE,ZAPIATTACHWO,doclinks[].document,issue_id (ตัด 100 ตัว),Y,ชื่อเอกสาร
+IN03,แนบลิงก์เอกสาร,iMPS -> Maximo,POST SYNC/MERGE,ZAPIATTACHWO,doclinks[].description,doc_name (ตัด 250 ตัว),N,
+IN03,แนบลิงก์เอกสาร,iMPS -> Maximo,POST SYNC/MERGE,ZAPIATTACHWO,doclinks[].urltype,env MAXIMO_URLTYPE (WEB),Y,DEV มีแต่ FILE ต้องให้ EGAT เพิ่ม WEB ก่อน (BMXAA4024E)
+IN03,แนบลิงก์เอกสาร,iMPS -> Maximo,POST SYNC/MERGE,ZAPIATTACHWO,doclinks[].weburl / urlname,PUBLIC_BASE_URL + path ของเอกสาร,Y,ไม่ตั้ง PUBLIC_BASE_URL = ข้ามการยิง
+IN03,แนบลิงก์เอกสาร,iMPS -> Maximo,POST SYNC/MERGE,ZAPIATTACHWO,doclinks[].doctype,env MAXIMO_DOCTYPE (Attachments),Y,ต้องเป็นค่าที่มีใน DOCTYPES ของ Maximo
+IN04,ตาราง failure code,Maximo -> iMPS,GET,ZAPIFAILURELIST,"oslc.select=* , _dropnulls=0",-,-,คืน node แบน ผูกกันด้วย failurelist / parent
+IN04,ตาราง failure code,Maximo -> iMPS,GET,ZAPIFAILURELIST,(response) failure class -> problem -> cause -> remedy,cache ลง MongoDB,-,ประกอบเป็นต้นไม้ที่ services/cm_maximo.py
+IN05,บันทึก Failure,iMPS -> Maximo,POST SYNC/MERGE,ZAPIFAILUREREPORT,wonum,maximo_wonum,Y,
+IN05,บันทึก Failure,iMPS -> Maximo,POST SYNC/MERGE,ZAPIFAILUREREPORT,siteid / orgid,env,Y,
+IN05,บันทึก Failure,iMPS -> Maximo,POST SYNC/MERGE,ZAPIFAILUREREPORT,failurecode,faulty_equipment -> failure class,Y,ระดับ WO ปิดได้ด้วย MAXIMO_SEND_WO_FAILURECODE
+IN05,บันทึก Failure,iMPS -> Maximo,POST SYNC/MERGE,ZAPIFAILUREREPORT,failurereport[].problemcode,problem_type,N,1 ใบมีได้หลายแถว
+IN05,บันทึก Failure,iMPS -> Maximo,POST SYNC/MERGE,ZAPIFAILUREREPORT,failurereport[].cause,cause,N,
+IN05,บันทึก Failure,iMPS -> Maximo,POST SYNC/MERGE,ZAPIFAILUREREPORT,failurereport[].remedy,repaired_equipment,N,
+IN05,บันทึก Failure,iMPS -> Maximo,POST SYNC/MERGE,ZAPIFAILUREREPORT,failurereport[].remarks,หมายเหตุ (ตัด 250 ตัว),N,
+IN05,บันทึก Failure,iMPS -> Maximo,POST SYNC/MERGE,ZAPIFAILUREREPORT,failurereport[].faildate,resolved_date หรือเวลาปัจจุบัน,N,
+IN06 (CM),Maximo เปิดใบงาน CM,Maximo -> iMPS,POST webhook,/maximo/cm/work-order,location,หา station_id / SN ด้วย maximo_location,Y,หาไม่เจอ = 404
+IN06 (CM),Maximo เปิดใบงาน CM,Maximo -> iMPS,POST webhook,/maximo/cm/work-order,wonum,-> maximo_wonum (key กันซ้ำ),Y,ยิงซ้ำ = อัปเดตใบเดิม ไม่สร้างใหม่
+IN06 (CM),Maximo เปิดใบงาน CM,Maximo -> iMPS,POST webhook,/maximo/cm/work-order,description,-> problem_details,N,
+IN06 (CM),Maximo เปิดใบงาน CM,Maximo -> iMPS,POST webhook,/maximo/cm/work-order,status,-> maximo_status,N,
+IN06 (CM),Maximo เปิดใบงาน CM,Maximo -> iMPS,POST webhook,/maximo/cm/work-order,worktype,เก็บไว้เฉย ๆ,N,
+IN06 (CM),Maximo เปิดใบงาน CM,Maximo -> iMPS,POST webhook,/maximo/cm/work-order,reportdate,-> found_date,N,ไม่ส่ง = วันที่ปัจจุบัน
+IN06 (CM),Maximo เปิดใบงาน CM,Maximo -> iMPS,POST webhook,/maximo/cm/work-order,reportedby,-> reported_by,N,ไม่ส่ง = MAXIMO
+IN06 (CM),Maximo เปิดใบงาน CM,Maximo -> iMPS,POST webhook,/maximo/cm/work-order,failurecode,-> faulty_equipment,N,
+IN06 (CM),Maximo เปิดใบงาน CM,Maximo -> iMPS,POST webhook,/maximo/cm/work-order,priority,1-4 -> Urgent / High / Medium / Low,N,default Medium
+IN06 (CM),Maximo เปิดใบงาน CM,Maximo -> iMPS,POST webhook,/maximo/cm/work-order,X-Maximo-Token (header),env MAXIMO_WEBHOOK_SECRET,Y,ไม่ตรง = 401
+IN06 (PM),Maximo เปิดใบงาน PM,Maximo -> iMPS,POST webhook,/maximo/pm/open,location,หา station_id ด้วย maximo_location,Y,รองรับทั้ง PTG0001 และ PTG0001-EV
+IN06 (PM),Maximo เปิดใบงาน PM,Maximo -> iMPS,POST webhook,/maximo/pm/open,pm_date,วันที่ทำ PM (YYYY-MM-DD หรือ ISO),N,ขาดได้ แต่ตอบ warnings กลับไป
+IN06 (PM),Maximo เปิดใบงาน PM,Maximo -> iMPS,POST webhook,/maximo/pm/open,wonum,key กันซ้ำ + ผูกกับเอกสาร PM ตอนช่างกรอก,N,ยิงซ้ำ = อัปเดตใบเดิม
+IN06 (PM),Maximo เปิดใบงาน PM,Maximo -> iMPS,POST webhook,/maximo/pm/open,status,OPEN WAPPR APPR INPRG WMATL WSCH = ยังเปิดอยู่,N,ว่าง = ถือว่ายังเปิดอยู่
+IN06 (PM),Maximo เปิดใบงาน PM,Maximo -> iMPS,POST webhook,/maximo/pm/open,company,บริษัทผู้ดูแล,N,
+IN06 (PM),Maximo เปิดใบงาน PM,Maximo -> iMPS,POST webhook,/maximo/pm/open,description,รายละเอียดใบงาน,N,
+IN06 (PM),Maximo เปิดใบงาน PM,Maximo -> iMPS,POST webhook,/maximo/pm-workorder,pm_type,CG / MB / CC / CB / ST -> tab ของ PM report,Y,เฉพาะ endpoint /maximo/pm-workorder
+IN06 (PM),Maximo เปิดใบงาน PM,Maximo -> iMPS,POST webhook,/maximo/pm/open,X-Maximo-Token (header),env MAXIMO_WEBHOOK_SECRET,Y,รับ apikey / X-API-Key / Bearer ได้ด้วย
+IN07,รายการ location,Maximo -> iMPS,GET,ZAPILOCATION,oslc.where location like %-EV%,-,-,ใช้ map location -> สถานี / ตู้
+IN08,รายชื่อช่าง,Maximo -> iMPS,GET,ZAPIPERSON,oslc.where zcostcenter=<MAXIMO_COST_CENTER>,-,-,กรองเฉพาะหน่วยงาน EV
+IN08,รายชื่อช่าง,Maximo -> iMPS,GET,ZAPIPERSON,(response) personid,-> laborcode ของ IN09,-,
+IN08,รายชื่อช่าง,Maximo -> iMPS,GET,ZAPIPERSON,(response) displayname status primaryemail zcostcenter,cache ลง MongoDB,-,
+IN09,ลงเวลาช่าง,iMPS -> Maximo,POST (CREATE),ZAPILABTRANS,refwo,maximo_wonum,Y,
+IN09,ลงเวลาช่าง,iMPS -> Maximo,POST (CREATE),ZAPILABTRANS,laborcode,personid จาก IN08 (จับคู่กับ assignees),Y,
+IN09,ลงเวลาช่าง,iMPS -> Maximo,POST (CREATE),ZAPILABTRANS,siteid / orgid,env,Y,
+IN09,ลงเวลาช่าง,iMPS -> Maximo,POST (CREATE),ZAPILABTRANS,transtype,WORK (ค่าคงที่),Y,
+IN09,ลงเวลาช่าง,iMPS -> Maximo,POST (CREATE),ZAPILABTRANS,craft,ไม่ส่ง = Maximo เติม craft หลักของ labor ให้,N,ส่งผิดโดน BMXAA2634E craftmismatch
+IN09,ลงเวลาช่าง,iMPS -> Maximo,POST (CREATE),ZAPILABTRANS,location,maximo_location,N,
+IN09,ลงเวลาช่าง,iMPS -> Maximo,POST (CREATE),ZAPILABTRANS,startdate / startdatetime / starttime,start_repair_date + start_repair_time,Y,ไม่มี = MaximoError
+IN09,ลงเวลาช่าง,iMPS -> Maximo,POST (CREATE),ZAPILABTRANS,finishdate / finishdatetime / finishtime,resolved_date + resolved_time,N,
+IN09,ลงเวลาช่าง,iMPS -> Maximo,POST (CREATE),ZAPILABTRANS,regularhrs,คำนวณจาก start -> finish (ทศนิยม 2 ตำแหน่ง),N,ส่งมาเองก็ได้
+IN09,ลงเวลาช่าง,iMPS -> Maximo,POST (CREATE),ZAPILABTRANS,memo,หมายเหตุ (ตัด 250 ตัว),N,

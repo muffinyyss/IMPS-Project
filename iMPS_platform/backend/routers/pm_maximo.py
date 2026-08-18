@@ -954,17 +954,22 @@ async def pm_equipment_choices(
     chargers: list[dict] = []
     if station_id:
         # charger_collection เป็น pymongo (sync) — วนตรง ๆ ได้
-        for c in charger_collection.find(
+        cursor = charger_collection.find(
             {"station_id": station_id},
-            {"_id": 0, "SN": 1, "chargeBoxID": 1, "name": 1, "charger_name": 1, "maximo_location": 1},
-        ):
+            {"_id": 0, "SN": 1, "chargeBoxID": 1, "name": 1, "charger_name": 1,
+             "maximo_location": 1, "chargerNo": 1},
+        ).sort([("chargerNo", 1), ("SN", 1)])
+        for idx, c in enumerate(cursor, start=1):
             # ตู้ที่ไม่มี SN เลือกไปก็บันทึกไม่ผ่าน (type charger บังคับ sn) — ไม่ต้องเสนอ
             if not str(c.get("SN") or "").strip() or c.get("SN") == "-":
                 continue
+            # ป้ายชื่อใช้หมายเลขตู้ ("Charger 1", "Charger 2") ไม่ใช่ location ของ Maximo
+            # ซึ่งเป็นรหัสที่ผู้ใช้อ่านแล้วไม่รู้ว่าเป็นตู้ไหน — ไม่มี chargerNo ก็ไล่ตามลำดับ
+            charger_no = c.get("chargerNo") or idx
             chargers.append({
                 "type": "charger",
                 "sn": c.get("SN"),
-                "label": c.get("name") or c.get("charger_name") or c.get("chargeBoxID") or c.get("SN"),
+                "label": f"Charger {charger_no}",
                 "location": c.get("maximo_location"),
             })
 
@@ -1090,4 +1095,14 @@ async def set_pm_equipment(
 
     doc = await _find_open_wo(wonum)
     log.info(f"  ✅ PM plan saved for {wonum}: {len(effective_items)} equipment item(s), status={planning_status}")
-    return {"ok": True, "wonum": wonum, "item": _serialize_open(doc)}
+
+    # ── ขั้น 2 ของ sequencing: assign เสร็จ = ใบงานเข้าสถานะ In Progress ──
+    # ยิงเฉพาะตอนวางแผนครบจริง ไม่ใช่ทุกครั้งที่กดบันทึก
+    maximo_result = None
+    if planning_status == "planned":
+        from services import pm_maximo_out
+        maximo_result = await pm_maximo_out.safe_sync_in_progress(
+            wonum, memo=f"assigned by {current.username or current.sub}"
+        )
+
+    return {"ok": True, "wonum": wonum, "item": _serialize_open(doc), "maximo": maximo_result}
