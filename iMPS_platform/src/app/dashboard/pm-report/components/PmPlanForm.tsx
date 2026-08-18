@@ -62,9 +62,8 @@ const T = {
   equipSection: { th: "อุปกรณ์ที่จะ PM", en: "Equipment to PM" },
   selectedCount: { th: "เลือกแล้ว", en: "Selected" },
   items: { th: "รายการ", en: "item(s)" },
-  chargers: { th: "ตู้ชาร์จ", en: "Chargers" },
-  stationLevel: { th: "อุปกรณ์ระดับสถานี", en: "Station-level equipment" },
-  noChargers: { th: "ไม่พบตู้ชาร์จในสถานีนี้", en: "No chargers found in this station" },
+  allEquipment: { th: "ทั้งหมด", en: "All" },
+  noEquipment: { th: "ไม่พบอุปกรณ์ในสถานีนี้", en: "No equipment found in this station" },
 
   workOrder: { th: "เลขที่ใบงาน (WO)", en: "Work order (WO)" },
   location: { th: "Location", en: "Location" },
@@ -215,8 +214,26 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
 
   useEffect(() => { load(); }, [load]);
 
+  // ตู้ชาร์จ + อุปกรณ์ระดับสถานี อยู่ในลิสต์เดียวกัน ไม่ต้องแยกหัวข้อ
+  const equipmentOptions = useMemo(
+    () => (choices ? [...choices.chargers, ...choices.fixed] : []),
+    [choices]
+  );
+  const allEquipChecked =
+    equipmentOptions.length > 0 && equipmentOptions.every((e) => checked[equipKey(e)]);
+
   const toggle = (key: string) =>
     setChecked((prev) => ({ ...prev, [key]: !prev[key] }));
+
+  const toggleAllEquipment = () => {
+    if (allEquipChecked) {
+      setChecked({});
+      return;
+    }
+    const next: Record<string, boolean> = {};
+    equipmentOptions.forEach((e) => { next[equipKey(e)] = true; });
+    setChecked(next);
+  };
 
   const toggleAssignee = (username: string) =>
     setAssignees((prev) =>
@@ -237,7 +254,7 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
     if (saving) return;
 
     const equipment = choices
-      ? [...choices.chargers, ...choices.fixed]
+      ? equipmentOptions
         .filter((e) => checked[equipKey(e)])
         .map((e: EquipmentItem) => ({
           type: e.type,
@@ -493,60 +510,48 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
                     }
                   />
                   <div className="tw-p-4">
-                    <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-4">
-                      <div>
-                        <label className={LABEL}>{t("chargers", lang)}</label>
-                        {choices.chargers.length === 0 ? (
-                          <p className="tw-text-xs tw-text-orange-600">{t("noChargers", lang)}</p>
-                        ) : (
-                          <div className="tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-divide-y tw-divide-blue-gray-50 tw-max-h-56 tw-overflow-y-auto">
-                            {choices.chargers.map((c) => {
-                              const k = equipKey(c);
-                              return (
-                                <label key={k} className="tw-flex tw-items-center tw-gap-2.5 tw-px-3 tw-py-2.5 tw-cursor-pointer hover:tw-bg-blue-gray-50/60 tw-transition-colors">
-                                  <input
-                                    type="checkbox"
-                                    checked={!!checked[k]}
-                                    disabled={!canPlan}
-                                    onChange={() => toggle(k)}
-                                    className="tw-h-4 tw-w-4 tw-shrink-0 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500 tw-cursor-pointer"
-                                  />
-                                  <span className="tw-min-w-0 tw-truncate tw-text-sm tw-text-blue-gray-800">
-                                    {equipLabel(c)}
-                                  </span>
-                                  {c.sn && (
-                                    <span className="tw-ml-auto tw-text-xs tw-text-blue-gray-400">{c.sn}</span>
-                                  )}
-                                </label>
-                              );
-                            })}
-                          </div>
-                        )}
+                    {/* รวมตู้ชาร์จกับอุปกรณ์ระดับสถานีเป็นลิสต์เดียว — ผู้ใช้ติ๊กจากที่เดียวจบ */}
+                    {equipmentOptions.length === 0 ? (
+                      <p className="tw-text-xs tw-text-orange-600">{t("noEquipment", lang)}</p>
+                    ) : (
+                      <div className="tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-divide-y tw-divide-blue-gray-50 tw-max-h-72 tw-overflow-y-auto">
+                        <label className="tw-flex tw-items-center tw-gap-2.5 tw-px-3 tw-py-2.5 tw-cursor-pointer hover:tw-bg-blue-gray-50/60 tw-transition-colors">
+                          <input
+                            type="checkbox"
+                            checked={allEquipChecked}
+                            disabled={!canPlan}
+                            onChange={toggleAllEquipment}
+                            className="tw-h-4 tw-w-4 tw-shrink-0 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500 tw-cursor-pointer"
+                          />
+                          <span className="tw-text-sm tw-font-semibold tw-text-blue-gray-800">
+                            {t("allEquipment", lang)}
+                          </span>
+                          <span className="tw-ml-auto tw-text-xs tw-text-blue-gray-400">
+                            {selectedCount}/{equipmentOptions.length}
+                          </span>
+                        </label>
+                        {equipmentOptions.map((e) => {
+                          const k = equipKey(e);
+                          return (
+                            <label key={k} className="tw-flex tw-items-center tw-gap-2.5 tw-px-3 tw-py-2.5 tw-cursor-pointer hover:tw-bg-blue-gray-50/60 tw-transition-colors">
+                              <input
+                                type="checkbox"
+                                checked={!!checked[k]}
+                                disabled={!canPlan}
+                                onChange={() => toggle(k)}
+                                className="tw-h-4 tw-w-4 tw-shrink-0 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500 tw-cursor-pointer"
+                              />
+                              <span className="tw-min-w-0 tw-truncate tw-text-sm tw-text-blue-gray-800">
+                                {equipLabel(e)}
+                              </span>
+                              {e.sn && (
+                                <span className="tw-ml-auto tw-text-xs tw-text-blue-gray-400">{e.sn}</span>
+                              )}
+                            </label>
+                          );
+                        })}
                       </div>
-
-                      <div>
-                        <label className={LABEL}>{t("stationLevel", lang)}</label>
-                        <div className="tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-divide-y tw-divide-blue-gray-50 tw-max-h-56 tw-overflow-y-auto">
-                          {choices.fixed.map((f) => {
-                            const k = equipKey(f);
-                            return (
-                              <label key={k} className="tw-flex tw-items-center tw-gap-2.5 tw-px-3 tw-py-2.5 tw-cursor-pointer hover:tw-bg-blue-gray-50/60 tw-transition-colors">
-                                <input
-                                  type="checkbox"
-                                  checked={!!checked[k]}
-                                  disabled={!canPlan}
-                                  onChange={() => toggle(k)}
-                                  className="tw-h-4 tw-w-4 tw-shrink-0 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500 tw-cursor-pointer"
-                                />
-                                <span className="tw-min-w-0 tw-truncate tw-text-sm tw-text-blue-gray-800">
-                                  {equipLabel(f)}
-                                </span>
-                              </label>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    </div>
+                    )}
                   </div>
                 </div>
               )}

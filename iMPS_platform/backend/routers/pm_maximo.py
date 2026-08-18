@@ -923,6 +923,18 @@ async def _find_open_wo(wonum: str) -> dict | None:
     return await _open_coll().find_one({"wonum": wonum})
 
 
+def _station_id_of_wo(wo: dict) -> str:
+    """
+    station_id ของใบงาน — ถ้าตอนรับเข้า reverse lookup ไม่ติด (สถานี/ตู้ยังไม่ได้ตั้ง
+    maximo_location ตอนนั้น) ให้ลองหาจาก location ซ้ำอีกรอบ ไม่งั้นรายการอุปกรณ์
+    จะว่างเปล่าทั้งที่สถานีมีตู้อยู่
+    """
+    sid = (wo.get("station_id") or "").strip()
+    if sid:
+        return sid
+    return (_resolve_owner(wo.get("location") or "") or {}).get("station_id") or ""
+
+
 @router.get("/maximo/pm/{wonum}/equipment-choices")
 async def pm_equipment_choices(
     wonum: str,
@@ -938,7 +950,7 @@ async def pm_equipment_choices(
     if not doc:
         raise HTTPException(status_code=404, detail=f"ไม่พบใบงาน wonum={wonum}")
 
-    station_id = doc.get("station_id")
+    station_id = _station_id_of_wo(doc)
     chargers: list[dict] = []
     if station_id:
         # charger_collection เป็น pymongo (sync) — วนตรง ๆ ได้
@@ -946,6 +958,9 @@ async def pm_equipment_choices(
             {"station_id": station_id},
             {"_id": 0, "SN": 1, "chargeBoxID": 1, "name": 1, "charger_name": 1, "maximo_location": 1},
         ):
+            # ตู้ที่ไม่มี SN เลือกไปก็บันทึกไม่ผ่าน (type charger บังคับ sn) — ไม่ต้องเสนอ
+            if not str(c.get("SN") or "").strip() or c.get("SN") == "-":
+                continue
             chargers.append({
                 "type": "charger",
                 "sn": c.get("SN"),
@@ -1010,7 +1025,7 @@ async def set_pm_equipment(
 
         item = {"type": etype}
         if etype == "charger":
-            station_id = wo.get("station_id")
+            station_id = _station_id_of_wo(wo)
             if not station_id:
                 raise HTTPException(
                     status_code=409,
