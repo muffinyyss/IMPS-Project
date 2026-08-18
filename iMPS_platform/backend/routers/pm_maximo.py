@@ -22,6 +22,7 @@ import re
 from datetime import datetime, timezone
 from typing import Any, Literal, Optional
 
+from bson.objectid import ObjectId
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
@@ -145,8 +146,24 @@ def _location_variants(location: str) -> list[str]:
     loc = (location or "").strip()
     if not loc:
         return []
-    root = loc[:-3] if loc.upper().endswith("-EV") else loc
-    return list(dict.fromkeys([loc, root, f"{root}-EV"]))
+
+    out = [loc]
+
+    # location ระดับตู้ที่ Maximo ส่งมา เช่น "HMP0002-EV-BTL01GU001" หรือ
+    # "ZOO0001-ES-WAC21GU001" — ตัดหางให้เหลือระดับสถานี ("HMP0002-EV")
+    # ไม่งั้น reverse lookup ไม่เจอสถานี แล้วใบงานจะไม่โผล่ในหน้า PM report
+    m = re.match(r"^(?P<station>.+?-(?:EV|ES))-.+$", loc, re.IGNORECASE)
+    if m:
+        out.append(m.group("station"))
+
+    # ระดับสถานีลองทั้งแบบมีและไม่มี -EV ต่อท้าย (iMPS กับ Maximo เขียนคนละแบบได้)
+    # ไม่ขยายให้ location ระดับตู้ เพราะ "…-BTL01GU001-EV" ไม่มีทางตรงกับอะไร
+    station_level = [x for x in out if x.upper().endswith("-EV")] or [loc]
+    for base in station_level:
+        root = base[:-3] if base.upper().endswith("-EV") else base
+        out.extend([root, f"{root}-EV"])
+
+    return list(dict.fromkeys(x for x in out if x))
 
 
 def _resolve_owner(location: str) -> dict:
@@ -933,6 +950,95 @@ def _station_id_of_wo(wo: dict) -> str:
     if sid:
         return sid
     return (_resolve_owner(wo.get("location") or "") or {}).get("station_id") or ""
+
+
+# ══════════════════════════════════════════════════════════════════
+# สถานะการ sync ของเอกสาร PM + ยิงซ้ำ (คู่กับ /cm-maximo/{id}/sync ของฝั่ง CM)
+# ══════════════════════════════════════════════════════════════════
+PM_SYNC_ROLES: set[str] = {"admin", "owner", "planner"}
+
+
+def _serialize_sync(doc: dict) -> dict:
+    """maximo_sync ของเอกสาร → JSON (datetime → ISO)"""
+    out: dict[str, Any] = {}
+    for key, entry in (doc.get("maximo_sync") or {}).items():
+        if not isinstance(entry, dict):
+            continue
+        at = entry.get("at")
+        out[key] = {
+            **{k: v for k, v in entry.items() if k != "at"},
+            "at": at.isoformat() if isinstance(at, datetime) else None,
+        }
+    return out
+
+
+async def _load_pm_report(report_id: str, sn: str):
+    """เอกสาร PM ของ charger + collection ของ SN นั้น"""
+    from routers.pm_helpers import get_pmreport_collection_for
+
+    coll = get_pmreport_collection_for(sn)
+    try:
+        oid = ObjectId(report_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bad report_id")
+    doc = await coll.find_one({"_id": oid})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Report not found")
+    return coll, oid, doc
+
+
+@router.get("/pm-maximo/{report_id}/sync")
+async def pm_sync_status(
+    report_id: str,
+    sn: str = Query(..., description="SN ของตู้ (เอกสาร PM charger เก็บแยกตาม SN)"),
+    current: UserClaims = Depends(get_current_user),
+):
+    """
+    ดูว่าเอกสาร PM ใบนี้ยิงอะไรเข้า Maximo ไปแล้วบ้าง
+
+    รวม 2 ที่ไว้ให้ในครั้งเดียว:
+      report    — IN03 / IN09 / IN02 (COMP) ที่จดไว้บนเอกสาร PM
+      workorder — IN02 (INPRG) ที่จดไว้บนใบงานใน maximo_pm_open ตอน planner assign
+    """
+    _, _, doc = await _load_pm_report(report_id, sn.strip())
+    wonum = (doc.get("wonum") or "").strip()
+
+    wo_sync: dict = {}
+    if wonum:
+        wo = await _open_coll().find_one({"wonum": wonum}) or {}
+        wo_sync = _serialize_sync(wo)
+
+    return {
+        "issue_id": doc.get("issue_id") or "",
+        "doc_name": doc.get("doc_name") or "",
+        "status": doc.get("status") or "",
+        "wonum": wonum,
+        "sn": sn,
+        "station_id": doc.get("station_id") or "",
+        "interfaces": _serialize_sync(doc),
+        "workorder_interfaces": wo_sync,
+    }
+
+
+@router.post("/pm-maximo/{report_id}/sync")
+async def pm_sync_retry(
+    report_id: str,
+    sn: str = Query(...),
+    current: UserClaims = Depends(get_current_user),
+):
+    """ยิงชุดปิดงาน (IN03 → IN09 → IN02 COMP) ใหม่ — ใช้เมื่อรอบก่อนล้ม"""
+    role = (current.role or "").strip().lower()
+    if role not in PM_SYNC_ROLES and not getattr(current, "is_super_admin", False):
+        raise HTTPException(status_code=403, detail="Only planner, owner or admin can re-sync")
+
+    coll, oid, doc = await _load_pm_report(report_id, sn.strip())
+
+    from services import pm_maximo_out
+    result = await pm_maximo_out.safe_sync_closed(
+        coll, oid, doc, memo=f"manual re-sync by {current.username}"
+    )
+    fresh = await coll.find_one({"_id": oid}) or {}
+    return {"ok": True, "result": result, "interfaces": _serialize_sync(fresh)}
 
 
 @router.get("/maximo/pm/{wonum}/equipment-choices")

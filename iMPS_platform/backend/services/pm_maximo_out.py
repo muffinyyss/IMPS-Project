@@ -334,8 +334,12 @@ async def sync_closed(coll, report_id, report: dict, *, memo: str = "") -> dict:
         out["IN03"] = await push_attachment(coll, report_id, report, report_url(report, report_id))
 
     # ── 4. IN09 เวลาทำงานจริงของช่าง ──
-    await _settle()
-    out["IN09"] = await push_labor_time(coll, report_id, report)
+    # ยิงครั้งเดียวพอ — labtrans เป็น POST create ยิงซ้ำ = ชั่วโมงถูกนับซ้ำ
+    if (report.get("maximo_sync") or {}).get("IN09", {}).get("ok"):
+        out["IN09"] = {"ok": True, "skipped": True, "reason": "ลงเวลาไปแล้ว ไม่ยิงซ้ำ"}
+    else:
+        await _settle()
+        out["IN09"] = await push_labor_time(coll, report_id, report)
 
     # ── 5. IN02 ปิดสถานะเป็นเส้นสุดท้าย ──
     # ต้องยิง 3–4 ให้ครบก่อน มีเส้นไหนไม่ผ่านห้ามปิด WO
