@@ -33,6 +33,7 @@ import { apiFetch } from "@/utils/api";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
 import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
 import PmPlanForm from "@/app/dashboard/pm-report/components/PmPlanForm";
+import { pmBackRoute } from "@/app/dashboard/pm-report/lib/origin";
 import {
   derivePlanningStatus,
   equipLabel,
@@ -779,6 +780,12 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
   };
 
   const leavePlanning = () => {
+    // มาจากหน้า PM List → กลับไปหน้านั้น ไม่ใช่ตาราง tab ที่ผู้ใช้ไม่เคยเปิด
+    const back = pmBackRoute(searchParams);
+    if (back) {
+      router.push(back);
+      return;
+    }
     const params = new URLSearchParams(searchParams.toString());
     params.delete("view");
     params.delete("planning");

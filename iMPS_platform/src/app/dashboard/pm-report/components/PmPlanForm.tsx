@@ -18,10 +18,14 @@ import { apiFetch } from "@/utils/api";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
 import {
   derivePlanningStatus,
+  equipKey,
+  equipLabel,
   formatDate,
   planningChipClass,
   PM_PLANNING_ROLES,
   toDateTimeLocalValue,
+  type EquipmentChoices,
+  type EquipmentItem,
   type MaximoSource,
   type MaximoWorkOrder,
   type TechnicianOption,
@@ -45,7 +49,7 @@ const T = {
     en: "Nonthaburi 11130, EGAT Call Center: 1416",
   },
 
-  backToList: { th: "กลับไปหน้ารายการ", en: "Back to list" },
+  backToList: { th: "Back", en: "Back" },
   loading: { th: "กำลังโหลด…", en: "Loading…" },
   notFound: { th: "ไม่พบใบงานนี้", en: "Work order not found" },
   plannerOnlyTitle: { th: "วางแผนใบงานนี้ไม่ได้", en: "Cannot plan this work order" },
@@ -55,6 +59,12 @@ const T = {
   },
 
   planSection: { th: "ข้อมูลการวางแผน", en: "Planning details" },
+  equipSection: { th: "อุปกรณ์ที่จะ PM", en: "Equipment to PM" },
+  selectedCount: { th: "เลือกแล้ว", en: "Selected" },
+  items: { th: "รายการ", en: "item(s)" },
+  chargers: { th: "ตู้ชาร์จ", en: "Chargers" },
+  stationLevel: { th: "อุปกรณ์ระดับสถานี", en: "Station-level equipment" },
+  noChargers: { th: "ไม่พบตู้ชาร์จในสถานีนี้", en: "No chargers found in this station" },
 
   workOrder: { th: "เลขที่ใบงาน (WO)", en: "Work order (WO)" },
   location: { th: "Location", en: "Location" },
@@ -83,6 +93,7 @@ const T = {
   errSched: { th: "กรุณาระบุวันที่เริ่มและวันที่เสร็จตามแผน", en: "Scheduled start and finish are required" },
   errTech: { th: "กรุณาเลือกช่างอย่างน้อย 1 คน", en: "Select at least one technician" },
   errLoad: { th: "โหลดใบงานไม่สำเร็จ", en: "Failed to load work order" },
+  errChoices: { th: "โหลดรายการอุปกรณ์ไม่สำเร็จ", en: "Failed to load equipment list" },
   errSave: { th: "บันทึกแผนไม่สำเร็จ", en: "Failed to save plan" },
 } as const;
 
@@ -122,28 +133,36 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
   const { lang } = useLanguage();
 
   const [wo, setWo] = useState<MaximoWorkOrder | null>(null);
+  const [choices, setChoices] = useState<EquipmentChoices | null>(null);
   const [technicians, setTechnicians] = useState<TechnicianOption[]>([]);
   const [canPlan, setCanPlan] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
+  const [checked, setChecked] = useState<Record<string, boolean>>({});
   const [plannedAt, setPlannedAt] = useState("");
   const [schedStart, setSchedStart] = useState("");
   const [schedFinish, setSchedFinish] = useState("");
   const [assignees, setAssignees] = useState<string[]>([]);
+
+  const selectedCount = useMemo(
+    () => Object.values(checked).filter(Boolean).length,
+    [checked]
+  );
 
   const load = useCallback(async () => {
     if (!wonum) return;
     setLoading(true);
     setError("");
     try {
-      const [meRes, woRes, techRes] = await Promise.all([
+      const [meRes, woRes, choicesRes, techRes] = await Promise.all([
         apiFetch("/me"),
         apiFetch(
           `/maximo/pm/open?source=${encodeURIComponent(source)}` +
           `&identifier=${encodeURIComponent(identifier ?? "")}&only_open=true`
         ),
+        apiFetch(`/maximo/pm/${encodeURIComponent(wonum)}/equipment-choices`),
         apiFetch("/users/by-role?role=technician"),
       ]);
 
@@ -166,6 +185,24 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
       setSchedFinish(toDateTimeLocalValue(found.sched_finish));
       setAssignees(Array.isArray(found.assignees) ? found.assignees.filter(Boolean) : []);
 
+      const cJson = await choicesRes.json().catch(() => ({} as any));
+      if (!choicesRes.ok) {
+        setError(String(cJson?.detail || t("errChoices", lang)));
+      } else {
+        const data: EquipmentChoices = {
+          wonum: cJson?.wonum ?? wonum,
+          station_id: cJson?.station_id ?? null,
+          location: cJson?.location ?? null,
+          chargers: Array.isArray(cJson?.chargers) ? cJson.chargers : [],
+          fixed: Array.isArray(cJson?.fixed) ? cJson.fixed : [],
+          selected_equipment: Array.isArray(cJson?.selected_equipment) ? cJson.selected_equipment : [],
+        };
+        setChoices(data);
+        const preset: Record<string, boolean> = {};
+        data.selected_equipment.forEach((e) => { preset[equipKey(e)] = true; });
+        setChecked(preset);
+      }
+
       const techJson = await techRes.json().catch(() => ({} as any));
       if (techRes.ok) setTechnicians(Array.isArray(techJson?.users) ? techJson.users : []);
     } catch (err) {
@@ -177,6 +214,9 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
   }, [source, identifier, wonum, lang]);
 
   useEffect(() => { load(); }, [load]);
+
+  const toggle = (key: string) =>
+    setChecked((prev) => ({ ...prev, [key]: !prev[key] }));
 
   const toggleAssignee = (username: string) =>
     setAssignees((prev) =>
@@ -196,6 +236,17 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
   const onSave = async () => {
     if (saving) return;
 
+    const equipment = choices
+      ? [...choices.chargers, ...choices.fixed]
+        .filter((e) => checked[equipKey(e)])
+        .map((e: EquipmentItem) => ({
+          type: e.type,
+          ...(e.sn ? { sn: e.sn } : {}),
+          ...(e.location ? { location: e.location } : {}),
+          ...(e.label ? { label: e.label } : {}),
+        }))
+      : null;
+
     if (!schedStart || !schedFinish) { setError(t("errSched", lang)); return; }
     if (schedRangeInvalid) { setError(t("schedRangeError", lang)); return; }
     if (assignees.length === 0) { setError(t("errTech", lang)); return; }
@@ -206,8 +257,9 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
       const res = await apiFetch(`/maximo/pm/${encodeURIComponent(wonum)}/equipment`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        // ไม่ส่ง equipment — planner มอบหมายด้วยกำหนดการ + ช่าง เท่านั้น
+        // ยังโหลดรายการอุปกรณ์ไม่ได้ = ไม่ส่งฟิลด์นี้ ให้ backend คงของเดิมไว้
         body: JSON.stringify({
+          ...(equipment ? { equipment } : {}),
           planned_at: plannedAt || new Date().toISOString(),
           sched_start: schedStart,
           sched_finish: schedFinish,
@@ -228,7 +280,7 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
     }
   };
 
-  const planStatus = derivePlanningStatus(0, wo?.planning_status ?? "pending");
+  const planStatus = derivePlanningStatus(selectedCount, wo?.planning_status ?? "pending");
 
   return (
     <section className="tw-pb-24">
@@ -427,6 +479,77 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
                   </div>
                 </div>
               </div>
+
+              {/* ═══ 2. อุปกรณ์ที่จะ PM ═══ */}
+              {choices && (
+                <div className="tw-mb-6 tw-rounded-lg tw-overflow-hidden tw-border tw-border-blue-gray-100 tw-bg-white tw-shadow-sm">
+                  <SectionHeader
+                    no={2}
+                    title={t("equipSection", lang)}
+                    right={
+                      <span className="tw-text-xs tw-font-medium tw-text-white/90">
+                        {t("selectedCount", lang)} {selectedCount} {t("items", lang)}
+                      </span>
+                    }
+                  />
+                  <div className="tw-p-4">
+                    <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-4">
+                      <div>
+                        <label className={LABEL}>{t("chargers", lang)}</label>
+                        {choices.chargers.length === 0 ? (
+                          <p className="tw-text-xs tw-text-orange-600">{t("noChargers", lang)}</p>
+                        ) : (
+                          <div className="tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-divide-y tw-divide-blue-gray-50 tw-max-h-56 tw-overflow-y-auto">
+                            {choices.chargers.map((c) => {
+                              const k = equipKey(c);
+                              return (
+                                <label key={k} className="tw-flex tw-items-center tw-gap-2.5 tw-px-3 tw-py-2.5 tw-cursor-pointer hover:tw-bg-blue-gray-50/60 tw-transition-colors">
+                                  <input
+                                    type="checkbox"
+                                    checked={!!checked[k]}
+                                    disabled={!canPlan}
+                                    onChange={() => toggle(k)}
+                                    className="tw-h-4 tw-w-4 tw-shrink-0 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500 tw-cursor-pointer"
+                                  />
+                                  <span className="tw-min-w-0 tw-truncate tw-text-sm tw-text-blue-gray-800">
+                                    {equipLabel(c)}
+                                  </span>
+                                  {c.sn && (
+                                    <span className="tw-ml-auto tw-text-xs tw-text-blue-gray-400">{c.sn}</span>
+                                  )}
+                                </label>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+
+                      <div>
+                        <label className={LABEL}>{t("stationLevel", lang)}</label>
+                        <div className="tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-divide-y tw-divide-blue-gray-50 tw-max-h-56 tw-overflow-y-auto">
+                          {choices.fixed.map((f) => {
+                            const k = equipKey(f);
+                            return (
+                              <label key={k} className="tw-flex tw-items-center tw-gap-2.5 tw-px-3 tw-py-2.5 tw-cursor-pointer hover:tw-bg-blue-gray-50/60 tw-transition-colors">
+                                <input
+                                  type="checkbox"
+                                  checked={!!checked[k]}
+                                  disabled={!canPlan}
+                                  onChange={() => toggle(k)}
+                                  className="tw-h-4 tw-w-4 tw-shrink-0 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500 tw-cursor-pointer"
+                                />
+                                <span className="tw-min-w-0 tw-truncate tw-text-sm tw-text-blue-gray-800">
+                                  {equipLabel(f)}
+                                </span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Actions — แถบล่างแบบเดียวกับ CM */}
               <div className="tw-flex tw-items-center tw-justify-between tw-pt-6 tw-border-t tw-border-blue-gray-100">

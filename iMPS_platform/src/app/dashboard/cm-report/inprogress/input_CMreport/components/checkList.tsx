@@ -2829,35 +2829,18 @@ export default function CMInProgressForm() {
 
                     {plannerSelfCloseMode && (
                         <div className="tw-mb-6 tw-rounded-xl tw-border tw-border-green-200 tw-bg-green-50/60 tw-p-5">
-                            <h3 className="tw-text-base tw-font-bold tw-text-blue-gray-900">
-                                {lang === "th" ? "เลือกแนวทางดำเนินงาน" : "Choose handling method"}
-                            </h3>
-                            <div className="tw-mt-4 tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-3">
-                                <label className="tw-flex tw-cursor-pointer tw-items-start tw-gap-3 tw-rounded-xl tw-border tw-border-blue-gray-200 tw-bg-white tw-p-4 hover:tw-border-indigo-400 hover:tw-bg-indigo-50/40 tw-transition-colors">
-                                    <input
-                                        type="checkbox"
-                                        checked={false}
-                                        onChange={returnToPlannerSchedule}
-                                        className="tw-mt-0.5 tw-h-5 tw-w-5 tw-rounded tw-border-blue-gray-300 tw-text-indigo-600 focus:tw-ring-indigo-500"
-                                    />
-                                    <span>
-                                        <span className="tw-block tw-text-sm tw-font-bold tw-text-blue-gray-900">{lang === "th" ? "ต้องวางแผนคนเข้า" : "Schedule onsite staff"}</span>
-                                        <span className="tw-mt-1 tw-block tw-text-xs tw-text-blue-gray-600">{lang === "th" ? "กลับไปกำหนดวัน เวลา และผู้ปฏิบัติงาน" : "Return to scheduling and assignee selection."}</span>
-                                    </span>
-                                </label>
-                                <label className="tw-flex tw-items-start tw-gap-3 tw-rounded-xl tw-border-2 tw-border-green-500 tw-bg-white tw-p-4 tw-shadow-sm">
-                                    <input
-                                        type="checkbox"
-                                        checked
-                                        onChange={() => undefined}
-                                        className="tw-mt-0.5 tw-h-5 tw-w-5 tw-rounded tw-border-blue-gray-300 tw-text-green-600 focus:tw-ring-green-500"
-                                    />
-                                    <span>
-                                        <span className="tw-block tw-text-sm tw-font-bold tw-text-blue-gray-900">{lang === "th" ? "สามารถปิดใบงานได้เลย" : "Planner can close directly"}</span>
-                                        <span className="tw-mt-1 tw-block tw-text-xs tw-text-blue-gray-600">{lang === "th" ? "กรอกรายละเอียดและเลือกผลสุดท้ายให้ครบเพื่อปิดใบงาน" : "Complete the details and select a final result to close the work order."}</span>
-                                    </span>
-                                </label>
-                            </div>
+                            <label className="tw-flex tw-cursor-pointer tw-items-start tw-gap-3">
+                                <input
+                                    type="checkbox"
+                                    checked
+                                    onChange={returnToPlannerSchedule}
+                                    className="tw-mt-0.5 tw-h-5 tw-w-5 tw-rounded tw-border-blue-gray-300 tw-text-green-600 focus:tw-ring-green-500"
+                                />
+                                <span>
+                                    <span className="tw-block tw-text-sm tw-font-bold tw-text-blue-gray-900">{lang === "th" ? "ปิดใบงาน" : "Close this work order"}</span>
+                                    <span className="tw-mt-1 tw-block tw-text-xs tw-text-blue-gray-600">{lang === "th" ? "กรอกรายละเอียดและเลือกผลสุดท้ายเพื่อปิดใบงาน — ติ๊กออกเพื่อกลับไปวางแผนคนเข้า" : "Complete the details and pick a final result to close it — untick to go back to scheduling."}</span>
+                                </span>
+                            </label>
                         </div>
                     )}
 
