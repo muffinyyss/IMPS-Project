@@ -50,8 +50,9 @@ const baseRoutes = [
       {
         layout: "dashboard",
         icon: <i className="fa fa-file-alt" />,
-        name: "PM report (All)",        // รวมทุก charger
-        path: "/dashboard/pm-all",
+        // ตารางใบงาน PM รวมทุกสถานี — แพทเทิร์นเดียวกับ CM List
+        name: "PM List",
+        path: "/dashboard/pm-list",
         allow: ["admin", "owner", "planner"],
       },
       {

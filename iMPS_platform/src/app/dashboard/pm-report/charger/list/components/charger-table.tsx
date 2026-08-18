@@ -56,7 +56,7 @@ const T = {
   // Table Headers
   colNo: { th: "ลำดับ", en: "No." },
   colDocName: { th: "ชื่อเอกสาร", en: "Document Name" },
-  colIssueId: { th: "Issue ID", en: "Issue ID" },
+  colIssueId: { th: "WO", en: "WO" },
   colPmDate: { th: "วันที่ PM", en: "PM Date" },
   colInspector: { th: "ผู้ตรวจสอบ", en: "Inspector" },
   colStatus: { th: "สถานะ", en: "Status" },
@@ -877,7 +877,8 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       meta: { headerAlign: "center", cellAlign: "left" },
     },
     {
-      accessorFn: (row) => row.issue_id || "—",
+      // เลขใบงาน Maximo — ใบเก่าที่ยังไม่ได้ผูก wonum ให้ถอยไปใช้ issue_id เดิมแทน
+      accessorFn: (row) => row.wonum || row.issue_id || "—",
       id: "issue_id",
       header: () => t("colIssueId", lang),
       cell: (info: CellContext<TData, unknown>) => (
@@ -1115,6 +1116,12 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     },
   ], [lang, searchParams, pathname, router, sn, canApprove, canPlan]);
 
+  // แท็บ Open มีแต่ใบงานจาก Maximo ที่ยังไม่ได้มอบหมาย — ยังไม่มีผู้ตรวจสอบให้แสดง
+  const visibleColumns = useMemo(
+    () => (flowTab === "open" ? columns.filter((c) => c.id !== "inspector") : columns),
+    [columns, flowTab]
+  );
+
   function sameUser(a?: string, b?: string) {
     return String(a ?? "").trim().toLowerCase() === String(b ?? "").trim().toLowerCase();
   }
@@ -1131,7 +1138,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
 
   const table = useReactTable({
     data: visibleData,
-    columns,
+    columns: visibleColumns,
     state: { globalFilter: filtering, sorting },
     onSortingChange: setSorting,
     onGlobalFilterChange: setFiltering,
@@ -1529,7 +1536,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
               <tbody className="tw-divide-y tw-divide-blue-gray-50">
                 {loading ? (
                   <tr>
-                    <td colSpan={columns.length} className="tw-text-center tw-py-10 sm:tw-py-12 lg:tw-py-16">
+                    <td colSpan={visibleColumns.length} className="tw-text-center tw-py-10 sm:tw-py-12 lg:tw-py-16">
                       <div className="tw-flex tw-flex-col tw-items-center tw-gap-2 sm:tw-gap-3">
                         <div className="tw-w-6 tw-h-6 sm:tw-w-8 sm:tw-h-8 lg:tw-w-10 lg:tw-h-10 tw-border-2 sm:tw-border-3 tw-border-blue-500 tw-border-t-transparent tw-rounded-full tw-animate-spin"></div>
                         <span className="tw-text-blue-gray-400 tw-text-xs sm:tw-text-sm">{t("loading", lang)}</span>
@@ -1575,7 +1582,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
                   })
                 ) : (
                   <tr>
-                    <td colSpan={columns.length} className="tw-text-center tw-py-10 sm:tw-py-12 lg:tw-py-16">
+                    <td colSpan={visibleColumns.length} className="tw-text-center tw-py-10 sm:tw-py-12 lg:tw-py-16">
                       <div className="tw-flex tw-flex-col tw-items-center tw-gap-2 sm:tw-gap-3">
                         <div className="tw-w-10 tw-h-10 sm:tw-w-12 sm:tw-h-12 lg:tw-w-16 lg:tw-h-16 tw-rounded-full tw-bg-blue-gray-50 tw-flex tw-items-center tw-justify-center">
                           <DocumentArrowDownIcon className="tw-w-5 tw-h-5 sm:tw-w-6 sm:tw-h-6 lg:tw-w-8 lg:tw-h-8 tw-text-blue-gray-300" />
