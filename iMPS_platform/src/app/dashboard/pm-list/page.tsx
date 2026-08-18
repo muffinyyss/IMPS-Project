@@ -319,7 +319,11 @@ export default function PMListPage() {
           tab, view: "form", wonum: r.wonum || r.id, from: PM_ORIGIN_LIST,
           ...(canPlan ? { planning: "1" } : { wo_info: "1" }),
         })
-      : new URLSearchParams({ tab, view: "form", edit_id: r.id, from: PM_ORIGIN_LIST });
+      // ใบที่รออนุมัติ + เป็นผู้อนุมัติ → เปิดโหมดตรวจ (เห็นของที่ช่างกรอก + ปุ่มอนุมัติ/ตีกลับ)
+      : new URLSearchParams({
+          tab, view: "form", edit_id: r.id, from: PM_ORIGIN_LIST,
+          ...(canPlan && stageOf(r) === "wait_approve" ? { approve: "1", pmtab: "post" } : {}),
+        });
     if (tab === "charger" && r.sn && r.sn !== "-") params.set("sn", r.sn);
     else if (r.station_id) params.set("station_id", r.station_id);
     router.push(`/dashboard/pm-report?${params.toString()}`);

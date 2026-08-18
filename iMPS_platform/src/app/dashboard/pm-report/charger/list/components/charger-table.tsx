@@ -804,6 +804,16 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     router.push(`${pathname}?${params.toString()}`, { scroll: false });
   };
 
+  // เปิดเอกสารที่ช่างส่งมาเพื่อตรวจก่อนอนุมัติ
+  const goReview = (row: TData) => {
+    if (!row.id) return;
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("view", "form"); params.set("edit_id", row.id);
+    params.set("approve", "1"); params.set("pmtab", "post");
+    params.delete("planning"); params.delete("wo_info"); params.delete("wonum");
+    router.push(`${pathname}?${params.toString()}`, { scroll: false });
+  };
+
   const leavePlanning = () => {
     // มาจากหน้า PM List → กลับไปหน้านั้น ไม่ใช่ตาราง tab ที่ผู้ใช้ไม่เคยเปิด
     const back = pmBackRoute(searchParams);
@@ -1098,7 +1108,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
                     color="green"
                     variant="outlined"
                     className="tw-shrink-0 tw-text-[10px] sm:tw-text-xs tw-px-2 sm:tw-px-3 tw-py-1 tw-min-h-0 tw-h-auto tw-font-medium tw-rounded-md"
-                    onClick={() => setApproveRow(info.row.original)}
+                    onClick={() => goReview(info.row.original)}
                   >
                     {t("approve", lang)}
                   </Button>
@@ -1594,10 +1604,13 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
                       // planner/admin → หน้าวางแผน · ช่าง → หน้าข้อมูลใบงานที่มีปุ่มเริ่ม PM
                       // ช่างกดใบที่ยังไม่ได้วางแผนไม่ได้ ยังไม่รู้ว่าต้อง PM อะไร
                       onClick={
-                        !isWo ? undefined
-                          : canPlan ? () => goPlan(row.original)
-                            : planned ? () => goFillPm(row.original)
-                              : undefined
+                        // ใบที่ช่างส่งมารออนุมัติ — ผู้อนุมัติเปิดดูของที่กรอกมาก่อนตัดสินใจ
+                        !isWo && canApprove && toPmFlow(row.original) === "wait_approve"
+                          ? () => goReview(row.original)
+                          : !isWo ? undefined
+                            : canPlan ? () => goPlan(row.original)
+                              : planned ? () => goFillPm(row.original)
+                                : undefined
                       }
                       title={
                         isWo
@@ -1606,7 +1619,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
                             : t("fillPmBtn", lang))
                           : undefined
                       }
-                      className={`tw-transition-colors hover:tw-bg-blue-50/40 hover:tw-shadow-[inset_3px_0_0_0_#2196F3] ${index % 2 === 0 ? 'tw-bg-white' : 'tw-bg-blue-gray-50/30'} ${isWo && (canPlan || planned) ? "tw-cursor-pointer" : ""}`}
+                      className={`tw-transition-colors hover:tw-bg-blue-50/40 hover:tw-shadow-[inset_3px_0_0_0_#2196F3] ${index % 2 === 0 ? 'tw-bg-white' : 'tw-bg-blue-gray-50/30'} ${(isWo && (canPlan || planned)) || (!isWo && canApprove && toPmFlow(row.original) === "wait_approve") ? "tw-cursor-pointer" : ""}`}
                     >
                       {row.getVisibleCells().map((cell) => {
                         const align = (cell.column.columnDef as any).meta?.cellAlign ?? "left";

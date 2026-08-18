@@ -11,6 +11,7 @@ import Image from "next/image";
 import { draftKey, saveDraftLocal, loadDraftLocal, clearDraftLocal } from "../lib/draft";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { pmBackRoute } from "@/app/dashboard/pm-report/lib/origin";
+import PmApprovalBar from "@/app/dashboard/pm-report/components/PmApprovalBar";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 import { Tabs, TabsHeader, Tab } from "@material-tailwind/react";
 import { putPhoto, getPhotoByDbKey, delPhoto, type PhotoRef } from "../lib/draftPhotos";
@@ -2183,6 +2184,9 @@ export default function ChargerPMForm() {
 
     const [workStart, setWorkStart] = useState<string>("");
     const [workFinish, setWorkFinish] = useState<string>("");
+    // planner เปิดเอกสารที่ช่างส่งมาเพื่อตรวจก่อนอนุมัติ (?approve=1)
+    const approveMode = searchParams.get("approve") === "1";
+
     const pmStarted = pmStartedManually || !!editId || !!workStart
         || searchParams.get("started") === "1";
 
@@ -3435,6 +3439,18 @@ export default function ChargerPMForm() {
                     : `Uploading ${uploadProgress.side === "post" ? "Post-PM" : "Pre-PM"} photos... ${uploadProgress.completed}/${uploadProgress.total}`}
             />
             <div className="tw-mx-auto tw-max-w-6xl tw-flex tw-items-center tw-justify-between tw-mb-4">
+
+                {/* ตรวจเพื่ออนุมัติ — ปุ่มอยู่คู่กับปุ่มย้อนกลับ เห็นทันทีไม่ต้องเลื่อน */}
+                {approveMode && editId && (
+                    <div className="tw-flex tw-items-center tw-gap-2">
+                        <PmApprovalBar
+                            prefix="pmreport" reportId={editId}
+                            scope={{ sn }}
+                            apiBase={API_BASE}
+                            onDone={(msg) => { alert(msg); goBackToList(); }}
+                        />
+                    </div>
+                )}
                 <Button variant="outlined" size="sm" onClick={goBackToList} title={t("backToList", lang)}>
                     <ArrowLeftIcon className="tw-w-4 tw-h-4 tw-stroke-blue-gray-900 tw-stroke-2" />
                 </Button>
