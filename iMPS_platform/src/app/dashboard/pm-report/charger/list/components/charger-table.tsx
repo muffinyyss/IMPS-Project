@@ -62,11 +62,16 @@ const T = {
   colStatus: { th: "สถานะ", en: "Status" },
   colPdf: { th: "PDF", en: "PDF" },
 
-  // Workflow statuses
-  stDraft: { th: "ช่างกำลังกรอก", en: "Technician in progress" },
-  stWaitApprove: { th: "รออนุมัติ", en: "Wait for approve" },
-  stClosed: { th: "ปิดงานแล้ว", en: "Closed" },
-  stRejected: { th: "ตีกลับให้แก้", en: "Sent back" },
+  // Workflow statuses — ชื่อเดียวกับด่านของงาน
+  //   Maximo เปิดใบ → Open
+  //   planner assign → In Progress
+  //   technician กรอกเสร็จ → Wait for approve
+  //   planner approve → Closed
+  stDraft: { th: "In Progress", en: "In Progress" },
+  stWaitApprove: { th: "Wait for approve", en: "Wait for approve" },
+  stClosed: { th: "Closed", en: "Closed" },
+  // ตีกลับ = กลับไปอยู่ด่าน In Progress ของช่าง (เหตุผลที่ตีกลับดูได้จาก tooltip)
+  stRejected: { th: "In Progress", en: "In Progress" },
 
   // Approve / Reject
   approve: { th: "อนุมัติ", en: "Approve" },
@@ -87,13 +92,18 @@ const T = {
 
   // Maximo work orders (แถวใบงานที่ยังไม่มีเอกสาร PM)
   stWoPending: { th: "Open", en: "Open" },
-  stWoPlanned: { th: "วางแผนแล้ว", en: "Planned" },
+  stWoPlanned: { th: "In Progress", en: "In Progress" },
   planBtn: { th: "วางแผน", en: "Plan" },
   editPlanBtn: { th: "แก้แผน", en: "Edit plan" },
   viewPlanBtn: { th: "ดูแผน", en: "View plan" },
   planSaved: { th: "บันทึกแผนแล้ว", en: "Plan saved" },
   woFromMaximo: { th: "ใบงานจาก Maximo", en: "Work order from Maximo" },
   fillPmBtn: { th: "กรอก PM", en: "Fill PM" },
+
+  // Workflow sub-tabs
+  tabOpen: { th: "Open", en: "Open" },
+  tabInProgress: { th: "In Progress", en: "In Progress" },
+  tabClosed: { th: "Closed", en: "Closed" },
 
   // Pagination
   entriesPerPage: { th: "รายการต่อหน้า", en: "entries per page" },
@@ -177,6 +187,27 @@ function toPmFlow(row: TData): PmFlow {
 }
 
 const PM_APPROVE_ROLES = ["admin", "planner"];
+
+/** แท็บตามด่านของงาน — จัดกลุ่มสถานะแบบเดียวกับหน้า CM */
+type FlowTab = "open" | "in-progress" | "closed";
+
+const FLOW_TABS: { id: FlowTab; key: "tabOpen" | "tabInProgress" | "tabClosed" }[] = [
+  { id: "open", key: "tabOpen" },
+  { id: "in-progress", key: "tabInProgress" },
+  { id: "closed", key: "tabClosed" },
+];
+
+//  open        = ใบงาน Maximo ที่ planner ยังไม่วางแผน
+//  in-progress = วางแผนแล้ว / ช่างกำลังกรอก / โดนตีกลับ / รออนุมัติ
+//  closed      = planner อนุมัติปิดแล้ว (รวมใบเก่าที่ปิดก่อนมี flow อนุมัติ)
+const FLOW_TAB_OF: Record<PmFlow, FlowTab> = {
+  wo_pending: "open",
+  wo_planned: "in-progress",
+  draft: "in-progress",
+  rejected: "in-progress",
+  wait_approve: "in-progress",
+  closed: "closed",
+};
 
 type Props = {
   token?: string;
@@ -720,6 +751,8 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
   const canApprove = PM_APPROVE_ROLES.includes(String(me?.role ?? "").trim().toLowerCase());
   const canPlan = PM_PLANNING_ROLES.includes(String(me?.role ?? "").trim().toLowerCase());
 
+  const [flowTab, setFlowTab] = useState<FlowTab>("open");
+
   // ด่านวางแผน — เข้าจากแถวในตารางเหมือน CM (?view=form&planning=1&wonum=…)
   const planningWonum = searchParams.get("planning") === "1"
     ? (searchParams.get("wonum") ?? "")
@@ -1089,11 +1122,12 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
   const visibleData = useMemo(() => {
     const username = me?.username;
     return data.filter((row) => {
+      if (FLOW_TAB_OF[toPmFlow(row)] !== flowTab) return false;
       if (row.side !== "pre") return true;
       if (!username) return false;
       return sameUser(row.inspector, username);
     });
-  }, [data, me?.username]);
+  }, [data, me?.username, flowTab]);
 
   const table = useReactTable({
     data: visibleData,
@@ -1107,6 +1141,12 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     getPaginationRowModel: getPaginationRowModel(),
     columnResizeMode: "onChange",
   });
+
+  // สลับแท็บแล้วกลับไปหน้าแรกของตาราง — ไม่งั้นค้างอยู่หน้า 3 ของแท็บเดิมแล้วเห็นว่างเปล่า
+  useEffect(() => {
+    table.setPageIndex(0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flowTab]);
 
   // Upload dialog
   const pdfInputRef = useRef<HTMLInputElement>(null);
@@ -1329,6 +1369,30 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
               >
                 {t("pageSubtitle", lang)}
               </Typography>
+
+              {/* แท็บตามด่านของงาน */}
+              <div className="tw-mt-2.5 tw-flex tw-flex-wrap tw-items-center tw-gap-1.5">
+                {FLOW_TABS.map((tab) => {
+                  const active = flowTab === tab.id;
+                  const count = data.filter((r) => FLOW_TAB_OF[toPmFlow(r)] === tab.id).length;
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setFlowTab(tab.id)}
+                      className={`tw-rounded-lg tw-px-3 tw-py-1.5 tw-text-[11px] sm:tw-text-xs tw-font-medium tw-whitespace-nowrap tw-transition-all tw-border ${active
+                        ? "tw-bg-gray-900 tw-text-white tw-border-gray-900 tw-shadow-sm"
+                        : "tw-bg-white tw-text-blue-gray-600 tw-border-blue-gray-200 hover:tw-bg-blue-gray-50 hover:tw-text-blue-gray-800"
+                        }`}
+                    >
+                      {t(tab.key, lang)}
+                      <span className={`tw-ml-1.5 ${active ? "tw-text-white/70" : "tw-text-blue-gray-400"}`}>
+                        {count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
             {/* Buttons Section */}
