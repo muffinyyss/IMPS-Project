@@ -672,9 +672,8 @@ export default function CMOpenForm() {
     // ใบที่ถูกตีกลับแล้ว (มี reject_remark) = รอ cs ผู้เปิดแก้ไขก่อน ยังไม่ใช่คิวของ planner
     const isReturnedToCs = isCsStage && !!rejectedInfo.remark;
 
-    // ติ๊ก "ปิดใบงาน" ได้ทุกด่านก่อนลงมือซ่อม: ใบใหม่ที่ planner เปิดเอง, SR ที่ยังรออนุมัติ, และใบที่รอวางแผน
-    const showPlannerHandlingChoice =
-        isPlanner && !isCancelled && !isReturnedToCs && (isEdit ? (isCsStage || isPlanningStage) : true);
+    // ติ๊ก "ปิดใบงาน" ได้เสมอสำหรับ planner — ทุกด่าน/ทุกสถานะ ยกเว้นใบที่ถูกยกเลิก
+    const showPlannerHandlingChoice = isPlanner && !isCancelled;
 
 
     // คนเปิดใบงานแก้ข้อมูลได้ระหว่างใบยังอยู่ด่าน cs — รวม cs ที่ถูก planner ตีกลับมาให้แก้
