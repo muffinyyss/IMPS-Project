@@ -315,6 +315,17 @@ export default function PMListPage() {
   const activeFilterCount =
     (typeFilter ? 1 : 0) + (stageFilter ? 1 : 0) + (stationFilter !== "All" ? 1 : 0);
 
+  // ช่างเห็นเฉพาะงานที่ planner มอบหมายให้ตัวเอง — role อื่นเห็นทุกใบ
+  const scopedRows = useMemo(() => {
+    if (!me || me.role !== "technician") return rows;
+    const uname = me.username.trim().toLowerCase();
+    if (!uname) return [];
+    const isMine = (v?: string) => String(v ?? "").trim().toLowerCase() === uname;
+    return rows.filter((r) =>
+      (r.assignees ?? []).some(isMine) || isMine(r.technician)
+    );
+  }, [rows, me]);
+
   const stations = useMemo(() => {
     const names = Array.from(new Set(scopedRows.map((r) => r.station_name || r.station_id))).filter(Boolean);
     return ["All", ...names.sort()];
@@ -333,17 +344,6 @@ export default function PMListPage() {
     () => (yearSel !== "all" && monthSel !== "all" ? weeksInMonth(yearSel, monthSel) : 0),
     [yearSel, monthSel]
   );
-
-  // ช่างเห็นเฉพาะงานที่ planner มอบหมายให้ตัวเอง — role อื่นเห็นทุกใบ
-  const scopedRows = useMemo(() => {
-    if (!me || me.role !== "technician") return rows;
-    const uname = me.username.trim().toLowerCase();
-    if (!uname) return [];
-    const isMine = (v?: string) => String(v ?? "").trim().toLowerCase() === uname;
-    return rows.filter((r) =>
-      (r.assignees ?? []).some(isMine) || isMine(r.technician)
-    );
-  }, [rows, me]);
 
   const periodRows = useMemo(() => {
     return scopedRows.filter((r) => {
