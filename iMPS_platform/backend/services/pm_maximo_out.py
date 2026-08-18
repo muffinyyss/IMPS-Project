@@ -75,6 +75,13 @@ async def _record(coll, report_id, interface: str, ok: bool, **detail) -> None:
         log.warning(f"  ⚠️ record maximo_sync.{interface} failed: {e}")
 
 
+def _err_detail(e: Exception) -> str:
+    """ข้อความ error + body ดิบจาก Maximo — body คือที่มีรหัส BMXAA บอกสาเหตุจริง"""
+    msg = str(e)
+    body = getattr(e, "body", "") or ""
+    return f"{msg} | {body[:400]}" if body else msg
+
+
 def _skip(reason: str) -> dict:
     return {"ok": False, "skipped": True, "reason": reason}
 
@@ -216,8 +223,8 @@ async def push_labor_time(coll, report_id, report: dict) -> dict:
             )
             sent += 1
         except MaximoError as e:
-            log.warning(f"  ⚠️ IN09 labtrans failed (WO {wonum} / {labor}): {e}")
-            errors.append(f"{username}: {e}")
+            log.warning(f"  ⚠️ IN09 labtrans failed (WO {wonum} / {labor}): {_err_detail(e)}")
+            errors.append(f"{username}: {_err_detail(e)}")
 
     ok = sent > 0 and not errors and not unmapped
     await _record(coll, report_id, "IN09", ok, wonum=wonum, sent=sent,
