@@ -193,6 +193,90 @@ async def reject(
     return {"ok": True, "status": PM_STATUS_DRAFT}
 
 
+# ── ความครบถ้วนของใบงาน 1 ใบ ──
+# ใบงาน Maximo 1 ใบครอบอุปกรณ์ได้หลายตัว (planner เลือกไว้ตอนวางแผน) และอุปกรณ์
+# แต่ละตัวมีเอกสาร PM ของตัวเอง คนละ collection — จะยิงปิดงานเข้า Maximo ได้
+# ต่อเมื่อ **ปิดครบทุกตัว** ไม่งั้น WO จะถูกปิดทั้งที่ยังทำไม่เสร็จ
+
+_TYPE_LABEL = {"charger": "Charger", "mdb": "MDB", "ccb": "CCB",
+               "cbbox": "CB_BOX", "station": "Station"}
+
+
+def _equip_label(item: dict) -> str:
+    t = str(item.get("type") or "").strip().lower()
+    if t == "charger":
+        return item.get("label") or item.get("sn") or "Charger"
+    return _TYPE_LABEL.get(t, t or "-")
+
+
+def _coll_for_equip(item: dict, station_id: str):
+    """อุปกรณ์ 1 ตัว → collection ของเอกสาร PM ชนิดนั้น"""
+    from routers.pm_helpers import (
+        get_pmreport_collection_for, get_mdbpmreport_collection_for,
+        get_ccbpmreport_collection_for, get_cbboxpmreport_collection_for,
+        get_stationpmreport_collection_for,
+    )
+
+    t = str(item.get("type") or "").strip().lower()
+    if t == "charger":
+        sn = str(item.get("sn") or "").strip()
+        # charger เก็บแยกตาม SN ไม่ใช่ station_id
+        return get_pmreport_collection_for(sn) if sn else None
+    getter = {
+        "mdb": get_mdbpmreport_collection_for,
+        "ccb": get_ccbpmreport_collection_for,
+        "cbbox": get_cbboxpmreport_collection_for,
+        "station": get_stationpmreport_collection_for,
+    }.get(t)
+    return getter(station_id) if getter and station_id else None
+
+
+async def wo_completion(wonum: str) -> dict:
+    """
+    ใบงาน Maximo ใบนี้ปิดครบทุกอุปกรณ์ที่ planner เลือกไว้หรือยัง
+
+    Returns:
+        {"required": n, "done": m, "missing": [ชื่ออุปกรณ์…], "complete": bool}
+        ไม่มีใบงาน / planner ไม่ได้เลือกอุปกรณ์ไว้ → complete=True (ไม่มีอะไรให้รอ)
+    """
+    from config import client
+
+    wonum = (wonum or "").strip()
+    if not wonum:
+        return {"required": 0, "done": 0, "missing": [], "complete": True}
+
+    wo = await client["iMPS"]["maximo_pm_open"].find_one({"wonum": wonum}) or {}
+    items = wo.get("selected_equipment") or []
+    if not items:
+        return {"required": 0, "done": 0, "missing": [], "complete": True}
+
+    station_id = (wo.get("station_id") or "").strip()
+    closed_cond = {"$or": status_or_conditions(PM_STATUS_CLOSED)}
+
+    done, missing = 0, []
+    for item in items:
+        coll = _coll_for_equip(item, station_id)
+        label = _equip_label(item)
+        if coll is None:
+            missing.append(label)
+            continue
+        try:
+            hit = await coll.find_one({"wonum": wonum, **closed_cond}, {"_id": 1})
+        except Exception:
+            hit = None
+        if hit:
+            done += 1
+        else:
+            missing.append(label)
+
+    return {
+        "required": len(items),
+        "done": done,
+        "missing": missing,
+        "complete": not missing,
+    }
+
+
 def post_submit_fields(body: Any) -> dict:
     """ฟิลด์เพิ่มเติมตอนบันทึก Post-PM ที่ทุกชนิดใช้ร่วมกัน"""
     return {

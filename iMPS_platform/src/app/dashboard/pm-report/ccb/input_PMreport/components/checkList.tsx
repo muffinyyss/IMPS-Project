@@ -540,6 +540,11 @@ const T = {
     workTimeHint: { th: "ใช้ส่งเวลาทำงานของช่างเข้า Maximo", en: "Sent to Maximo as actual labor time" },
     alertWorkTime: { th: "กรุณากรอกเวลาเริ่มงานและเวลาเสร็จงาน", en: "Please fill in the start and finish time" },
     alertWorkTimeOrder: { th: "เวลาเสร็จงานต้องไม่ก่อนเวลาเริ่มงาน", en: "Finish time must not be before the start time" },
+    startPm: { th: "เริ่ม PM", en: "Start PM" },
+    startPmHint: {
+        th: "ตรวจข้อมูลใบงานด้านบนให้เรียบร้อย แล้วกด “เริ่ม PM” เพื่อเปิดแบบฟอร์มกรอก",
+        en: "Review the work order above, then press “Start PM” to open the checklist",
+    },
 };
 
 const t = (key: keyof typeof T, lang: Lang): string => T[key][lang];
@@ -1407,9 +1412,18 @@ export default function CCBPMReport() {
 
     // เวลาทำงานจริงของช่าง (datetime-local) — ส่งเข้า Maximo ทาง IN09 ตอนปิดใบงาน
 
+    // ช่างต้องกด "เริ่ม PM" ก่อนถึงจะกรอกได้ — ใบที่เริ่มไปแล้ว (มีเวลาเริ่มงาน
+
+    // หรือเปิดจาก edit_id) ถือว่าเริ่มแล้ว ไม่ต้องกดซ้ำทุกครั้งที่เข้ามา
+
+    const [pmStartedManually, setPmStartedManually] = useState(false);
+
+
     const [workStart, setWorkStart] = useState<string>("");
 
     const [workFinish, setWorkFinish] = useState<string>("");
+
+    const pmStarted = pmStartedManually || !!editId || !!workStart;
     const [inspector, setInspector] = useState<string>("");
     const [postApiLoaded, setPostApiLoaded] = useState(false);
     const [commentPre, setCommentPre] = useState<string>("");
@@ -2850,6 +2864,21 @@ export default function CCBPMReport() {
                     </div>
 
                     <div className="tw-mt-6 sm:tw-mt-8 tw-flex tw-flex-col tw-gap-3">
+                    {/* ด่านก่อนเริ่มกรอก — ช่างอ่านข้อมูลใบงานก่อน แล้วค่อยกดเริ่ม (เหมือนหน้า CM)
+                        ใบที่เคยเริ่มกรอกไปแล้วเข้ามาก็ทำต่อได้เลย ไม่ต้องกดซ้ำ */}
+                    {!pmStarted && (
+                        <div className="tw-mx-auto tw-max-w-6xl tw-mb-6 tw-rounded-xl tw-border tw-border-amber-200 tw-bg-amber-50 tw-px-5 tw-py-6 tw-text-center">
+                            <p className="tw-mb-4 tw-text-sm tw-text-amber-800">{t("startPmHint", lang)}</p>
+                            <Button
+                                type="button"
+                                onClick={() => setPmStartedManually(true)}
+                                className="tw-bg-amber-500 hover:tw-bg-amber-600 tw-text-white tw-font-semibold tw-text-base tw-px-8 tw-py-3 tw-rounded-xl hover:tw-shadow-xl hover:tw-shadow-amber-500/30 tw-transition-all"
+                            >
+                                {t("startPm", lang)}
+                            </Button>
+                        </div>
+                    )}
+
                     {/* เวลาทำงานจริงของช่าง — ต้องกรอกก่อนส่งปิดใบงาน (ส่งเข้า Maximo IN09) */}
                     {isPostMode && (
                         <div className="tw-mt-6 tw-pt-4 tw-border-t tw-border-gray-200">

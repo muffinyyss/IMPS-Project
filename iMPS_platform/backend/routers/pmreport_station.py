@@ -778,14 +778,21 @@ async def stationpmreport_approve(
     coll = get_stationpmreport_collection_for(station_id)
     oid = pm_flow.to_oid(report_id)
 
-    result = await pm_flow.approve(coll, oid, {{"station_id": station_id}}, current)
+    result = await pm_flow.approve(coll, oid, {"station_id": station_id}, current)
 
     # อ่านใบงานหลังบันทึกเพื่อให้ข้อมูลที่ส่งไปตรงกับที่เก็บจริง
-    fresh = await coll.find_one({{"_id": oid}}) or {{}}
+    fresh = await coll.find_one({"_id": oid}) or {}
+
+    # ใบงาน Maximo 1 ใบครอบหลายอุปกรณ์ — ปิดครบทุกตัวก่อนถึงจะยิงปิด WO
+    progress = await pm_flow.wo_completion(fresh.get("wonum") or "")
+    if not progress["complete"]:
+        return {**result, "maximo": {"skipped": "ยังกรอกไม่ครบทุกอุปกรณ์ในใบงาน"},
+                "progress": progress}
+
     maximo_result = await pm_maximo_out.safe_sync_closed(
-        coll, oid, fresh, memo=f"closed by {{current.username}}"
+        coll, oid, fresh, memo=f"closed by {current.username}"
     )
-    return {{**result, "maximo": maximo_result}}
+    return {**result, "maximo": maximo_result, "progress": progress}
 
 
 @router.post("/stationpmreport/{report_id}/reject")
@@ -799,7 +806,7 @@ async def stationpmreport_reject(
     station_id = station_id.strip()
     coll = get_stationpmreport_collection_for(station_id)
     oid = pm_flow.to_oid(report_id)
-    return await pm_flow.reject(coll, oid, {{"station_id": station_id}}, current, body.remark)
+    return await pm_flow.reject(coll, oid, {"station_id": station_id}, current, body.remark)
 
 
 @router.post("/stationpmurl/upload-files", status_code=201)

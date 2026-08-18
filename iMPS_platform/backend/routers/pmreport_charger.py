@@ -21,6 +21,7 @@ from config import (
     CBBOXPMReportDB, CBBOXPMUrlDB, normalize_pm_date, _ensure_utc_iso,
 )
 from deps import UserClaims, get_current_user
+from routers import pm_flow
 from services import pm_maximo_out
 from uploads_access import assert_station_access, assert_sn_access
 from routers.pm_helpers import (
@@ -855,14 +856,21 @@ async def pmreport_approve(
             detail="Report not found or not in 'Wait for approve' status",
         )
 
-    # ── ส่งต่อให้ Maximo (IN02 สถานะปิด + IN03 ลิงก์เอกสาร) ──
+    # ── ส่งต่อให้ Maximo (IN03 → IN09 → IN02 COMP) ──
     # อ่านใบงานหลังบันทึกเพื่อให้ข้อมูลที่ส่งไปตรงกับที่เก็บจริง
     fresh = await coll.find_one({"_id": oid}) or {}
+
+    # ใบงาน Maximo 1 ใบครอบหลายอุปกรณ์ — ปิดครบทุกตัวก่อนถึงจะยิงปิด WO
+    progress = await pm_flow.wo_completion(fresh.get("wonum") or "")
+    if not progress["complete"]:
+        return {"ok": True, "status": PM_STATUS_CLOSED,
+                "maximo": {"skipped": "ยังกรอกไม่ครบทุกอุปกรณ์ในใบงาน"}, "progress": progress}
+
     maximo_result = await pm_maximo_out.safe_sync_closed(
         coll, oid, fresh, memo=f"closed by {current.username}"
     )
 
-    return {"ok": True, "status": PM_STATUS_CLOSED, "maximo": maximo_result}
+    return {"ok": True, "status": PM_STATUS_CLOSED, "maximo": maximo_result, "progress": progress}
 
 
 class PMRejectIn(BaseModel):
