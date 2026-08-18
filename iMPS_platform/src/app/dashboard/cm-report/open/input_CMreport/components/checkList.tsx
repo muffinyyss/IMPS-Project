@@ -495,7 +495,6 @@ function PhotoUpload({ photos_open, onAdd, onRemove, max, disabled, lang, id }: 
                                     playsInline
                                     preload="metadata"
                                     src={f.preview}
-                                    type={f.mime?.toLowerCase().startsWith("video/") ? f.mime : undefined}
                                     className="tw-w-full tw-rounded-md tw-bg-black"
                                     onClick={(e) => e.stopPropagation()}
                                 />

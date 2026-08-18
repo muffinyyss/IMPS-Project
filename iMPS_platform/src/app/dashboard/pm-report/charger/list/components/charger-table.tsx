@@ -32,7 +32,13 @@ import ChargerPMForm from "@/app/dashboard/pm-report/charger/input_PMreport/comp
 import { apiFetch } from "@/utils/api";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
 import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
-import MaximoWorkOrders from "@/app/dashboard/pm-report/components/MaximoWorkOrders";
+import PmPlanForm from "@/app/dashboard/pm-report/components/PmPlanForm";
+import {
+  derivePlanningStatus,
+  equipLabel,
+  PM_PLANNING_ROLES,
+  type MaximoWorkOrder,
+} from "@/app/dashboard/pm-report/components/planning";
 
 // ==================== TRANSLATIONS ====================
 const T = {
@@ -53,7 +59,41 @@ const T = {
   colIssueId: { th: "Issue ID", en: "Issue ID" },
   colPmDate: { th: "วันที่ PM", en: "PM Date" },
   colInspector: { th: "ผู้ตรวจสอบ", en: "Inspector" },
+  colStatus: { th: "สถานะ", en: "Status" },
   colPdf: { th: "PDF", en: "PDF" },
+
+  // Workflow statuses
+  stDraft: { th: "ช่างกำลังกรอก", en: "Technician in progress" },
+  stWaitApprove: { th: "รออนุมัติ", en: "Wait for approve" },
+  stClosed: { th: "ปิดงานแล้ว", en: "Closed" },
+  stRejected: { th: "ตีกลับให้แก้", en: "Sent back" },
+
+  // Approve / Reject
+  approve: { th: "อนุมัติ", en: "Approve" },
+  reject: { th: "ตีกลับ", en: "Reject" },
+  approveTitle: { th: "อนุมัติปิดใบงาน PM", en: "Approve and close PM work order" },
+  approveConfirm: { th: "ยืนยันอนุมัติปิดใบงานนี้หรือไม่?", en: "Close this work order?" },
+  rejectTitle: { th: "ตีกลับใบงานให้ช่างแก้", en: "Send back to technician" },
+  rejectRemarkLabel: { th: "เหตุผลที่ตีกลับ", en: "Reason" },
+  rejectRemarkRequired: { th: "กรุณาระบุเหตุผลที่ตีกลับ", en: "A reason is required" },
+  approvedBy: { th: "อนุมัติโดย", en: "Approved by" },
+  rejectedBy: { th: "ตีกลับโดย", en: "Sent back by" },
+  approveSuccess: { th: "อนุมัติปิดใบงานแล้ว", en: "Work order closed" },
+  rejectSuccess: { th: "ตีกลับใบงานให้ช่างแล้ว", en: "Sent back to technician" },
+  approveFailed: { th: "อนุมัติไม่สำเร็จ:", en: "Approve failed:" },
+  rejectFailed: { th: "ตีกลับไม่สำเร็จ:", en: "Reject failed:" },
+  confirmBtn: { th: "ยืนยัน", en: "Confirm" },
+  fixAndResubmit: { th: "แก้ไข", en: "Fix" },
+
+  // Maximo work orders (แถวใบงานที่ยังไม่มีเอกสาร PM)
+  stWoPending: { th: "รอวางแผน", en: "Awaiting plan" },
+  stWoPlanned: { th: "วางแผนแล้ว", en: "Planned" },
+  planBtn: { th: "วางแผน", en: "Plan" },
+  editPlanBtn: { th: "แก้แผน", en: "Edit plan" },
+  viewPlanBtn: { th: "ดูแผน", en: "View plan" },
+  planSaved: { th: "บันทึกแผนแล้ว", en: "Plan saved" },
+  woFromMaximo: { th: "ใบงานจาก Maximo", en: "Work order from Maximo" },
+  fillPmBtn: { th: "กรอก PM", en: "Fill PM" },
 
   // Pagination
   entriesPerPage: { th: "รายการต่อหน้า", en: "entries per page" },
@@ -107,7 +147,36 @@ type TData = {
   inspector?: string;
   side?: string;
   has_photos?: boolean;
+  status?: string;
+  reject_remark?: string;
+  rejected_by?: string;
+  approved_by?: string;
+  /** แถวใบงาน Maximo ที่ยังไม่มีเอกสาร PM — ด่าน "planner วางแผน" ของ flow */
+  kind?: "report" | "wo";
+  wonum?: string;
+  planning_status?: string;
+  assignees?: string[];
+  sched_start?: string;
+  selected_equipment_label?: string;
 };
+
+/** สถานะใน flow PM — ให้ตรงกับที่ backend เขียนลง PMReport (pmreport_charger.py) */
+type PmFlow = "draft" | "wait_approve" | "closed" | "rejected" | "wo_pending" | "wo_planned";
+
+/** ใบเก่าไม่มี status / เป็น "submitted" = ปิดไปแล้วก่อนมี flow อนุมัติ */
+function toPmFlow(row: TData): PmFlow {
+  if (row.kind === "wo") {
+    return derivePlanningStatus(0, row.planning_status ?? "pending") === "planned"
+      ? "wo_planned"
+      : "wo_pending";
+  }
+  const s = String(row.status ?? "").trim().toLowerCase();
+  if (s === "wait for approve") return "wait_approve";
+  if (s === "draft") return row.reject_remark ? "rejected" : "draft";
+  return "closed";
+}
+
+const PM_APPROVE_ROLES = ["admin", "planner"];
 
 type Props = {
   token?: string;
@@ -464,13 +533,24 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
         u.searchParams.set("_ts", String(Date.now()));
         return u.toString();
       };
-      const [pmRes, urlRes] = await Promise.allSettled([
+      // ใบงาน Maximo = ด่านแรกของ flow (planner ยังไม่วางแผน) — โชว์รวมในตารางเดียวกัน
+      // เหมือนหน้า CM ที่ใบงานทุกด่านอยู่ในตารางเดียว ไม่แยกการ์ดใต้ตาราง
+      const woURL = `${apiBase}/maximo/pm/open?source=charger&identifier=${encodeURIComponent(sn)}&only_open=true`;
+
+      const [pmRes, urlRes, woRes] = await Promise.allSettled([
         apiFetch(makeURL("/pmreport/list"), FetchOpts),
         apiFetch(makeURL("/pmurl/list"), FetchOpts),
+        apiFetch(woURL, FetchOpts),
       ]);
 
       let pmItems: any[] = [];
       let urlItems: any[] = [];
+      let woItems: MaximoWorkOrder[] = [];
+
+      if (woRes.status === "fulfilled" && woRes.value.ok) {
+        const j = await woRes.value.json();
+        if (Array.isArray(j?.items)) woItems = j.items;
+      }
 
       if (pmRes.status === "fulfilled" && pmRes.value.ok) {
         const j = await pmRes.value.json();
@@ -516,6 +596,11 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
           inspector,
           side,
           has_photos: Boolean(it.has_photos),
+          wonum: (it.wonum ?? "") as string,
+          status: (it.status ?? "") as string,
+          reject_remark: (it.reject_remark ?? "") as string,
+          rejected_by: (it.rejected_by ?? "") as string,
+          approved_by: (it.approved_by ?? "") as string,
         } as TData;
       });
 
@@ -542,7 +627,30 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
         } as TData;
       });
 
-      const allRows = [...pmRows, ...urlRows].sort((a, b) => {
+      const woRows: TData[] = woItems.map((w) => {
+        const selected = w.selected_equipment ?? [];
+        return {
+          kind: "wo",
+          wonum: w.wonum ?? "",
+          issue_id: w.wonum ?? "",
+          doc_name: w.description || t("woFromMaximo", lang),
+          pm_date: w.pm_date ?? "",
+          position: w.pm_date ?? "",
+          office: "",
+          inspector: (w.assignees ?? []).filter(Boolean).join(", "),
+          planning_status: w.planning_status ?? "pending",
+          assignees: (w.assignees ?? []).filter(Boolean) as string[],
+          sched_start: w.sched_start ?? "",
+          selected_equipment_label: selected.map((e) => equipLabel(e)).join(", "),
+        } as TData;
+      });
+
+      const wonumsWithReport = new Set(
+        pmRows.map((r) => r.wonum).filter(Boolean) as string[]
+      );
+      const openWoRows = woRows.filter((r) => !r.wonum || !wonumsWithReport.has(r.wonum));
+
+      const allRows = [...openWoRows, ...pmRows, ...urlRows].sort((a, b) => {
         const da = (a.position ?? "") as string;
         const db = (b.position ?? "") as string;
         if (!da && !db) return 0;
@@ -606,7 +714,105 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     const ac = new AbortController();
     fetchRows(ac.signal);
     return () => ac.abort();
-  }, [apiBase, sn, searchParams.toString()]);
+  }, [apiBase, sn, lang, searchParams.toString()]);
+
+  // ==================== APPROVE / REJECT (planner, admin) ====================
+  const canApprove = PM_APPROVE_ROLES.includes(String(me?.role ?? "").trim().toLowerCase());
+  const canPlan = PM_PLANNING_ROLES.includes(String(me?.role ?? "").trim().toLowerCase());
+
+  // ด่านวางแผน — เข้าจากแถวในตารางเหมือน CM (?view=form&planning=1&wonum=…)
+  const planningWonum = searchParams.get("planning") === "1"
+    ? (searchParams.get("wonum") ?? "")
+    : "";
+
+  const goPlan = (row: TData) => {
+    if (!row.wonum) return;
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("view", "form");
+    params.set("planning", "1");
+    params.set("wonum", row.wonum);
+    params.delete("edit_id");
+    router.push(`${pathname}?${params.toString()}`, { scroll: false });
+  };
+
+  // ช่างเริ่มกรอกเอกสาร PM จากใบงานที่วางแผนแล้ว
+  const goFillPm = (row: TData) => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("view", "form");
+    params.delete("planning");
+    params.delete("edit_id");
+    if (row.wonum) params.set("wonum", row.wonum);
+    router.push(`${pathname}?${params.toString()}`, { scroll: false });
+  };
+
+  const leavePlanning = () => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("view");
+    params.delete("planning");
+    params.delete("wonum");
+    params.delete("edit_id");
+    router.push(`${pathname}?${params.toString()}`, { scroll: false });
+  };
+
+  const [approveRow, setApproveRow] = useState<TData | null>(null);
+  const [rejectRow, setRejectRow] = useState<TData | null>(null);
+  const [rejectRemark, setRejectRemark] = useState("");
+  const [acting, setActing] = useState(false);
+
+  const onApprove = async () => {
+    if (!approveRow?.id || !sn || acting) return;
+    setActing(true);
+    try {
+      const res = await apiFetch(
+        `${apiBase}/pmreport/${encodeURIComponent(approveRow.id)}/approve?sn=${encodeURIComponent(sn)}`,
+        { method: "POST", credentials: "include" }
+      );
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j?.detail || `HTTP ${res.status}`);
+      }
+      setApproveRow(null);
+      showToast("success", t("approveSuccess", lang));
+      await fetchRows();
+    } catch (e: any) {
+      showToast("error", `${t("approveFailed", lang)} ${e?.message ?? e}`);
+    } finally {
+      setActing(false);
+    }
+  };
+
+  const onReject = async () => {
+    if (!rejectRow?.id || !sn || acting) return;
+    const remark = rejectRemark.trim();
+    if (!remark) {
+      showToast("warning", t("rejectRemarkRequired", lang));
+      return;
+    }
+    setActing(true);
+    try {
+      const res = await apiFetch(
+        `${apiBase}/pmreport/${encodeURIComponent(rejectRow.id)}/reject?sn=${encodeURIComponent(sn)}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ remark }),
+        }
+      );
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j?.detail || `HTTP ${res.status}`);
+      }
+      setRejectRow(null);
+      setRejectRemark("");
+      showToast("success", t("rejectSuccess", lang));
+      await fetchRows();
+    } catch (e: any) {
+      showToast("error", `${t("rejectFailed", lang)} ${e?.message ?? e}`);
+    } finally {
+      setActing(false);
+    }
+  };
 
   // Table columns with language support
   const columns: ColumnDef<TData, unknown>[] = useMemo(() => [
@@ -680,11 +886,90 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       meta: { headerAlign: "center", cellAlign: "center" },
     },
     {
+      accessorFn: (row) => toPmFlow(row),
+      id: "status",
+      header: () => t("colStatus", lang),
+      cell: (info: CellContext<TData, unknown>) => {
+        const row = info.row.original;
+        const flow = info.getValue() as PmFlow;
+        const style: Record<PmFlow, string> = {
+          wo_pending: "tw-bg-amber-100 tw-text-amber-800",
+          wo_planned: "tw-bg-emerald-100 tw-text-emerald-800",
+          draft: "tw-bg-gray-100 tw-text-gray-700",
+          wait_approve: "tw-bg-purple-100 tw-text-purple-800",
+          rejected: "tw-bg-amber-100 tw-text-amber-800",
+          closed: "tw-bg-green-100 tw-text-green-800",
+        };
+        const label: Record<PmFlow, string> = {
+          wo_pending: t("stWoPending", lang),
+          wo_planned: t("stWoPlanned", lang),
+          draft: t("stDraft", lang),
+          wait_approve: t("stWaitApprove", lang),
+          rejected: t("stRejected", lang),
+          closed: t("stClosed", lang),
+        };
+        // ผู้ที่ตัดสินใจล่าสุดสำคัญกว่าตัวสถานะเปล่า ๆ — ใส่ไว้ใน tooltip
+        const hint =
+          row.kind === "wo"
+            ? [row.selected_equipment_label, row.inspector].filter(Boolean).join(" — ") || label[flow]
+            : flow === "closed" && row.approved_by
+              ? `${t("approvedBy", lang)}: ${row.approved_by}`
+              : flow === "rejected" && row.reject_remark
+                ? `${t("rejectedBy", lang)}: ${row.rejected_by || "-"} — ${row.reject_remark}`
+                : label[flow];
+
+        return (
+          <span
+            title={hint}
+            className={`tw-inline-block tw-rounded-full tw-px-2.5 tw-py-1 tw-text-[10px] sm:tw-text-xs tw-font-semibold tw-whitespace-nowrap ${style[flow]}`}
+          >
+            {label[flow]}
+          </span>
+        );
+      },
+      size: 130,
+      minSize: 100,
+      maxSize: 170,
+      meta: { headerAlign: "center", cellAlign: "center" },
+    },
+    {
       accessorFn: (row) => row.office,
       id: "pdf",
       header: () => t("colPdf", lang),
       enableSorting: false,
       cell: (info: CellContext<TData, unknown>) => {
+        const row = info.row.original;
+
+        // แถวใบงาน Maximo ยังไม่มีเอกสาร PM — ปุ่มเดียวคือเข้าฟอร์มวางแผน
+        if (row.kind === "wo") {
+          const planned = toPmFlow(row) === "wo_planned";
+          return (
+            <div className="tw-flex tw-items-center tw-justify-center tw-gap-1">
+              <Button
+                size="sm"
+                color={planned ? "blue-gray" : "green"}
+                variant="outlined"
+                className="tw-shrink-0 tw-text-[10px] sm:tw-text-xs tw-px-2 sm:tw-px-3 tw-py-1 tw-min-h-0 tw-h-auto tw-font-medium tw-rounded-md"
+                onClick={() => goPlan(row)}
+              >
+                {canPlan ? (planned ? t("editPlanBtn", lang) : t("planBtn", lang)) : t("viewPlanBtn", lang)}
+              </Button>
+              {/* วางแผนแล้ว = ช่างเริ่มกรอกได้ — ผูก wonum ไปกับฟอร์มเพื่อโยงกลับหาใบงานได้ */}
+              {planned && (
+                <Button
+                  size="sm"
+                  color="blue"
+                  variant="outlined"
+                  className="tw-shrink-0 tw-text-[10px] sm:tw-text-xs tw-px-2 sm:tw-px-3 tw-py-1 tw-min-h-0 tw-h-auto tw-font-medium tw-rounded-md"
+                  onClick={() => goFillPm(row)}
+                >
+                  {t("fillPmBtn", lang)}
+                </Button>
+              )}
+            </div>
+          );
+        }
+
         const url = info.getValue() as string | undefined;
         const hasUrl = typeof url === "string" && url.length > 0;
 
@@ -720,8 +1005,54 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
             </div>
           );
         } else {
+          const flow = toPmFlow(info.row.original);
+
           return (
             <div className="tw-flex tw-items-center tw-justify-center tw-gap-1">
+              {/* โดนตีกลับ → ช่างต้องเปิดฟอร์มเดิมกลับเข้าไปแก้แล้วส่งใหม่ */}
+              {flow === "rejected" && (
+                <Button
+                  size="sm"
+                  color="amber"
+                  variant="outlined"
+                  className="tw-shrink-0 tw-text-[10px] sm:tw-text-xs tw-px-2 sm:tw-px-3 tw-py-1 tw-min-h-0 tw-h-auto tw-font-medium tw-rounded-md"
+                  title={info.row.original.reject_remark || ""}
+                  onClick={() => {
+                    const params = new URLSearchParams(searchParams.toString());
+                    params.delete("tab");
+                    params.set("view", "form");
+                    params.set("action", "post");
+                    params.set("edit_id", info.row.original.id || "");
+                    params.set("pmtab", "post");
+                    router.push(`${pathname}?${params.toString()}`, { scroll: false });
+                  }}
+                >
+                  {t("fixAndResubmit", lang)}
+                </Button>
+              )}
+              {/* ด่านอนุมัติปิดงาน — เห็นเฉพาะ planner/admin และเฉพาะใบที่ช่างส่งมาแล้ว */}
+              {canApprove && flow === "wait_approve" && (
+                <>
+                  <Button
+                    size="sm"
+                    color="green"
+                    variant="outlined"
+                    className="tw-shrink-0 tw-text-[10px] sm:tw-text-xs tw-px-2 sm:tw-px-3 tw-py-1 tw-min-h-0 tw-h-auto tw-font-medium tw-rounded-md"
+                    onClick={() => setApproveRow(info.row.original)}
+                  >
+                    {t("approve", lang)}
+                  </Button>
+                  <Button
+                    size="sm"
+                    color="amber"
+                    variant="outlined"
+                    className="tw-shrink-0 tw-text-[10px] sm:tw-text-xs tw-px-2 sm:tw-px-3 tw-py-1 tw-min-h-0 tw-h-auto tw-font-medium tw-rounded-md"
+                    onClick={() => { setRejectRemark(""); setRejectRow(info.row.original); }}
+                  >
+                    {t("reject", lang)}
+                  </Button>
+                </>
+              )}
               {/* Download PDF */}
               <a
                 aria-label={t("preview", lang)}
@@ -750,12 +1081,12 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
           );
         }
       },
-      size: 100,
-      minSize: 80,
-      maxSize: 140,
+      size: 160,
+      minSize: 100,
+      maxSize: 240,
       meta: { headerAlign: "center", cellAlign: "center" },
     },
-  ], [lang, searchParams, pathname, router, sn]);
+  ], [lang, searchParams, pathname, router, sn, canApprove, canPlan]);
 
   function sameUser(a?: string, b?: string) {
     return String(a ?? "").trim().toLowerCase() === String(b ?? "").trim().toLowerCase();
@@ -927,6 +1258,21 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
   }
 
   if (mode === "form") {
+    // planning=1 → ฟอร์มวางแผนของ planner, ไม่ใช่ฟอร์มกรอก PM ของช่าง
+    if (planningWonum) {
+      return (
+        <PmPlanForm
+          source="charger"
+          identifier={sn}
+          wonum={planningWonum}
+          onSaved={() => {
+            showToast("success", t("planSaved", lang));
+            leavePlanning();
+          }}
+          onCancel={leavePlanning}
+        />
+      );
+    }
     return (
       <div className="tw-mt-4 sm:tw-mt-6 lg:tw-mt-8">
         <ChargerPMForm />
@@ -967,9 +1313,6 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
           </div>
         </div>
       )}
-      {/* PM work orders received from Maximo */}
-      <MaximoWorkOrders source="charger" identifier={sn} />
-
       {/* Main Card */}
       <Card className="tw-border tw-border-gray-200 tw-shadow-sm tw-mt-4 sm:tw-mt-6 lg:tw-mt-8 tw-mx-2 sm:tw-mx-4 lg:tw-mx-0 tw-rounded-2xl tw-overflow-hidden">
 
@@ -1293,6 +1636,58 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
             className="tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900 hover:tw-to-black tw-text-xs sm:tw-text-sm tw-px-5 sm:tw-px-6 tw-py-2 sm:tw-py-2.5 tw-font-medium tw-rounded-lg tw-shadow-md tw-transition-all"
           >
             {t("uploadBtn", lang)}
+          </Button>
+        </DialogFooter>
+      </Dialog>
+
+      {/* ยืนยันอนุมัติปิดใบงาน PM */}
+      <Dialog open={!!approveRow} handler={() => setApproveRow(null)} size="xs">
+        <DialogHeader className="tw-text-base sm:tw-text-lg tw-font-semibold">
+          {t("approveTitle", lang)}
+        </DialogHeader>
+        <DialogBody className="tw-space-y-2 tw-text-sm">
+          <p className="tw-text-blue-gray-700">{t("approveConfirm", lang)}</p>
+          <p className="tw-font-medium tw-text-blue-gray-900">
+            {approveRow?.doc_name || approveRow?.issue_id || "-"}
+          </p>
+        </DialogBody>
+        <DialogFooter className="tw-gap-2">
+          <Button variant="text" size="sm" onClick={() => setApproveRow(null)} disabled={acting}>
+            {t("cancel", lang)}
+          </Button>
+          <Button color="green" size="sm" onClick={onApprove} disabled={acting}>
+            {t("confirmBtn", lang)}
+          </Button>
+        </DialogFooter>
+      </Dialog>
+
+      {/* ตีกลับใบงานให้ช่างแก้ — ต้องมีเหตุผลเสมอ */}
+      <Dialog open={!!rejectRow} handler={() => setRejectRow(null)} size="xs">
+        <DialogHeader className="tw-text-base sm:tw-text-lg tw-font-semibold">
+          {t("rejectTitle", lang)}
+        </DialogHeader>
+        <DialogBody className="tw-space-y-3 tw-text-sm">
+          <p className="tw-font-medium tw-text-blue-gray-900">
+            {rejectRow?.doc_name || rejectRow?.issue_id || "-"}
+          </p>
+          <Input
+            crossOrigin=""
+            label={t("rejectRemarkLabel", lang)}
+            value={rejectRemark}
+            onChange={(e) => setRejectRemark(e.target.value)}
+          />
+        </DialogBody>
+        <DialogFooter className="tw-gap-2">
+          <Button variant="text" size="sm" onClick={() => setRejectRow(null)} disabled={acting}>
+            {t("cancel", lang)}
+          </Button>
+          <Button
+            color="amber"
+            size="sm"
+            onClick={onReject}
+            disabled={acting || !rejectRemark.trim()}
+          >
+            {t("confirmBtn", lang)}
           </Button>
         </DialogFooter>
       </Dialog>
