@@ -1,16 +1,19 @@
 "use client";
 
 /**
- * ฟอร์มวางแผน PM แบบเต็มหน้า — โครงเดียวกับด่านวางแผนของ CM
- * (cm-report/open/input_CMreport → เข้าจากแถวในตาราง ไม่ใช่ป็อปอัปใต้ตาราง)
+ * ฟอร์มวางแผน PM แบบเต็มหน้า — ใช้แพทเทิร์นเดียวกับฟอร์ม CM
+ * (cm-report/open/input_CMreport/components/checkList.tsx):
+ *   section > ปุ่มย้อนกลับ (ไอคอน) > การ์ดขาว max-w-6xl > หัวเอกสาร (โลโก้ + ที่อยู่ กฟผ.)
+ *   > badge Maximo > meta readonly > section เลขกำกับหัวสีเทาเข้ม > แถบปุ่มล่าง
  *
  * เข้าถึงผ่าน URL ?view=form&planning=1&wonum=<WONUM> ของแต่ละ tab PM report
  * บันทึกลง iMPS.maximo_pm_open ผ่าน POST /maximo/pm/{wonum}/equipment
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Button, Card, CardBody, CardHeader, Typography } from "@material-tailwind/react";
-import { ArrowLeftIcon } from "@heroicons/react/24/outline";
+import Image from "next/image";
+import { Button, Input } from "@material-tailwind/react";
+import { ArrowLeftIcon, ExclamationTriangleIcon } from "@heroicons/react/24/outline";
 import { apiFetch } from "@/utils/api";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
 import {
@@ -28,35 +31,54 @@ import {
   type TechnicianOption,
 } from "./planning";
 
+// ใช้หัวเอกสารชุดเดียวกับ CM
+const LOGO_SRC = "/img/logo_egat.png";
+
 const T = {
-  title: { th: "วางแผนงาน PM", en: "Plan PM work order" },
-  subtitle: {
-    th: "เลือกอุปกรณ์ที่จะ PM กำหนดการ และช่างผู้รับผิดชอบ",
-    en: "Choose equipment, schedule and assigned technicians",
+  pageTitle: { th: "วางแผนงานบำรุงรักษา (PM)", en: "Preventive Maintenance Plan (PM)" },
+  companyName: {
+    th: "การไฟฟ้าฝ่ายผลิตแห่งประเทศไทย (กฟผ.)",
+    en: "Electricity Generating Authority of Thailand (EGAT)",
   },
-  back: { th: "กลับไปหน้ารายการ", en: "Back to list" },
+  companyAddressLine1: {
+    th: "เลขที่ 53 หมู่ 2 ถนนจรัญสนิทวงศ์ ตำบลบางกรวย อำเภอบางกรวย",
+    en: "53 Moo 2, Charan Sanitwong Rd., Bang Kruai, Bang Kruai",
+  },
+  companyAddressLine2: {
+    th: "จังหวัดนนทบุรี 11130 ศูนย์บริการข้อมูล กฟผ. สายด่วน 1416",
+    en: "Nonthaburi 11130, EGAT Call Center: 1416",
+  },
+
+  backToList: { th: "กลับไปหน้ารายการ", en: "Back to list" },
   loading: { th: "กำลังโหลด…", en: "Loading…" },
   notFound: { th: "ไม่พบใบงานนี้", en: "Work order not found" },
-  plannerOnly: { th: "เฉพาะ Planner / Admin เท่านั้นที่วางแผนได้", en: "Only planner or admin can plan" },
+  plannerOnlyTitle: { th: "วางแผนใบงานนี้ไม่ได้", en: "Cannot plan this work order" },
+  plannerOnlyBody: {
+    th: "เฉพาะ Planner / Owner / Admin เท่านั้นที่แก้แผนได้ — ดูข้อมูลได้อย่างเดียว",
+    en: "Only planner, owner or admin can edit the plan — view only",
+  },
 
-  woSection: { th: "ข้อมูลใบงานจาก Maximo", en: "Work order from Maximo" },
   planSection: { th: "ข้อมูลการวางแผน", en: "Planning details" },
   equipSection: { th: "อุปกรณ์ที่จะ PM", en: "Equipment to PM" },
 
-  workOrder: { th: "WO", en: "WO" },
+  workOrder: { th: "เลขที่ใบงาน (WO)", en: "Work order (WO)" },
   location: { th: "Location", en: "Location" },
   station: { th: "สถานี", en: "Station" },
   company: { th: "บริษัท", en: "Company" },
   pmDate: { th: "วันที่ PM", en: "PM date" },
-  description: { th: "รายละเอียด", en: "Description" },
+  description: { th: "รายละเอียดใบงาน", en: "Work order description" },
 
-  planningStatus: { th: "สถานะวางแผน", en: "Planning status" },
   planned: { th: "วางแผนแล้ว", en: "Planned" },
   pending: { th: "รอวางแผน", en: "Pending" },
-  selectedCount: { th: "จำนวนอุปกรณ์ที่เลือก", en: "Selected equipment count" },
+  selectedCount: { th: "เลือกแล้ว", en: "Selected" },
+  items: { th: "รายการ", en: "item(s)" },
   plannedAt: { th: "วันที่/เวลาที่วางแผน", en: "Planned at" },
   schedStart: { th: "วันที่เริ่มตามแผน", en: "Scheduled start" },
   schedFinish: { th: "วันที่เสร็จตามแผน", en: "Scheduled finish" },
+  schedRangeError: {
+    th: "วันที่เสร็จต้องไม่ก่อนวันที่เริ่ม",
+    en: "Finish date must not be before the start date",
+  },
   technician: { th: "ช่างผู้รับผิดชอบ", en: "Technician" },
   allTechnicians: { th: "ทั้งหมด", en: "All" },
   noTechnicians: { th: "ไม่พบช่าง", en: "No technicians found" },
@@ -64,7 +86,6 @@ const T = {
   stationLevel: { th: "อุปกรณ์ระดับสถานี", en: "Station-level equipment" },
   noChargers: { th: "ไม่พบตู้ชาร์จในสถานีนี้", en: "No chargers found in this station" },
 
-  cancel: { th: "ยกเลิก", en: "Cancel" },
   save: { th: "บันทึกแผน", en: "Save plan" },
   saving: { th: "กำลังบันทึก…", en: "Saving…" },
 
@@ -88,10 +109,25 @@ type Props = {
   onCancel: () => void;
 };
 
-const labelCls =
-  "tw-mb-1.5 tw-block tw-text-[11px] sm:tw-text-xs tw-font-semibold tw-text-blue-gray-700";
-const inputCls =
-  "tw-w-full tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-px-3 tw-py-2 tw-text-xs sm:tw-text-sm tw-text-blue-gray-800 focus:tw-outline-none focus:tw-border-blue-500";
+// class ชุดเดียวกับ CM form
+const LABEL = "tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-2";
+const FIELD =
+  "tw-w-full tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-px-3 tw-py-2.5 tw-text-sm tw-text-blue-gray-800 focus:tw-outline-none focus:tw-border-blue-500";
+const FIELD_RO =
+  "tw-w-full tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-gray-100 tw-px-3 tw-py-2.5 tw-text-sm tw-text-blue-gray-700 tw-cursor-default focus:tw-outline-none";
+
+/** หัว section แบบเดียวกับ CM — วงกลมเลข + แถบเทาเข้ม */
+function SectionHeader({ no, title, right }: { no: number; title: string; right?: React.ReactNode }) {
+  return (
+    <div className="tw-flex tw-items-center tw-gap-3 tw-bg-gray-700 tw-px-4 tw-py-3 tw-text-white">
+      <div className="tw-w-8 tw-h-8 tw-rounded-full tw-bg-white tw-text-gray-700 tw-flex tw-items-center tw-justify-center tw-font-bold tw-text-sm">
+        {no}
+      </div>
+      <span className="tw-font-semibold tw-text-base">{title}</span>
+      {right && <div className="tw-ml-auto">{right}</div>}
+    </div>
+  );
+}
 
 export default function PmPlanForm({ source, identifier, wonum, onSaved, onCancel }: Props) {
   const { lang } = useLanguage();
@@ -194,6 +230,9 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
   const allTechChecked =
     technicianNames.length > 0 && technicianNames.every((n) => assignees.includes(n));
 
+  // เทียบเป็น string ได้เพราะ datetime-local เป็น ISO เรียงตัวอักษรตรงกับเรียงเวลา
+  const schedRangeInvalid = !!schedStart && !!schedFinish && schedFinish < schedStart;
+
   const onSave = async () => {
     if (!choices || saving) return;
 
@@ -206,9 +245,10 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
         ...(e.label ? { label: e.label } : {}),
       }));
 
-    // ตรวจครบทั้ง 3 อย่างก่อนยิง — backend เก็บ planning_status = planned ก็ต่อเมื่อมีอุปกรณ์
+    // ตรวจครบก่อนยิง — backend เก็บ planning_status = planned ก็ต่อเมื่อมีอุปกรณ์
     if (equipment.length === 0) { setError(t("errEquip", lang)); return; }
     if (!schedStart || !schedFinish) { setError(t("errSched", lang)); return; }
+    if (schedRangeInvalid) { setError(t("schedRangeError", lang)); return; }
     if (assignees.length === 0) { setError(t("errTech", lang)); return; }
 
     setSaving(true);
@@ -242,244 +282,300 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
   const planStatus = derivePlanningStatus(selectedCount, wo?.planning_status ?? "pending");
 
   return (
-    <Card className="tw-border tw-border-gray-200 tw-shadow-sm tw-mt-4 sm:tw-mt-6 lg:tw-mt-8 tw-mx-2 sm:tw-mx-4 lg:tw-mx-0 tw-rounded-2xl tw-overflow-hidden">
-      <CardHeader
-        floated={false}
-        shadow={false}
-        className="tw-p-3 sm:tw-p-4 lg:tw-p-6 tw-rounded-none tw-m-0 tw-bg-gradient-to-r tw-from-white tw-to-blue-gray-50/30"
-      >
-        <div className="tw-flex tw-flex-col sm:tw-flex-row sm:tw-items-center sm:tw-justify-between tw-gap-3">
-          <div className="tw-min-w-0 tw-flex-1">
-            <Typography variant="h5" color="blue-gray" className="tw-text-sm sm:tw-text-base lg:tw-text-lg tw-font-semibold tw-leading-tight">
-              {t("title", lang)}
-            </Typography>
-            <Typography variant="small" className="tw-mt-0.5 tw-text-[11px] sm:tw-text-xs lg:tw-text-sm tw-font-normal tw-text-blue-gray-400">
-              {t("subtitle", lang)}
-            </Typography>
-          </div>
-          <Button
-            variant="outlined"
-            size="sm"
-            onClick={onCancel}
-            className="tw-flex tw-items-center tw-gap-1.5 tw-normal-case tw-text-xs sm:tw-text-sm tw-flex-shrink-0"
-          >
-            <ArrowLeftIcon className="tw-h-4 tw-w-4" />
-            {t("back", lang)}
-          </Button>
-        </div>
-      </CardHeader>
+    <section className="tw-pb-24">
+      {/* ปุ่มย้อนกลับ — ไอคอนอย่างเดียว ชิดซ้าย เหมือนฟอร์ม CM */}
+      <div className="tw-mx-auto tw-max-w-6xl tw-mb-6 tw-flex tw-items-center tw-justify-between">
+        <Button
+          variant="outlined"
+          size="sm"
+          onClick={onCancel}
+          title={t("backToList", lang)}
+          aria-label={t("backToList", lang)}
+          className="tw-border-blue-gray-200 tw-text-blue-gray-700 hover:tw-border-blue-gray-300"
+        >
+          <ArrowLeftIcon className="tw-w-4 tw-h-4" />
+        </Button>
+      </div>
 
-      <CardBody className="tw-p-3 sm:tw-p-4 lg:tw-p-6 tw-space-y-4">
-        {error && (
-          <div className="tw-rounded-lg tw-border tw-border-red-200 tw-bg-red-50 tw-px-3 tw-py-2 tw-text-xs sm:tw-text-sm tw-text-red-700">
-            {error}
-          </div>
-        )}
+      <form noValidate onSubmit={(e) => e.preventDefault()}>
+        <div className="tw-mx-auto tw-max-w-6xl tw-bg-white tw-border tw-border-blue-gray-100 tw-rounded-xl tw-shadow-md tw-shadow-blue-gray-500/5 tw-p-6 md:tw-p-8">
 
-        {loading ? (
-          <div className="tw-flex tw-items-center tw-gap-2 tw-py-6 tw-text-xs sm:tw-text-sm tw-text-blue-gray-500">
-            <span className="tw-h-4 tw-w-4 tw-animate-spin tw-rounded-full tw-border-2 tw-border-blue-500 tw-border-t-transparent" />
-            {t("loading", lang)}
-          </div>
-        ) : !wo ? null : (
-          <>
-            {/* ── ข้อมูลใบงานจาก Maximo (อ่านอย่างเดียว) ── */}
-            <section>
-              <div className="tw-mb-2 tw-text-[11px] sm:tw-text-xs tw-font-semibold tw-text-blue-gray-500">
-                {t("woSection", lang)}
+          {/* Header */}
+          <div className="tw-flex tw-items-start tw-justify-between tw-gap-6 tw-mb-6">
+            <div className="tw-flex tw-items-start tw-gap-4">
+              <div className="tw-relative tw-shrink-0 tw-h-16 tw-w-[90px] md:tw-h-20 md:tw-w-[110px]">
+                <Image src={LOGO_SRC} alt="Logo" fill priority className="tw-object-contain" sizes="110px" />
               </div>
-              <div className="tw-rounded-xl tw-border tw-border-blue-gray-100 tw-bg-blue-gray-50 tw-px-3 tw-py-3 tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 tw-gap-x-6 tw-gap-y-1.5 tw-text-[11px] sm:tw-text-xs tw-text-blue-gray-700">
-                <div><span className="tw-font-semibold">{t("workOrder", lang)}:</span> {wo.wonum || "-"}</div>
-                <div><span className="tw-font-semibold">{t("pmDate", lang)}:</span> {formatDate(wo.pm_date, lang)}</div>
-                <div><span className="tw-font-semibold">{t("location", lang)}:</span> {wo.location || "-"}</div>
-                <div><span className="tw-font-semibold">{t("station", lang)}:</span> {wo.station_id || "-"}</div>
-                <div><span className="tw-font-semibold">{t("company", lang)}:</span> {wo.company || "-"}</div>
-                {wo.description && (
-                  <div className="sm:tw-col-span-2">
-                    <span className="tw-font-semibold">{t("description", lang)}:</span> {wo.description}
-                  </div>
-                )}
+              <div>
+                <div className="tw-font-bold tw-text-blue-gray-900 tw-text-base md:tw-text-lg">
+                  {t("pageTitle", lang)} – PM Plan ({source.toUpperCase()})
+                </div>
+                <div className="tw-text-sm tw-text-blue-gray-600 tw-mt-2">{t("companyName", lang)}</div>
+                <div className="tw-text-xs tw-text-blue-gray-500 tw-mt-1">{t("companyAddressLine1", lang)}</div>
+                <div className="tw-text-xs tw-text-blue-gray-500">{t("companyAddressLine2", lang)}</div>
               </div>
-            </section>
+            </div>
+            <div className="tw-text-left md:tw-text-right tw-text-sm tw-text-blue-gray-700 tw-border-l tw-border-blue-gray-100 tw-pl-4 md:tw-pl-6 md:tw-border-l-0 tw-pt-3 md:tw-pt-0 md:tw-shrink-0">
+              <div className="tw-font-semibold tw-text-blue-gray-800">{t("workOrder", lang)}</div>
+              <div className="tw-break-all tw-text-blue-gray-600 tw-mt-1">{wonum || "-"}</div>
+            </div>
+          </div>
 
-            {/* ── ข้อมูลการวางแผน ── */}
-            <section>
-              <div className="tw-mb-2 tw-flex tw-items-center tw-justify-between tw-gap-3">
-                <div className="tw-text-[11px] sm:tw-text-xs tw-font-semibold tw-text-blue-gray-500">
-                  {t("planSection", lang)}
+          <hr className="tw-my-6 tw-border-blue-gray-100" />
+
+          {/* Maximo badge — ชุดเดียวกับ CM */}
+          <div className="tw-mb-4 tw-flex tw-flex-wrap tw-items-center tw-gap-x-4 tw-gap-y-2 tw-px-4 tw-py-2.5 tw-rounded-lg tw-bg-blue-50 tw-border tw-border-blue-200">
+            <span className="tw-flex tw-items-center tw-gap-2">
+              <span className="tw-text-sm tw-text-blue-700">🧾 Maximo WO:</span>
+              <span className="tw-font-mono tw-font-bold tw-text-blue-900 tw-bg-blue-100 tw-px-2 tw-py-0.5 tw-rounded">
+                {wonum || "-"}
+              </span>
+            </span>
+            <span
+              className={`tw-inline-flex tw-items-center tw-rounded-full tw-border tw-px-2.5 tw-py-1 tw-text-[11px] tw-font-semibold ${planningChipClass(planStatus)}`}
+            >
+              {planStatus === "planned" ? t("planned", lang) : t("pending", lang)}
+            </span>
+          </div>
+
+          {/* ไม่มีสิทธิ์แก้แผน */}
+          {!loading && !canPlan && (
+            <div className="tw-mb-4 tw-flex tw-items-start tw-gap-3 tw-px-4 tw-py-3 tw-rounded-lg tw-bg-amber-50 tw-border tw-border-amber-200">
+              <ExclamationTriangleIcon className="tw-w-5 tw-h-5 tw-text-amber-500 tw-mt-0.5 tw-flex-shrink-0" />
+              <div>
+                <p className="tw-text-sm tw-font-semibold tw-text-amber-800">{t("plannerOnlyTitle", lang)}</p>
+                <p className="tw-text-sm tw-text-amber-700 tw-mt-0.5">{t("plannerOnlyBody", lang)}</p>
+              </div>
+            </div>
+          )}
+
+          {/* ข้อผิดพลาด */}
+          {error && (
+            <div className="tw-mb-4 tw-flex tw-items-start tw-gap-3 tw-px-4 tw-py-3 tw-rounded-lg tw-bg-red-50 tw-border tw-border-red-200">
+              <ExclamationTriangleIcon className="tw-w-5 tw-h-5 tw-text-red-500 tw-mt-0.5 tw-flex-shrink-0" />
+              <p className="tw-text-sm tw-text-red-700">{error}</p>
+            </div>
+          )}
+
+          {loading ? (
+            <div className="tw-flex tw-items-center tw-gap-2 tw-py-10 tw-justify-center tw-text-sm tw-text-blue-gray-500">
+              <span className="tw-h-4 tw-w-4 tw-animate-spin tw-rounded-full tw-border-2 tw-border-blue-500 tw-border-t-transparent" />
+              {t("loading", lang)}
+            </div>
+          ) : !wo ? null : (
+            <>
+              {/* Meta Info - Readonly Inputs */}
+              <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-4 tw-gap-4 tw-mb-6">
+                <div>
+                  <label className="tw-block tw-text-sm tw-text-blue-gray-600 tw-mb-1">{t("pmDate", lang)}</label>
+                  <Input value={formatDate(wo.pm_date, lang)} readOnly crossOrigin="" className="!tw-w-full !tw-bg-gray-100" containerProps={{ className: "!tw-min-w-0" }} />
                 </div>
-                <div className="tw-flex tw-items-center tw-gap-2">
-                  <span className="tw-text-[11px] tw-text-blue-gray-500">
-                    {t("selectedCount", lang)}: <b className="tw-text-blue-gray-800">{selectedCount}</b>
-                  </span>
-                  <span className={`tw-inline-flex tw-items-center tw-rounded-full tw-border tw-px-2.5 tw-py-1 tw-text-[11px] tw-font-semibold ${planningChipClass(planStatus)}`}>
-                    {planStatus === "planned" ? t("planned", lang) : t("pending", lang)}
-                  </span>
+                <div>
+                  <label className="tw-block tw-text-sm tw-text-blue-gray-600 tw-mb-1">{t("location", lang)}</label>
+                  <Input value={wo.location || ""} readOnly crossOrigin="" className="!tw-w-full !tw-bg-gray-100" containerProps={{ className: "!tw-min-w-0" }} />
+                </div>
+                <div>
+                  <label className="tw-block tw-text-sm tw-text-blue-gray-600 tw-mb-1">{t("station", lang)}</label>
+                  <Input value={wo.station_id || ""} readOnly crossOrigin="" className="!tw-w-full !tw-bg-gray-100" containerProps={{ className: "!tw-min-w-0" }} />
+                </div>
+                <div>
+                  <label className="tw-block tw-text-sm tw-text-blue-gray-600 tw-mb-1">{t("company", lang)}</label>
+                  <Input value={wo.company || ""} readOnly crossOrigin="" className="!tw-w-full !tw-bg-gray-100" containerProps={{ className: "!tw-min-w-0" }} />
                 </div>
               </div>
 
-              <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-3">
-                <div>
-                  <label className={labelCls}>{t("plannedAt", lang)}</label>
-                  <input
-                    type="datetime-local"
-                    value={plannedAt}
-                    disabled={!canPlan}
-                    onChange={(e) => setPlannedAt(e.target.value)}
-                    className={inputCls}
-                  />
+              {wo.description && (
+                <div className="tw-mb-6">
+                  <label className="tw-block tw-text-sm tw-text-blue-gray-600 tw-mb-1">{t("description", lang)}</label>
+                  <div className={FIELD_RO}>{wo.description}</div>
                 </div>
-                <div>
-                  <label className={labelCls}>
-                    {t("schedStart", lang)} <span className="tw-text-red-500">*</span>
-                  </label>
-                  <input
-                    type="datetime-local"
-                    value={schedStart}
-                    min={plannedAt || undefined}
-                    disabled={!canPlan}
-                    onChange={(e) => setSchedStart(e.target.value)}
-                    className={inputCls}
-                  />
-                </div>
-                <div>
-                  <label className={labelCls}>
-                    {t("schedFinish", lang)} <span className="tw-text-red-500">*</span>
-                  </label>
-                  <input
-                    type="datetime-local"
-                    value={schedFinish}
-                    min={schedStart || undefined}
-                    disabled={!canPlan}
-                    onChange={(e) => setSchedFinish(e.target.value)}
-                    className={inputCls}
-                  />
-                </div>
-                <div>
-                  <label className={labelCls}>
-                    {t("technician", lang)} <span className="tw-text-red-500">*</span>
-                  </label>
-                  {technicians.length === 0 ? (
-                    <div className="tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-px-3 tw-py-2 tw-text-[11px] tw-text-blue-gray-500">
-                      {t("noTechnicians", lang)}
+              )}
+
+              {/* ═══ 1. ข้อมูลการวางแผน ═══ */}
+              <div className="tw-mb-6 tw-rounded-lg tw-overflow-hidden tw-border tw-border-blue-gray-100 tw-bg-white tw-shadow-sm">
+                <SectionHeader no={1} title={t("planSection", lang)} />
+                <div className="tw-p-4">
+                  <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-4">
+                    {/* วันที่/เวลาที่วางแผน — ประทับตอน planner เปิดฟอร์มเข้ามา แก้ไม่ได้ (เหมือน CM) */}
+                    <div>
+                      <label className={LABEL}>{t("plannedAt", lang)}</label>
+                      <input
+                        type="text"
+                        readOnly
+                        value={plannedAt ? plannedAt.replace("T", " ") : "-"}
+                        className={FIELD_RO}
+                      />
                     </div>
-                  ) : (
-                    <div className="tw-max-h-40 tw-overflow-y-auto tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-divide-y tw-divide-blue-gray-100">
-                      <label className="tw-flex tw-items-center tw-gap-2 tw-px-3 tw-py-2 tw-cursor-pointer hover:tw-bg-blue-gray-50">
-                        <input
-                          type="checkbox"
-                          checked={allTechChecked}
-                          disabled={!canPlan}
-                          onChange={() => setAssignees(allTechChecked ? [] : technicianNames)}
-                          className="tw-h-4 tw-w-4 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500"
-                        />
-                        <span className="tw-text-xs sm:tw-text-sm tw-font-medium tw-text-blue-gray-700">
-                          {t("allTechnicians", lang)}
-                        </span>
+                    <div>
+                      <label className={LABEL}>
+                        {t("schedStart", lang)} <span className="tw-text-red-500">*</span>
                       </label>
-                      {technicianNames.map((username) => (
-                        <label key={username} className="tw-flex tw-items-center tw-gap-2 tw-px-3 tw-py-2 tw-cursor-pointer hover:tw-bg-blue-gray-50">
-                          <input
-                            type="checkbox"
-                            checked={assignees.includes(username)}
-                            disabled={!canPlan}
-                            onChange={() => toggleAssignee(username)}
-                            className="tw-h-4 tw-w-4 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500"
-                          />
-                          <span className="tw-text-xs sm:tw-text-sm tw-text-blue-gray-700">{username}</span>
-                        </label>
-                      ))}
+                      <input
+                        type="datetime-local"
+                        value={schedStart}
+                        disabled={!canPlan}
+                        onChange={(e) => setSchedStart(e.target.value)}
+                        className={FIELD}
+                      />
                     </div>
-                  )}
-                </div>
-              </div>
-            </section>
-
-            {/* ── อุปกรณ์ที่จะ PM ── */}
-            {choices && (
-              <section>
-                <div className="tw-mb-2 tw-text-[11px] sm:tw-text-xs tw-font-semibold tw-text-blue-gray-500">
-                  {t("equipSection", lang)}
-                </div>
-                <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-3">
-                  <div className="tw-rounded-xl tw-border tw-border-blue-gray-100 tw-p-3">
-                    <Typography className="tw-mb-1.5 tw-text-[11px] sm:tw-text-xs tw-font-semibold tw-text-blue-gray-700">
-                      {t("chargers", lang)}
-                    </Typography>
-                    {choices.chargers.length === 0 ? (
-                      <Typography className="tw-text-[11px] tw-text-blue-gray-400">
-                        {t("noChargers", lang)}
-                      </Typography>
-                    ) : (
-                      <div className="tw-flex tw-flex-col tw-gap-2">
-                        {choices.chargers.map((c) => {
-                          const k = equipKey(c);
-                          return (
-                            <label key={k} className="tw-inline-flex tw-items-center tw-gap-2 tw-text-xs sm:tw-text-sm tw-text-blue-gray-700">
-                              <input
-                                type="checkbox"
-                                checked={!!checked[k]}
-                                disabled={!canPlan}
-                                onChange={() => toggle(k)}
-                                className="tw-h-4 tw-w-4 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500"
-                              />
-                              <span>{equipLabel(c)}</span>
-                              {c.sn && <span className="tw-text-[11px] tw-text-blue-gray-400">({c.sn})</span>}
-                            </label>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="tw-rounded-xl tw-border tw-border-blue-gray-100 tw-p-3">
-                    <Typography className="tw-mb-1.5 tw-text-[11px] sm:tw-text-xs tw-font-semibold tw-text-blue-gray-700">
-                      {t("stationLevel", lang)}
-                    </Typography>
-                    <div className="tw-flex tw-flex-col tw-gap-2">
-                      {choices.fixed.map((f) => {
-                        const k = equipKey(f);
-                        return (
-                          <label key={k} className="tw-inline-flex tw-items-center tw-gap-2 tw-text-xs sm:tw-text-sm tw-text-blue-gray-700">
+                    <div>
+                      <label className={LABEL}>
+                        {t("schedFinish", lang)} <span className="tw-text-red-500">*</span>
+                      </label>
+                      {/* min = ปิดวันก่อนวันเริ่มใน picker — validation ยังต้องมีเพราะพิมพ์มือเลี่ยง min ได้ */}
+                      <input
+                        type="datetime-local"
+                        value={schedFinish}
+                        min={schedStart || undefined}
+                        disabled={!canPlan}
+                        onChange={(e) => setSchedFinish(e.target.value)}
+                        className={`tw-w-full tw-rounded-lg tw-border tw-bg-white tw-px-3 tw-py-2.5 tw-text-sm tw-text-blue-gray-800 focus:tw-outline-none ${schedRangeInvalid ? "tw-border-red-400 focus:tw-border-red-500" : "tw-border-blue-gray-200 focus:tw-border-blue-500"}`}
+                      />
+                      {schedRangeInvalid && (
+                        <p className="tw-mt-1.5 tw-text-xs tw-text-red-600">{t("schedRangeError", lang)}</p>
+                      )}
+                    </div>
+                    <div>
+                      <label className={LABEL}>
+                        {t("technician", lang)} <span className="tw-text-red-500">*</span>
+                      </label>
+                      {technicianNames.length > 0 && (
+                        <div className="tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-divide-y tw-divide-blue-gray-50 tw-max-h-56 tw-overflow-y-auto">
+                          {/* All = ติ๊กช่างทุกคนในลิสต์รวดเดียว */}
+                          <label className="tw-flex tw-items-center tw-gap-2.5 tw-px-3 tw-py-2.5 tw-cursor-pointer hover:tw-bg-blue-gray-50/60 tw-transition-colors">
                             <input
                               type="checkbox"
-                              checked={!!checked[k]}
+                              checked={allTechChecked}
                               disabled={!canPlan}
-                              onChange={() => toggle(k)}
-                              className="tw-h-4 tw-w-4 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500"
+                              onChange={() => setAssignees(allTechChecked ? [] : technicianNames)}
+                              className="tw-h-4 tw-w-4 tw-shrink-0 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500 tw-cursor-pointer"
                             />
-                            {equipLabel(f)}
+                            <span className="tw-text-sm tw-font-semibold tw-text-blue-gray-800">
+                              {t("allTechnicians", lang)}
+                            </span>
+                            <span className="tw-ml-auto tw-text-xs tw-text-blue-gray-400">
+                              {assignees.length}/{technicianNames.length}
+                            </span>
                           </label>
-                        );
-                      })}
+                          {technicianNames.map((u) => (
+                            <label key={u} className="tw-flex tw-items-center tw-gap-2.5 tw-px-3 tw-py-2.5 tw-cursor-pointer hover:tw-bg-blue-gray-50/60 tw-transition-colors">
+                              <input
+                                type="checkbox"
+                                checked={assignees.includes(u)}
+                                disabled={!canPlan}
+                                onChange={() => toggleAssignee(u)}
+                                className="tw-h-4 tw-w-4 tw-shrink-0 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500 tw-cursor-pointer"
+                              />
+                              <span className="tw-min-w-0 tw-truncate tw-text-sm tw-text-blue-gray-800">{u}</span>
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                      {technicianNames.length === 0 && (
+                        <p className="tw-mt-1.5 tw-text-xs tw-text-orange-600">{t("noTechnicians", lang)}</p>
+                      )}
                     </div>
                   </div>
                 </div>
-              </section>
-            )}
-
-            {!canPlan && (
-              <div className="tw-rounded-lg tw-border tw-border-amber-200 tw-bg-amber-50 tw-px-3 tw-py-2 tw-text-[11px] sm:tw-text-xs tw-text-amber-800">
-                {t("plannerOnly", lang)}
               </div>
-            )}
 
-            <div className="tw-flex tw-justify-end tw-gap-2 tw-pt-2">
-              <Button variant="text" color="gray" size="sm" onClick={onCancel} className="tw-normal-case">
-                {t("cancel", lang)}
-              </Button>
-              <Button
-                size="sm"
-                onClick={onSave}
-                disabled={!canPlan || saving || !choices}
-                className="tw-normal-case tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900 hover:tw-to-black"
-              >
-                {saving ? t("saving", lang) : t("save", lang)}
-              </Button>
-            </div>
-          </>
-        )}
-      </CardBody>
-    </Card>
+              {/* ═══ 2. อุปกรณ์ที่จะ PM ═══ */}
+              {choices && (
+                <div className="tw-mb-6 tw-rounded-lg tw-overflow-hidden tw-border tw-border-blue-gray-100 tw-bg-white tw-shadow-sm">
+                  <SectionHeader
+                    no={2}
+                    title={t("equipSection", lang)}
+                    right={
+                      <span className="tw-text-xs tw-font-medium tw-text-white/90">
+                        {t("selectedCount", lang)} {selectedCount} {t("items", lang)}
+                      </span>
+                    }
+                  />
+                  <div className="tw-p-4">
+                    <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-4">
+                      <div>
+                        <label className={LABEL}>
+                          {t("chargers", lang)} <span className="tw-text-red-500">*</span>
+                        </label>
+                        {choices.chargers.length === 0 ? (
+                          <p className="tw-text-xs tw-text-orange-600">{t("noChargers", lang)}</p>
+                        ) : (
+                          <div className="tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-divide-y tw-divide-blue-gray-50 tw-max-h-56 tw-overflow-y-auto">
+                            {choices.chargers.map((c) => {
+                              const k = equipKey(c);
+                              return (
+                                <label key={k} className="tw-flex tw-items-center tw-gap-2.5 tw-px-3 tw-py-2.5 tw-cursor-pointer hover:tw-bg-blue-gray-50/60 tw-transition-colors">
+                                  <input
+                                    type="checkbox"
+                                    checked={!!checked[k]}
+                                    disabled={!canPlan}
+                                    onChange={() => toggle(k)}
+                                    className="tw-h-4 tw-w-4 tw-shrink-0 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500 tw-cursor-pointer"
+                                  />
+                                  <span className="tw-min-w-0 tw-truncate tw-text-sm tw-text-blue-gray-800">
+                                    {equipLabel(c)}
+                                  </span>
+                                  {c.sn && (
+                                    <span className="tw-ml-auto tw-text-xs tw-text-blue-gray-400">{c.sn}</span>
+                                  )}
+                                </label>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+
+                      <div>
+                        <label className={LABEL}>{t("stationLevel", lang)}</label>
+                        <div className="tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-divide-y tw-divide-blue-gray-50 tw-max-h-56 tw-overflow-y-auto">
+                          {choices.fixed.map((f) => {
+                            const k = equipKey(f);
+                            return (
+                              <label key={k} className="tw-flex tw-items-center tw-gap-2.5 tw-px-3 tw-py-2.5 tw-cursor-pointer hover:tw-bg-blue-gray-50/60 tw-transition-colors">
+                                <input
+                                  type="checkbox"
+                                  checked={!!checked[k]}
+                                  disabled={!canPlan}
+                                  onChange={() => toggle(k)}
+                                  className="tw-h-4 tw-w-4 tw-shrink-0 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500 tw-cursor-pointer"
+                                />
+                                <span className="tw-min-w-0 tw-truncate tw-text-sm tw-text-blue-gray-800">
+                                  {equipLabel(f)}
+                                </span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Actions — แถบล่างแบบเดียวกับ CM */}
+              <div className="tw-flex tw-items-center tw-justify-between tw-pt-6 tw-border-t tw-border-blue-gray-100">
+                <div className="tw-flex-1" />
+                <div className="tw-flex tw-items-center tw-gap-3">
+                  <Button
+                    variant="outlined"
+                    onClick={onCancel}
+                    className="tw-border-blue-gray-200 tw-text-blue-gray-700 hover:tw-border-blue-gray-300"
+                  >
+                    {t("backToList", lang)}
+                  </Button>
+                  <Button
+                    onClick={onSave}
+                    disabled={!canPlan || saving || !choices}
+                    className="tw-bg-gray-800 hover:!tw-bg-blue-600 tw-text-white hover:tw-shadow-lg hover:!tw-shadow-blue-500/30 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed disabled:tw-shadow-none"
+                  >
+                    {saving ? t("saving", lang) : t("save", lang)}
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      </form>
+    </section>
   );
 }
