@@ -67,6 +67,9 @@ MAXIMO_ATTACHWO_OS = os.getenv("MAXIMO_ATTACHWO_OS", "ZAPIATTACHWO")
 MAXIMO_FAILURELIST_OS = os.getenv("MAXIMO_FAILURELIST_OS", "ZAPIFAILURELIST")
 MAXIMO_FAILUREREPORT_OS = os.getenv("MAXIMO_FAILUREREPORT_OS", "ZAPIFAILUREREPORT")
 MAXIMO_PERSON_OS = os.getenv("MAXIMO_PERSON_OS", "ZAPIPERSON")
+# LABOR เป็นคนละ object กับ PERSON — คนที่ลงเวลาได้ต้องมีเรคคอร์ดที่นี่
+# (ไม่มี ZAPILABOR ให้ใช้ ต้องยิง MXLABOR ซึ่งเป็น OS มาตรฐานของ Maximo)
+MAXIMO_LABOR_OS = os.getenv("MAXIMO_LABOR_OS", "MXLABOR")
 MAXIMO_LABTRANS_OS = os.getenv("MAXIMO_LABTRANS_OS", "ZAPILABTRANS")
 
 # worktype ของใบงาน CM ที่ iMPS เปิดเข้า Maximo
@@ -866,6 +869,23 @@ async def query_labor(cost_center: str | None = None) -> list[dict]:
 
     members = await _get_all(MAXIMO_PERSON_OS, params)
     log.info(f"  👷 Maximo labor list: {len(members)} persons (cost center {cc or '-'})")
+    return members
+
+
+async def query_labor_records(active_only: bool = True) -> list[dict]:
+    """
+    เรคคอร์ด LABOR จริงใน Maximo — คนที่ลงเวลา (IN09) ได้ต้องอยู่ในลิสต์นี้
+
+    ต่างจาก query_labor() ที่ยิง ZAPIPERSON: PERSON มีทุกคนในองค์กร แต่ LABOR
+    มีเฉพาะคนที่ตั้งค่าให้ลงเวลาได้ ส่งรหัสที่ไม่มีใน LABOR จะโดน BMXAA2627E
+
+    Returns: [{"laborcode": "597082", "personid": "597082", "status": "ACTIVE"}, …]
+    """
+    params = {"oslc.select": "laborcode,personid,status,orgid"}
+    if active_only:
+        params["oslc.where"] = 'status="ACTIVE"'
+    members = await _get_all(MAXIMO_LABOR_OS, params)
+    log.info(f"  🧰 Maximo labor records: {len(members)}")
     return members
 
 

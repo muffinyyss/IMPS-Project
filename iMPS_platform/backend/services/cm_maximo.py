@@ -441,36 +441,64 @@ _labor_code_cache: dict[str, Any] = {"items": None}
 
 async def get_labor_codes(refresh: bool = False) -> list[dict]:
     """
-    [{laborcode, name}] ของ laborcode ที่ยืนยันแล้วว่ามีเรคคอร์ด LABOR ใน Maximo
+    [{laborcode, name, needs_name}] ของคนที่ลงเวลาเข้า Maximo ได้จริง
 
-    รายชื่อรหัสมาจาก env MAXIMO_LABOR_CODES ส่วนชื่อคนดึงจาก ZAPIPERSON (IN08)
-    — ดึงไม่ได้ก็ยังคืนรหัสเปล่า ๆ ให้เลือกได้ ไม่ปล่อยให้ dropdown ว่าง
+    ที่มา 2 ทาง รวมกัน:
+      1. MXLABOR (เรคคอร์ด LABOR จริง) ∩ ZAPIPERSON ของ cost center EV
+         — เอาเฉพาะคนในหน่วยงาน EV ที่มีสิทธิ์ลงเวลา ไม่เอาทั้งองค์กร
+      2. env MAXIMO_LABOR_CODES — รหัสกลางอย่าง EVCONTRACTOR ที่ไม่มีใน PERSON
+
+    ดึงจาก Maximo ไม่สำเร็จก็ยังคืนรายการจาก env ให้เลือกได้ ไม่ปล่อย dropdown ว่าง
     """
     if _labor_code_cache["items"] is not None and not refresh:
         return _labor_code_cache["items"]
 
-    codes = sorted(LABOR_CODES_KNOWN)
     names: dict[str, str] = {}
-    if codes and CM_MAXIMO_ENABLED:
+    codes: list[str] = []
+
+    if CM_MAXIMO_ENABLED:
         try:
-            where = "personid in [" + ",".join(f'"{c}"' for c in codes) + "]"
-            people = await maximo._get_all(
-                maximo.MAXIMO_PERSON_OS,
-                {"oslc.select": "personid,displayname", "oslc.where": where},
+            labor, people = await asyncio.gather(
+                maximo.query_labor_records(),
+                get_labor(refresh=refresh),
+                return_exceptions=True,
             )
-            for p in people:
-                pid = str(p.get("personid") or "").strip()
-                if pid:
-                    names[pid] = str(p.get("displayname") or "").strip()
+            if isinstance(labor, Exception):
+                raise labor
+
+            # personid ของคนใน cost center EV + ชื่อไว้โชว์
+            ev_people: dict[str, str] = {}
+            if not isinstance(people, Exception):
+                for p in people:
+                    pid = str(p.get("personid") or "").strip()
+                    if pid:
+                        ev_people[pid] = str(p.get("displayname") or "").strip()
+
+            for row in labor:
+                lc = str(row.get("laborcode") or "").strip()
+                pid = str(row.get("personid") or "").strip()
+                if not lc:
+                    continue
+                # ไม่มีรายชื่อ EV ให้เทียบ (IN08 ล้ม) = เอาทั้งหมดไว้ก่อน ดีกว่าไม่มีให้เลือก
+                if ev_people and pid not in ev_people and lc not in ev_people:
+                    continue
+                codes.append(lc)
+                names[lc] = ev_people.get(pid) or ev_people.get(lc) or lc
         except Exception as e:
-            log.warning(f"  ⚠️ ดึงชื่อ labor ไม่สำเร็จ ใช้รหัสเปล่าแทน: {e}")
+            log.warning(f"  ⚠️ ดึง labor จาก Maximo ไม่สำเร็จ ใช้ค่าจาก env แทน: {e}")
+
+    # รหัสกลางที่ตั้งไว้ใน env — เติมตัวที่ยังไม่มี
+    for c in sorted(LABOR_CODES_KNOWN):
+        if c not in codes:
+            codes.append(c)
+            names.setdefault(c, c)
 
     items = [{
         "laborcode": c,
         "name": names.get(c) or c,
         # รหัสกลางของผู้รับเหมา — ฟอร์มต้องขึ้นช่องให้กรอกชื่อจริงเพิ่ม
         "needs_name": c.upper() == CONTRACTOR_LABOR_CODE,
-    } for c in codes]
+    } for c in sorted(set(codes), key=lambda x: (x.upper() == CONTRACTOR_LABOR_CODE, x))]
     _labor_code_cache["items"] = items
     return items
 
