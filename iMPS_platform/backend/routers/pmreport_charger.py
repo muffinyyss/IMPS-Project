@@ -21,6 +21,7 @@ from config import (
     CBBOXPMReportDB, CBBOXPMUrlDB, normalize_pm_date, _ensure_utc_iso,
 )
 from deps import UserClaims, get_current_user
+from services import pm_maximo_out
 from uploads_access import assert_station_access, assert_sn_access
 from routers.pm_helpers import (
     UPLOADS_ROOT,
@@ -520,6 +521,10 @@ async def pmreport_pre_submit(body: PMSubmitIn, current: UserClaims = Depends(ge
 class PMPostIn(BaseModel):
     report_id: str | None = None
     sn: str
+    # เวลาทำงานจริงของช่าง — ส่งเข้า Maximo ทาง IN09 ตอนปิดใบงาน
+    # รูปแบบ datetime-local ของ input ("2026-08-18T09:30")
+    work_start: Optional[str] = None
+    work_finish: Optional[str] = None
     rows: dict
     measures: dict
     summary: str
@@ -558,6 +563,8 @@ async def pmreport_post_submit(
             "summary": body.summary,
             "summaryCheck": body.summaryCheck,
             "dust_filter": body.dust_filter,
+            "work_start": (body.work_start or "").strip(),
+            "work_finish": (body.work_finish or "").strip(),
             "side": "post",
             "timestamp_post": datetime.now(timezone.utc),
         }
@@ -579,6 +586,8 @@ async def pmreport_post_submit(
         "summary": body.summary,
         "summaryCheck": body.summaryCheck,
         "dust_filter": body.dust_filter,
+        "work_start": (body.work_start or "").strip(),
+        "work_finish": (body.work_finish or "").strip(),
         "side": "post",
         "timestamp_post": datetime.now(timezone.utc),
     }
@@ -764,9 +773,18 @@ async def pmreport_finalize(report_id: str, sn: str = Form(...), current: UserCl
     except Exception:
         raise HTTPException(status_code=400, detail="Bad report_id")
 
-    doc = await coll.find_one({"_id": oid}, {"_id": 1, "status": 1})
+    doc = await coll.find_one(
+        {"_id": oid}, {"_id": 1, "status": 1, "work_start": 1, "work_finish": 1}
+    )
     if not doc:
         raise HTTPException(status_code=404, detail="Report not found")
+
+    # เวลาทำงานเป็นข้อมูลที่ต้องส่งเข้า Maximo (IN09) — ขาดแล้วปิดงานไปก็ยิงไม่ได้
+    if not str(doc.get("work_start") or "").strip() or not str(doc.get("work_finish") or "").strip():
+        raise HTTPException(
+            status_code=400,
+            detail="กรุณากรอกเวลาเริ่มงานและเวลาเสร็จงานก่อนส่งปิดใบงาน",
+        )
 
     # ปิดไปแล้วห้ามส่งซ้ำ — ไม่งั้นใบที่ planner อนุมัติแล้วจะเด้งกลับเข้าคิวรออนุมัติ
     if str(doc.get("status") or "").strip().lower() in PM_CLOSED_STATUSES:
@@ -837,7 +855,14 @@ async def pmreport_approve(
             detail="Report not found or not in 'Wait for approve' status",
         )
 
-    return {"ok": True, "status": PM_STATUS_CLOSED}
+    # ── ส่งต่อให้ Maximo (IN02 สถานะปิด + IN03 ลิงก์เอกสาร) ──
+    # อ่านใบงานหลังบันทึกเพื่อให้ข้อมูลที่ส่งไปตรงกับที่เก็บจริง
+    fresh = await coll.find_one({"_id": oid}) or {}
+    maximo_result = await pm_maximo_out.safe_sync_closed(
+        coll, oid, fresh, memo=f"closed by {current.username}"
+    )
+
+    return {"ok": True, "status": PM_STATUS_CLOSED, "maximo": maximo_result}
 
 
 class PMRejectIn(BaseModel):

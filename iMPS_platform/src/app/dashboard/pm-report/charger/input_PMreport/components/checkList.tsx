@@ -262,6 +262,12 @@ const T = {
     pass: { th: "PASS", en: "PASS" },
     fail: { th: "FAIL", en: "FAIL" },
     backToList: { th: "กลับไปหน้า List", en: "Back to List" },
+    workTime: { th: "เวลาทำงานจริง", en: "Actual work time" },
+    workStart: { th: "เวลาเริ่มงาน", en: "Start time" },
+    workFinish: { th: "เวลาเสร็จงาน", en: "Finish time" },
+    workTimeHint: { th: "ใช้ส่งเวลาทำงานของช่างเข้า Maximo", en: "Sent to Maximo as actual labor time" },
+    alertWorkTime: { th: "กรุณากรอกเวลาเริ่มงานและเวลาเสร็จงาน", en: "Please fill in the start and finish time" },
+    alertWorkTimeOrder: { th: "เวลาเสร็จงานต้องไม่ก่อนเวลาเริ่มงาน", en: "Finish time must not be before the start time" },
 
     // Photo Section
     maxPhotos: { th: "สูงสุด", en: "Max" },
@@ -2156,6 +2162,9 @@ export default function ChargerPMForm() {
     const [summaryPre, setSummaryPre] = useState<string>("");
     const [sn, setSn] = useState<string | null>(null);
     const [summaryCheck, setSummaryCheck] = useState<PF>("");
+    // เวลาทำงานจริงของช่าง (datetime-local) — ส่งเข้า Maximo ทาง IN09 ตอนปิดใบงาน
+    const [workStart, setWorkStart] = useState<string>("");
+    const [workFinish, setWorkFinish] = useState<string>("");
 
     const key = useMemo(() => draftKey(sn), [sn]);
     const postKey = useMemo(() => `${draftKey(sn)}:${editId}:post`, [sn, editId]);
@@ -2583,6 +2592,8 @@ export default function ChargerPMForm() {
         }
 
         // โหลด summaryCheck (Post mode only)
+        if (draft.workStart) setWorkStart(draft.workStart);
+        if (draft.workFinish) setWorkFinish(draft.workFinish);
         if (draft.summaryCheck) {
             setSummaryCheck(draft.summaryCheck);
         }
@@ -2978,8 +2989,8 @@ export default function ChargerPMForm() {
 
     useDebouncedEffect(() => {
         if (!sn || !isPostMode || !editId) return;
-        saveDraftLocal(postKey, { rows, cp, m16: m16.state, summary, summaryCheck, dustFilterChanged, photoRefs });
-    }, [postKey, sn, rows, cp, m16.state, summary, summaryCheck, dustFilterChanged, photoRefs, isPostMode, editId]);
+        saveDraftLocal(postKey, { rows, cp, m16: m16.state, summary, summaryCheck, workStart, workFinish, dustFilterChanged, photoRefs });
+    }, [postKey, sn, rows, cp, m16.state, summary, summaryCheck, workStart, workFinish, dustFilterChanged, photoRefs, isPostMode, editId]);
 
 
 
@@ -3199,6 +3210,9 @@ export default function ChargerPMForm() {
         if (!allRequiredInputsFilled) { alert(t("alertFillRequired", lang)); return; }
         if (!allRemarksFilledPost) { alert(`${t("alertFillRemark", lang)} ${missingRemarksPost.join(", ")}`); return; }
         if (!isSummaryFilled || !isSummaryCheckFilled) { alert(t("alertCompleteAll", lang)); return; }
+        // เวลาทำงานต้องครบ — backend ก็กันไว้อีกชั้น เพราะ IN09 ต้องใช้
+        if (!workStart || !workFinish) { alert(t("alertWorkTime", lang)); return; }
+        if (workFinish < workStart) { alert(t("alertWorkTimeOrder", lang)); return; }
         if (submitting) return;
         setSubmitting(true);
         try {
@@ -3213,14 +3227,14 @@ export default function ChargerPMForm() {
                 }
             }
             if (!report_id) {
-                const payload = { sn: sn, rows, measures: { m16: m16.state, cp }, summary, ...(summaryCheck ? { summaryCheck } : {}), dust_filter: dustFilterChanged, side: "post" as TabId, report_id: editId };
+                const payload = { sn: sn, rows, measures: { m16: m16.state, cp }, summary, ...(summaryCheck ? { summaryCheck } : {}), work_start: workStart, work_finish: workFinish, dust_filter: dustFilterChanged, side: "post" as TabId, report_id: editId };
                 const submitRes = await apiFetch(`${API_BASE}/pmreport/submit`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
                 if (!submitRes.ok) throw new Error(await submitRes.text());
                 const jsonRes = await submitRes.json() as { report_id: string };
                 report_id = jsonRes.report_id;
                 postReportIdRef.current = report_id;
                 // ⚡ บันทึก report_id ลง draft เผื่อ user refresh หน้า
-                saveDraftLocal(postKey, { ...loadDraftLocal(postKey), pendingReportId: report_id, rows, cp, m16: m16.state, summary, summaryCheck, dustFilterChanged, photoRefs });
+                saveDraftLocal(postKey, { ...loadDraftLocal(postKey), pendingReportId: report_id, rows, cp, m16: m16.state, summary, summaryCheck, workStart, workFinish, dustFilterChanged, photoRefs });
             }
 
             const uploadedIdsPost = new Set<string>();
@@ -3234,7 +3248,7 @@ export default function ChargerPMForm() {
                         return { ...p.ref, uploaded: p.uploaded === true || uploadedIdsPost.has(p.id) };
                     }).filter(Boolean);
                 });
-                saveDraftLocal(postKey, { ...loadDraftLocal(postKey), pendingReportId: report_id, rows, cp, m16: m16.state, summary, summaryCheck, dustFilterChanged, photoRefs: latestPhotoRefs });
+                saveDraftLocal(postKey, { ...loadDraftLocal(postKey), pendingReportId: report_id, rows, cp, m16: m16.state, summary, summaryCheck, workStart, workFinish, dustFilterChanged, photoRefs: latestPhotoRefs });
             };
 
             // ⚡ อัปโหลดหลายรอบ — รูปที่มาถึงหลังกดบันทึกต้องถูกจับเข้ารอบถัดไป ไม่ใช่ถูกข้ามแล้วโดนลบ
@@ -3481,6 +3495,49 @@ export default function ChargerPMForm() {
                                         labels={{ PASS: t("summaryPass", lang), FAIL: t("summaryFail", lang), NA: t("summaryNA", lang) }}
                                         lang={lang}
                                     />
+                                </div>
+
+                                {/* เวลาทำงานจริงของช่าง — ต้องกรอกก่อนส่งปิดใบงาน (ส่งเข้า Maximo IN09) */}
+                                <div className="tw-pt-3 sm:tw-pt-4 tw-border-t tw-border-gray-200">
+                                    <div className="tw-mb-2">
+                                        <Typography variant="h6" className="tw-text-sm sm:tw-text-base">
+                                            {t("workTime", lang)} <span className="tw-text-red-500">*</span>
+                                        </Typography>
+                                        <Typography variant="small" className="tw-text-xs tw-font-normal tw-text-blue-gray-400">
+                                            {t("workTimeHint", lang)}
+                                        </Typography>
+                                    </div>
+                                    <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 tw-gap-3">
+                                        <div>
+                                            <label className="tw-mb-1.5 tw-block tw-text-xs tw-font-semibold tw-text-blue-gray-700">
+                                                {t("workStart", lang)}
+                                            </label>
+                                            <input
+                                                type="datetime-local"
+                                                value={workStart}
+                                                onChange={(e) => setWorkStart(e.target.value)}
+                                                className="tw-w-full tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-px-3 tw-py-2.5 tw-text-sm tw-text-blue-gray-800 focus:tw-outline-none focus:tw-border-blue-500"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="tw-mb-1.5 tw-block tw-text-xs tw-font-semibold tw-text-blue-gray-700">
+                                                {t("workFinish", lang)}
+                                            </label>
+                                            {/* min กัน picker เลือกย้อนหลัง — ยังต้อง validate เพราะพิมพ์มือเลี่ยงได้ */}
+                                            <input
+                                                type="datetime-local"
+                                                value={workFinish}
+                                                min={workStart || undefined}
+                                                onChange={(e) => setWorkFinish(e.target.value)}
+                                                className={`tw-w-full tw-rounded-lg tw-border tw-bg-white tw-px-3 tw-py-2.5 tw-text-sm tw-text-blue-gray-800 focus:tw-outline-none ${workStart && workFinish && workFinish < workStart
+                                                    ? "tw-border-red-400 focus:tw-border-red-500"
+                                                    : "tw-border-blue-gray-200 focus:tw-border-blue-500"}`}
+                                            />
+                                            {workStart && workFinish && workFinish < workStart && (
+                                                <p className="tw-mt-1.5 tw-text-xs tw-text-red-600">{t("alertWorkTimeOrder", lang)}</p>
+                                            )}
+                                        </div>
+                                    </div>
                                 </div>
                             </>
                         )}

@@ -15,6 +15,7 @@ services/cm_maximo.py
 หลักการ: ฟังก์ชัน push_* ทุกตัว "ไม่ raise" — Maximo ล่มต้องไม่ทำให้ช่างบันทึกงานไม่ได้
 """
 
+import asyncio
 import json
 import logging
 import os
@@ -805,44 +806,83 @@ PLANNED_RESULTS = {
 # สถานะที่ถือว่างานจบ → ส่งผลวิเคราะห์ + เวลาช่างเข้า Maximo
 CLOSING_STATUSES = {"complete", "closed"}
 
+# หน่วงระหว่าง interface ตอนปิดงาน — EGAT ระบุว่าส่งพร้อมกันไม่ได้ ต้องรอให้
+# Maximo commit เส้นก่อนหน้าให้เสร็จก่อน ไม่งั้นเส้นถัดไปอาจเห็นข้อมูลไม่ครบ
+MAXIMO_STEP_DELAY = float(os.getenv("MAXIMO_STEP_DELAY", "2"))
+
+
+async def _settle() -> None:
+    """รอ Maximo commit เส้นที่เพิ่งยิงไป ก่อนยิงเส้นถัดไป"""
+    if MAXIMO_STEP_DELAY > 0:
+        await asyncio.sleep(MAXIMO_STEP_DELAY)
+
 
 def is_planning_save(report: dict) -> bool:
-    """ใบงานผ่านขั้นวางแผนของ planner แล้วหรือยัง"""
+    """
+    ใบงานผ่านขั้นวางแผนของ planner แล้วหรือยัง
+
+    วางแผนเสร็จ = เปิด WO ได้เลย ไม่ต้องรอว่ามอบหมายช่างแล้วหรือยัง
+    (ตามที่ตกลงกับ EGAT — ช่างเติมทีหลังได้ ผ่าน IN09 ตอนปิดงาน)
+    """
     if str(report.get("repair_result") or "").strip().lower() in PLANNED_RESULTS:
         return True
-    # วางแผนแบบกำหนดวันและช่างครบ (ไม่ได้เลือกสถานะรอ)
-    return bool(report.get("sched_start") and report.get("assignees"))
+    # กำหนดวันเริ่มตามแผนแล้ว = วางแผนเสร็จ แม้ยังไม่ได้เลือกช่าง
+    return bool(report.get("sched_start"))
 
 
 async def sync_report(coll, report_id, report: dict, *, memo: str = "") -> dict:
     """
     ยิงทุก interface ที่ถึงจังหวะของใบงานนี้ — เรียกได้ซ้ำ ๆ อย่างปลอดภัย
 
-    ลำดับ: IN01 (ถ้ายังไม่มี WO) → IN02 สถานะ → ปิดงานค่อยเพิ่ม IN05 + IN09
+    ลำดับตาม sequencing ที่ตกลงกับ EGAT (Maximo x iMPS — CM):
+      1. IN01 create wo      — planner วางแผนเสร็จ
+      2. IN02 wo status      — เปลี่ยนสถานะระหว่างทาง (In Progress ฯลฯ)
+      3. IN03 attachment     ┐
+      4. IN05 failure report ├ ตอนปิดใบงาน ยิงทีละเส้นเรียงกัน (ห้ามส่งพร้อมกัน)
+      5. IN09 actual labor   ┘
+      6. IN02 wo status      — COMPLETE ต้องเป็นเส้นสุดท้ายเสมอ
+
+    ข้อ 6 สำคัญ: พอ WO ขึ้น COMP แล้ว Maximo ไม่ให้เพิ่ม failure report / labor
+    เข้าไปอีก ยิงสถานะปิดก่อนขั้น 3–5 จะทำให้ 3 เส้นนั้นตกทั้งหมด
     """
     out: dict[str, Any] = {}
     if not CM_MAXIMO_ENABLED:
         return {"skipped": "CM_MAXIMO_ENABLED=false"}
 
+    # ── 1. IN01 — เปิด WO ตอน planner วางแผนเสร็จ ──
     if is_planning_save(report):
         out["IN01"] = await ensure_work_order(coll, report_id, report)
         wonum = out["IN01"].get("wonum")
         if wonum:
             report = {**report, "maximo_wonum": wonum}
-            # แนบลิงก์ใบงานฝั่ง iMPS ให้ WO ครั้งเดียวตอนเพิ่งเปิด — คนที่เปิดดูใน
-            # Maximo จะกดข้ามมาดูรูป/รายละเอียดเต็มในระบบเราได้
-            if not out["IN01"].get("existing") and not (report.get("maximo_sync") or {}).get("IN03"):
-                out["IN03"] = await push_attachment(
-                    coll, report_id, report, report_url(report, report_id),
-                    name=f"iMPS {report.get('issue_id') or 'CM'}",
-                    description=f"iMPS CM report {report.get('doc_name') or ''}".strip(),
-                )
 
+    is_closing = str(report.get("status") or "").strip().lower() in CLOSING_STATUSES
+
+    if not is_closing:
+        # ── 2. IN02 — สถานะระหว่างทาง ──
+        out["IN02"] = await push_status(coll, report_id, report, memo=memo)
+        return out
+
+    # ── 3. IN03 — แนบลิงก์ใบงานฝั่ง iMPS (ครั้งเดียวพอ) ──
+    # คนที่เปิดดูใน Maximo จะกดข้ามมาดูรูป/รายละเอียดเต็มในระบบเราได้
+    if not (report.get("maximo_sync") or {}).get("IN03", {}).get("ok"):
+        out["IN03"] = await push_attachment(
+            coll, report_id, report, report_url(report, report_id),
+            name=f"iMPS {report.get('issue_id') or 'CM'}",
+            description=f"iMPS CM report {report.get('doc_name') or ''}".strip(),
+        )
+
+    # ── 4. IN05 — ผลวิเคราะห์ปัญหา/สาเหตุ/การแก้ไข ──
+    await _settle()
+    out["IN05"] = await push_failure_report(coll, report_id, report)
+
+    # ── 5. IN09 — เวลาทำงานจริงของช่าง ──
+    await _settle()
+    out["IN09"] = await push_labor_time(coll, report_id, report)
+
+    # ── 6. IN02 — ปิดสถานะเป็นเส้นสุดท้าย ──
+    await _settle()
     out["IN02"] = await push_status(coll, report_id, report, memo=memo)
-
-    if str(report.get("status") or "").strip().lower() in CLOSING_STATUSES:
-        out["IN05"] = await push_failure_report(coll, report_id, report)
-        out["IN09"] = await push_labor_time(coll, report_id, report)
 
     return out
 
