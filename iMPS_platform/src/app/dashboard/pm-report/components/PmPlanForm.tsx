@@ -90,7 +90,14 @@ const T = {
   technician: { th: "ช่างผู้รับผิดชอบ", en: "Technician" },
   allTechnicians: { th: "ทั้งหมด", en: "All" },
   noTechnicians: { th: "ไม่พบช่าง", en: "No technicians found" },
+  noAssignee: { th: "ยังไม่ได้มอบหมายช่าง", en: "No technician assigned" },
 
+  editPlan: { th: "แก้ไขแผน", en: "Edit plan" },
+  cancelEdit: { th: "ยกเลิกการแก้ไข", en: "Cancel edit" },
+  plannedNotice: {
+    th: "ใบงานนี้วางแผนเรียบร้อยแล้ว — ข้อมูลเป็นแบบอ่านอย่างเดียว กด “แก้ไขแผน” ถ้าต้องการเปลี่ยน",
+    en: "This work order is already planned — fields are read-only. Press “Edit plan” to change it",
+  },
   save: { th: "Assign", en: "Assign" },
   saving: { th: "กำลังมอบหมาย…", en: "Assigning…" },
 
@@ -142,6 +149,9 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
   const [canPlan, setCanPlan] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  // วางแผนเสร็จแล้ว = อ่านอย่างเดียว ต้องกด "แก้ไขแผน" ก่อนถึงจะแก้ได้
+  // (กันแก้ทับโดยไม่ตั้งใจ แต่ยังเปิดทางให้ planner แก้แผนที่ผิดได้)
+  const [editMode, setEditMode] = useState(false);
   const [error, setError] = useState("");
 
   const [checked, setChecked] = useState<Record<string, boolean>>({});
@@ -293,6 +303,7 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
         setError(String(j?.detail || t("errSave", lang)));
         return;
       }
+      setEditMode(false);
       onSaved();
     } catch (err) {
       console.error("pm plan save error:", err);
@@ -303,6 +314,8 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
   };
 
   const planStatus = derivePlanningStatus(selectedCount, wo?.planning_status ?? "pending");
+  const alreadyPlanned = planStatus === "planned";
+  const locked = !canPlan || (alreadyPlanned && !editMode);
 
   return (
     <section className="tw-pb-24">
@@ -370,6 +383,14 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
                 <p className="tw-text-sm tw-font-semibold tw-text-amber-800">{t("noStationTitle", lang)}</p>
                 <p className="tw-text-sm tw-text-amber-700 tw-mt-0.5">{t("noStationBody", lang)}</p>
               </div>
+            </div>
+          )}
+
+          {/* วางแผนแล้ว — อ่านอย่างเดียวจนกว่าจะกดแก้ไข */}
+          {!loading && canPlan && alreadyPlanned && !editMode && (
+            <div className="tw-mb-4 tw-flex tw-items-start tw-gap-3 tw-px-4 tw-py-3 tw-rounded-lg tw-bg-blue-50 tw-border tw-border-blue-200">
+              <ExclamationTriangleIcon className="tw-w-5 tw-h-5 tw-text-blue-500 tw-mt-0.5 tw-flex-shrink-0" />
+              <p className="tw-text-sm tw-text-blue-800">{t("plannedNotice", lang)}</p>
             </div>
           )}
 
@@ -448,7 +469,7 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
                       <input
                         type="datetime-local"
                         value={schedStart}
-                        disabled={!canPlan}
+                        disabled={locked}
                         onChange={(e) => setSchedStart(e.target.value)}
                         className={FIELD}
                       />
@@ -462,7 +483,7 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
                         type="datetime-local"
                         value={schedFinish}
                         min={schedStart || undefined}
-                        disabled={!canPlan}
+                        disabled={locked}
                         onChange={(e) => setSchedFinish(e.target.value)}
                         className={`tw-w-full tw-rounded-lg tw-border tw-bg-white tw-px-3 tw-py-2.5 tw-text-sm tw-text-blue-gray-800 focus:tw-outline-none ${schedRangeInvalid ? "tw-border-red-400 focus:tw-border-red-500" : "tw-border-blue-gray-200 focus:tw-border-blue-500"}`}
                       />
@@ -474,14 +495,21 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
                       <label className={LABEL}>
                         {t("technician", lang)} <span className="tw-text-red-500">*</span>
                       </label>
-                      {technicianNames.length > 0 && (
+                      {/* คนที่วางแผนไม่ได้ (เช่นช่าง) เรียก /users/by-role ไม่ได้ — ได้ 403
+                          แล้ว list ว่าง ทำให้ขึ้น "ไม่พบช่าง" ซึ่งไม่จริง
+                          โหมดอ่านอย่างเดียวจึงแสดงชื่อที่มอบหมายไว้เป็นข้อความแทน */}
+                      {!canPlan ? (
+                        <div className={FIELD_RO}>
+                          {assignees.length > 0 ? assignees.join(", ") : t("noAssignee", lang)}
+                        </div>
+                      ) : technicianNames.length > 0 ? (
                         <div className="tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-divide-y tw-divide-blue-gray-50 tw-max-h-56 tw-overflow-y-auto">
                           {/* All = ติ๊กช่างทุกคนในลิสต์รวดเดียว */}
                           <label className="tw-flex tw-items-center tw-gap-2.5 tw-px-3 tw-py-2.5 tw-cursor-pointer hover:tw-bg-blue-gray-50/60 tw-transition-colors">
                             <input
                               type="checkbox"
                               checked={allTechChecked}
-                              disabled={!canPlan}
+                              disabled={locked}
                               onChange={() => setAssignees(allTechChecked ? [] : technicianNames)}
                               className="tw-h-4 tw-w-4 tw-shrink-0 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500 tw-cursor-pointer"
                             />
@@ -497,7 +525,7 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
                               <input
                                 type="checkbox"
                                 checked={assignees.includes(u)}
-                                disabled={!canPlan}
+                                disabled={locked}
                                 onChange={() => toggleAssignee(u)}
                                 className="tw-h-4 tw-w-4 tw-shrink-0 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500 tw-cursor-pointer"
                               />
@@ -505,8 +533,7 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
                             </label>
                           ))}
                         </div>
-                      )}
-                      {technicianNames.length === 0 && (
+                      ) : (
                         <p className="tw-mt-1.5 tw-text-xs tw-text-orange-600">{t("noTechnicians", lang)}</p>
                       )}
                     </div>
@@ -536,7 +563,7 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
                           <input
                             type="checkbox"
                             checked={allEquipChecked}
-                            disabled={!canPlan}
+                            disabled={locked}
                             onChange={toggleAllEquipment}
                             className="tw-h-4 tw-w-4 tw-shrink-0 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500 tw-cursor-pointer"
                           />
@@ -554,7 +581,7 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
                               <input
                                 type="checkbox"
                                 checked={!!checked[k]}
-                                disabled={!canPlan}
+                                disabled={locked}
                                 onChange={() => toggle(k)}
                                 className="tw-h-4 tw-w-4 tw-shrink-0 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500 tw-cursor-pointer"
                               />
@@ -584,13 +611,37 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
                   >
                     {t("backToList", lang)}
                   </Button>
-                  <Button
-                    onClick={onSave}
-                    disabled={!canPlan || saving || !wo}
-                    className="tw-bg-gray-800 hover:!tw-bg-blue-600 tw-text-white hover:tw-shadow-lg hover:!tw-shadow-blue-500/30 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed disabled:tw-shadow-none"
-                  >
-                    {saving ? t("saving", lang) : t("save", lang)}
-                  </Button>
+                  {/* วางแผนแล้ว → ปุ่มเดียวคือเข้าโหมดแก้ไข ยังไม่ให้ยิงทับเลย */}
+                  {canPlan && alreadyPlanned && !editMode && (
+                    <Button
+                      variant="outlined"
+                      size="sm"
+                      onClick={() => setEditMode(true)}
+                      className="tw-border-blue-gray-200 tw-text-blue-gray-700 hover:tw-border-blue-gray-300"
+                    >
+                      {t("editPlan", lang)}
+                    </Button>
+                  )}
+                  {canPlan && alreadyPlanned && editMode && (
+                    <Button
+                      variant="text"
+                      size="sm"
+                      onClick={() => { setEditMode(false); load(); }}
+                      disabled={saving}
+                    >
+                      {t("cancelEdit", lang)}
+                    </Button>
+                  )}
+                  {/* โหมดอ่านอย่างเดียวไม่ต้องมีปุ่ม Assign ให้กดพลาด */}
+                  {!(alreadyPlanned && !editMode) && (
+                    <Button
+                      onClick={onSave}
+                      disabled={locked || saving || !wo}
+                      className="tw-bg-gray-800 hover:!tw-bg-blue-600 tw-text-white hover:tw-shadow-lg hover:!tw-shadow-blue-500/30 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed disabled:tw-shadow-none"
+                    >
+                      {saving ? t("saving", lang) : t("save", lang)}
+                    </Button>
+                  )}
                 </div>
               </div>
             </>

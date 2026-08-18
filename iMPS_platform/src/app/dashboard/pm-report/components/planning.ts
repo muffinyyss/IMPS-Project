@@ -1,8 +1,9 @@
 /**
  * ตัวช่วยกลางของการวางแผน PM — ใช้ร่วมกันระหว่าง
- *   - MaximoWorkOrders.tsx (การ์ดรวมใบงาน Maximo ของ tab mdb/ccb/cb-box/station)
- *   - PmPlanForm.tsx       (ฟอร์มวางแผนเต็มหน้าแบบเดียวกับ CM)
- * แยกออกมาเพื่อไม่ให้ต้องไล่แก้ตรรกะเดียวกัน 2 ที่
+ *   - PmPlanForm.tsx       (ฟอร์มวางแผนของ planner)
+ *   - PmWorkOrderInfo.tsx  (หน้าข้อมูลใบงานที่ช่างเห็นก่อนเริ่มกรอก)
+ *   - flow.tsx             (แถว/สถานะใบงานในตารางของทั้ง 5 tab)
+ * แยกออกมาเพื่อไม่ให้ต้องไล่แก้ตรรกะเดียวกันหลายที่
  */
 import type { Lang } from "@/utils/useLanguage";
 
