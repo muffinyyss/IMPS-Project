@@ -844,7 +844,8 @@ async def list_maximo_pm_open(
     location: Optional[str] = Query(None, description="กรองตาม Maximo location"),
     station_id: Optional[str] = Query(None, description="กรองตาม station_id ของ iMPS"),
     only_open: bool = Query(True, description="เอาเฉพาะใบงานที่ยังเปิดอยู่"),
-    limit: int = Query(50, ge=1, le=200),
+    # หน้า PM List ดึงรวมทุกสถานีในครั้งเดียว จึงต้องเพดานสูงกว่าหน้า tab เดี่ยว
+    limit: int = Query(50, ge=1, le=1000),
     current: UserClaims = Depends(get_current_user),
 ):
     """
