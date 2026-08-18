@@ -91,6 +91,7 @@ const T = {
     contractorName: { th: "ชื่อผู้รับเหมา", en: "Contractor name" },
     contractorPlaceholder: { th: "ระบุชื่อผู้รับเหมาที่มาทำงานจริง", en: "Name of the contractor who did the work" },
     contractorRequired: { th: "เลือกผู้รับเหมาแล้วต้องระบุชื่อด้วย", en: "Enter the contractor name" },
+    maximoLaborNone: { th: "ช่างไม่ได้เลือกรหัสช่างไว้", en: "No labor code selected by the technician" },
     completedDate: { th: "วันที่แก้ไขเสร็จ", en: "Completed Date" },
 
     // Section 3 - Problem Summary
@@ -3158,12 +3159,38 @@ export default function CMInProgressForm() {
 
                             {/* ช่างที่จะลงเวลาเข้า Maximo — laborcode คนละชุดกับ username ใน iMPS
                                 จึงต้องให้เลือกเอง ไม่งั้น IN09 จะ unmapped ทั้งใบ */}
-                            {!viewOnly && (
-                                <div className="tw-space-y-2">
-                                    <label className="tw-flex tw-items-center tw-gap-2 tw-text-sm tw-font-semibold tw-text-gray-700">
-                                        <span className="tw-w-1.5 tw-h-1.5 tw-rounded-full tw-bg-blue-500"></span>
-                                        {t("maximoLabor", lang)}
-                                    </label>
+                            <div className="tw-space-y-2">
+                                <label className="tw-flex tw-items-center tw-gap-2 tw-text-sm tw-font-semibold tw-text-gray-700">
+                                    <span className="tw-w-1.5 tw-h-1.5 tw-rounded-full tw-bg-blue-500"></span>
+                                    {t("maximoLabor", lang)}
+                                </label>
+
+                                {/* ด่านตรวจ/อนุมัติ — ผู้อนุมัติต้องเห็นว่าช่างเลือกใครไว้ แต่แก้ไม่ได้ */}
+                                {viewOnly ? (
+                                    maximoLabor.length === 0 ? (
+                                        <p className="tw-text-xs tw-text-gray-400">{t("maximoLaborNone", lang)}</p>
+                                    ) : (
+                                        <div className="tw-flex tw-flex-wrap tw-gap-2">
+                                            {maximoLabor.map((code) => {
+                                                const opt = laborOptions.find((o) => o.laborcode === code);
+                                                const label = opt?.name && opt.name !== code ? opt.name : code;
+                                                const isContractor = opt?.needs_name;
+                                                return (
+                                                    <span
+                                                        key={code}
+                                                        className="tw-inline-flex tw-items-center tw-gap-2 tw-rounded-full tw-border tw-border-blue-200 tw-bg-blue-50 tw-px-3 tw-py-1 tw-text-xs tw-text-blue-800"
+                                                    >
+                                                        <span className="tw-font-medium">
+                                                            {isContractor && maximoContractor ? maximoContractor : label}
+                                                        </span>
+                                                        <span className="tw-font-mono tw-text-[11px] tw-text-blue-400">{code}</span>
+                                                    </span>
+                                                );
+                                            })}
+                                        </div>
+                                    )
+                                ) : (
+                                <>
                                     <p className="tw-text-xs tw-text-gray-500">{t("maximoLaborHint", lang)}</p>
                                     {laborOptions.length === 0 ? (
                                         <p className="tw-text-xs tw-text-orange-600">{t("maximoLaborEmpty", lang)}</p>
@@ -3203,8 +3230,9 @@ export default function CMInProgressForm() {
                                             )}
                                         </div>
                                     )}
-                                </div>
-                            )}
+                                </>
+                                )}
+                            </div>
 
                             {/* Repair Result */}
                             {!isNoProblem && (
