@@ -74,6 +74,41 @@ def resize_image_bytes(data: bytes, max_width: int = 1920, quality: int = 85) ->
 
 router = APIRouter()
 
+# ── Flow ใบงาน PM (charger) — ให้ตรงกับ CM ──
+#   Maximo เปิดใบงาน → planner วางแผน (pm_maximo: planning_status)
+#   → technician กรอก (draft) → กด finalize = "Wait for approve"
+#   → planner/admin approve = "Closed" หรือ reject กลับไป "draft"
+PM_STATUS_DRAFT = "draft"
+PM_STATUS_WAIT_APPROVE = "Wait for approve"
+PM_STATUS_CLOSED = "Closed"
+
+# ด่านอนุมัติปิดงาน — ตั้งชื่อให้ตรงกับ CM เผื่ออนาคตมีด่านอนุมัติอื่นเพิ่ม
+PM_STAGE_CLOSE_APPROVAL = "close_approval"
+
+# ใบเก่าปิดด้วย "submitted" ก่อนมี flow อนุมัติ — นับเป็นปิดแล้วเวลาแสดงผล
+PM_LEGACY_CLOSED_STATUS = "submitted"
+PM_CLOSED_STATUSES = {PM_STATUS_CLOSED.lower(), PM_LEGACY_CLOSED_STATUS}
+
+PM_APPROVE_ROLES: set[str] = {"admin", "planner"}
+
+
+def _pm_status_or_conditions(status: str) -> list[dict]:
+    """เงื่อนไข match status — รองรับหลายค่าคั่นด้วย , และเทียบแบบไม่สนตัวพิมพ์"""
+    conds: list[dict] = []
+    for w in (x.strip() for x in status.split(",")):
+        if not w:
+            continue
+        conds.append({"status": {"$regex": f"^{re.escape(w)}$", "$options": "i"}})
+        # "Closed" ต้องเห็นใบเก่าที่ยังเป็น submitted ด้วย
+        if w.lower() == PM_STATUS_CLOSED.lower():
+            conds.append({"status": PM_LEGACY_CLOSED_STATUS})
+    return conds
+
+
+def _assert_pm_approver(current: UserClaims) -> None:
+    if (current.role or "").strip().lower() not in PM_APPROVE_ROLES:
+        raise HTTPException(status_code=403, detail="Only planner or admin can approve")
+
 async def _get_charger_by_sn(sn: str) -> dict:
     """Get charger document by SN, raise 404 if not found"""
     charger = charger_collection.find_one({"SN": sn})
@@ -200,17 +235,27 @@ async def pmreport_list(
     sn: str = Query(...),
     page: int = Query(1, ge=1),
     pageSize: int = Query(20, ge=1, le=100),
+    status: str | None = Query(None, description="กรองตามสถานะ คั่นหลายค่าด้วย , เช่น 'draft,Wait for approve'"),
     current: UserClaims = Depends(get_current_user),
 ):
     """List PM reports for a charger by SN"""
     coll = get_pmreport_collection_for(sn)
     skip = (page - 1) * pageSize
 
-    cursor = coll.find({}, {"_id": 1, "issue_id": 1, "doc_name": 1, "pm_date": 1, "inspector": 1, "side": 1, "has_photos": 1, "createdAt": 1}).sort(
+    query: dict = {}
+    if status and (conds := _pm_status_or_conditions(status)):
+        query["$or"] = conds
+
+    cursor = coll.find(query, {
+        "_id": 1, "issue_id": 1, "doc_name": 1, "pm_date": 1, "inspector": 1, "wonum": 1,
+        "side": 1, "has_photos": 1, "createdAt": 1,
+        "status": 1, "stage": 1, "approved_by": 1, "approved_at": 1,
+        "reject_remark": 1, "rejected_by": 1, "submittedAt": 1,
+    }).sort(
         [("createdAt", -1), ("_id", -1)]
     ).skip(skip).limit(pageSize)
     items_raw = await cursor.to_list(length=pageSize)
-    total = await coll.count_documents({})
+    total = await coll.count_documents(query)
 
     pm_dates = [it.get("pm_date") for it in items_raw if it.get("pm_date")]
     urls_coll = get_pmurl_coll_upload(sn)
@@ -235,6 +280,15 @@ async def pmreport_list(
         "createdAt": _ensure_utc_iso(it.get("createdAt")),
         "file_url": url_by_day.get(it.get("pm_date") or "", ""),
         "has_photos": True if it.get("has_photos") else None,
+        # ใบเก่าไม่มี status เลย = ปิดไปแล้วก่อนมี flow อนุมัติ
+        "status": it.get("status") or PM_LEGACY_CLOSED_STATUS,
+        "stage": it.get("stage") or "",
+        "wonum": it.get("wonum") or "",
+        "approved_by": it.get("approved_by") or "",
+        "approved_at": _ensure_utc_iso(it.get("approved_at")),
+        "reject_remark": it.get("reject_remark") or "",
+        "rejected_by": it.get("rejected_by") or "",
+        "submittedAt": _ensure_utc_iso(it.get("submittedAt")),
     } for it in items_raw]
 
     pm_date_arr = [it.get("pm_date") for it in items_raw if it.get("pm_date")]
@@ -264,6 +318,8 @@ class PMRowPF(BaseModel):
 class PMSubmitIn(BaseModel):
     side: Literal["pre", "post"]
     sn: str
+    # ใบงาน Maximo ที่ planner วางแผนไว้ — โยงเอกสารกลับหาใบงานต้นทางได้
+    wonum: Optional[str] = None
     job: dict
     measures_pre: dict
     rows_pre: Optional[dict[str, Any]] = None
@@ -416,6 +472,7 @@ async def pmreport_pre_submit(body: PMSubmitIn, current: UserClaims = Depends(ge
             {"$set": {
                 "station_id": station_id,
                 "chargeBoxID": charger.get("chargeBoxID"),
+                "wonum": (body.wonum or "").strip(),
                 "job": body.job,
                 "rows_pre": body.rows_pre or {},
                 "measures_pre": body.measures_pre,
@@ -435,6 +492,7 @@ async def pmreport_pre_submit(body: PMSubmitIn, current: UserClaims = Depends(ge
         "sn": sn,
         "station_id": station_id,
         "chargeBoxID": charger.get("chargeBoxID"),
+        "wonum": (body.wonum or "").strip(),
         "doc_name": doc_name,
         "issue_id": issue_id,
         "job": body.job,
@@ -489,6 +547,10 @@ async def pmreport_post_submit(
         existing = await coll.find_one({"_id": oid, "sn": sn})
         if not existing:
             raise HTTPException(status_code=404, detail="Report not found")
+
+        # ปิดงานแล้วห้ามแก้ — ต้องให้ planner ตีกลับก่อนถึงจะกรอกใหม่ได้
+        if str(existing.get("status") or "").strip().lower() in PM_CLOSED_STATUSES:
+            raise HTTPException(status_code=409, detail="Report is already closed")
 
         update_fields = {
             "rows": body.rows,
@@ -702,16 +764,28 @@ async def pmreport_finalize(report_id: str, sn: str = Form(...), current: UserCl
     except Exception:
         raise HTTPException(status_code=400, detail="Bad report_id")
 
-    doc = await coll.find_one({"_id": oid}, {"_id": 1})
+    doc = await coll.find_one({"_id": oid}, {"_id": 1, "status": 1})
     if not doc:
         raise HTTPException(status_code=404, detail="Report not found")
 
+    # ปิดไปแล้วห้ามส่งซ้ำ — ไม่งั้นใบที่ planner อนุมัติแล้วจะเด้งกลับเข้าคิวรออนุมัติ
+    if str(doc.get("status") or "").strip().lower() in PM_CLOSED_STATUSES:
+        raise HTTPException(status_code=409, detail="Report is already closed")
+
+    now = datetime.now(timezone.utc)
     res = await coll.update_one(
         {"_id": oid},
-        {"$set": {
-            "status": "submitted",
-            "submittedAt": datetime.now(timezone.utc),
-        }}
+        {
+            "$set": {
+                # ช่างกรอกเสร็จ = เข้าคิวรอ planner อนุมัติ (ไม่ปิดงานเอง)
+                "status": PM_STATUS_WAIT_APPROVE,
+                "stage": PM_STAGE_CLOSE_APPROVAL,
+                "submittedAt": now,
+                "updatedAt": now,
+            },
+            # ส่งใหม่หลังโดนตีกลับ → ล้างเหตุผลเดิม ไม่ให้ค้างหลอกผู้อนุมัติ
+            "$unset": {"reject_remark": "", "rejected_by": "", "rejected_at": ""},
+        },
     )
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Report not found")
@@ -722,6 +796,101 @@ async def pmreport_finalize(report_id: str, sn: str = Form(...), current: UserCl
             cache_path.unlink()
 
     return {"ok": True}
+
+
+@router.post("/pmreport/{report_id}/approve")
+async def pmreport_approve(
+    report_id: str,
+    sn: str = Query(...),
+    current: UserClaims = Depends(get_current_user),
+):
+    """planner/admin อนุมัติปิดใบงาน PM: "Wait for approve" → "Closed" """
+    _assert_pm_approver(current)
+
+    sn = sn.strip()
+    coll = get_pmreport_collection_for(sn)
+    try:
+        oid = ObjectId(report_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bad report_id")
+
+    now = datetime.now(timezone.utc)
+    res = await coll.update_one(
+        {
+            "_id": oid,
+            "sn": sn,
+            "status": {"$regex": f"^{PM_STATUS_WAIT_APPROVE}$", "$options": "i"},
+        },
+        {
+            "$set": {
+                "status": PM_STATUS_CLOSED,
+                "approved_by": current.username,
+                "approved_at": now,
+                "updatedAt": now,
+            },
+            "$unset": {"stage": "", "reject_remark": "", "rejected_by": "", "rejected_at": ""},
+        },
+    )
+    if res.matched_count == 0:
+        raise HTTPException(
+            status_code=404,
+            detail="Report not found or not in 'Wait for approve' status",
+        )
+
+    return {"ok": True, "status": PM_STATUS_CLOSED}
+
+
+class PMRejectIn(BaseModel):
+    remark: str = Field(..., min_length=1, description="เหตุผลที่ตีกลับ — ช่างต้องรู้ว่าต้องแก้อะไร")
+
+
+@router.post("/pmreport/{report_id}/reject")
+async def pmreport_reject(
+    report_id: str,
+    body: PMRejectIn,
+    sn: str = Query(...),
+    current: UserClaims = Depends(get_current_user),
+):
+    """planner/admin ตีกลับใบงาน PM ให้ช่างแก้: "Wait for approve" → "draft" """
+    _assert_pm_approver(current)
+
+    remark = body.remark.strip()
+    if not remark:
+        raise HTTPException(status_code=400, detail="remark is required")
+
+    sn = sn.strip()
+    coll = get_pmreport_collection_for(sn)
+    try:
+        oid = ObjectId(report_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bad report_id")
+
+    now = datetime.now(timezone.utc)
+    res = await coll.update_one(
+        {
+            "_id": oid,
+            "sn": sn,
+            "status": {"$regex": f"^{PM_STATUS_WAIT_APPROVE}$", "$options": "i"},
+        },
+        {
+            "$set": {
+                # กลับเป็น draft = ช่างคนเดิมเปิดฟอร์มแก้ต่อได้เหมือนเดิม
+                "status": PM_STATUS_DRAFT,
+                "reject_remark": remark,
+                "rejected_by": current.username,
+                "rejected_at": now,
+                "updatedAt": now,
+            },
+            "$unset": {"stage": "", "submittedAt": ""},
+        },
+    )
+    if res.matched_count == 0:
+        raise HTTPException(
+            status_code=404,
+            detail="Report not found or not in 'Wait for approve' status",
+        )
+
+    return {"ok": True, "status": PM_STATUS_DRAFT}
 
 
 def parse_report_date_to_utc(s: str) -> datetime:

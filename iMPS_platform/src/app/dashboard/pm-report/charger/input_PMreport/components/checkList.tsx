@@ -3044,7 +3044,9 @@ export default function ChargerPMForm() {
             if (!report_id) {
                 const pm_date = job.date?.trim() || "";
                 const { issue_id: issueIdFromJob, ...jobWithoutIssueId } = job;
-                const payload = { sn: sn, issue_id: issueIdFromJob, job: jobWithoutIssueId, inspector, measures_pre: { m16: m16.state, cp }, rows_pre: rows, pm_date, doc_name: docName, summary_pre: summaryPre, side: "pre" as TabId };
+                // มาจากใบงาน Maximo ที่ planner วางแผนไว้ (?wonum=) → เก็บติดเอกสารเพื่อโยงกลับได้
+                const wonum = searchParams.get("wonum") ?? "";
+                const payload = { sn: sn, wonum, issue_id: issueIdFromJob, job: jobWithoutIssueId, inspector, measures_pre: { m16: m16.state, cp }, rows_pre: rows, pm_date, doc_name: docName, summary_pre: summaryPre, side: "pre" as TabId };
                 const submitRes = await apiFetch(`${API_BASE}/pmreport/pre/submit`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
                 if (!submitRes.ok) throw new Error(await submitRes.text());
                 const jsonRes = await submitRes.json() as { report_id: string; doc_name?: string };
