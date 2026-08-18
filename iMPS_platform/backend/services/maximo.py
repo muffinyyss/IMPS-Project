@@ -79,8 +79,9 @@ MAXIMO_URLTYPE = os.getenv("MAXIMO_URLTYPE", "WEB")
 
 # ── ฟิลด์ที่ Maximo DEV ปฏิเสธ ณ ตอนทดสอบ (2026-08-06) — ปิดไว้ก่อน ──
 # zcraft   : BMXAA4191E ค่าไม่อยู่ใน domain (ไม่มี WO ใบไหนในระบบตั้งค่านี้เลย)
-# failurecode ระดับ WO : BMXAA4534E ใช้ไม่ได้จนกว่า location จะผูก failure class
-# เปิดคืนได้ทันทีเมื่อ EGAT ตั้งค่าฝั่ง Maximo เสร็จ โดยไม่ต้องแก้โค้ด
+# failurecode ระดับ WO ตอนสร้าง (IN01) : เคยโดน BMXAA4534E เลยปิดไว้
+#   — flag นี้คุมเฉพาะ IN01 เท่านั้น ส่วน IN05 สเปคระบุว่า failurecode เป็น
+#     Required จึงส่งเสมอ ไม่ผ่าน flag (ไม่ส่งจะโดน BMXAA0030E)
 MAXIMO_SEND_ZCRAFT = os.getenv("MAXIMO_SEND_ZCRAFT", "false").lower() == "true"
 MAXIMO_SEND_WO_FAILURECODE = os.getenv("MAXIMO_SEND_WO_FAILURECODE", "false").lower() == "true"
 # reasonforchange เป็นฟิลด์สั้น (BMXAA4049E maximumlength) — 0 = ไม่ส่งเลย
@@ -793,8 +794,22 @@ async def report_wo_failure(
     """
     รายงานผลวิเคราะห์ความเสียหายของใบสั่งงาน (problem → cause → remedy)
 
-    1 ใบงานมีได้หลายชุด — เรียกซ้ำได้ (MERGE จะเพิ่มแถวใหม่เข้า failurereport เดิม
-    ไม่ล้างของเก่าทิ้ง)
+    payload ตามสเปค EGAT (POST ZAPIFAILUREREPORT, x-method-override: BULK):
+        [{
+          "_action": "AddChange",
+          "siteid": "IESB", "orgid": "EGAT",
+          "wonum": "WO26100014",
+          "failurecode": "DCCHARGER",          ← failure class ระดับ WO (Required)
+          "failurereport": [
+            {"failurecode": "UN2STCHG", "type": "PROBLEM"},
+            {"failurecode": "EMERBUTP", "type": "CAUSE"},
+            {"failurecode": "RECHECK",  "type": "REMEDY"}
+          ]
+        }]
+
+    ⚠️ failurecode ระดับ WO ขาดไม่ได้ — ไม่ส่งจะโดน BMXAA0030E
+       "A failure class is required to report a failure"
+    ตอบกลับสำเร็จเป็น 204 No Content
     """
     wonum = (wonum or "").strip()
     if not wonum:
@@ -802,32 +817,32 @@ async def report_wo_failure(
     if not failure_code:
         raise MaximoError("failure_code is required")
 
-    row = _clean({
-        "failurecode": failure_code,
-        "problemcode": problem_code,
-        "cause": cause_code,
-        "remedy": remedy_code,
-        "remarks": (remarks or "")[:250] or None,
-        "orgid": MAXIMO_ORG_ID,
-        "siteid": MAXIMO_SITE_ID,
-        "faildate": _maximo_datetime(fail_date or datetime.now(_TH_TZ)),
-    })
+    # 1 แถวต่อ 1 ชั้น — สเปคแยก type ชัดเจน ไม่ได้ยัดรวมเป็นแถวเดียว
+    rows = [
+        {"failurecode": code.strip().upper(), "type": kind}
+        for code, kind in (
+            (problem_code or "", "PROBLEM"),
+            (cause_code or "", "CAUSE"),
+            (remedy_code or "", "REMEDY"),
+        )
+        if str(code or "").strip()
+    ]
+    if not rows:
+        raise MaximoError("ต้องมี problem/cause/remedy อย่างน้อย 1 อย่าง")
 
-    payload = _clean({
+    payload = [_clean({
+        "_action": "AddChange",
+        "siteid": MAXIMO_SITE_ID,
+        "orgid": MAXIMO_ORG_ID,
         "wonum": wonum,
-        "siteid": MAXIMO_SITE_ID,
-        "orgid": MAXIMO_ORG_ID,
-        # failurecode ระดับใบงานตั้งได้ต่อเมื่อ location ผูก failure class ไว้แล้ว
-        # (ไม่ได้ตั้งแล้วยังส่ง จะโดน BMXAA4534E) — ระดับ child ต้องมีเสมอ
-        "failurecode": failure_code if MAXIMO_SEND_WO_FAILURECODE else None,
-        "failurereport": [row],
-    })
+        "failurecode": failure_code.strip().upper(),
+        "failurereport": rows,
+        # สเปคไม่ได้ระบุ 2 ฟิลด์นี้ไว้ แต่ Maximo รับได้และมีประโยชน์ตอนสอบย้อนหลัง
+        "remarks": (remarks or "")[:250] or None,
+        "faildate": _maximo_datetime(fail_date) if fail_date else None,
+    })]
 
-    data = await _post(
-        MAXIMO_FAILUREREPORT_OS, payload,
-        method_override="SYNC", patchtype="MERGE",
-        properties="wonum,failurecode",
-    )
+    data = await _post(MAXIMO_FAILUREREPORT_OS, payload, method_override="BULK")
     log.info(
         f"  🩺 Maximo WO {wonum} ← failure {failure_code}/"
         f"{problem_code}/{cause_code}/{remedy_code}"
