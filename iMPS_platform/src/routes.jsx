@@ -51,9 +51,10 @@ const baseRoutes = [
         layout: "dashboard",
         icon: <i className="fa fa-file-alt" />,
         // ตารางใบงาน PM รวมทุกสถานี — แพทเทิร์นเดียวกับ CM List
+        // technician ต้องเห็นด้วย (เหมือน CM List) จะได้ตามงานที่ถูกมอบหมายได้
         name: "PM List",
         path: "/dashboard/pm-list",
-        allow: ["admin", "owner", "planner"],
+        allow: ["admin", "owner", "planner", "technician"],
       },
       {
         layout: "dashboard",
