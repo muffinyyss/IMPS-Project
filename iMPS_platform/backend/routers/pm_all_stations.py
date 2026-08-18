@@ -34,7 +34,7 @@ PM_SOURCES = [
 ]
 
 PROJECTION = {
-    "_id": 1, "doc_name": 1, "issue_id": 1,
+    "_id": 1, "doc_name": 1, "issue_id": 1, "wonum": 1,
     "pm_date": 1, "status": 1, "inspector": 1,
     "side": 1, "sn": 1, "SN": 1,  # ← เพิ่ม SN
     "chargeBoxID": 1,
@@ -87,6 +87,8 @@ def _serialize_report(doc: dict, source: str, station_id: str) -> dict:
         "id":            doc_id,
         "document_name": doc.get("doc_name") or doc.get("document_name") or "-",
         "issue_id":      doc.get("issue_id") or "-",
+        # เลขใบงาน Maximo ที่ผูกไว้ตอนช่างเปิดฟอร์มจากใบงานที่ planner assign
+        "wonum":         doc.get("wonum") or "",
         "pm_type":       source,
         "pm_date":       doc.get("pm_date") or "-",
         "status":        doc.get("status") or "submitted",
