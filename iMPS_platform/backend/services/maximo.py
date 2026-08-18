@@ -76,9 +76,9 @@ MAXIMO_LABTRANS_OS = os.getenv("MAXIMO_LABTRANS_OS", "ZAPILABTRANS")
 MAXIMO_CM_WORKTYPE = os.getenv("MAXIMO_CM_WORKTYPE", "CM")
 # doctype ของ attachment (IN03) — ต้องเป็นค่าที่มีอยู่ใน DOCTYPES ของ Maximo
 MAXIMO_DOCTYPE = os.getenv("MAXIMO_DOCTYPE", "Attachments")
-# urltype ของ link attachment — ตอนนี้ domain URLTYPE บน DEV มีแต่ "FILE"
-# ต้องให้ EGAT เพิ่ม "WEB" ก่อน IN03 ถึงจะแนบลิงก์ได้ (ดู BMXAA4024E)
-MAXIMO_URLTYPE = os.getenv("MAXIMO_URLTYPE", "WEB")
+# urltype ของ link attachment — สเปค EGAT ระบุว่าใช้ "URL"
+# (เคยลอง "WEB" → BMXAA4024E ไม่มีใน domain, "FILE" → iface#nodocinfo)
+MAXIMO_URLTYPE = os.getenv("MAXIMO_URLTYPE", "URL")
 
 # ── ฟิลด์ที่ Maximo DEV ปฏิเสธ ณ ตอนทดสอบ (2026-08-06) — ปิดไว้ก่อน ──
 # zcraft   : BMXAA4191E ค่าไม่อยู่ใน domain (ไม่มี WO ใบไหนในระบบตั้งค่านี้เลย)
@@ -749,7 +749,25 @@ async def attach_wo_link(
     """
     แนบลิงก์เอกสาร (URL) เข้ากับใบสั่งงาน — ส่งแค่ลิงก์ ไม่ได้อัปโหลดไฟล์เข้า Maximo
 
-    ใช้แนบไฟล์ PDF ใบงาน CM / รูปหน้างาน ที่ host อยู่ฝั่ง iMPS
+    payload ตามสเปค EGAT (POST ZAPIATTACHWO, x-method-override: BULK):
+        [{
+          "_action": "AddChange",
+          "siteid": "IESB", "orgid": "EGAT",
+          "wonum": "WO26100014",
+          "doclinks": [{
+            "addinfo": "1",              ← ให้ Maximo สร้าง DOCINFO ให้เอง
+            "description": "ชื่อไฟล์",
+            "doctype": "Attachments",
+            "document": "ID ของไฟล์",
+            "upload": "0",               ← ไม่ได้อัปไฟล์ขึ้น network
+            "urlname": "<URL>",          ← ตัว URL อยู่ที่ field นี้ ไม่ใช่ weburl
+            "urltype": "URL"
+          }]
+        }]
+
+    ⚠️ addinfo ขาดไม่ได้ — ไม่ส่งจะโดน "iface#nodocinfo"
+    ⚠️ urltype ต้องเป็น "URL" (ค่า WEB ไม่มีใน domain URLTYPE → BMXAA4024E)
+    ตอบกลับสำเร็จเป็น 204 No Content
     """
     wonum = (wonum or "").strip()
     if not wonum:
@@ -758,25 +776,23 @@ async def attach_wo_link(
         raise MaximoError("url is required")
 
     doc_name = (name or url.rsplit("/", 1)[-1] or "attachment")[:100]
-    payload = _clean({
-        "wonum": wonum,
+    payload = [_clean({
+        "_action": "AddChange",
         "siteid": MAXIMO_SITE_ID,
         "orgid": MAXIMO_ORG_ID,
+        "wonum": wonum,
         "doclinks": [_clean({
-            "document": doc_name,
+            "addinfo": "1",
             "description": (description or doc_name)[:250],
-            "urltype": MAXIMO_URLTYPE,  # ลิงก์ภายนอก ไม่ใช่ไฟล์ที่อัปโหลดเข้า Maximo
-            "weburl": url,
-            "urlname": url,
             "doctype": doctype or MAXIMO_DOCTYPE,
+            "document": doc_name,
+            "upload": "0",
+            "urlname": url,
+            "urltype": MAXIMO_URLTYPE,
         })],
-    })
+    })]
 
-    data = await _post(
-        MAXIMO_ATTACHWO_OS, payload,
-        method_override="SYNC", patchtype="MERGE",
-        properties="wonum", trace=trace,
-    )
+    data = await _post(MAXIMO_ATTACHWO_OS, payload, method_override="BULK", trace=trace)
     log.info(f"  📎 Maximo WO {wonum} ← attachment {doc_name}")
     return data
 

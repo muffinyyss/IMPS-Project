@@ -39,6 +39,9 @@ PM_MAXIMO_ENABLED = os.getenv("PM_MAXIMO_ENABLED", "true").lower() == "true"
 # ลิงก์ที่แนบเข้า Maximo ต้องเปิดจากภายนอกได้ — ไฟล์ใน iMPS เก็บเป็น path
 PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", os.getenv("FRONTEND_BASE_URL", "")).rstrip("/")
 
+# ภาษาของ PDF ที่แนบเข้า Maximo (ใช้ค่าเดียวกับฝั่ง CM)
+PDF_LANG = os.getenv("MAXIMO_PDF_LANG", "th").strip() or "th"
+
 # สถานะที่ยิงตอนปิดงาน — ใช้ COMP เหมือน CM ไม่ใช่ CLOSE
 # (CLOSE ใน Maximo ปิดตายแก้ไม่ได้อีก ปล่อยให้ EGAT เป็นคนกดเอง)
 PM_CLOSE_STATUS = os.getenv("MAXIMO_PM_CLOSE_STATUS", "COMP").strip().upper()
@@ -135,7 +138,12 @@ def report_url(report: dict, report_id: Any) -> str:
     sn = (report.get("sn") or "").strip()
     station_id = (report.get("station_id") or "").strip()
     scope = f"sn={sn}" if sn else f"station_id={station_id}"
-    return f"{PUBLIC_BASE_URL}/pdf/charger/{report_id}/export?{scope}&lang=th&dl=1"
+    qs = f"{scope}&lang={PDF_LANG}&dl=true"
+    issue_id = str(report.get("issue_id") or "").strip()
+    # ลิงก์ตรงไปที่ไฟล์ (.pdf) — /export เป็นแค่ตัว 307 redirect มาที่นี่อีกที
+    if issue_id:
+        return f"{PUBLIC_BASE_URL}/pdf/charger/{report_id}/{issue_id}.pdf?{qs}"
+    return f"{PUBLIC_BASE_URL}/pdf/charger/{report_id}/export?{qs}"
 
 
 async def push_status(

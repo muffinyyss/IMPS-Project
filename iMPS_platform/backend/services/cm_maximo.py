@@ -104,6 +104,9 @@ STATUS_MAP = {k.lower(): v for k, v in
 # ลิงก์ที่แนบเข้า Maximo ต้องเป็น URL ที่เปิดจากภายนอกได้ — ไฟล์ใน iMPS เก็บเป็น path
 PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", os.getenv("FRONTEND_BASE_URL", "")).rstrip("/")
 
+# ภาษาของ PDF ที่แนบเข้า Maximo
+MAXIMO_PDF_LANG = PDF_LANG = os.getenv("MAXIMO_PDF_LANG", "th").strip() or "th"
+
 # เปิด/ปิดการยิงเข้า Maximo ของฝั่ง CM แยกจาก MAXIMO_ENABLED รวม
 CM_MAXIMO_ENABLED = os.getenv("CM_MAXIMO_ENABLED", "true").lower() == "true"
 
@@ -557,10 +560,13 @@ def report_url(report: dict, report_id: Any) -> str:
     station_id = report.get("station_id") or ""
     if not station_id or not PUBLIC_BASE_URL:
         return ""
-    return (
-        f"{PUBLIC_BASE_URL}/pdf/cm/{report_id}/export"
-        f"?station_id={station_id}&lang=th&dl=1"
-    )
+    qs = f"station_id={station_id}&lang={PDF_LANG}&dl=true"
+    issue_id = str(report.get("issue_id") or "").strip()
+    # ลิงก์ตรงไปที่ไฟล์ (.pdf) — /export เป็นแค่ตัว 307 redirect มาที่นี่อีกที
+    # client ที่ไม่ตาม redirect จะได้ไฟล์เลย และชื่อไฟล์อ่านออกตอนเซฟ
+    if issue_id:
+        return f"{PUBLIC_BASE_URL}/pdf/cm/{report_id}/{issue_id}.pdf?{qs}"
+    return f"{PUBLIC_BASE_URL}/pdf/cm/{report_id}/export?{qs}"
 
 
 # ══════════════════════════════════════════════════════════════════
