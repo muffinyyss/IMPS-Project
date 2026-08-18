@@ -579,6 +579,17 @@ async def _record(coll, report_id, interface: str, ok: bool, **detail) -> None:
         log.warning(f"  ⚠️ record maximo_sync.{interface} failed: {e}")
 
 
+def _no_ok(detail: dict) -> dict:
+    """
+    ตัด key `ok` ออกก่อนกระจายเข้า _record()
+
+    _fail()/_skip() คืน dict ที่มี `ok` อยู่แล้ว พอเอาไป `**result` ต่อท้าย
+    _record(..., ok, **result) จะชน "got multiple values for argument 'ok'"
+    (พังตั้งแต่ตอนเรียก ดักใน _record ไม่ทัน)
+    """
+    return {k: v for k, v in detail.items() if k != "ok"}
+
+
 def _skip(reason: str) -> dict:
     return {"ok": False, "skipped": True, "reason": reason}
 
@@ -637,7 +648,7 @@ async def ensure_work_order(coll, report_id, report: dict) -> dict:
     location = resolve_location(station_id, report.get("faulty_equipment") or "")
     if not location:
         result = _skip("สถานี/ตู้นี้ยังไม่ได้ผูก maximo_location")
-        await _record(coll, report_id, "IN01", False, **result)
+        await _record(coll, report_id, "IN01", False, **_no_ok(result))
         return result
 
     st = station_collection.find_one(
@@ -663,7 +674,7 @@ async def ensure_work_order(coll, report_id, report: dict) -> dict:
     except MaximoError as e:
         log.warning(f"  ⚠️ IN01 create WO failed ({issue_id}): {e}")
         result = _fail(e)
-        await _record(coll, report_id, "IN01", False, **result)
+        await _record(coll, report_id, "IN01", False, **_no_ok(result))
         return result
 
     wonum = str(data.get("wonum") or "").strip()
@@ -700,7 +711,7 @@ async def push_status(coll, report_id, report: dict, *, memo: str = "") -> dict:
     except MaximoError as e:
         log.warning(f"  ⚠️ IN02 status push failed (WO {wonum} → {status}): {e}")
         result = _fail(e)
-        await _record(coll, report_id, "IN02", False, wonum=wonum, status=status, **result)
+        await _record(coll, report_id, "IN02", False, wonum=wonum, status=status, **_no_ok(result))
         return result
 
     await _record(coll, report_id, "IN02", True, wonum=wonum, status=status)
@@ -734,7 +745,7 @@ async def push_attachment(
     except MaximoError as e:
         log.warning(f"  ⚠️ IN03 attach failed (WO {wonum}): {e}")
         result = _fail(e)
-        await _record(coll, report_id, "IN03", False, wonum=wonum, url=link, **result)
+        await _record(coll, report_id, "IN03", False, wonum=wonum, url=link, **_no_ok(result))
         return result
 
     await _record(coll, report_id, "IN03", True, wonum=wonum, url=link)
