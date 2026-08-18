@@ -19,6 +19,7 @@ import { Card } from "@material-tailwind/react";
 import { DocumentArrowDownIcon } from "@heroicons/react/24/outline";
 import { apiFetch } from "@/utils/api";
 import useLanguage from "@/utils/useLanguage";
+import { PM_ORIGIN_LIST } from "@/app/dashboard/pm-report/lib/origin";
 
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 500;
@@ -77,7 +78,7 @@ const TYPE_TO_TAB: Record<string, string> = {
   STATION: "station",
 };
 
-type SortKey = "station" | "type" | "wo" | "document" | "technician" | "date" | "status";
+type SortKey = "station" | "wo" | "document" | "technician" | "date" | "status";
 type SortDir = "asc" | "desc";
 
 const STAGE_RANK: Record<PmStage, number> = { open: 0, in_progress: 1, wait_approve: 2, closed: 3 };
@@ -212,7 +213,7 @@ export default function PMListPage() {
       openPlanTitle: "เปิดหน้าวางแผน",
       sortAsc: "เรียงจากน้อยไปมาก", sortDesc: "เรียงจากมากไปน้อย",
       headers: {
-        station: "สถานี", type: "ชนิด", wo: "WO", document: "ชื่อเอกสาร",
+        station: "สถานี", wo: "WO", document: "ชื่อเอกสาร",
         technician: "ผู้ตรวจสอบ", date: "วันที่ PM", status: "สถานะ",
       },
       stage: { open: "Open", in_progress: "In Progress", wait_approve: "Wait for approve", closed: "Closed" },
@@ -240,7 +241,7 @@ export default function PMListPage() {
       openPlanTitle: "Open planning page",
       sortAsc: "Sort ascending", sortDesc: "Sort descending",
       headers: {
-        station: "Station", type: "Type", wo: "WO", document: "Document",
+        station: "Station", wo: "WO", document: "Document",
         technician: "Inspector", date: "PM date", status: "Status",
       },
       stage: { open: "Open", in_progress: "In Progress", wait_approve: "Wait for approve", closed: "Closed" },
@@ -268,9 +269,10 @@ export default function PMListPage() {
     }
 
     // แถวใบงาน Maximo ยังไม่มีเอกสาร → ไปหน้าวางแผนของ planner แทน
+    // from= ให้ปุ่มย้อนกลับในฟอร์มรู้ว่าต้องพากลับมาหน้านี้ ไม่ใช่ตาราง tab
     const params = r.kind === "wo"
-      ? new URLSearchParams({ tab, view: "form", planning: "1", wonum: r.wonum || r.id })
-      : new URLSearchParams({ tab, view: "form", edit_id: r.id });
+      ? new URLSearchParams({ tab, view: "form", planning: "1", wonum: r.wonum || r.id, from: PM_ORIGIN_LIST })
+      : new URLSearchParams({ tab, view: "form", edit_id: r.id, from: PM_ORIGIN_LIST });
     if (tab === "charger" && r.sn && r.sn !== "-") params.set("sn", r.sn);
     else if (r.station_id) params.set("station_id", r.station_id);
     router.push(`/dashboard/pm-report?${params.toString()}`);
@@ -344,7 +346,6 @@ export default function PMListPage() {
   const sortValue = useCallback((r: PMRow, key: SortKey): string | number => {
     switch (key) {
       case "station": return (r.station_name || r.station_id || "").toLowerCase();
-      case "type": return (r.pm_type || "").toLowerCase();
       case "wo": return (r.wonum || r.issue_id || "").toLowerCase();
       case "document": return (r.document_name || "").toLowerCase();
       case "technician": return (r.technician || "").toLowerCase();
@@ -394,7 +395,6 @@ export default function PMListPage() {
 
   const columns: { key: SortKey; label: string }[] = [
     { key: "station", label: t.headers.station },
-    { key: "type", label: t.headers.type },
     { key: "wo", label: t.headers.wo },
     { key: "document", label: t.headers.document },
     { key: "technician", label: t.headers.technician },
@@ -609,14 +609,6 @@ export default function PMListPage() {
                   >
                     <td className="tw-px-4 tw-py-3 tw-text-gray-400">{page * pageSize + i + 1}</td>
                     <td className="tw-px-4 tw-py-3 tw-font-medium tw-text-gray-800">{r.station_name || r.station_id}</td>
-                    <td className="tw-px-4 tw-py-3">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setTypeFilter(typeFilter === r.pm_type ? null : r.pm_type); setPage(0); }}
-                        className={`tw-rounded tw-px-1.5 tw-py-0.5 tw-text-xs tw-transition-colors ${typeFilter === r.pm_type ? "tw-bg-blue-100 tw-text-blue-700 tw-font-bold" : "tw-text-gray-600 hover:tw-bg-gray-100"}`}
-                      >
-                        {r.pm_type}
-                      </button>
-                    </td>
                     {/* ใบเก่าที่ยังไม่ผูก wonum ให้ถอยไปใช้ issue_id เดิม */}
                     <td className="tw-px-4 tw-py-3 tw-text-gray-600">{r.wonum || r.issue_id || "-"}</td>
                     <td className="tw-px-4 tw-py-3 tw-text-gray-600">

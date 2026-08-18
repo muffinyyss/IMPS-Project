@@ -1,5 +1,5 @@
 "use client";
-import React, { useMemo, useRef, useState, useEffect } from "react";
+import React, { useCallback, useMemo, useRef, useState, useEffect } from "react";
 import {
     Button,
     Input,
@@ -10,6 +10,7 @@ import {
 import Image from "next/image";
 import { draftKey, saveDraftLocal, loadDraftLocal, clearDraftLocal } from "../lib/draft";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
+import { pmBackRoute } from "@/app/dashboard/pm-report/lib/origin";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 import { Tabs, TabsHeader, Tab } from "@material-tailwind/react";
 import { putPhoto, getPhotoByDbKey, delPhoto, type PhotoRef } from "../lib/draftPhotos";
@@ -2798,6 +2799,14 @@ export default function ChargerPMForm() {
     const missingPFItemsPost = useMemo(() => PF_KEYS_POST.filter((k) => !rows[k]?.pf).map((k) => { const match = k.match(/^r(\d+)(?:_(\d+))?$/); if (match) { const qNo = match[1]; const subNo = match[2]; return subNo ? `${qNo}.${subNo}` : qNo; } return k; }).sort((a, b) => { const [aMain, aSub] = a.split('.').map(Number); const [bMain, bSub] = b.split('.').map(Number); if (aMain !== bMain) return aMain - bMain; return (aSub || 0) - (bSub || 0); }), [rows, PF_KEYS_POST]);
 
     const active: TabId = useMemo(() => slugToTab(searchParams.get("pmtab")), [searchParams]);
+
+    // ปุ่มย้อนกลับ: เปิดมาจากหน้า PM List ให้กลับไปหน้านั้นตรง ๆ
+    // (router.back() ไม่แน่นอน เพราะสลับ pmtab ในฟอร์มก็ดันประวัติเพิ่มทุกครั้ง)
+    const goBackToList = useCallback(() => {
+        const back = pmBackRoute(searchParams);
+        if (back) router.push(back);
+        else router.back();
+    }, [router, searchParams]);
     const canGoAfter: boolean = isPostMode ? true : (allPhotosAttachedPre && allRequiredInputsFilled && allRemarksFilledPre);
     const displayTab: TabId = isPostMode ? "post" : (active === "post" && !canGoAfter ? "pre" : active);
 
@@ -3364,7 +3373,7 @@ export default function ChargerPMForm() {
                     : `Uploading ${uploadProgress.side === "post" ? "Post-PM" : "Pre-PM"} photos... ${uploadProgress.completed}/${uploadProgress.total}`}
             />
             <div className="tw-mx-auto tw-max-w-6xl tw-flex tw-items-center tw-justify-between tw-mb-4">
-                <Button variant="outlined" size="sm" onClick={() => router.back()} title={t("backToList", lang)}>
+                <Button variant="outlined" size="sm" onClick={goBackToList} title={t("backToList", lang)}>
                     <ArrowLeftIcon className="tw-w-4 tw-h-4 tw-stroke-blue-gray-900 tw-stroke-2" />
                 </Button>
                 <Tabs value={displayTab} key={displayTab}>

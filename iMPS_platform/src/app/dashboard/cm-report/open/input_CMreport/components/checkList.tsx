@@ -590,6 +590,8 @@ export default function CMOpenForm() {
     const [waitState, setWaitState] = useState<string>(DEFAULT_WAIT_STATE);
     const [waitRemark, setWaitRemark] = useState<string>(""); // หมายเหตุ สำหรับ material/site condition
     const [technicians, setTechnicians] = useState<TechnicianOption[]>([]);
+    // planner เปิดเคสเอง แล้วติ๊ก "ปิดใบงาน" — ข้ามการวางแผน แล้วเด้งไปฟอร์ม In Progress หลังบันทึก
+    const [selfCloseNew, setSelfCloseNew] = useState(false);
 
     const [summary, setSummary] = useState("");
     const [reported_by, setReportedBy] = useState("");
@@ -638,10 +640,27 @@ export default function CMOpenForm() {
     const isCsStage = statusLower === "open" || (statusLower === "wait for approve" && stageLower === "cs_approval");
     // ด่านวางแผน: head cs อนุมัติแล้ว รอ planner วางแผน
     const isPlanningStage = statusLower === "wait for schedule";
-    const showPlannerHandlingChoice = isEdit && isPlanner && isPlanningStage;
-
-    const selectPlannerHandling = (mode: "schedule" | "self_close") => {
+    const selectPlannerHandling = async (mode: "schedule" | "self_close") => {
         if (mode === "schedule") return;
+        // ฟอร์ม In Progress เปิดให้ planner กรอกผลเองได้เฉพาะใบที่อยู่สถานะ Wait for schedule
+        // ใบที่ยังค้างด่าน cs ต้องดันสถานะให้ก่อน ไม่งั้นจะเปิดไปเจอโหมดดูอย่างเดียว
+        if (isEdit && editId && !isPlanningStage) {
+            try {
+                setOverlayText(lang === "th" ? "กำลังเปิดฟอร์ม..." : "Opening form...");
+                const res = await apiFetch(`${API_BASE}/cmreport/${encodeURIComponent(editId)}/status`, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    credentials: "include",
+                    body: JSON.stringify({ station_id: stationId, status: "Wait for schedule", job: { stage: "" } }),
+                });
+                if (!res.ok) throw new Error((await res.json()).detail || `HTTP ${res.status}`);
+            } catch (e: any) {
+                alert(e?.message || "Error");
+                return;
+            } finally {
+                setOverlayText("");
+            }
+        }
         const params = new URLSearchParams(searchParams.toString());
         params.set("view", "form");
         params.set("self_close", "1");
@@ -653,6 +672,11 @@ export default function CMOpenForm() {
     // ใบที่ถูกตีกลับแล้ว (มี reject_remark) = รอ cs ผู้เปิดแก้ไขก่อน ยังไม่ใช่คิวของ planner
     const isReturnedToCs = isCsStage && !!rejectedInfo.remark;
 
+    // ติ๊ก "ปิดใบงาน" ได้ทุกด่านก่อนลงมือซ่อม: ใบใหม่ที่ planner เปิดเอง, SR ที่ยังรออนุมัติ, และใบที่รอวางแผน
+    const showPlannerHandlingChoice =
+        isPlanner && !isCancelled && !isReturnedToCs && (isEdit ? (isCsStage || isPlanningStage) : true);
+
+
     // คนเปิดใบงานแก้ข้อมูลได้ระหว่างใบยังอยู่ด่าน cs — รวม cs ที่ถูก planner ตีกลับมาให้แก้
     // (planner แก้ได้เฉพาะส่วนวางแผน ซึ่งอยู่นอก fieldsLocked)
     const canEditFields = isOwner && !isPlanner && (!isCs || isCsStage);
@@ -661,7 +685,8 @@ export default function CMOpenForm() {
     // ขั้นวางแผน: planner วางแผนตาม flow, admin/owner คุมภาพรวม — cs เปิดใบงานอย่างเดียว วางแผนไม่ได้
     // เห็นทั้งตอนเปิดใบใหม่และตอนเปิดใบเดิม (เปิดงาน + วางแผน รวดเดียวได้)
     // ใบที่ตีกลับให้ cs แก้ = ยังวางแผน/Assign ไม่ได้ จนกว่า cs จะแก้แล้วบันทึกกลับเข้าคิว
-    const canPlan = !isCancelled && !isReturnedToCs && ["admin", "owner", "planner"].includes(roleLower);
+    // ติ๊กปิดใบงานบนใบใหม่ = ไม่ต้องวางแผนคนเข้า จึงซ่อนส่วนวางแผนทั้งบล็อก
+    const canPlan = !isCancelled && !isReturnedToCs && !(selfCloseNew && !isEdit) && ["admin", "owner", "planner"].includes(roleLower);
     // แสดง Waiting On ครบทุกตัวเลือกเสมอ แม้สถานะนั้นจะเคยถูกเลือกในรอบก่อนแล้ว
     const waitStateOptions = WAIT_STATES;
 
@@ -1366,7 +1391,8 @@ export default function CMOpenForm() {
 ${in01.error ?? ""}`);
     };
 
-    const onFinalSave = async (nextStatus: string = "In Progress") => {
+    const onFinalSave = async (nextStatus: string = "In Progress", opts: { selfClose?: boolean } = {}) => {
+        const selfClose = !!opts.selfClose;
         if (!stationId) { alert(t("alertNoStationId", lang)); return; }
         if (!canSave && (!isEdit || isOwner)) return;
         setSaving(true);
@@ -1479,7 +1505,17 @@ ${in01.error ?? ""}`);
                     await uploadPhotosForReport(report_id);
 
                     // /cmreport/submit เปิดใบเป็น "Wait for approve" (cs_approval) และไม่รับฟิลด์แผน — ถ้ากรอกแผนมาด้วยต้อง PATCH ต่อ
-                    if (canPlan && (hasPlanInput || nextStatus === "In Progress")) {
+                    if (selfClose) {
+                        // ข้ามด่านอนุมัติ/วางแผน — ดันใบไปที่ Wait for schedule เพื่อให้ planner กรอกผลและปิดเองได้
+                        const selfCloseRes = await apiFetch(`${API_BASE}/cmreport/${encodeURIComponent(report_id)}/status`, {
+                            method: "PATCH",
+                            headers: { "Content-Type": "application/json" },
+                            credentials: "include",
+                            body: JSON.stringify({ station_id: stationId, status: nextStatus, job: { stage: "" } }),
+                        });
+                        if (!selfCloseRes.ok) throw new Error((await selfCloseRes.json()).detail || `HTTP ${selfCloseRes.status}`);
+                        reportMaximoResult((await selfCloseRes.json().catch(() => ({})))?.maximo);
+                    } else if (canPlan && (hasPlanInput || nextStatus === "In Progress")) {
                         const planPayload: Record<string, any> = {
                             station_id: stationId,
                             status: nextStatus,
@@ -1519,6 +1555,15 @@ ${in01.error ?? ""}`);
                 // แสดง "บันทึกสำเร็จ" แล้ว redirect — ใบที่ส่งให้ช่างแล้วไปโผล่แท็บ In Progress
                 setOverlayText(lang === "th" ? "บันทึกสำเร็จ ✓" : "Saved successfully ✓");
                 await new Promise(r => setTimeout(r, 1500));
+                if (selfClose && createdReportIds.length) {
+                    // เปิดฟอร์ม In Progress ของใบที่เพิ่งสร้างต่อทันที (ใบแรกถ้าแตกหลายตู้)
+                    const params = new URLSearchParams(searchParams.toString());
+                    params.set("view", "form");
+                    params.set("edit_id", createdReportIds[0]);
+                    params.set("self_close", "1");
+                    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+                    return;
+                }
                 // Assign แล้วกลับหน้า Open list (ไม่เด้งไป In Progress) — planner จัดการ SR/WO อื่นต่อได้
                 // ยกเว้นกรณีมาวางแผนรอบใหม่จากตาราง In Progress — ต้องกลับที่เดิมที่กดเข้ามา
                 router.push(buildListUrl(isRePlan ? "in-progress" : "open"));
@@ -1909,41 +1954,21 @@ ${in01.error ?? ""}`);
                     {/* ข้อมูลที่ช่างกรอกไว้ — โชว์เฉพาะเมื่อมีจริง (การ์ดคืน null เองถ้าว่าง) */}
                     {canPlan && repairInfo && <RepairInfoCard info={repairInfo} lang={lang} />}
 
-                    {/* Planner ต้องระบุแนวทางของเคสก่อน: ส่งคนเข้า หรือกรอกผลและปิดใบงานเอง */}
+                    {/* ปิดใบงานเอง: ติ๊กแล้วเปลี่ยนไปกรอกฟอร์ม In Progress โดยไม่ต้องวางแผนคนเข้า */}
                     {showPlannerHandlingChoice && (
-                        <div className="tw-mb-6 tw-rounded-xl tw-border tw-border-indigo-200 tw-bg-indigo-50/50 tw-p-5">
-                            <h3 className="tw-text-base tw-font-bold tw-text-blue-gray-900">
-                                {lang === "th" ? "เลือกแนวทางดำเนินงาน" : "Choose handling method"}
-                            </h3>
-                            <p className="tw-mt-1 tw-text-sm tw-text-blue-gray-600">
-                                {lang === "th" ? "เลือกว่าต้องวางแผนส่งผู้ปฏิบัติงานเข้าพื้นที่ หรือ Planner สามารถดำเนินการและปิดใบงานได้เลย" : "Choose whether to schedule onsite staff or let the planner complete and close this work order directly."}
-                            </p>
-                            <div className="tw-mt-4 tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-3">
-                                <label className="tw-flex tw-cursor-pointer tw-items-start tw-gap-3 tw-rounded-xl tw-border-2 tw-border-indigo-500 tw-bg-white tw-p-4 tw-shadow-sm">
-                                    <input
-                                        type="checkbox"
-                                        checked
-                                        onChange={() => selectPlannerHandling("schedule")}
-                                        className="tw-mt-0.5 tw-h-5 tw-w-5 tw-rounded tw-border-blue-gray-300 tw-text-indigo-600 focus:tw-ring-indigo-500"
-                                    />
-                                    <span>
-                                        <span className="tw-block tw-text-sm tw-font-bold tw-text-blue-gray-900">{lang === "th" ? "ต้องวางแผนคนเข้า" : "Schedule onsite staff"}</span>
-                                        <span className="tw-mt-1 tw-block tw-text-xs tw-text-blue-gray-600">{lang === "th" ? "กำหนดวัน เวลา และผู้ปฏิบัติงาน" : "Set the date, time, and assignees."}</span>
-                                    </span>
-                                </label>
-                                <label className="tw-flex tw-cursor-pointer tw-items-start tw-gap-3 tw-rounded-xl tw-border tw-border-blue-gray-200 tw-bg-white tw-p-4 hover:tw-border-green-400 hover:tw-bg-green-50/40 tw-transition-colors">
-                                    <input
-                                        type="checkbox"
-                                        checked={false}
-                                        onChange={() => selectPlannerHandling("self_close")}
-                                        className="tw-mt-0.5 tw-h-5 tw-w-5 tw-rounded tw-border-blue-gray-300 tw-text-green-600 focus:tw-ring-green-500"
-                                    />
-                                    <span>
-                                        <span className="tw-block tw-text-sm tw-font-bold tw-text-blue-gray-900">{lang === "th" ? "สามารถปิดใบงานได้เลย" : "Planner can close directly"}</span>
-                                        <span className="tw-mt-1 tw-block tw-text-xs tw-text-blue-gray-600">{lang === "th" ? "เปิดฟอร์ม In Progress เพื่อกรอกรายละเอียดผลการดำเนินงาน" : "Open the In Progress form to enter the work details."}</span>
-                                    </span>
-                                </label>
-                            </div>
+                        <div className="tw-mb-6 tw-rounded-xl tw-border tw-border-green-200 tw-bg-green-50/50 tw-p-5">
+                            <label className="tw-flex tw-cursor-pointer tw-items-start tw-gap-3">
+                                <input
+                                    type="checkbox"
+                                    checked={!isEdit ? selfCloseNew : false}
+                                    onChange={() => (isEdit ? selectPlannerHandling("self_close") : setSelfCloseNew(v => !v))}
+                                    className="tw-mt-0.5 tw-h-5 tw-w-5 tw-rounded tw-border-blue-gray-300 tw-text-green-600 focus:tw-ring-green-500"
+                                />
+                                <span>
+                                    <span className="tw-block tw-text-sm tw-font-bold tw-text-blue-gray-900">{lang === "th" ? "ปิดใบงาน" : "Close this work order"}</span>
+                                    <span className="tw-mt-1 tw-block tw-text-xs tw-text-blue-gray-600">{lang === "th" ? "ไม่ต้องวางแผนคนเข้า — เปิดฟอร์ม In Progress เพื่อกรอกผลการดำเนินงานและปิดใบงานได้เลย" : "No onsite scheduling needed — open the In Progress form to enter the results and close it directly."}</span>
+                                </span>
+                            </label>
                         </div>
                     )}
 
@@ -2071,13 +2096,21 @@ ${in01.error ?? ""}`);
                             )}
                             {/* เปิดใบงานใหม่ — server ตั้งสถานะเป็น Wait for approve (cs_approval) */}
                             {/* role ที่วางแผนได้ใช้ปุ่มหลักปุ่มเดียวด้านล่างแทน (บันทึก/Assign) จะได้ไม่มีปุ่มบันทึกซ้ำสองปุ่ม */}
-                            {!isEdit && !canPlan && (
+                            {!isEdit && !canPlan && !selfCloseNew && (
                                 <Button onClick={() => onFinalSave("Wait for approve")} disabled={saving || showSuccessBanner || !canSave || brandBlocked} className="tw-bg-gray-800 hover:!tw-bg-blue-600 tw-text-white hover:tw-shadow-lg hover:!tw-shadow-blue-500/30 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed disabled:tw-shadow-none">
                                     {saving ? t("saving", lang) : t("save", lang)}
                                 </Button>
                             )}
                             {/* ปุ่มหลักของขั้นวางแผน → In Progress — ต้องกรอกข้อมูลใบงาน + แผนให้ครบก่อนถึงกดได้
                                 needsSchedule = "Assign" (มอบช่าง+กำหนดวัน) / material,site condition = "บันทึก" (รอของ/รอหน้างาน) */}
+                            {/* planner เปิดเคสเอง + ติ๊กปิดใบงาน — บันทึกแล้วเปิดฟอร์ม In Progress ต่อทันที */}
+                            {!isEdit && selfCloseNew && isPlanner && (
+                                <Button onClick={() => onFinalSave("Wait for schedule", { selfClose: true })}
+                                    disabled={saving || showSuccessBanner || !canSave || brandBlocked}
+                                    className="tw-bg-green-600 hover:tw-bg-green-700 tw-text-white hover:tw-shadow-lg hover:tw-shadow-green-500/30 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed disabled:tw-shadow-none">
+                                    {saving ? t("saving", lang) : (lang === "th" ? "บันทึกและกรอกผล" : "Save and enter results")}
+                                </Button>
+                            )}
                             {canPlan && (
                                 <Button onClick={() => openCommentModal("assign")} disabled={saving || showSuccessBanner || !canSubmitPlan || (!isEdit && (!canSave || brandBlocked))}
                                     className="tw-bg-amber-500 hover:tw-bg-amber-600 tw-text-white hover:tw-shadow-lg hover:tw-shadow-amber-500/30 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed disabled:tw-shadow-none">
