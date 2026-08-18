@@ -642,11 +642,12 @@ export default function CMOpenForm() {
     const isPlanningStage = statusLower === "wait for schedule";
     const selectPlannerHandling = async (mode: "schedule" | "self_close") => {
         if (mode === "schedule") return;
+        // ขึ้น overlay ตั้งแต่ติ๊ก แล้วปล่อยค้างไว้จนสลับฟอร์มเสร็จ — กันหน้ากระพริบตอน remount
+        setOverlayText(lang === "th" ? "กำลังเปิดฟอร์ม..." : "Opening form...");
         // ฟอร์ม In Progress เปิดให้ planner กรอกผลเองได้เฉพาะใบที่อยู่สถานะ Wait for schedule
         // ใบที่ยังค้างด่าน cs ต้องดันสถานะให้ก่อน ไม่งั้นจะเปิดไปเจอโหมดดูอย่างเดียว
         if (isEdit && editId && !isPlanningStage) {
             try {
-                setOverlayText(lang === "th" ? "กำลังเปิดฟอร์ม..." : "Opening form...");
                 const res = await apiFetch(`${API_BASE}/cmreport/${encodeURIComponent(editId)}/status`, {
                     method: "PATCH",
                     headers: { "Content-Type": "application/json" },
@@ -655,12 +656,12 @@ export default function CMOpenForm() {
                 });
                 if (!res.ok) throw new Error((await res.json()).detail || `HTTP ${res.status}`);
             } catch (e: any) {
+                setOverlayText("");
                 alert(e?.message || "Error");
                 return;
-            } finally {
-                setOverlayText("");
             }
         }
+        // ไม่เคลียร์ overlay ตรงนี้ — ปล่อยให้คลุมจังหวะสลับไปฟอร์ม In Progress กันหน้ากระพริบ
         const params = new URLSearchParams(searchParams.toString());
         params.set("view", "form");
         params.set("self_close", "1");

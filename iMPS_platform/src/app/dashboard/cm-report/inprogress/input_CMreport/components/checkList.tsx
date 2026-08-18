@@ -1033,6 +1033,8 @@ export default function CMInProgressForm() {
     const [loadingDevices, setLoadingDevices] = useState(false);
     const [jobLoaded, setJobLoaded] = useState(false);
     const [startRepairStamped, setStartRepairStamped] = useState(false);
+    // ช่างกดปุ่ม "เริ่มแก้ไข" แล้วหรือยัง — ก่อนกดจะเห็นเฉพาะข้อมูลที่ CS/Planner กรอกมาแบบอ่านอย่างเดียว
+    const [repairStartedManually, setRepairStartedManually] = useState(false);
 
     const editId = searchParams.get("edit_id") ?? "";
     const isEdit = !!editId;
@@ -1079,6 +1081,11 @@ export default function CMInProgressForm() {
         (isWaitForApprove && !canEditTechnicianData) ||
         (isPlanner && !plannerSelfCloseMode && (!canEditTechnicianData || !plannerEditMode)) ||
         (!isPlanner && !isJobOwner);
+
+    // ช่างเปิดใบงานครั้งแรก = อ่านข้อมูลจาก CS/Planner ก่อน แล้วค่อยกด "เริ่มแก้ไข" ถึงจะเห็นส่วนที่ต้องกรอก
+    // ใบที่เคยเริ่มแก้ไขแล้ว (มีเวลาเริ่ม) เข้ามาก็กรอกต่อได้เลย — role อื่นไม่ต้องผ่านด่านนี้
+    const repairStarted =
+        !isTechnician || viewOnly || repairStartedManually || !!job.start_repair_date || !!job.start_repair_time;
 
     // อนุมัติปิดใบงาน (Wait for approve → Closed) — เฉพาะ admin/planner และเฉพาะใบที่รออนุมัติอยู่จริง
     const canApprove =
@@ -2273,6 +2280,16 @@ export default function CMInProgressForm() {
         }
     }, [job]);
 
+    // ปุ่ม "เริ่มแก้ไข" ของช่าง — ประทับเวลาเริ่มงานแล้วเปิดส่วนที่ต้องกรอก
+    const startRepair = () => {
+        const stampedDate = job.start_repair_date || localTodayISO();
+        const stampedTime = job.start_repair_time || localNowHHMM();
+        setJob(prev => ({ ...prev, start_repair_date: stampedDate, start_repair_time: stampedTime }));
+        setStartRepairStamped(true);
+        setRepairStartedManually(true);
+        void saveDraftWithImages({ start_repair_date: stampedDate, start_repair_time: stampedTime });
+    };
+
     useEffect(() => {
         if (!jobLoaded || startRepairStamped || !loadedJobRef.current || viewOnly) return;
         if (job.start_repair_date || job.start_repair_time) {
@@ -2859,8 +2876,8 @@ export default function CMInProgressForm() {
                         </div>
                     )}
 
-                    {/* fieldset disabled = โหมดดูอย่างเดียวเมื่อใบงานปิดแล้ว */}
-                    <fieldset disabled={viewOnly} className="tw-border-0 tw-p-0 tw-m-0 tw-min-w-0">
+                    {/* fieldset disabled = โหมดดูอย่างเดียวเมื่อใบงานปิดแล้ว หรือช่างยังไม่กด "เริ่มแก้ไข" */}
+                    <fieldset disabled={viewOnly || !repairStarted} className="tw-border-0 tw-p-0 tw-m-0 tw-min-w-0">
                     {/* Header */}
                     <div className="tw-flex tw-flex-col md:tw-flex-row tw-items-start tw-justify-between tw-gap-6 tw-mb-6">
                         <div className="tw-flex tw-items-start tw-gap-4">
@@ -3040,6 +3057,9 @@ export default function CMInProgressForm() {
                             </label>
                         </div>
                     )}
+
+                    {/* ก่อนช่างกด "เริ่มแก้ไข" ให้เห็นเฉพาะข้อมูลจาก CS/Planner ด้านบน */}
+                    {repairStarted && (<>
 
                     {/* Section 2: Problem Found + Corrective (Editable) — รวมปัญหากับการแก้ไขในการ์ดเดียว */}
                     <div className="tw-mb-6 tw-rounded-lg tw-overflow-hidden tw-border tw-border-blue-gray-100 tw-bg-white tw-shadow-sm">
@@ -3546,6 +3566,7 @@ export default function CMInProgressForm() {
 
                     {/* Validation Card — ซ่อนในโหมดดูอย่างเดียว */}
                     {!viewOnly && <div className="tw-mb-6"><CMValidationCard validations={displayValidations} lang={lang} /></div>}
+                    </>)}
                     </fieldset>
 
                     {/* Actions */}
@@ -3573,6 +3594,18 @@ export default function CMInProgressForm() {
                                 )}
                                 {/* อนุมัติ / ตีกลับ — เห็นเฉพาะ admin/planner และเฉพาะใบที่รออนุมัติ */}
                                 {approvalActions}
+                            </>
+                        ) : !repairStarted ? (
+                            /* ช่างยังไม่กดเริ่มแก้ไข — มีแค่ปุ่มเริ่มแก้ไข (ข้อมูลด้านบนอ่านอย่างเดียว) */
+                            <>
+                                {cancelAction}
+                                <Button
+                                    type="button"
+                                    onClick={startRepair}
+                                    className="tw-bg-amber-500 hover:tw-bg-amber-600 tw-text-white tw-font-semibold tw-text-base tw-px-8 tw-py-3 tw-rounded-xl hover:tw-shadow-xl hover:tw-shadow-amber-500/30 tw-transition-all"
+                                >
+                                    {lang === "th" ? "เริ่มแก้ไข" : "Start repair"}
+                                </Button>
                             </>
                         ) : (
                             <>
