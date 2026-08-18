@@ -86,7 +86,7 @@ const T = {
   fixAndResubmit: { th: "แก้ไข", en: "Fix" },
 
   // Maximo work orders (แถวใบงานที่ยังไม่มีเอกสาร PM)
-  stWoPending: { th: "รอวางแผน", en: "Awaiting plan" },
+  stWoPending: { th: "Open", en: "Open" },
   stWoPlanned: { th: "วางแผนแล้ว", en: "Planned" },
   planBtn: { th: "วางแผน", en: "Plan" },
   editPlanBtn: { th: "แก้แผน", en: "Edit plan" },
@@ -940,32 +940,26 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       cell: (info: CellContext<TData, unknown>) => {
         const row = info.row.original;
 
-        // แถวใบงาน Maximo ยังไม่มีเอกสาร PM — ปุ่มเดียวคือเข้าฟอร์มวางแผน
+        // แถวใบงาน Maximo ยังไม่มีเอกสาร PM — เข้าหน้าวางแผนด้วยการคลิกที่แถว
+        // ไม่ต้องมีปุ่ม เหลือไว้เฉพาะ "กรอก PM" ที่เป็นคนละงานกัน
         if (row.kind === "wo") {
           const planned = toPmFlow(row) === "wo_planned";
+          if (!planned) {
+            return <span className="tw-text-blue-gray-300">—</span>;
+          }
           return (
-            <div className="tw-flex tw-items-center tw-justify-center tw-gap-1">
+            <div className="tw-flex tw-items-center tw-justify-center">
+              {/* วางแผนแล้ว = ช่างเริ่มกรอกได้ — ผูก wonum ไปกับฟอร์มเพื่อโยงกลับหาใบงานได้ */}
               <Button
                 size="sm"
-                color={planned ? "blue-gray" : "green"}
+                color="blue"
                 variant="outlined"
                 className="tw-shrink-0 tw-text-[10px] sm:tw-text-xs tw-px-2 sm:tw-px-3 tw-py-1 tw-min-h-0 tw-h-auto tw-font-medium tw-rounded-md"
-                onClick={() => goPlan(row)}
+                // กันไม่ให้ทะลุไปโดน onClick ของแถวที่พาไปหน้าวางแผน
+                onClick={(e) => { e.stopPropagation(); goFillPm(row); }}
               >
-                {canPlan ? (planned ? t("editPlanBtn", lang) : t("planBtn", lang)) : t("viewPlanBtn", lang)}
+                {t("fillPmBtn", lang)}
               </Button>
-              {/* วางแผนแล้ว = ช่างเริ่มกรอกได้ — ผูก wonum ไปกับฟอร์มเพื่อโยงกลับหาใบงานได้ */}
-              {planned && (
-                <Button
-                  size="sm"
-                  color="blue"
-                  variant="outlined"
-                  className="tw-shrink-0 tw-text-[10px] sm:tw-text-xs tw-px-2 sm:tw-px-3 tw-py-1 tw-min-h-0 tw-h-auto tw-font-medium tw-rounded-md"
-                  onClick={() => goFillPm(row)}
-                >
-                  {t("fillPmBtn", lang)}
-                </Button>
-              )}
             </div>
           );
         }
@@ -1479,11 +1473,21 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
                     </td>
                   </tr>
                 ) : table.getRowModel().rows.length ? (
-                  table.getRowModel().rows.map((row, index) => (
+                  table.getRowModel().rows.map((row, index) => {
+                    const isWo = row.original.kind === "wo";
+                    const planned = isWo && toPmFlow(row.original) === "wo_planned";
+                    return (
                     <tr
                       key={row.id}
-                      // className={`tw-transition-colors hover:tw-bg-blue-50/50 ${index % 2 === 0 ? 'tw-bg-white' : 'tw-bg-gray-50/30'}`}
-                      className={`tw-transition-colors hover:tw-bg-blue-50/40 hover:tw-shadow-[inset_3px_0_0_0_#2196F3] ${index % 2 === 0 ? 'tw-bg-white' : 'tw-bg-blue-gray-50/30'}`}
+                      onClick={isWo ? () => goPlan(row.original) : undefined}
+                      title={
+                        isWo
+                          ? (canPlan
+                            ? (planned ? t("editPlanBtn", lang) : t("planBtn", lang))
+                            : t("viewPlanBtn", lang))
+                          : undefined
+                      }
+                      className={`tw-transition-colors hover:tw-bg-blue-50/40 hover:tw-shadow-[inset_3px_0_0_0_#2196F3] ${index % 2 === 0 ? 'tw-bg-white' : 'tw-bg-blue-gray-50/30'} ${isWo ? "tw-cursor-pointer" : ""}`}
                     >
                       {row.getVisibleCells().map((cell) => {
                         const align = (cell.column.columnDef as any).meta?.cellAlign ?? "left";
@@ -1503,7 +1507,8 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
                         );
                       })}
                     </tr>
-                  ))
+                    );
+                  })
                 ) : (
                   <tr>
                     <td colSpan={columns.length} className="tw-text-center tw-py-10 sm:tw-py-12 lg:tw-py-16">
