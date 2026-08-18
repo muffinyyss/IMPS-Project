@@ -2827,22 +2827,7 @@ export default function CMInProgressForm() {
             <form noValidate onSubmit={e => e.preventDefault()} onKeyDown={e => e.key === "Enter" && e.target instanceof HTMLInputElement && e.preventDefault()}>
                 <div className="tw-mx-auto tw-max-w-6xl tw-bg-white tw-border tw-border-blue-gray-100 tw-rounded-xl tw-shadow-md tw-shadow-blue-gray-500/5 tw-p-6 md:tw-p-8">
 
-                    {plannerSelfCloseMode && (
-                        <div className="tw-mb-6 tw-rounded-xl tw-border tw-border-green-200 tw-bg-green-50/60 tw-p-5">
-                            <label className="tw-flex tw-cursor-pointer tw-items-start tw-gap-3">
-                                <input
-                                    type="checkbox"
-                                    checked
-                                    onChange={returnToPlannerSchedule}
-                                    className="tw-mt-0.5 tw-h-5 tw-w-5 tw-rounded tw-border-blue-gray-300 tw-text-green-600 focus:tw-ring-green-500"
-                                />
-                                <span>
-                                    <span className="tw-block tw-text-sm tw-font-bold tw-text-blue-gray-900">{lang === "th" ? "ปิดใบงาน" : "Close this work order"}</span>
-                                    <span className="tw-mt-1 tw-block tw-text-xs tw-text-blue-gray-600">{lang === "th" ? "กรอกรายละเอียดและเลือกผลสุดท้ายเพื่อปิดใบงาน — ติ๊กออกเพื่อกลับไปวางแผนคนเข้า" : "Complete the details and pick a final result to close it — untick to go back to scheduling."}</span>
-                                </span>
-                            </label>
-                        </div>
-                    )}
+
 
                     {/* ใบงานถูกตีกลับ — ช่างต้องเห็นเหตุผลก่อนแก้ (ซ่อนเมื่อรออนุมัติรอบใหม่แล้ว) */}
                     {isCancelledStatus && (
@@ -3036,6 +3021,23 @@ export default function CMInProgressForm() {
                             <h4 className="tw-text-sm tw-font-bold tw-text-blue-gray-700">
                                 {t("repairRound", lang)} {repairHistory.length + 1}
                             </h4>
+                        </div>
+                    )}
+
+                    {plannerSelfCloseMode && (
+                        <div className="tw-mb-6 tw-rounded-xl tw-border tw-border-green-200 tw-bg-green-50/60 tw-p-5">
+                            <label className="tw-flex tw-cursor-pointer tw-items-start tw-gap-3">
+                                <input
+                                    type="checkbox"
+                                    checked
+                                    onChange={returnToPlannerSchedule}
+                                    className="tw-mt-0.5 tw-h-5 tw-w-5 tw-rounded tw-border-blue-gray-300 tw-text-green-600 focus:tw-ring-green-500"
+                                />
+                                <span>
+                                    <span className="tw-block tw-text-sm tw-font-bold tw-text-blue-gray-900">{lang === "th" ? "ปิดใบงาน" : "Close this work order"}</span>
+                                    <span className="tw-mt-1 tw-block tw-text-xs tw-text-blue-gray-600">{lang === "th" ? "กรอกรายละเอียดและเลือกผลสุดท้ายเพื่อปิดใบงาน — ติ๊กออกเพื่อกลับไปวางแผนคนเข้า" : "Complete the details and pick a final result to close it — untick to go back to scheduling."}</span>
+                                </span>
+                            </label>
                         </div>
                     )}
 
