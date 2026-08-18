@@ -532,6 +532,9 @@ class PMPostIn(BaseModel):
     summaryCheck: str | None = None
     dust_filter: Dict[str, bool] | None = None
     side: Literal["post", "after"]
+    # laborcode ฝั่ง Maximo ที่ช่างเลือกเอง (ใช้ส่งเวลาทำงาน IN09)
+    maximo_labor: Optional[List[str]] = None
+    maximo_contractor: Optional[str] = None
 
 @router.post("/pmreport/submit")
 async def pmreport_post_submit(
@@ -564,8 +567,7 @@ async def pmreport_post_submit(
             "summary": body.summary,
             "summaryCheck": body.summaryCheck,
             "dust_filter": body.dust_filter,
-            "work_start": (body.work_start or "").strip(),
-            "work_finish": (body.work_finish or "").strip(),
+            **pm_flow.post_submit_fields(body),
             "side": "post",
             "timestamp_post": datetime.now(timezone.utc),
         }
@@ -587,8 +589,7 @@ async def pmreport_post_submit(
         "summary": body.summary,
         "summaryCheck": body.summaryCheck,
         "dust_filter": body.dust_filter,
-        "work_start": (body.work_start or "").strip(),
-        "work_finish": (body.work_finish or "").strip(),
+        **pm_flow.post_submit_fields(body),
         "side": "post",
         "timestamp_post": datetime.now(timezone.utc),
     }

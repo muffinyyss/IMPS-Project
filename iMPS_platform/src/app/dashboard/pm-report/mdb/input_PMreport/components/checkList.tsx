@@ -276,6 +276,15 @@ const T = {
         th: "ตรวจข้อมูลใบงานด้านบนให้เรียบร้อย แล้วกด “เริ่ม PM” เพื่อเปิดแบบฟอร์มกรอก",
         en: "Review the work order above, then press “Start PM” to open the checklist",
     },
+    maximoLabor: { th: "ช่างที่ลงเวลากับ Maximo", en: "Technicians for Maximo time log" },
+    maximoLaborHint: {
+        th: "เลือกคนที่จะลงเวลาทำงานเข้า Maximo (IN09) — ไม่เลือกจะใช้ช่างที่ผู้วางแผนมอบหมายแทน",
+        en: "Who gets an actual-labor record in Maximo (IN09) — leave empty to fall back to the assigned technicians",
+    },
+    maximoLaborEmpty: { th: "ยังไม่มีรหัสช่างจาก Maximo", en: "No Maximo labor codes available" },
+    contractorName: { th: "ชื่อผู้รับเหมา", en: "Contractor name" },
+    contractorPlaceholder: { th: "ระบุชื่อผู้รับเหมาที่มาทำงานจริง", en: "Name of the contractor who did the work" },
+    contractorRequired: { th: "เลือกผู้รับเหมาแล้วต้องระบุชื่อด้วย", en: "Enter the contractor name" },
 };
 
 const t = (key: keyof typeof T, lang: Lang): string => T[key][lang];
@@ -1028,6 +1037,33 @@ export default function MDBPMForm() {
     const [workFinish, setWorkFinish] = useState<string>("");
 
     const pmStarted = pmStartedManually || !!editId || !!workStart;
+
+    // laborcode ฝั่ง Maximo ที่ช่างเลือกเอง — username ใน iMPS ใช้แทนกันไม่ได้
+    const [laborOptions, setLaborOptions] = useState<{ laborcode: string; name: string; needs_name?: boolean }[]>([]);
+    const [maximoLabor, setMaximoLabor] = useState<string[]>([]);
+    const [maximoContractor, setMaximoContractor] = useState<string>("");
+
+    useEffect(() => {
+        let alive = true;
+        (async () => {
+            try {
+                const res = await apiFetch(`${API_BASE}/cm-maximo/labor-codes`);
+                if (!res.ok) return;
+                const data = await res.json();
+                if (alive && Array.isArray(data?.items)) setLaborOptions(data.items);
+            } catch {
+                // ดึงไม่ได้ = ไม่โชว์ตัวเลือก ไม่ต้องบล็อกการกรอกใบงาน
+            }
+        })();
+        return () => { alive = false; };
+    }, []);
+
+    const toggleMaximoLabor = (code: string) =>
+        setMaximoLabor(prev => prev.includes(code) ? prev.filter(c => c !== code) : [...prev, code]);
+
+    // ติ๊กรหัสกลางของผู้รับเหมาไว้ = ต้องมีชื่อจริงกำกับ
+    const contractorPicked = laborOptions.some((o) => o.needs_name && maximoLabor.includes(o.laborcode));
+    const contractorMissing = contractorPicked && !maximoContractor.trim();
     const [inspector, setInspector] = useState<string>("");
     const [dustFilterChanged, setDustFilterChanged] = useState<boolean>(false);
     const [job, setJob] = useState({ issue_id: "", station_name: "", date: "" });
@@ -1718,7 +1754,7 @@ export default function MDBPMForm() {
                     measures: { m4: m4State, m5: m5State, m6: m6State, m7: m7State },
                     summary, ...(summaryCheck ? { summaryCheck } : {}),
                     dust_filter: dustFilterChanged ? { changed: true } : null,
-                    work_start: workStart, work_finish: workFinish, wonum: searchParams.get("wonum") ?? "", side: "post" as TabId, report_id: editId
+                    work_start: workStart, work_finish: workFinish, maximo_labor: maximoLabor, maximo_contractor: contractorPicked ? maximoContractor.trim() : "", wonum: searchParams.get("wonum") ?? "", side: "post" as TabId, report_id: editId
                 };
                 const res = await apiFetch(`${API_BASE}/${PM_PREFIX}/submit`, {
                     method: "POST", headers: { "Content-Type": "application/json" },
@@ -1843,6 +1879,7 @@ export default function MDBPMForm() {
             }
 
             if (!workStart || !workFinish) { alert(t("alertWorkTime", lang)); setSubmitting(false); return; }
+            if (contractorMissing) { alert(t("contractorRequired", lang)); setSubmitting(false); return; }
             if (workFinish < workStart) { alert(t("alertWorkTimeOrder", lang)); setSubmitting(false); return; }
 
             const finalizeRes = await apiFetch(`${API_BASE}/${PM_PREFIX}/${report_id}/finalize`, {
@@ -2423,6 +2460,45 @@ export default function MDBPMForm() {
                                     )}
                                 </div>
                             </div>
+                        </div>
+                    )}
+
+                    {/* ช่างที่จะลงเวลาเข้า Maximo — laborcode คนละชุดกับ username ใน iMPS
+                        จึงต้องให้เลือกเอง ไม่งั้น IN09 จะ unmapped ทั้งใบ (อยู่ล่างสุดของฟอร์ม) */}
+                    {isPostMode && (
+                        <div className="tw-mt-6 tw-pt-4 tw-border-t tw-border-gray-200">
+                            <div className="tw-mb-2">
+                                <Typography variant="h6" className="tw-text-sm sm:tw-text-base">{t("maximoLabor", lang)}</Typography>
+                                <Typography variant="small" className="tw-text-xs tw-font-normal tw-text-blue-gray-400">
+                                    {t("maximoLaborHint", lang)}
+                                </Typography>
+                            </div>
+                            {laborOptions.length === 0 ? (
+                                <p className="tw-text-xs tw-text-orange-600">{t("maximoLaborEmpty", lang)}</p>
+                            ) : (
+                                <div className="tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-divide-y tw-divide-blue-gray-50 tw-max-h-56 tw-overflow-y-auto">
+                                    {laborOptions.map((o) => (
+                                        <label key={o.laborcode} className="tw-flex tw-items-center tw-gap-2.5 tw-px-3 tw-py-2.5 tw-cursor-pointer hover:tw-bg-blue-gray-50/60 tw-transition-colors">
+                                            <input type="checkbox" checked={maximoLabor.includes(o.laborcode)}
+                                                onChange={() => toggleMaximoLabor(o.laborcode)}
+                                                className="tw-h-4 tw-w-4 tw-shrink-0 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500 tw-cursor-pointer" />
+                                            <span className="tw-min-w-0 tw-truncate tw-text-sm tw-text-blue-gray-800">{o.name}</span>
+                                            <span className="tw-ml-auto tw-font-mono tw-text-xs tw-text-blue-gray-400">{o.laborcode}</span>
+                                        </label>
+                                    ))}
+                                </div>
+                            )}
+                            {contractorPicked && (
+                                <div className="tw-mt-3 tw-space-y-1.5">
+                                    <label className="tw-block tw-text-xs tw-font-semibold tw-text-blue-gray-700">
+                                        {t("contractorName", lang)} <span className="tw-text-red-500">*</span>
+                                    </label>
+                                    <input type="text" value={maximoContractor} onChange={(e) => setMaximoContractor(e.target.value)}
+                                        placeholder={t("contractorPlaceholder", lang)}
+                                        className={`tw-w-full tw-rounded-lg tw-border tw-px-3 tw-py-2.5 tw-text-sm tw-text-blue-gray-800 focus:tw-outline-none ${contractorMissing ? "tw-border-red-400 focus:tw-border-red-500" : "tw-border-blue-gray-200 focus:tw-border-blue-500"}`} />
+                                    {contractorMissing && <p className="tw-text-xs tw-text-red-600">{t("contractorRequired", lang)}</p>}
+                                </div>
+                            )}
                         </div>
                     )}
 
