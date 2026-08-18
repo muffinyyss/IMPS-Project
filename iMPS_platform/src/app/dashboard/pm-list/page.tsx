@@ -7,9 +7,10 @@
  *   header + ตัวกรอง ปี/เดือน/สัปดาห์ → toolbar สถานี/ชนิด/สถานะ/แถวต่อหน้า
  *   → ช่องค้นหา → ตารางคอลัมน์เรียงได้ทุกคอลัมน์ → คลิกแถวเปิดเอกสาร → PDF
  *
- * ต่างจาก CM List ตรงที่ชุดข้อมูลมาจาก GET /pm-reports/all-stations
- * (เอกสาร PM ที่ช่างกรอกแล้ว) — ใบงาน Maximo ที่ planner ยังไม่ assign
- * ไม่ได้อยู่ในนี้ เพราะ backend ยังไม่มี endpoint รวมทุกสถานีของใบงานเปิด
+ * ข้อมูล 2 ชุดรวมกันเป็นตารางเดียว (เหมือน CM ที่ใบงานทุกด่านอยู่ตารางเดียว):
+ *   GET /pm-reports/all-stations — เอกสาร PM ที่ช่างกรอกแล้ว
+ *   GET /maximo/pm/open          — ใบงาน Maximo ที่ยังไม่ได้ assign = สถานะ Open
+ * ใบงานที่มีเอกสารแล้วจะไม่โชว์ซ้ำ (dedup ด้วย wonum)
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
@@ -22,6 +23,7 @@ import useLanguage from "@/utils/useLanguage";
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 500;
 const LIMIT_PER_SOURCE = 200;
+const WO_LIMIT = 1000;
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
 type PMRow = {
@@ -40,13 +42,17 @@ type PMRow = {
   side: string;
   created_at: string;
   file_url: string;
+  /** แถวใบงาน Maximo ที่ยังไม่มีเอกสาร PM — ด่าน Open ของ flow */
+  kind?: "report" | "wo";
+  assignees?: string[];
 };
 
 /** ด่านของงาน — ชื่อเดียวกับที่ใช้ในหน้า PM report */
-type PmStage = "in_progress" | "wait_approve" | "closed";
+type PmStage = "open" | "in_progress" | "wait_approve" | "closed";
 
 /** ใบเก่าไม่มี status / เป็น "submitted" = ปิดไปแล้วก่อนมี flow อนุมัติ */
 function stageOf(row: PMRow): PmStage {
+  if (row.kind === "wo") return "open";
   const s = String(row.status ?? "").trim().toLowerCase();
   if (s === "wait for approve") return "wait_approve";
   if (s === "draft") return "in_progress";
@@ -54,6 +60,7 @@ function stageOf(row: PMRow): PmStage {
 }
 
 const STAGE_STYLE: Record<PmStage, { bg: string; text: string }> = {
+  open: { bg: "#fee2e2", text: "#dc2626" },
   in_progress: { bg: "#fff7ed", text: "#ea580c" },
   wait_approve: { bg: "#f3e8ff", text: "#7e22ce" },
   closed: { bg: "#dcfce7", text: "#15803d" },
@@ -73,7 +80,12 @@ const TYPE_TO_TAB: Record<string, string> = {
 type SortKey = "station" | "type" | "wo" | "document" | "technician" | "date" | "status";
 type SortDir = "asc" | "desc";
 
-const STAGE_RANK: Record<PmStage, number> = { in_progress: 1, wait_approve: 2, closed: 3 };
+const STAGE_RANK: Record<PmStage, number> = { open: 0, in_progress: 1, wait_approve: 2, closed: 3 };
+
+/** pm_type ของใบงาน Maximo (CG/MB/CC/CB/ST) → ป้ายชนิดที่ตารางใช้ */
+const WO_PM_TYPE_LABEL: Record<string, string> = {
+  CG: "CHARGER", MB: "MDB", CC: "CCB", CB: "CB-BOX", ST: "STATION",
+};
 
 function yearOf(dateStr: string): number | null {
   const y = Number(String(dateStr || "").slice(0, 4));
@@ -123,10 +135,50 @@ export default function PMListPage() {
       setLoading(true);
       setError(null);
       try {
-        const res = await apiFetch(`/pm-reports/all-stations?limit_per_source=${LIMIT_PER_SOURCE}`);
-        const json = await res.json();
-        if (!res.ok) throw new Error(json?.detail || `HTTP ${res.status}`);
-        setRows(Array.isArray(json?.reports) ? json.reports : []);
+        const [repRes, woRes] = await Promise.allSettled([
+          apiFetch(`/pm-reports/all-stations?limit_per_source=${LIMIT_PER_SOURCE}`),
+          apiFetch(`/maximo/pm/open?only_open=true&limit=${WO_LIMIT}`),
+        ]);
+
+        if (repRes.status === "rejected") throw repRes.reason;
+        const json = await repRes.value.json();
+        if (!repRes.value.ok) throw new Error(json?.detail || `HTTP ${repRes.value.status}`);
+        const reports: PMRow[] = (Array.isArray(json?.reports) ? json.reports : [])
+          .map((r: PMRow) => ({ ...r, kind: "report" as const }));
+
+        // ใบงาน Maximo — ถ้าโหลดไม่ได้ก็ยังโชว์เอกสารได้ ไม่ต้องล้มทั้งหน้า
+        let woRows: PMRow[] = [];
+        if (woRes.status === "fulfilled" && woRes.value.ok) {
+          const wj = await woRes.value.json().catch(() => ({}));
+          const items: any[] = Array.isArray(wj?.items) ? wj.items : [];
+          // ใบที่มีเอกสารแล้วไม่ต้องโชว์ซ้ำ — งาน 1 ใบ = 1 แถวที่ไล่สถานะไปเรื่อย ๆ
+          const withReport = new Set(
+            reports.map((r) => String(r.wonum || "").trim()).filter(Boolean)
+          );
+          woRows = items
+            .filter((w) => !withReport.has(String(w?.wonum || "").trim()))
+            .map((w) => ({
+              kind: "wo" as const,
+              id: String(w?.wonum || ""),
+              wonum: String(w?.wonum || ""),
+              issue_id: String(w?.wonum || ""),
+              document_name: String(w?.description || ""),
+              pm_type: WO_PM_TYPE_LABEL[String(w?.pm_type || "").toUpperCase()] ?? "CHARGER",
+              pm_date: String(w?.pm_date || ""),
+              status: "Open",
+              technician: (Array.isArray(w?.assignees) ? w.assignees.filter(Boolean) : []).join(", "),
+              assignees: Array.isArray(w?.assignees) ? w.assignees.filter(Boolean) : [],
+              sn: String(w?.sn || ""),
+              chargeBoxID: "",
+              station_id: String(w?.station_id || ""),
+              station_name: String(w?.station_id || w?.location || ""),
+              side: "",
+              created_at: String(w?.receivedAt || ""),
+              file_url: "",
+            }));
+        }
+
+        setRows([...woRows, ...reports]);
       } catch (e) {
         setError(e instanceof Error ? e.message : "โหลดข้อมูลไม่สำเร็จ");
         setRows([]);
@@ -157,12 +209,13 @@ export default function PMListPage() {
       errorPrefix: "โหลดข้อมูลไม่สำเร็จ",
       noResults: (q?: string) => (q ? `ไม่พบรายการที่ตรงกับ "${q}"` : "ไม่มีรายการ"),
       openReportTitle: "เปิดเอกสาร PM",
+      openPlanTitle: "เปิดหน้าวางแผน",
       sortAsc: "เรียงจากน้อยไปมาก", sortDesc: "เรียงจากมากไปน้อย",
       headers: {
         station: "สถานี", type: "ชนิด", wo: "WO", document: "ชื่อเอกสาร",
         technician: "ผู้ตรวจสอบ", date: "วันที่ PM", status: "สถานะ",
       },
-      stage: { in_progress: "In Progress", wait_approve: "Wait for approve", closed: "Closed" },
+      stage: { open: "Open", in_progress: "In Progress", wait_approve: "Wait for approve", closed: "Closed" },
     },
     en: {
       pageTitle: "PM List",
@@ -184,12 +237,13 @@ export default function PMListPage() {
       errorPrefix: "Failed to load",
       noResults: (q?: string) => (q ? `No records match "${q}"` : "No records"),
       openReportTitle: "Open PM report",
+      openPlanTitle: "Open planning page",
       sortAsc: "Sort ascending", sortDesc: "Sort descending",
       headers: {
         station: "Station", type: "Type", wo: "WO", document: "Document",
         technician: "Inspector", date: "PM date", status: "Status",
       },
-      stage: { in_progress: "In Progress", wait_approve: "Wait for approve", closed: "Closed" },
+      stage: { open: "Open", in_progress: "In Progress", wait_approve: "Wait for approve", closed: "Closed" },
     },
   }[lang]), [lang]);
 
@@ -213,7 +267,10 @@ export default function PMListPage() {
       window.dispatchEvent(new CustomEvent("station:selected"));
     }
 
-    const params = new URLSearchParams({ tab, view: "form", edit_id: r.id });
+    // แถวใบงาน Maximo ยังไม่มีเอกสาร → ไปหน้าวางแผนของ planner แทน
+    const params = r.kind === "wo"
+      ? new URLSearchParams({ tab, view: "form", planning: "1", wonum: r.wonum || r.id })
+      : new URLSearchParams({ tab, view: "form", edit_id: r.id });
     if (tab === "charger" && r.sn && r.sn !== "-") params.set("sn", r.sn);
     else if (r.station_id) params.set("station_id", r.station_id);
     router.push(`/dashboard/pm-report?${params.toString()}`);
@@ -279,7 +336,7 @@ export default function PMListPage() {
     let base = periodRows;
     if (typeFilter) base = base.filter((r) => r.pm_type === typeFilter);
     base = applySearch(base);
-    const counts: Record<PmStage, number> = { in_progress: 0, wait_approve: 0, closed: 0 };
+    const counts: Record<PmStage, number> = { open: 0, in_progress: 0, wait_approve: 0, closed: 0 };
     for (const r of base) counts[stageOf(r)]++;
     return counts;
   }, [periodRows, typeFilter, applySearch]);
@@ -440,7 +497,7 @@ export default function PMListPage() {
         </div>
 
         <div className="tw-flex tw-items-center tw-gap-1.5" role="group" aria-label={t.statusFilterLabel}>
-          {(["in_progress", "wait_approve", "closed"] as const).map((key) => {
+          {(["open", "in_progress", "wait_approve", "closed"] as const).map((key) => {
             const isActive = stageFilter === key;
             const { bg, text } = STAGE_STYLE[key];
             return (
@@ -547,7 +604,7 @@ export default function PMListPage() {
                   <tr
                     key={`${r.id}-${r.pm_type}-${i}`}
                     onClick={() => openReport(r)}
-                    title={`${t.openReportTitle} · ${r.station_name || r.station_id}`}
+                    title={`${r.kind === "wo" ? t.openPlanTitle : t.openReportTitle} · ${r.station_name || r.station_id}`}
                     className="tw-cursor-pointer tw-border-t tw-border-gray-100 hover:tw-bg-blue-50/30"
                   >
                     <td className="tw-px-4 tw-py-3 tw-text-gray-400">{page * pageSize + i + 1}</td>
