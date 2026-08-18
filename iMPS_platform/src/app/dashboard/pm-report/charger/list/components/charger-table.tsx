@@ -169,6 +169,8 @@ type TData = {
   assignees?: string[];
   sched_start?: string;
   selected_equipment_label?: string;
+  /** ช่างที่ planner มอบหมาย — คนละอย่างกับ inspector ที่เป็นคนกรอกจริง */
+  assignees_label?: string;
 };
 
 /** สถานะใน flow PM — ให้ตรงกับที่ backend เขียนลง PMReport (pmreport_charger.py) */
@@ -669,7 +671,9 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
           pm_date: w.pm_date ?? "",
           position: w.pm_date ?? "",
           office: "",
-          inspector: (w.assignees ?? []).filter(Boolean).join(", "),
+          // Inspector = คนที่กรอกเอกสารจริง — ใบงานที่ยังไม่มีเอกสารเว้นว่างไว้
+          inspector: "",
+          assignees_label: (w.assignees ?? []).filter(Boolean).join(", "),
           planning_status: w.planning_status ?? "pending",
           assignees: (w.assignees ?? []).filter(Boolean) as string[],
           sched_start: w.sched_start ?? "",
@@ -952,7 +956,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
         // ผู้ที่ตัดสินใจล่าสุดสำคัญกว่าตัวสถานะเปล่า ๆ — ใส่ไว้ใน tooltip
         const hint =
           row.kind === "wo"
-            ? [row.selected_equipment_label, row.inspector].filter(Boolean).join(" — ") || label[flow]
+            ? [row.selected_equipment_label, row.assignees_label].filter(Boolean).join(" — ") || label[flow]
             : flow === "closed" && row.approved_by
               ? `${t("approvedBy", lang)}: ${row.approved_by}`
               : flow === "rejected" && row.reject_remark

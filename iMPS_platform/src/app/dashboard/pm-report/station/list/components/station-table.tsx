@@ -139,6 +139,8 @@ type TData = {
   wonum?: string;
   planning_status?: string;
   selected_equipment_label?: string;
+  /** ช่างที่ planner มอบหมาย — คนละอย่างกับ inspector ที่เป็นคนกรอกจริง */
+  assignees_label?: string;
 };
 
 type Props = {

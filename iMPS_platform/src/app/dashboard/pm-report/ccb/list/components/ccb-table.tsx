@@ -117,6 +117,8 @@ type TData = {
   wonum?: string;
   planning_status?: string;
   selected_equipment_label?: string;
+  /** ช่างที่ planner มอบหมาย — คนละอย่างกับ inspector ที่เป็นคนกรอกจริง */
+  assignees_label?: string;
 };
 
 type Props = { token?: string; apiBase?: string; };
@@ -535,7 +537,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
         const flow = toPmFlow(row);
         // ผู้ที่ตัดสินใจล่าสุดสำคัญกว่าตัวสถานะเปล่า ๆ — ใส่ไว้ใน tooltip
         const hint = row.kind === "wo"
-          ? [row.selected_equipment_label, row.inspector].filter(Boolean).join(" — ") || undefined
+          ? [row.selected_equipment_label, row.assignees_label].filter(Boolean).join(" — ") || undefined
           : flow === "closed" && row.approved_by
             ? `${t("approvedBy", lang)}: ${row.approved_by}`
             : flow === "rejected" && row.reject_remark

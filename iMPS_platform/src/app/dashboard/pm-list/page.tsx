@@ -196,7 +196,9 @@ export default function PMListPage() {
               pm_type: WO_PM_TYPE_LABEL[String(w?.pm_type || "").toUpperCase()] ?? "CHARGER",
               pm_date: String(w?.pm_date || ""),
               status: "Open",
-              technician: (Array.isArray(w?.assignees) ? w.assignees.filter(Boolean) : []).join(", "),
+              // ผู้ตรวจสอบ = คนที่กรอกเอกสารจริง ใบงานที่ยังไม่มีเอกสารจึงเว้นว่าง
+              // (ช่างที่ถูกมอบหมายยังอยู่ใน assignees ใช้กรองงานของช่างได้เหมือนเดิม)
+              technician: "",
               assignees: Array.isArray(w?.assignees) ? w.assignees.filter(Boolean) : [],
               sn: String(w?.sn || ""),
               chargeBoxID: "",

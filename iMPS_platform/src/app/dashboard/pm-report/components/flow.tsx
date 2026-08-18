@@ -205,7 +205,10 @@ export function woToRow(w: MaximoWorkOrder, fallbackName: string) {
     issue_id: w.wonum ?? "",
     doc_name: w.description || fallbackName,
     pm_date: w.pm_date ?? "",
-    inspector: (w.assignees ?? []).filter(Boolean).join(", "),
+    // Inspector = คนที่กรอกเอกสารจริง — ใบงานที่ยังไม่มีเอกสารจึงเว้นว่างไว้
+    // ช่างที่ planner มอบหมายเก็บแยกไว้ที่ assignees_label สำหรับโชว์ใน tooltip
+    inspector: "",
+    assignees_label: (w.assignees ?? []).filter(Boolean).join(", "),
     planning_status: w.planning_status ?? "pending",
     selected_equipment_label: selected.map((e) => equipLabel(e)).join(", "),
   };
