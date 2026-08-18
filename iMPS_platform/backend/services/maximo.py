@@ -164,6 +164,7 @@ async def _post(
     patchtype: str | None = None,
     properties: str | None = None,
     timeout: int = 30,
+    trace: dict | None = None,
 ) -> dict:
     """
     POST เข้า Object Structure
@@ -184,18 +185,32 @@ async def _post(
         "patchtype": patchtype or "",
         "properties": properties or "",
     })
+    # เก็บสิ่งที่ยิงไปไว้ให้ผู้เรียกจดลงใบงาน — ไล่ปัญหาได้โดยไม่ต้องเปิด log server
+    if trace is not None:
+        trace["os"] = os_name
+        trace["method_override"] = method_override or "POST"
+        trace["request"] = payload
     try:
         async with httpx.AsyncClient(verify=_ssl_ctx, timeout=timeout) as client:
             resp = await client.post(url, params={"lean": 1}, headers=headers, json=payload)
     except Exception as e:
         raise MaximoError(f"{os_name}: {type(e).__name__}: {e}") from e
 
+    if trace is not None:
+        trace["http"] = resp.status_code
+
     if resp.status_code not in (200, 201, 204):
+        if trace is not None:
+            trace["response"] = resp.text[:1000]
         raise MaximoError(
             f"{os_name} failed: HTTP {resp.status_code}",
             status=resp.status_code,
             body=resp.text,
         )
+
+    if trace is not None:
+        # 204 = สำเร็จแบบไม่มี body (IN05 ตอบแบบนี้)
+        trace["response"] = resp.text[:1000] if resp.content else f"HTTP {resp.status_code} (no content)"
 
     if not resp.content:
         return {}
@@ -626,6 +641,7 @@ async def create_workorder(
     imps_wonum: str | None = None,
     asset_num: str | None = None,
     extra: dict | None = None,
+    trace: dict | None = None,
 ) -> dict:
     """
     เปิดใบสั่งงาน (Work Order) ใน Maximo จากใบงาน CM ของ iMPS
@@ -670,7 +686,7 @@ async def create_workorder(
         **(extra or {}),
     })
 
-    data = await _post(MAXIMO_WO_OS, payload, properties="wonum,status,description")
+    data = await _post(MAXIMO_WO_OS, payload, properties="wonum,status,description", trace=trace)
     log.info(f"  🧾 Maximo WO created: {data.get('wonum')} (location={location}, imps={imps_wonum})")
     return data
 
@@ -685,6 +701,7 @@ async def update_wo_status(
     memo: str | None = None,
     status_date: Any = None,
     extra: dict | None = None,
+    trace: dict | None = None,
 ) -> dict:
     """
     เปลี่ยนสถานะใบสั่งงานใน Maximo (APPR / INPRG / COMP / CLOSE / CAN …)
@@ -711,7 +728,7 @@ async def update_wo_status(
     data = await _post(
         MAXIMO_WOSTATUS_OS, payload,
         method_override="SYNC", patchtype="MERGE",
-        properties="wonum,status",
+        properties="wonum,status", trace=trace,
     )
     log.info(f"  🔁 Maximo WO {wonum} → status {status}")
     return data
@@ -727,6 +744,7 @@ async def attach_wo_link(
     name: str | None = None,
     description: str | None = None,
     doctype: str | None = None,
+    trace: dict | None = None,
 ) -> dict:
     """
     แนบลิงก์เอกสาร (URL) เข้ากับใบสั่งงาน — ส่งแค่ลิงก์ ไม่ได้อัปโหลดไฟล์เข้า Maximo
@@ -757,7 +775,7 @@ async def attach_wo_link(
     data = await _post(
         MAXIMO_ATTACHWO_OS, payload,
         method_override="SYNC", patchtype="MERGE",
-        properties="wonum",
+        properties="wonum", trace=trace,
     )
     log.info(f"  📎 Maximo WO {wonum} ← attachment {doc_name}")
     return data
@@ -793,6 +811,7 @@ async def report_wo_failure(
     remedy_code: str | None = None,
     remarks: str | None = None,
     fail_date: Any = None,
+    trace: dict | None = None,
 ) -> dict:
     """
     รายงานผลวิเคราะห์ความเสียหายของใบสั่งงาน (problem → cause → remedy)
@@ -845,7 +864,7 @@ async def report_wo_failure(
         "faildate": _maximo_datetime(fail_date) if fail_date else None,
     })]
 
-    data = await _post(MAXIMO_FAILUREREPORT_OS, payload, method_override="BULK")
+    data = await _post(MAXIMO_FAILUREREPORT_OS, payload, method_override="BULK", trace=trace)
     log.info(
         f"  🩺 Maximo WO {wonum} ← failure {failure_code}/"
         f"{problem_code}/{cause_code}/{remedy_code}"
@@ -902,6 +921,7 @@ async def create_labtrans(
     craft: str | None = None,
     location: str | None = None,
     memo: str | None = None,
+    trace: dict | None = None,
 ) -> dict:
     """
     ลงเวลาทำงานจริงของช่าง 1 คน กับใบสั่งงาน 1 ใบ
@@ -947,6 +967,6 @@ async def create_labtrans(
         "memo": (memo or "")[:250] or None,
     })
 
-    data = await _post(MAXIMO_LABTRANS_OS, payload, properties="labtransid,refwo,laborcode")
+    data = await _post(MAXIMO_LABTRANS_OS, payload, properties="labtransid,refwo,laborcode", trace=trace)
     log.info(f"  ⏱️  Maximo labtrans: WO {wonum} / {labor_code} / {regular_hours}h")
     return data
