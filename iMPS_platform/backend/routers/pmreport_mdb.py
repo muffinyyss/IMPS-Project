@@ -18,6 +18,8 @@ from config import (
     _validate_station_id_th, th_tz, _ensure_utc_iso,
 )
 from deps import UserClaims, get_current_user
+from routers import pm_flow
+from services import pm_maximo_out
 from uploads_access import assert_station_access, assert_sn_access
 from routers.pm_helpers import (
     UPLOADS_ROOT,
@@ -275,6 +277,8 @@ async def preview_docname(
 class MDBPMSubmitIn(BaseModel):
     side: Literal["pre", "post"]
     station_id: str
+    # ใบงาน Maximo ที่ planner assign — โยงเอกสารกลับหาใบงานต้นทาง
+    wonum: Optional[str] = None
     job: Dict[str, Any]
     measures_pre: Dict[str, Any]
     rows_pre: Optional[Dict[str, Dict[str, Any]]] = None
@@ -296,6 +300,10 @@ class MDBPMPostIn(BaseModel):
     summary: str
     summaryCheck: Optional[str] = None
     dust_filter: Optional[Dict[str, bool]] = None
+    # เวลาทำงานจริงของช่าง (ส่งเข้า Maximo ทาง IN09) + ใบงาน Maximo ที่ผูกไว้
+    work_start: Optional[str] = None
+    work_finish: Optional[str] = None
+    wonum: Optional[str] = None
     side: Literal["post", "after"]
 
 
@@ -337,20 +345,28 @@ async def mdbpmreport_list(
     station_id: str = Query(...),
     page: int = Query(1, ge=1),
     pageSize: int = Query(20, ge=1, le=100),
+    status: str | None = Query(None, description="กรองตามสถานะ คั่นหลายค่าด้วย ,"),
     current: UserClaims = Depends(get_current_user),
 ):
     """List PM reports for an MDB by station_id"""
     coll = get_mdbpmreport_collection_for(station_id)
     skip = (page - 1) * pageSize
 
+    query: dict = {}
+    if status and (conds := pm_flow.status_or_conditions(status)):
+        query["$or"] = conds
+
     cursor = coll.find(
-        {},
+        query,
         {"_id": 1, "issue_id": 1, "doc_name": 1, "pm_date": 1, "inspector": 1,
-         "side": 1, "has_photos": 1, "createdAt": 1, "charger_count": 1},
+         "side": 1, "has_photos": 1, "createdAt": 1, "charger_count": 1,
+         "status": 1, "stage": 1, "wonum": 1, "approved_by": 1,
+         "approved_at": 1, "reject_remark": 1, "rejected_by": 1, "submittedAt": 1,
+        },
     ).sort([("createdAt", -1), ("_id", -1)]).skip(skip).limit(pageSize)
 
     items_raw = await cursor.to_list(length=pageSize)
-    total = await coll.count_documents({})
+    total = await coll.count_documents(query)
 
     pm_dates = [it.get("pm_date") for it in items_raw if it.get("pm_date")]
     url_coll = get_mdbpmurl_coll_upload(station_id)
@@ -376,6 +392,7 @@ async def mdbpmreport_list(
         "createdAt": _ensure_utc_iso(it.get("createdAt")),
         "file_url": url_by_day.get(it.get("pm_date") or "", ""),
         "has_photos": True if it.get("has_photos") else None,
+        **pm_flow.list_fields(it, _ensure_utc_iso),
     } for it in items_raw]
 
     pm_date_arr = [it.get("pm_date") for it in items_raw if it.get("pm_date")]
@@ -556,6 +573,7 @@ async def mdbpmreport_post_submit(
             "summary": body.summary,
             "summaryCheck": body.summaryCheck,
             "dust_filter": body.dust_filter,
+            **pm_flow.post_submit_fields(body),
             "side": "post",
             "timestamp_post": datetime.now(timezone.utc),
         }
@@ -576,6 +594,7 @@ async def mdbpmreport_post_submit(
         "summary": body.summary,
         "summaryCheck": body.summaryCheck,
         "dust_filter": body.dust_filter,
+        **pm_flow.post_submit_fields(body),
         "side": "post",
         "timestamp_post": datetime.now(timezone.utc),
     }
@@ -785,19 +804,8 @@ async def mdbpmreport_finalize(
     except Exception:
         raise HTTPException(status_code=400, detail="Bad report_id")
 
-    doc = await coll.find_one({"_id": oid, "station_id": station_id}, {"_id": 1})
-    if not doc:
-        raise HTTPException(status_code=404, detail="Report not found")
-
-    res = await coll.update_one(
-        {"_id": oid},
-        {"$set": {
-            "status": "submitted",
-            "submittedAt": datetime.now(timezone.utc),
-        }},
-    )
-    if res.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Report not found")
+    # ช่างกดส่ง = เข้าคิวรอ planner อนุมัติ (ตรวจเวลาทำงานให้ด้วย)
+    await pm_flow.finalize(coll, oid, {"station_id": station_id})
 
     # ลบ PDF cache เผื่อมีค้างอยู่
     for lang in ("th", "en"):
@@ -811,6 +819,48 @@ async def mdbpmreport_finalize(
 # ============================================
 # MDB PM URL (PDF Upload + List)
 # ============================================
+
+@router.post("/mdbpmreport/{report_id}/approve")
+async def mdbpmreport_approve(
+    report_id: str,
+    station_id: str = Query(...),
+    current: UserClaims = Depends(get_current_user),
+):
+    """planner/admin อนุมัติปิดใบงาน แล้วส่งต่อให้ Maximo (IN03 → IN09 → IN02 COMP)"""
+    station_id = station_id.strip()
+    coll = get_mdbpmreport_collection_for(station_id)
+    oid = pm_flow.to_oid(report_id)
+
+    result = await pm_flow.approve(coll, oid, {"station_id": station_id}, current)
+
+    # อ่านใบงานหลังบันทึกเพื่อให้ข้อมูลที่ส่งไปตรงกับที่เก็บจริง
+    fresh = await coll.find_one({"_id": oid}) or {}
+
+    # ใบงาน Maximo 1 ใบครอบหลายอุปกรณ์ — ปิดครบทุกตัวก่อนถึงจะยิงปิด WO
+    progress = await pm_flow.wo_completion(fresh.get("wonum") or "")
+    if not progress["complete"]:
+        return {**result, "maximo": {"skipped": "ยังกรอกไม่ครบทุกอุปกรณ์ในใบงาน"},
+                "progress": progress}
+
+    maximo_result = await pm_maximo_out.safe_sync_closed(
+        coll, oid, fresh, memo=f"closed by {current.username}"
+    )
+    return {**result, "maximo": maximo_result, "progress": progress}
+
+
+@router.post("/mdbpmreport/{report_id}/reject")
+async def mdbpmreport_reject(
+    report_id: str,
+    body: pm_flow.PMRejectIn,
+    station_id: str = Query(...),
+    current: UserClaims = Depends(get_current_user),
+):
+    """planner/admin ตีกลับใบงานให้ช่างแก้"""
+    station_id = station_id.strip()
+    coll = get_mdbpmreport_collection_for(station_id)
+    oid = pm_flow.to_oid(report_id)
+    return await pm_flow.reject(coll, oid, {"station_id": station_id}, current, body.remark)
+
 
 @router.post("/mdbpmurl/upload-files", status_code=201)
 async def mdbpmurl_upload_files(

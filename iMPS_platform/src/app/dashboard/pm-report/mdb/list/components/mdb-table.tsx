@@ -2,7 +2,13 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
-import MaximoWorkOrders from "@/app/dashboard/pm-report/components/MaximoWorkOrders";
+import PmPlanForm from "@/app/dashboard/pm-report/components/PmPlanForm";
+import { pmBackRoute } from "@/app/dashboard/pm-report/lib/origin";
+import {
+  usePmFlow, toPmFlow, woToRow, dropWosWithReport,
+  PmStatusBadge, PmFlowTabs, FLOW_TAB_OF, FLOW_TABS,
+  type FlowTab,
+} from "@/app/dashboard/pm-report/components/flow";
 import {
   getCoreRowModel,
   getFilteredRowModel,
@@ -70,6 +76,25 @@ const T = {
   preview: { th: "พรีวิว", en: "Preview" },
   downloadPhotos: { th: "ดาวน์โหลดรูปภาพ", en: "Download Photos" },
   loadingData: { th: "กำลังโหลดข้อมูล...", en: "Loading data..." },
+  colStatus: { th: "สถานะ", en: "Status" },
+  woFromMaximo: { th: "ใบงานจาก Maximo", en: "Work order from Maximo" },
+  fillPmBtn: { th: "กรอก PM", en: "Fill PM" },
+  fixAndResubmit: { th: "แก้ไข", en: "Fix" },
+  approve: { th: "อนุมัติ", en: "Approve" },
+  reject: { th: "ตีกลับ", en: "Reject" },
+  approveTitle: { th: "อนุมัติปิดใบงาน PM", en: "Approve and close PM work order" },
+  approveConfirm: { th: "ยืนยันอนุมัติปิดใบงานนี้หรือไม่?", en: "Close this work order?" },
+  rejectTitle: { th: "ตีกลับใบงานให้ช่างแก้", en: "Send back to technician" },
+  rejectRemarkLabel: { th: "เหตุผลที่ตีกลับ", en: "Reason" },
+  rejectRemarkRequired: { th: "กรุณาระบุเหตุผลที่ตีกลับ", en: "A reason is required" },
+  approvedBy: { th: "อนุมัติโดย", en: "Approved by" },
+  rejectedBy: { th: "ตีกลับโดย", en: "Sent back by" },
+  approveSuccess: { th: "อนุมัติปิดใบงานแล้ว", en: "Work order closed" },
+  rejectSuccess: { th: "ตีกลับใบงานให้ช่างแล้ว", en: "Sent back to technician" },
+  approveFailed: { th: "อนุมัติไม่สำเร็จ:", en: "Approve failed:" },
+  rejectFailed: { th: "ตีกลับไม่สำเร็จ:", en: "Reject failed:" },
+  confirmBtn: { th: "ยืนยัน", en: "Confirm" },
+  planSaved: { th: "บันทึกแผนแล้ว", en: "Plan saved" },
 };
 
 const t = (key: keyof typeof T, lang: Lang): string => T[key][lang];
@@ -84,6 +109,17 @@ type TData = {
   inspector?: string;
   side?: string;
   has_photos?: boolean;
+  status?: string;
+  reject_remark?: string;
+  rejected_by?: string;
+  approved_by?: string;
+  /** แถวใบงาน Maximo ที่ยังไม่มีเอกสาร PM — ด่าน Open ของ flow */
+  kind?: "report" | "wo";
+  wonum?: string;
+  planning_status?: string;
+  selected_equipment_label?: string;
+  /** ช่างที่ planner มอบหมาย — คนละอย่างกับ inspector ที่เป็นคนกรอกจริง */
+  assignees_label?: string;
 };
 
 type Props = { token?: string; apiBase?: string; };
@@ -313,6 +349,77 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
     return m ? m[0] : "";
   }
 
+  const { wos, reloadWos, canApprove, canPlan, flowTab, setFlowTab } = usePmFlow("mdb", stationId);
+
+  // ==================== APPROVE / REJECT (planner, admin) ====================
+  const [approveRow, setApproveRow] = useState<TData | null>(null);
+  const [rejectRow, setRejectRow] = useState<TData | null>(null);
+  const [rejectRemark, setRejectRemark] = useState("");
+  const [acting, setActing] = useState(false);
+
+  const onApprove = async () => {
+    if (!approveRow?.id || !stationId || acting) return;
+    setActing(true);
+    try {
+      const res = await apiFetch(
+        `${apiBase}/mdbpmreport/${encodeURIComponent(approveRow.id)}/approve?station_id=${encodeURIComponent(stationId)}`,
+        { method: "POST", credentials: "include" }
+      );
+      if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(j?.detail || `HTTP ${res.status}`); }
+      setApproveRow(null);
+      showToast("success", t("approveSuccess", lang));
+      await fetchRows();
+    } catch (e: any) {
+      showToast("error", `${t("approveFailed", lang)} ${e?.message ?? e}`);
+    } finally { setActing(false); }
+  };
+
+  const onReject = async () => {
+    if (!rejectRow?.id || !stationId || acting) return;
+    const remark = rejectRemark.trim();
+    if (!remark) { showToast("warning", t("rejectRemarkRequired", lang)); return; }
+    setActing(true);
+    try {
+      const res = await apiFetch(
+        `${apiBase}/mdbpmreport/${encodeURIComponent(rejectRow.id)}/reject?station_id=${encodeURIComponent(stationId)}`,
+        { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ remark }) }
+      );
+      if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(j?.detail || `HTTP ${res.status}`); }
+      setRejectRow(null); setRejectRemark("");
+      showToast("success", t("rejectSuccess", lang));
+      await fetchRows();
+    } catch (e: any) {
+      showToast("error", `${t("rejectFailed", lang)} ${e?.message ?? e}`);
+    } finally { setActing(false); }
+  };
+
+  // ด่านวางแผน — เข้าจากแถวในตารางเหมือน CM (?view=form&planning=1&wonum=…)
+  const planningWonum = searchParams.get("planning") === "1" ? (searchParams.get("wonum") ?? "") : "";
+
+  const goPlan = (row: TData) => {
+    if (!row.wonum) return;
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("view", "form"); params.set("planning", "1"); params.set("wonum", row.wonum);
+    params.delete("edit_id");
+    router.push(`${pathname}?${params.toString()}`, { scroll: false });
+  };
+
+  // ช่างเริ่มกรอกเอกสารจากใบงานที่วางแผนแล้ว
+  const goFillPm = (row: TData) => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("view", "form"); params.delete("planning"); params.delete("edit_id");
+    if (row.wonum) params.set("wonum", row.wonum);
+    router.push(`${pathname}?${params.toString()}`, { scroll: false });
+  };
+
+  const leavePlanning = () => {
+    const back = pmBackRoute(searchParams);
+    if (back) { router.push(back); return; }
+    const params = new URLSearchParams(searchParams.toString());
+    ["view", "planning", "wonum", "edit_id"].forEach((k) => params.delete(k));
+    router.push(`${pathname}?${params.toString()}`, { scroll: false });
+  };
+
   const fetchRows = async (signal?: AbortSignal) => {
     if (!stationId) { setData([]); return; }
     setLoading(true);
@@ -348,7 +455,7 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
         const id = extractId(it);
         const generatedUrl = id ? `${apiBase}/pdf/mdb/${encodeURIComponent(id)}/export` : "";
         const fileUrl = uploadedUrl || generatedUrl;
-        return { id, issue_id: (it.issue_id ? String(it.issue_id) : "") || extractDocIdFromAnything(fileUrl) || "", doc_name: it.doc_name ? String(it.doc_name) : "", pm_date: isoDay, position: isoDay, office: fileUrl, inspector: (it.inspector ?? it.job?.inspector ?? "") as string, side: (it.side ?? it.job?.side ?? "") as string, has_photos: Boolean(it.has_photos) } as TData;
+        return { id, issue_id: (it.issue_id ? String(it.issue_id) : "") || extractDocIdFromAnything(fileUrl) || "", doc_name: it.doc_name ? String(it.doc_name) : "", pm_date: isoDay, position: isoDay, office: fileUrl, inspector: (it.inspector ?? it.job?.inspector ?? "") as string, side: (it.side ?? it.job?.side ?? "") as string, has_photos: Boolean(it.has_photos), wonum: (it.wonum ?? "") as string, status: (it.status ?? "") as string, reject_remark: (it.reject_remark ?? "") as string, rejected_by: (it.rejected_by ?? "") as string, approved_by: (it.approved_by ?? "") as string } as TData;
       });
 
       const urlRows: TData[] = urlItems.map((it: any) => {
@@ -358,7 +465,13 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
         return { issue_id: (it.issue_id ? String(it.issue_id) : "") || extractDocIdFromAnything(href) || "", doc_name: it.doc_name ? String(it.doc_name) : "", pm_date: isoDay, position: isoDay, office: href, inspector: (it.inspector ?? it.job?.inspector ?? "") as string, side: (it.side ?? it.job?.side ?? "") as string } as TData;
       });
 
-      const allRows = [...pmRows, ...urlRows].sort((a, b) => {
+      // ใบงาน Maximo = ด่านแรกของ flow — โชว์รวมในตารางเดียวกัน
+      const woRows: TData[] = dropWosWithReport(
+        wos.map((w) => ({ ...woToRow(w, t("woFromMaximo", lang)), position: w.pm_date ?? "", office: "" } as TData)),
+        pmRows
+      );
+
+      const allRows = [...woRows, ...pmRows, ...urlRows].sort((a, b) => {
         const da = (a.position ?? "") as string, db = (b.position ?? "") as string;
         if (!da && !db) return 0; if (!da) return 1; if (!db) return -1;
         return da < db ? 1 : da > db ? -1 : 0;
@@ -410,7 +523,8 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
       size: 150, minSize: 100, maxSize: 200, meta: { headerAlign: "center", cellAlign: "left" },
     },
     {
-      accessorFn: (row) => row.issue_id || "—", id: "issue_id", header: () => t("colIssueId", lang),
+      // เลขใบงาน Maximo — ใบเก่าที่ยังไม่ผูก wonum ถอยไปใช้ issue_id เดิม
+      accessorFn: (row) => row.wonum || row.issue_id || "—", id: "issue_id", header: () => t("colIssueId", lang),
       cell: (info) => (<span className="tw-block tw-truncate" title={info.getValue() as string}>{info.getValue() as React.ReactNode}</span>),
       size: 140, minSize: 100, maxSize: 180, meta: { headerAlign: "center", cellAlign: "center" },
     },
@@ -425,8 +539,41 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
       size: 120, minSize: 80, maxSize: 160, meta: { headerAlign: "center", cellAlign: "center" },
     },
     {
+      accessorFn: (row) => toPmFlow(row), id: "status", header: () => t("colStatus", lang),
+      cell: (info: CellContext<TData, unknown>) => {
+        const row = info.row.original;
+        const flow = toPmFlow(row);
+        // ผู้ที่ตัดสินใจล่าสุดสำคัญกว่าตัวสถานะเปล่า ๆ — ใส่ไว้ใน tooltip
+        const hint = row.kind === "wo"
+          ? [row.selected_equipment_label, row.assignees_label].filter(Boolean).join(" — ") || undefined
+          : flow === "closed" && row.approved_by
+            ? `${t("approvedBy", lang)}: ${row.approved_by}`
+            : flow === "rejected" && row.reject_remark
+              ? `${t("rejectedBy", lang)}: ${row.rejected_by || "-"} — ${row.reject_remark}`
+              : undefined;
+        return <PmStatusBadge flow={flow} title={hint} />;
+      },
+      size: 130, minSize: 100, maxSize: 170, meta: { headerAlign: "center", cellAlign: "center" },
+    },
+    {
       accessorFn: (row) => row.office, id: "pdf", header: () => t("colPdf", lang), enableSorting: false,
       cell: (info: CellContext<TData, unknown>) => {
+        const row = info.row.original;
+
+        // แถวใบงาน Maximo — เข้าหน้าวางแผนด้วยการคลิกที่แถว เหลือปุ่ม "กรอก PM" อย่างเดียว
+        if (row.kind === "wo") {
+          if (toPmFlow(row) !== "wo_planned") return <span className="tw-text-blue-gray-300">—</span>;
+          return (
+            <div className="tw-flex tw-items-center tw-justify-center">
+              <Button size="sm" color="blue" variant="outlined"
+                className="tw-shrink-0 tw-text-[10px] sm:tw-text-xs tw-px-2 sm:tw-px-3 tw-py-1 tw-min-h-0 tw-h-auto tw-font-medium tw-rounded-md"
+                onClick={(e) => { e.stopPropagation(); goFillPm(row); }}>
+                {t("fillPmBtn", lang)}
+              </Button>
+            </div>
+          );
+        }
+
         const url = info.getValue() as string | undefined;
         const hasUrl = typeof url === "string" && url.length > 0;
         if (!hasUrl) return <span className="tw-text-blue-gray-300" title={t("noFile", lang)}>—</span>;
@@ -447,6 +594,24 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
         } else {
           return (
             <div className="tw-flex tw-items-center tw-justify-center tw-gap-1">
+              {/* ด่านอนุมัติปิดงาน — เห็นเฉพาะ planner/admin และเฉพาะใบที่ช่างส่งมาแล้ว */}
+              {canApprove && toPmFlow(info.row.original) === "wait_approve" && (
+                <>
+                  <Button size="sm" color="green" variant="outlined"
+                    className="tw-shrink-0 tw-text-[10px] sm:tw-text-xs tw-px-2 sm:tw-px-3 tw-py-1 tw-min-h-0 tw-h-auto tw-font-medium tw-rounded-md"
+                    onClick={() => setApproveRow(info.row.original)}>{t("approve", lang)}</Button>
+                  <Button size="sm" color="amber" variant="outlined"
+                    className="tw-shrink-0 tw-text-[10px] sm:tw-text-xs tw-px-2 sm:tw-px-3 tw-py-1 tw-min-h-0 tw-h-auto tw-font-medium tw-rounded-md"
+                    onClick={() => { setRejectRemark(""); setRejectRow(info.row.original); }}>{t("reject", lang)}</Button>
+                </>
+              )}
+              {/* โดนตีกลับ → ช่างเปิดฟอร์มเดิมกลับเข้าไปแก้แล้วส่งใหม่ */}
+              {toPmFlow(info.row.original) === "rejected" && (
+                <Button size="sm" color="amber" variant="outlined"
+                  className="tw-shrink-0 tw-text-[10px] sm:tw-text-xs tw-px-2 sm:tw-px-3 tw-py-1 tw-min-h-0 tw-h-auto tw-font-medium tw-rounded-md"
+                  title={info.row.original.reject_remark || ""}
+                  onClick={() => goFillPm(info.row.original)}>{t("fixAndResubmit", lang)}</Button>
+              )}
               <a
                 aria-label={t("preview", lang)}
                 href={previewHref}
@@ -477,21 +642,28 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
       },
       size: 100, minSize: 80, maxSize: 140, meta: { headerAlign: "center", cellAlign: "center" },
     },
-  ], [lang, searchParams, pathname, router, stationId]);
+  ], [lang, searchParams, pathname, router, stationId, canApprove, canPlan]);
 
   function sameUser(a?: string, b?: string) { return String(a ?? "").trim().toLowerCase() === String(b ?? "").trim().toLowerCase(); }
 
   const visibleData = useMemo(() => {
     const username = me?.username;
     return data.filter((row) => {
+      if (FLOW_TAB_OF[toPmFlow(row)] !== flowTab) return false;
       if (row.side !== "pre") return true;
       if (!username) return false;
       return sameUser(row.inspector, username);
     });
-  }, [data, me?.username]);
+  }, [data, me?.username, flowTab]);
+
+  // แท็บ Open มีแต่ใบงานที่ยังไม่ได้มอบหมาย — ยังไม่มีผู้ตรวจสอบให้แสดง
+  const visibleColumns = useMemo(
+    () => (flowTab === "open" ? columns.filter((c) => c.id !== "inspector") : columns),
+    [columns, flowTab]
+  );
 
   const table = useReactTable({
-    data: visibleData, columns,
+    data: visibleData, columns: visibleColumns,
     state: { globalFilter: filtering, sorting },
     onSortingChange: setSorting, onGlobalFilterChange: setFiltering,
     getCoreRowModel: getCoreRowModel(), getFilteredRowModel: getFilteredRowModel(),
@@ -572,6 +744,16 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
   const goAdd = () => setView("form");
 
   if (mode === "form") {
+    // planning=1 → ฟอร์มวางแผนของ planner ไม่ใช่ฟอร์มกรอก PM ของช่าง
+    if (planningWonum) {
+      return (
+        <PmPlanForm
+          source="mdb" identifier={stationId} wonum={planningWonum}
+          onSaved={() => { showToast("success", t("planSaved", lang)); reloadWos(); leavePlanning(); }}
+          onCancel={leavePlanning}
+        />
+      );
+    }
     return (<div className="tw-mt-4 sm:tw-mt-6 lg:tw-mt-8"><MDBPMForm /></div>);
   }
 
@@ -594,9 +776,6 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
           </div>
         </div>
       )}
-      {/* PM work orders received from Maximo */}
-      <MaximoWorkOrders source="mdb" identifier={stationId} />
-
       <Card className="tw-border tw-border-blue-gray-100 tw-shadow-sm tw-mt-4 sm:tw-mt-6 lg:tw-mt-8 tw-mx-2 sm:tw-mx-4 lg:tw-mx-0 tw-rounded-xl lg:tw-rounded-2xl tw-overflow-hidden">
         {/* <CardHeader floated={false} shadow={false} className="tw-p-3 sm:tw-p-4 lg:tw-p-6 tw-rounded-none tw-m-0"> */}
         <CardHeader floated={false} shadow={false} className="tw-p-3 sm:tw-p-4 lg:tw-p-6 tw-rounded-none tw-m-0 tw-bg-gradient-to-r tw-from-white tw-to-blue-gray-50/30">
@@ -604,6 +783,8 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
             <div className="tw-min-w-0 tw-flex-1">
               <Typography variant="h5" color="blue-gray" className="tw-text-sm sm:tw-text-base lg:tw-text-lg tw-leading-tight tw-font-semibold">{t("pageTitle", lang)}</Typography>
               <Typography variant="small" className="tw-text-[11px] sm:tw-text-xs lg:tw-text-sm tw-leading-relaxed tw-font-normal tw-text-blue-gray-400 tw-mt-0.5">{t("pageSubtitle", lang)}</Typography>
+              <PmFlowTabs value={flowTab} onChange={setFlowTab} lang={lang}
+                counts={FLOW_TABS.reduce((acc, tb) => ({ ...acc, [tb.id]: data.filter((r) => FLOW_TAB_OF[toPmFlow(r)] === tb.id).length }), {} as Record<FlowTab, number>)} />
             </div>
             <div className="tw-flex tw-items-center tw-gap-2 tw-flex-shrink-0">
               <input ref={pdfInputRef} type="file" accept="application/pdf,.pdf" multiple className="tw-hidden" onChange={handlePdfChange} />
@@ -677,7 +858,7 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
               </thead>
               <tbody className="tw-divide-y tw-divide-blue-gray-50">
                 {loading ? (
-                  <tr><td colSpan={columns.length} className="tw-text-center tw-py-10 sm:tw-py-12 lg:tw-py-16">
+                  <tr><td colSpan={visibleColumns.length} className="tw-text-center tw-py-10 sm:tw-py-12 lg:tw-py-16">
                     <div className="tw-flex tw-flex-col tw-items-center tw-gap-2 sm:tw-gap-3">
                       <div className="tw-w-6 tw-h-6 sm:tw-w-8 sm:tw-h-8 lg:tw-w-10 lg:tw-h-10 tw-border-2 sm:tw-border-3 tw-border-blue-500 tw-border-t-transparent tw-rounded-full tw-animate-spin"></div>
                       <span className="tw-text-blue-gray-400 tw-text-xs sm:tw-text-sm">{t("loading", lang)}</span>
@@ -700,7 +881,7 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
                     </tr>
                   ))
                 ) : (
-                  <tr><td colSpan={columns.length} className="tw-text-center tw-py-10 sm:tw-py-12 lg:tw-py-16">
+                  <tr><td colSpan={visibleColumns.length} className="tw-text-center tw-py-10 sm:tw-py-12 lg:tw-py-16">
                     <div className="tw-flex tw-flex-col tw-items-center tw-gap-2 sm:tw-gap-3">
                       <div className="tw-w-10 tw-h-10 sm:tw-w-12 sm:tw-h-12 lg:tw-w-16 lg:tw-h-16 tw-rounded-full tw-bg-blue-gray-50 tw-flex tw-items-center tw-justify-center">
                         <DocumentArrowDownIcon className="tw-w-5 tw-h-5 sm:tw-w-6 sm:tw-h-6 lg:tw-w-8 lg:tw-h-8 tw-text-blue-gray-300" />
@@ -746,6 +927,32 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
         <DialogFooter className="tw-gap-2 sm:tw-gap-3 tw-px-4 sm:tw-px-6 tw-pb-5 sm:tw-pb-6 tw-pt-2">
           <Button variant="text" size="sm" onClick={() => { setPendingFiles([]); setDateOpen(false); }} className="tw-text-xs sm:tw-text-sm tw-px-4 sm:tw-px-5 tw-py-2 sm:tw-py-2.5 tw-font-medium tw-text-blue-gray-600 hover:tw-bg-blue-gray-50 tw-transition-colors tw-rounded-lg">{t("cancel", lang)}</Button>
           <Button onClick={uploadPdfs} size="sm" className="tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900 hover:tw-to-black tw-text-xs sm:tw-text-sm tw-px-5 sm:tw-px-6 tw-py-2 sm:tw-py-2.5 tw-font-medium tw-rounded-lg tw-shadow-md tw-transition-all">{t("uploadBtn", lang)}</Button>
+        </DialogFooter>
+      </Dialog>
+
+      {/* ยืนยันอนุมัติปิดใบงาน PM */}
+      <Dialog open={!!approveRow} handler={() => setApproveRow(null)} size="xs">
+        <DialogHeader className="tw-text-base sm:tw-text-lg tw-font-semibold">{t("approveTitle", lang)}</DialogHeader>
+        <DialogBody className="tw-space-y-2 tw-text-sm">
+          <p className="tw-text-blue-gray-700">{t("approveConfirm", lang)}</p>
+          <p className="tw-font-medium tw-text-blue-gray-900">{approveRow?.doc_name || approveRow?.issue_id || "-"}</p>
+        </DialogBody>
+        <DialogFooter className="tw-gap-2">
+          <Button variant="text" size="sm" onClick={() => setApproveRow(null)} disabled={acting}>{t("cancel", lang)}</Button>
+          <Button color="green" size="sm" onClick={onApprove} disabled={acting}>{t("confirmBtn", lang)}</Button>
+        </DialogFooter>
+      </Dialog>
+
+      {/* ตีกลับใบงานให้ช่างแก้ — ต้องมีเหตุผลเสมอ */}
+      <Dialog open={!!rejectRow} handler={() => setRejectRow(null)} size="xs">
+        <DialogHeader className="tw-text-base sm:tw-text-lg tw-font-semibold">{t("rejectTitle", lang)}</DialogHeader>
+        <DialogBody className="tw-space-y-3 tw-text-sm">
+          <p className="tw-font-medium tw-text-blue-gray-900">{rejectRow?.doc_name || rejectRow?.issue_id || "-"}</p>
+          <Input crossOrigin="" label={t("rejectRemarkLabel", lang)} value={rejectRemark} onChange={(e) => setRejectRemark(e.target.value)} />
+        </DialogBody>
+        <DialogFooter className="tw-gap-2">
+          <Button variant="text" size="sm" onClick={() => setRejectRow(null)} disabled={acting}>{t("cancel", lang)}</Button>
+          <Button color="amber" size="sm" onClick={onReject} disabled={acting || !rejectRemark.trim()}>{t("confirmBtn", lang)}</Button>
         </DialogFooter>
       </Dialog>
     </>

@@ -909,6 +909,28 @@ async def query_labor(cost_center: str | None = None) -> list[dict]:
     return members
 
 
+async def workorders_exist(wonums: list[str]) -> dict[str, dict]:
+    """
+    เช็คว่า wonum ไหนมีอยู่จริงใน Maximo — ถามทีเดียวทั้งชุด
+
+    ใบงานที่ยิงเข้ามาทาง IN06 อาจเป็นเลขที่ไม่เคยถูกสร้างจริง (เช่น payload
+    ตัวอย่างจากเอกสารสเปค) พอไปยิง IN02 กลับจะโดน BMXAA1496E
+    "The WORKORDER record does not exist" — เช็คก่อนจะได้รู้ตั้งแต่ต้น
+
+    Returns: {wonum: {status, worktype, location, description}} เฉพาะใบที่มีจริง
+    """
+    codes = [str(w).strip() for w in wonums if str(w or "").strip()]
+    if not codes:
+        return {}
+
+    where = "wonum in [" + ",".join(f'"{c}"' for c in codes) + "]"
+    members = await _get_all(
+        MAXIMO_WO_OS,
+        {"oslc.select": "wonum,status,worktype,location,description", "oslc.where": where},
+    )
+    return {str(m.get("wonum") or "").strip(): m for m in members if m.get("wonum")}
+
+
 async def query_labor_records(active_only: bool = True) -> list[dict]:
     """
     เรคคอร์ด LABOR จริงใน Maximo — คนที่ลงเวลา (IN09) ได้ต้องอยู่ในลิสต์นี้

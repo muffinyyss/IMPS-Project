@@ -46,6 +46,8 @@ type PMRow = {
   /** แถวใบงาน Maximo ที่ยังไม่มีเอกสาร PM — ด่าน Open ของ flow */
   kind?: "report" | "wo";
   assignees?: string[];
+  /** false = เลข wonum นี้ไม่มีอยู่จริงใน Maximo · null = เช็คไม่ได้ */
+  exists_in_maximo?: boolean | null;
 };
 
 /** ด่านของงาน — ชื่อเดียวกับที่ใช้ในหน้า PM report */
@@ -194,7 +196,9 @@ export default function PMListPage() {
               pm_type: WO_PM_TYPE_LABEL[String(w?.pm_type || "").toUpperCase()] ?? "CHARGER",
               pm_date: String(w?.pm_date || ""),
               status: "Open",
-              technician: (Array.isArray(w?.assignees) ? w.assignees.filter(Boolean) : []).join(", "),
+              // ผู้ตรวจสอบ = คนที่กรอกเอกสารจริง ใบงานที่ยังไม่มีเอกสารจึงเว้นว่าง
+              // (ช่างที่ถูกมอบหมายยังอยู่ใน assignees ใช้กรองงานของช่างได้เหมือนเดิม)
+              technician: "",
               assignees: Array.isArray(w?.assignees) ? w.assignees.filter(Boolean) : [],
               sn: String(w?.sn || ""),
               chargeBoxID: "",
@@ -203,6 +207,7 @@ export default function PMListPage() {
               side: "",
               created_at: String(w?.receivedAt || ""),
               file_url: "",
+              exists_in_maximo: w?.exists_in_maximo ?? null,
             }));
         }
 
@@ -238,6 +243,7 @@ export default function PMListPage() {
       noResults: (q?: string) => (q ? `ไม่พบรายการที่ตรงกับ "${q}"` : "ไม่มีรายการ"),
       openReportTitle: "เปิดเอกสาร PM",
       openPlanTitle: "เปิดหน้าวางแผน",
+      notInMaximo: "เลขใบงานนี้ไม่มีอยู่จริงใน Maximo — วางแผนแล้วส่งสถานะกลับไม่ได้",
       sortAsc: "เรียงจากน้อยไปมาก", sortDesc: "เรียงจากมากไปน้อย",
       headers: {
         station: "สถานี", wo: "WO", document: "ชื่อเอกสาร",
@@ -266,6 +272,7 @@ export default function PMListPage() {
       noResults: (q?: string) => (q ? `No records match "${q}"` : "No records"),
       openReportTitle: "Open PM report",
       openPlanTitle: "Open planning page",
+      notInMaximo: "This work order does not exist in Maximo — status updates will fail",
       sortAsc: "Sort ascending", sortDesc: "Sort descending",
       headers: {
         station: "Station", wo: "WO", document: "Document",
@@ -648,7 +655,20 @@ export default function PMListPage() {
                     <td className="tw-px-4 tw-py-3 tw-text-gray-400">{page * pageSize + i + 1}</td>
                     <td className="tw-px-4 tw-py-3 tw-font-medium tw-text-gray-800">{r.station_name || r.station_id}</td>
                     {/* ใบเก่าที่ยังไม่ผูก wonum ให้ถอยไปใช้ issue_id เดิม */}
-                    <td className="tw-px-4 tw-py-3 tw-text-gray-600">{r.wonum || r.issue_id || "-"}</td>
+                    <td className="tw-px-4 tw-py-3 tw-text-gray-600">
+                      <span className="tw-inline-flex tw-items-center tw-gap-1.5">
+                        {r.wonum || r.issue_id || "-"}
+                        {/* เลขที่ Maximo ไม่รู้จัก — วางแผนไปก็ส่งสถานะกลับไม่ได้ */}
+                        {r.exists_in_maximo === false && (
+                          <span
+                            title={t.notInMaximo}
+                            className="tw-rounded tw-bg-red-100 tw-px-1.5 tw-py-0.5 tw-text-[10px] tw-font-semibold tw-text-red-700"
+                          >
+                            !
+                          </span>
+                        )}
+                      </span>
+                    </td>
                     <td className="tw-px-4 tw-py-3 tw-text-gray-600">
                       <span className="tw-block tw-max-w-[240px] tw-truncate" title={r.document_name || ""}>
                         {r.document_name || "-"}
