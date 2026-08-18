@@ -305,6 +305,9 @@ class MDBPMPostIn(BaseModel):
     work_finish: Optional[str] = None
     wonum: Optional[str] = None
     side: Literal["post", "after"]
+    # laborcode ฝั่ง Maximo ที่ช่างเลือกเอง (ใช้ส่งเวลาทำงาน IN09)
+    maximo_labor: Optional[List[str]] = None
+    maximo_contractor: Optional[str] = None
 
 
 # ============================================

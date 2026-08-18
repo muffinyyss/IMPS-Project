@@ -28,7 +28,7 @@ from typing import Any
 
 from config import client
 from services import maximo
-from services.cm_maximo import resolve_labor_code
+from services.cm_maximo import CONTRACTOR_LABOR_CODE, resolve_labor_code
 from services.maximo import MaximoError
 
 log = logging.getLogger("pm_maximo_out")
@@ -231,14 +231,41 @@ async def push_labor_time(coll, report_id, report: dict) -> dict:
         return _skip("ยังไม่มีวันเวลาเริ่มงาน")
 
     wo = await _open_coll().find_one({"wonum": wonum}, {"assignees": 1, "location": 1}) or {}
+    location = wo.get("location") or None
+
+    # ช่างเลือก laborcode เองในฟอร์ม = ใช้ตรง ๆ ไม่ต้อง map จาก username
+    picked = [str(c).strip() for c in (report.get("maximo_labor") or []) if str(c or "").strip()]
+    if picked:
+        contractor = str(report.get("maximo_contractor") or "").strip()
+        sent, errors = 0, []
+        trace: dict = {}
+        for labor in picked:
+            memo = f"iMPS PM {report.get('issue_id') or ''}"
+            # รหัสกลางของผู้รับเหมา — ต่อชื่อจริงเข้าไปใน memo
+            if labor.upper() == CONTRACTOR_LABOR_CODE and contractor:
+                memo = f"{memo} — {contractor}"
+            try:
+                await maximo.create_labtrans(
+                    wonum, labor, start=start, finish=finish or None,
+                    location=location, memo=memo, trace=trace,
+                )
+                sent += 1
+            except MaximoError as e:
+                log.warning(f"  ⚠️ IN09 labtrans failed (WO {wonum} / {labor}): {_err_detail(e)}")
+                errors.append(f"{labor}: {_err_detail(e)}")
+        ok = sent > 0 and not errors
+        await _record(coll, report_id, "IN09", ok, wonum=wonum, sent=sent,
+                      total=len(picked), errors=errors or None, source="form", **_trace(trace))
+        if ok:
+            return {"ok": True, "wonum": wonum, "sent": sent}
+        return {"ok": False, "wonum": wonum, "sent": sent, "total": len(picked), "errors": errors}
+
     assignees = [str(a).strip() for a in (wo.get("assignees") or []) if str(a or "").strip()]
     if not assignees:
         inspector = str(report.get("inspector") or "").strip()
         assignees = [inspector] if inspector else []
     if not assignees:
         return _skip("ใบงานยังไม่มีช่างที่รับผิดชอบ")
-
-    location = wo.get("location") or None
 
     sent, errors, unmapped = 0, [], []
     trace: dict = {}

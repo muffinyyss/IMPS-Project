@@ -283,4 +283,7 @@ def post_submit_fields(body: Any) -> dict:
         "work_start": (getattr(body, "work_start", None) or "").strip(),
         "work_finish": (getattr(body, "work_finish", None) or "").strip(),
         "wonum": (getattr(body, "wonum", None) or "").strip(),
+        # laborcode ที่ช่างเลือกเอง + ชื่อผู้รับเหมา (ถ้าเลือกรหัสกลาง) — ใช้ส่ง IN09
+        "maximo_labor": list(getattr(body, "maximo_labor", None) or []),
+        "maximo_contractor": (getattr(body, "maximo_contractor", None) or "").strip(),
     }
