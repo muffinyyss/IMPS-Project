@@ -244,7 +244,10 @@ export default function PmWorkOrderInfo({ source, identifier, wonum, onStart, on
                       <span key={`${equipLabel(e)}-${i}`}
                         className="tw-inline-flex tw-items-center tw-gap-2 tw-rounded-full tw-border tw-border-indigo-200 tw-bg-indigo-50 tw-px-3 tw-py-1 tw-text-xs tw-font-semibold tw-text-indigo-700">
                         {equipLabel(e)}
-                        {e.sn && <span className="tw-font-mono tw-text-[11px] tw-text-indigo-400">{e.sn}</span>}
+                        {/* มีแต่ตู้ชาร์จที่มี SN — อุปกรณ์ระดับสถานีผูกกับ station_id */}
+                        {e.type === "charger" && e.sn && (
+                          <span className="tw-font-mono tw-text-[11px] tw-text-indigo-400">{e.sn}</span>
+                        )}
                       </span>
                     ))}
                   </div>
