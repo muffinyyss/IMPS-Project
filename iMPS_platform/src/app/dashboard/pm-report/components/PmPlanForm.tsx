@@ -302,6 +302,7 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
         setError(String(j?.detail || t("errSave", lang)));
         return;
       }
+      setEditMode(false);
       onSaved();
     } catch (err) {
       console.error("pm plan save error:", err);
@@ -624,14 +625,16 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
                       {t("cancelEdit", lang)}
                     </Button>
                   )}
-                  <Button
-                    onClick={onSave}
-                    disabled={locked || saving || !wo}
-                    hidden={canPlan && alreadyPlanned && !editMode}
-                    className="tw-bg-gray-800 hover:!tw-bg-blue-600 tw-text-white hover:tw-shadow-lg hover:!tw-shadow-blue-500/30 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed disabled:tw-shadow-none"
-                  >
-                    {saving ? t("saving", lang) : t("save", lang)}
-                  </Button>
+                  {/* โหมดอ่านอย่างเดียวไม่ต้องมีปุ่ม Assign ให้กดพลาด */}
+                  {!(alreadyPlanned && !editMode) && (
+                    <Button
+                      onClick={onSave}
+                      disabled={locked || saving || !wo}
+                      className="tw-bg-gray-800 hover:!tw-bg-blue-600 tw-text-white hover:tw-shadow-lg hover:!tw-shadow-blue-500/30 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed disabled:tw-shadow-none"
+                    >
+                      {saving ? t("saving", lang) : t("save", lang)}
+                    </Button>
+                  )}
                 </div>
               </div>
             </>
