@@ -106,6 +106,7 @@ function weeksInMonth(year: number, month: number): number {
 
 export default function PMListPage() {
   const [rows, setRows] = useState<PMRow[]>([]);
+  const [me, setMe] = useState<{ username: string; role: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -123,6 +124,21 @@ export default function PMListPage() {
 
   const router = useRouter();
   const { lang } = useLanguage();
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const res = await apiFetch("/me");
+        if (!res.ok) return;
+        const u = await res.json();
+        if (alive) setMe({ username: u?.username ?? "", role: String(u?.role ?? "").trim().toLowerCase() });
+      } catch (err) {
+        console.error("fetch /me error:", err);
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
 
   // เข้ามาหน้ารวมทุกสถานี = ไม่ได้เจาะจงตู้ไหน — ล้างตัวที่เลือกค้างไว้
   useEffect(() => {
@@ -156,6 +172,17 @@ export default function PMListPage() {
           const withReport = new Set(
             reports.map((r) => String(r.wonum || "").trim()).filter(Boolean)
           );
+          // เอกสาร PM ไม่ได้เก็บ assignees ไว้เอง — ยืมจากใบงานต้นทางผ่าน wonum
+          // เพื่อให้กรองงานของช่างได้ทั้งแถว WO และแถวเอกสาร
+          const assigneesByWonum = new Map<string, string[]>();
+          for (const w of items) {
+            const wn = String(w?.wonum || "").trim();
+            if (wn) assigneesByWonum.set(wn, (Array.isArray(w?.assignees) ? w.assignees : []).filter(Boolean));
+          }
+          for (const r of reports) {
+            const wn = String(r.wonum || "").trim();
+            if (wn && assigneesByWonum.has(wn)) r.assignees = assigneesByWonum.get(wn);
+          }
           woRows = items
             .filter((w) => !withReport.has(String(w?.wonum || "").trim()))
             .map((w) => ({
@@ -289,33 +316,44 @@ export default function PMListPage() {
     (typeFilter ? 1 : 0) + (stageFilter ? 1 : 0) + (stationFilter !== "All" ? 1 : 0);
 
   const stations = useMemo(() => {
-    const names = Array.from(new Set(rows.map((r) => r.station_name || r.station_id))).filter(Boolean);
+    const names = Array.from(new Set(scopedRows.map((r) => r.station_name || r.station_id))).filter(Boolean);
     return ["All", ...names.sort()];
-  }, [rows]);
+  }, [scopedRows]);
 
   const years = useMemo(() => {
     const set = new Set<number>();
-    for (const r of rows) {
+    for (const r of scopedRows) {
       const y = yearOf(r.pm_date);
       if (y) set.add(y);
     }
     return Array.from(set).sort((a, b) => b - a);
-  }, [rows]);
+  }, [scopedRows]);
 
   const weekCount = useMemo(
     () => (yearSel !== "all" && monthSel !== "all" ? weeksInMonth(yearSel, monthSel) : 0),
     [yearSel, monthSel]
   );
 
+  // ช่างเห็นเฉพาะงานที่ planner มอบหมายให้ตัวเอง — role อื่นเห็นทุกใบ
+  const scopedRows = useMemo(() => {
+    if (!me || me.role !== "technician") return rows;
+    const uname = me.username.trim().toLowerCase();
+    if (!uname) return [];
+    const isMine = (v?: string) => String(v ?? "").trim().toLowerCase() === uname;
+    return rows.filter((r) =>
+      (r.assignees ?? []).some(isMine) || isMine(r.technician)
+    );
+  }, [rows, me]);
+
   const periodRows = useMemo(() => {
-    return rows.filter((r) => {
+    return scopedRows.filter((r) => {
       if (stationFilter !== "All" && (r.station_name || r.station_id) !== stationFilter) return false;
       if (yearSel !== "all" && yearOf(r.pm_date) !== yearSel) return false;
       if (monthSel !== "all" && monthOf(r.pm_date) !== monthSel) return false;
       if (weekSel !== "all" && weekOf(r.pm_date) !== weekSel) return false;
       return true;
     });
-  }, [rows, stationFilter, yearSel, monthSel, weekSel]);
+  }, [scopedRows, stationFilter, yearSel, monthSel, weekSel]);
 
   const applySearch = useCallback((list: PMRow[]) => {
     const q = search.trim().toLowerCase();
@@ -428,7 +466,7 @@ export default function PMListPage() {
         <div>
           <h1 className="tw-text-2xl tw-font-bold tw-text-gray-800">{t.pageTitle}</h1>
           <p className="tw-mt-0.5 tw-text-sm tw-text-gray-500">
-            {t.subtitle(rows.length)}
+            {t.subtitle(scopedRows.length)}
             <span className="tw-ml-2 tw-font-semibold tw-text-blue-600">
               {t.tableCount(searchFiltered.length, search || undefined)}
             </span>
