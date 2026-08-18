@@ -1584,6 +1584,8 @@ async def cmreport_detail_path(
         "resolved_time": doc.get("resolved_time") or "",
 
         # เหตุผลที่ถูกตีกลับ — ช่างต้องเห็นว่าต้องแก้อะไร
+        "maximo_labor": doc.get("maximo_labor") or [],
+        "maximo_contractor": doc.get("maximo_contractor") or "",
         "reject_remark": doc.get("reject_remark") or "",
         "rejected_by": doc.get("rejected_by") or "",
         # เหตุผลที่ยกเลิก — แสดงในหน้ารายละเอียดใบงาน Cancelled
@@ -1678,6 +1680,8 @@ async def cmreport_update_status(
             "cause", "problem_type_other","repair_result_remark","start_repair_date",
             "signature", "start_repair_time", "resolved_time", "reporter_signature",
             "stage", "reject_remark",
+            # laborcode ที่ช่างเลือกเองในฟอร์ม — ใช้ส่ง IN09
+            "maximo_labor", "maximo_contractor",
         }
 
         if "status" in body.job:

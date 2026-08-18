@@ -111,6 +111,21 @@ async def cm_labor(
     return {"items": people, "total": len(people)}
 
 
+@router.get("/cm-maximo/labor-codes")
+async def cm_labor_codes(
+    refresh: bool = Query(False),
+    current: UserClaims = Depends(get_current_user),
+):
+    """
+    laborcode ที่ลงเวลาเข้า Maximo ได้จริง (+ ชื่อคน) — ฟอร์มซ่อมเอาไปทำ dropdown
+
+    ต่างจาก /cm-maximo/labor ที่คืน PERSON ทั้งหมด: PERSON ส่วนใหญ่ไม่มีเรคคอร์ด
+    LABOR ยิง IN09 ไปก็โดน BMXAA2627E — ตัวนี้คืนเฉพาะที่ใช้ได้จริง
+    """
+    items = await cm_maximo.get_labor_codes(refresh=refresh)
+    return {"items": items, "total": len(items)}
+
+
 # ══════════════════════════════════════════════════════════════════
 # สถานะการ sync ของใบงาน + ยิงซ้ำ
 # ══════════════════════════════════════════════════════════════════
