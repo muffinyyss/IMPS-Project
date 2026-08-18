@@ -62,6 +62,10 @@ const T = {
   noEquipment: { th: "ยังไม่ได้เลือกอุปกรณ์", en: "No equipment selected" },
 
   startPm: { th: "เริ่ม PM", en: "Start PM" },
+  waitPlanner: {
+    th: "ผู้วางแผนยังไม่ได้เลือกอุปกรณ์ที่ต้อง PM — รอให้วางแผนเสร็จก่อนจึงเริ่มได้",
+    en: "The planner has not selected the equipment yet — wait for the plan to be completed",
+  },
   startHint: {
     th: "ตรวจข้อมูลใบงานให้เรียบร้อย แล้วกด “เริ่ม PM” เพื่อเปิดแบบฟอร์มก่อนทำ PM",
     en: "Review the work order, then press “Start PM” to open the Pre-PM checklist",
@@ -255,12 +259,15 @@ export default function PmWorkOrderInfo({ source, identifier, wonum, onStart, on
               </div>
             </div>
 
-            {/* เริ่มกรอก */}
+            {/* เริ่มกรอก — ยังไม่มีอุปกรณ์ให้ทำก็ยังเริ่มไม่ได้ (planner ยังวางแผนไม่เสร็จ) */}
             <div className="tw-rounded-xl tw-border tw-border-amber-200 tw-bg-amber-50 tw-px-5 tw-py-6 tw-text-center">
-              <p className="tw-mb-4 tw-text-sm tw-text-amber-800">{t("startHint", lang)}</p>
+              <p className="tw-mb-4 tw-text-sm tw-text-amber-800">
+                {equipment.length === 0 ? t("waitPlanner", lang) : t("startHint", lang)}
+              </p>
               <Button
                 type="button"
                 onClick={onStart}
+                disabled={equipment.length === 0}
                 className="tw-bg-amber-500 hover:tw-bg-amber-600 tw-text-white tw-font-semibold tw-text-base tw-px-8 tw-py-3 tw-rounded-xl hover:tw-shadow-xl hover:tw-shadow-amber-500/30 tw-transition-all"
               >
                 {t("startPm", lang)}

@@ -1591,15 +1591,22 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
                     return (
                     <tr
                       key={row.id}
-                      onClick={isWo ? () => goPlan(row.original) : undefined}
+                      // planner/admin → หน้าวางแผน · ช่าง → หน้าข้อมูลใบงานที่มีปุ่มเริ่ม PM
+                      // ช่างกดใบที่ยังไม่ได้วางแผนไม่ได้ ยังไม่รู้ว่าต้อง PM อะไร
+                      onClick={
+                        !isWo ? undefined
+                          : canPlan ? () => goPlan(row.original)
+                            : planned ? () => goFillPm(row.original)
+                              : undefined
+                      }
                       title={
                         isWo
                           ? (canPlan
                             ? (planned ? t("editPlanBtn", lang) : t("planBtn", lang))
-                            : t("viewPlanBtn", lang))
+                            : t("fillPmBtn", lang))
                           : undefined
                       }
-                      className={`tw-transition-colors hover:tw-bg-blue-50/40 hover:tw-shadow-[inset_3px_0_0_0_#2196F3] ${index % 2 === 0 ? 'tw-bg-white' : 'tw-bg-blue-gray-50/30'} ${isWo ? "tw-cursor-pointer" : ""}`}
+                      className={`tw-transition-colors hover:tw-bg-blue-50/40 hover:tw-shadow-[inset_3px_0_0_0_#2196F3] ${index % 2 === 0 ? 'tw-bg-white' : 'tw-bg-blue-gray-50/30'} ${isWo && (canPlan || planned) ? "tw-cursor-pointer" : ""}`}
                     >
                       {row.getVisibleCells().map((cell) => {
                         const align = (cell.column.columnDef as any).meta?.cellAlign ?? "left";
