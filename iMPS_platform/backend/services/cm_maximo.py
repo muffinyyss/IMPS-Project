@@ -521,6 +521,13 @@ def _fail(e: Exception) -> dict:
     return detail
 
 
+def _err_detail(e: Exception) -> str:
+    """ข้อความ error + body ดิบจาก Maximo — body คือที่มีรหัส BMXAA บอกสาเหตุจริง"""
+    msg = str(e)
+    body = getattr(e, "body", "") or ""
+    return f"{msg} | {body[:400]}" if body else msg
+
+
 def _as_list(value: Any) -> list[str]:
     """ฟิลด์ปัญหา/สาเหตุ/การแก้ไข เก็บได้ทั้ง list และ string (ใบงานเก่า)"""
     if isinstance(value, list):
@@ -730,12 +737,14 @@ async def push_failure_report(coll, report_id, report: dict) -> dict:
             )
             sent += 1
         except MaximoError as e:
-            log.warning(f"  ⚠️ IN05 failure report failed (WO {wonum}): {e}")
-            errors.append(str(e))
+            log.warning(f"  ⚠️ IN05 failure report failed (WO {wonum}): {_err_detail(e)}")
+            errors.append(_err_detail(e))
 
     ok = sent == len(rows)
     await _record(coll, report_id, "IN05", ok, wonum=wonum, sent=sent,
-                  total=len(rows), errors=errors or None)
+                  total=len(rows), errors=errors or None,
+                  # เก็บสิ่งที่ยิงไปไว้ด้วย เวลา 400 จะได้รู้ว่าโค้ดชุดไหนไม่ถูกใจ Maximo
+                  failure_code=failure_code, rows=rows if not ok else None)
     return _ok(wonum=wonum, sent=sent) if ok else {
         "ok": False, "wonum": wonum, "sent": sent, "total": len(rows), "errors": errors
     }
@@ -785,8 +794,8 @@ async def push_labor_time(coll, report_id, report: dict) -> dict:
             )
             sent += 1
         except MaximoError as e:
-            log.warning(f"  ⚠️ IN09 labtrans failed (WO {wonum} / {labor}): {e}")
-            errors.append(f"{username}: {e}")
+            log.warning(f"  ⚠️ IN09 labtrans failed (WO {wonum} / {labor}): {_err_detail(e)}")
+            errors.append(f"{username}: {_err_detail(e)}")
 
     ok = sent > 0 and not errors and not unmapped
     await _record(coll, report_id, "IN09", ok, wonum=wonum, sent=sent,
