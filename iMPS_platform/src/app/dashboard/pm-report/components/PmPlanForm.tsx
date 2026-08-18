@@ -53,6 +53,11 @@ const T = {
   loading: { th: "กำลังโหลด…", en: "Loading…" },
   notFound: { th: "ไม่พบใบงานนี้", en: "Work order not found" },
   plannerOnlyTitle: { th: "วางแผนใบงานนี้ไม่ได้", en: "Cannot plan this work order" },
+  noStationTitle: { th: "ใบงานนี้ยังไม่ผูกกับสถานีใน iMPS", en: "This work order is not linked to an iMPS station" },
+  noStationBody: {
+    th: "จึงยังไม่รู้ว่าเป็นสถานีไหน และดึงรายการตู้ชาร์จมาให้เลือกไม่ได้ — ตั้งค่า maximo_location ของสถานีให้ตรงกับ Location ด้านบนที่หน้า EV Stations ก่อน",
+    en: "The station is unknown, so chargers cannot be listed — set the station's maximo_location to match the Location above on the EV Stations page",
+  },
   plannerOnlyBody: {
     th: "เฉพาะ Planner / Owner / Admin เท่านั้นที่แก้แผนได้ — ดูข้อมูลได้อย่างเดียว",
     en: "Only planner, owner or admin can edit the plan — view only",
@@ -356,6 +361,18 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
             </span>
           </div>
 
+          {/* หาสถานีไม่เจอ — ต้องบอกให้ชัด ไม่งั้น planner เห็นแต่ช่อง Station ว่าง
+              กับรายการอุปกรณ์ที่ไม่มีตู้ชาร์จ แล้วไม่รู้ว่าเพราะอะไร */}
+          {!loading && wo && !(wo.station_id || "").trim() && (
+            <div className="tw-mb-4 tw-flex tw-items-start tw-gap-3 tw-px-4 tw-py-3 tw-rounded-lg tw-bg-amber-50 tw-border tw-border-amber-200">
+              <ExclamationTriangleIcon className="tw-w-5 tw-h-5 tw-text-amber-500 tw-mt-0.5 tw-flex-shrink-0" />
+              <div>
+                <p className="tw-text-sm tw-font-semibold tw-text-amber-800">{t("noStationTitle", lang)}</p>
+                <p className="tw-text-sm tw-text-amber-700 tw-mt-0.5">{t("noStationBody", lang)}</p>
+              </div>
+            </div>
+          )}
+
           {/* ไม่มีสิทธิ์แก้แผน */}
           {!loading && !canPlan && (
             <div className="tw-mb-4 tw-flex tw-items-start tw-gap-3 tw-px-4 tw-py-3 tw-rounded-lg tw-bg-amber-50 tw-border tw-border-amber-200">
@@ -394,7 +411,7 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
                 </div>
                 <div>
                   <label className="tw-block tw-text-sm tw-text-blue-gray-600 tw-mb-1">{t("station", lang)}</label>
-                  <Input value={wo.station_id || ""} readOnly crossOrigin="" className="!tw-w-full !tw-bg-gray-100" containerProps={{ className: "!tw-min-w-0" }} />
+                  <Input value={wo.station_id || "— ไม่พบสถานีที่ผูกกับ location นี้ —"} readOnly crossOrigin="" className="!tw-w-full !tw-bg-gray-100" containerProps={{ className: "!tw-min-w-0" }} />
                 </div>
                 <div>
                   <label className="tw-block tw-text-sm tw-text-blue-gray-600 tw-mb-1">{t("company", lang)}</label>

@@ -1252,6 +1252,16 @@ async def set_pm_equipment(
                    f"(อาจเป็น payload ทดสอบที่ยิงเข้ามา) กรุณาตรวจกับฝั่ง Maximo ก่อน",
         )
 
+    # ไม่รู้ว่าเป็นสถานีไหนใน iMPS = สร้างเอกสาร PM ไม่ได้ (ทุกชนิด key ด้วย station_id
+    # หรือ SN ของตู้ในสถานี) วางแผนไปก็ทำงานต่อไม่ได้ — กันตั้งแต่ตรงนี้
+    if not _station_id_of_wo(wo):
+        raise HTTPException(
+            status_code=409,
+            detail=f"location {wo.get('location') or '-'} ไม่ตรงกับสถานีไหนใน iMPS — "
+                   f"ถ้าเป็นสถานีที่เราดูแล ให้ตั้ง maximo_location ที่หน้า EV Stations ก่อน "
+                   f"ถ้าไม่ใช่ ให้ข้ามใบงานนี้ไป",
+        )
+
     items: list[dict] = []
     seen: set[str] = set()
     for e in (body.equipment or []):
