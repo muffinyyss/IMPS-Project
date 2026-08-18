@@ -90,6 +90,7 @@ const T = {
   technician: { th: "ช่างผู้รับผิดชอบ", en: "Technician" },
   allTechnicians: { th: "ทั้งหมด", en: "All" },
   noTechnicians: { th: "ไม่พบช่าง", en: "No technicians found" },
+  noAssignee: { th: "ยังไม่ได้มอบหมายช่าง", en: "No technician assigned" },
 
   editPlan: { th: "แก้ไขแผน", en: "Edit plan" },
   cancelEdit: { th: "ยกเลิกการแก้ไข", en: "Cancel edit" },
@@ -494,7 +495,14 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
                       <label className={LABEL}>
                         {t("technician", lang)} <span className="tw-text-red-500">*</span>
                       </label>
-                      {technicianNames.length > 0 && (
+                      {/* คนที่วางแผนไม่ได้ (เช่นช่าง) เรียก /users/by-role ไม่ได้ — ได้ 403
+                          แล้ว list ว่าง ทำให้ขึ้น "ไม่พบช่าง" ซึ่งไม่จริง
+                          โหมดอ่านอย่างเดียวจึงแสดงชื่อที่มอบหมายไว้เป็นข้อความแทน */}
+                      {!canPlan ? (
+                        <div className={FIELD_RO}>
+                          {assignees.length > 0 ? assignees.join(", ") : t("noAssignee", lang)}
+                        </div>
+                      ) : technicianNames.length > 0 ? (
                         <div className="tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-divide-y tw-divide-blue-gray-50 tw-max-h-56 tw-overflow-y-auto">
                           {/* All = ติ๊กช่างทุกคนในลิสต์รวดเดียว */}
                           <label className="tw-flex tw-items-center tw-gap-2.5 tw-px-3 tw-py-2.5 tw-cursor-pointer hover:tw-bg-blue-gray-50/60 tw-transition-colors">
@@ -525,8 +533,7 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
                             </label>
                           ))}
                         </div>
-                      )}
-                      {technicianNames.length === 0 && (
+                      ) : (
                         <p className="tw-mt-1.5 tw-text-xs tw-text-orange-600">{t("noTechnicians", lang)}</p>
                       )}
                     </div>
