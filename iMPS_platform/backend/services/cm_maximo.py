@@ -475,13 +475,18 @@ def public_url(path: str) -> str:
 
 
 def report_url(report: dict, report_id: Any) -> str:
-    """ลิงก์หน้ารายละเอียดใบงาน CM ในระบบ iMPS — ใช้แนบเข้า Maximo (IN03)"""
+    """
+    ลิงก์ PDF ใบงาน CM — ใช้แนบเข้า Maximo (IN03)
+
+    แนบตัวเอกสาร PDF ไม่ใช่หน้าเว็บ คนที่เปิดจาก Maximo จะได้ไฟล์เลย
+    ไม่ต้อง login เข้า iMPS ก่อน
+    """
     station_id = report.get("station_id") or ""
     if not station_id or not PUBLIC_BASE_URL:
         return ""
     return (
-        f"{PUBLIC_BASE_URL}/dashboard/cm-report"
-        f"?station_id={station_id}&edit_id={report_id}&view=input"
+        f"{PUBLIC_BASE_URL}/pdf/cm/{report_id}/export"
+        f"?station_id={station_id}&lang=th&dl=1"
     )
 
 
@@ -830,6 +835,20 @@ def is_planning_save(report: dict) -> bool:
     return bool(report.get("sched_start"))
 
 
+def _blocking_failures(results: dict) -> list[str]:
+    """
+    เส้นที่ "ยิงแล้วไม่ผ่าน" ก่อนถึงขั้นปิดสถานะ
+
+    แยกจาก skipped: skipped = ไม่มีอะไรให้ส่ง (เช่นยังไม่ตั้ง PUBLIC_BASE_URL,
+    ใบงานไม่มีช่าง) ปล่อยผ่านได้ ส่วน failed = Maximo ปฏิเสธ ต้องแก้แล้วยิงซ้ำ
+    ก่อน ไม่งั้นพอ WO ขึ้น COMP แล้วจะเติมย้อนหลังไม่ได้อีกเลย
+    """
+    return [
+        name for name, r in results.items()
+        if isinstance(r, dict) and not r.get("ok") and not r.get("skipped")
+    ]
+
+
 async def sync_report(coll, report_id, report: dict, *, memo: str = "") -> dict:
     """
     ยิงทุก interface ที่ถึงจังหวะของใบงานนี้ — เรียกได้ซ้ำ ๆ อย่างปลอดภัย
@@ -863,12 +882,13 @@ async def sync_report(coll, report_id, report: dict, *, memo: str = "") -> dict:
         out["IN02"] = await push_status(coll, report_id, report, memo=memo)
         return out
 
-    # ── 3. IN03 — แนบลิงก์ใบงานฝั่ง iMPS (ครั้งเดียวพอ) ──
-    # คนที่เปิดดูใน Maximo จะกดข้ามมาดูรูป/รายละเอียดเต็มในระบบเราได้
+    # ── 3. IN03 — แนบ PDF ใบงาน (ครั้งเดียวพอ) ──
+    # ยิงได้ก็ต่อเมื่อปิดงานแล้วเท่านั้น เพราะ PDF ถึงจะมีเนื้อหาครบ
+    # (บล็อกนี้อยู่ใต้ is_closing อยู่แล้ว)
     if not (report.get("maximo_sync") or {}).get("IN03", {}).get("ok"):
         out["IN03"] = await push_attachment(
             coll, report_id, report, report_url(report, report_id),
-            name=f"iMPS {report.get('issue_id') or 'CM'}",
+            name=f"{report.get('issue_id') or 'CM'}.pdf",
             description=f"iMPS CM report {report.get('doc_name') or ''}".strip(),
         )
 
@@ -881,6 +901,17 @@ async def sync_report(coll, report_id, report: dict, *, memo: str = "") -> dict:
     out["IN09"] = await push_labor_time(coll, report_id, report)
 
     # ── 6. IN02 — ปิดสถานะเป็นเส้นสุดท้าย ──
+    # ต้องยิง 3–5 ให้ครบก่อน มีเส้นไหนไม่ผ่านห้ามปิด WO เด็ดขาด
+    # (COMP แล้ว Maximo ไม่ให้เติม attachment / failure / labor ย้อนหลัง)
+    failed = _blocking_failures(out)
+    if failed:
+        log.warning(
+            f"  ⏸️  ไม่ปิด WO {report.get('maximo_wonum')} — {', '.join(failed)} ยังไม่ผ่าน "
+            f"(แก้แล้วยิงซ้ำที่ POST /cm-maximo/{report_id}/sync)"
+        )
+        out["IN02"] = _skip(f"รอ {', '.join(failed)} ผ่านก่อนถึงจะปิด WO ได้")
+        return out
+
     await _settle()
     out["IN02"] = await push_status(coll, report_id, report, memo=memo)
 

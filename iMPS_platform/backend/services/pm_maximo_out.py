@@ -97,16 +97,18 @@ def public_url(path: str) -> str:
 
 
 def report_url(report: dict, report_id: Any) -> str:
-    """ลิงก์หน้าเอกสาร PM ในระบบ iMPS — ใช้แนบเข้า Maximo (IN03)"""
+    """
+    ลิงก์ PDF เอกสาร PM — ใช้แนบเข้า Maximo (IN03)
+
+    แนบตัวเอกสาร PDF ไม่ใช่หน้าเว็บ คนที่เปิดจาก Maximo จะได้ไฟล์เลย
+    ยิงตอนปิดงานเท่านั้น ตอนนั้น PDF ถึงจะมีเนื้อหาครบ
+    """
     if not PUBLIC_BASE_URL:
         return ""
     sn = (report.get("sn") or "").strip()
     station_id = (report.get("station_id") or "").strip()
     scope = f"sn={sn}" if sn else f"station_id={station_id}"
-    return (
-        f"{PUBLIC_BASE_URL}/dashboard/pm-report"
-        f"?tab=charger&view=form&edit_id={report_id}&{scope}"
-    )
+    return f"{PUBLIC_BASE_URL}/pdf/charger/{report_id}/export?{scope}&lang=th&dl=1"
 
 
 async def push_status(
@@ -150,7 +152,7 @@ async def push_attachment(
     try:
         await maximo.attach_wo_link(
             wonum, link,
-            name=name or (report.get("issue_id") or "PM"),
+            name=name or f"{report.get('issue_id') or 'PM'}.pdf",
             description=description or f"iMPS PM {report.get('doc_name') or ''}".strip(),
         )
     except MaximoError as e:
@@ -260,6 +262,20 @@ async def safe_sync_in_progress(wonum: str, *, memo: str = "") -> dict:
         return {"error": str(e)}
 
 
+def _blocking_failures(results: dict) -> list[str]:
+    """
+    เส้นที่ "ยิงแล้วไม่ผ่าน" ก่อนถึงขั้นปิดสถานะ
+
+    แยกจาก skipped: skipped = ไม่มีอะไรให้ส่ง (เช่นยังไม่ตั้ง PUBLIC_BASE_URL,
+    ใบงานไม่มีช่าง) ปล่อยผ่านได้ ส่วน failed = Maximo ปฏิเสธ ต้องแก้แล้วยิงซ้ำ
+    ก่อน ไม่งั้นพอ WO ขึ้น COMP แล้วจะเติมย้อนหลังไม่ได้อีกเลย
+    """
+    return [
+        name for name, r in results.items()
+        if isinstance(r, dict) and not r.get("ok") and not r.get("skipped")
+    ]
+
+
 async def sync_closed(coll, report_id, report: dict, *, memo: str = "") -> dict:
     """
     ขั้น 3–5 ของ sequencing — ยิงทีละเส้นเรียงกัน เรียกซ้ำได้ปลอดภัย
@@ -279,7 +295,16 @@ async def sync_closed(coll, report_id, report: dict, *, memo: str = "") -> dict:
     out["IN09"] = await push_labor_time(coll, report_id, report)
 
     # ── 5. IN02 ปิดสถานะเป็นเส้นสุดท้าย ──
-    # พอ WO ขึ้น COMP แล้ว Maximo ไม่ให้แนบเอกสาร/ลงเวลาเพิ่มอีก
+    # ต้องยิง 3–4 ให้ครบก่อน มีเส้นไหนไม่ผ่านห้ามปิด WO
+    # (COMP แล้ว Maximo ไม่ให้แนบเอกสาร/ลงเวลาเพิ่มอีก)
+    failed = _blocking_failures(out)
+    if failed:
+        log.warning(
+            f"  ⏸️  ไม่ปิด WO {report.get('wonum')} — {', '.join(failed)} ยังไม่ผ่าน"
+        )
+        out["IN02"] = _skip(f"รอ {', '.join(failed)} ผ่านก่อนถึงจะปิด WO ได้")
+        return out
+
     await _settle()
     out["IN02"] = await push_status(coll, report_id, report, memo=memo)
 
