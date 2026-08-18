@@ -85,6 +85,8 @@ MAXIMO_URLTYPE = os.getenv("MAXIMO_URLTYPE", "URL")
 # failurecode ระดับ WO ตอนสร้าง (IN01) : เคยโดน BMXAA4534E เลยปิดไว้
 #   — flag นี้คุมเฉพาะ IN01 เท่านั้น ส่วน IN05 สเปคระบุว่า failurecode เป็น
 #     Required จึงส่งเสมอ ไม่ผ่าน flag (ไม่ส่งจะโดน BMXAA0030E)
+#   — ยืนยัน 2026-08-18: IN05 ตั้ง failurecode ให้ WO เองได้ ไม่ต้องพึ่ง IN01
+#     และ location ไม่จำเป็นต้องผูก failure class ไว้ก่อน
 MAXIMO_SEND_ZCRAFT = os.getenv("MAXIMO_SEND_ZCRAFT", "false").lower() == "true"
 MAXIMO_SEND_WO_FAILURECODE = os.getenv("MAXIMO_SEND_WO_FAILURECODE", "false").lower() == "true"
 # reasonforchange เป็นฟิลด์สั้น (BMXAA4049E maximumlength) — 0 = ไม่ส่งเลย
