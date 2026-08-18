@@ -1036,7 +1036,8 @@ export default function MDBPMForm() {
 
     const [workFinish, setWorkFinish] = useState<string>("");
 
-    const pmStarted = pmStartedManually || !!editId || !!workStart;
+    const pmStarted = pmStartedManually || !!editId || !!workStart
+        || searchParams.get("started") === "1";
 
     // laborcode ฝั่ง Maximo ที่ช่างเลือกเอง — username ใน iMPS ใช้แทนกันไม่ได้
     const [laborOptions, setLaborOptions] = useState<{ laborcode: string; name: string; needs_name?: boolean }[]>([]);
