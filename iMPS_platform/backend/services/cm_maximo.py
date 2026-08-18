@@ -579,6 +579,15 @@ async def _record(coll, report_id, interface: str, ok: bool, **detail) -> None:
         log.warning(f"  ⚠️ record maximo_sync.{interface} failed: {e}")
 
 
+def _trace(trace: dict) -> dict:
+    """ยัด request/response ที่คุยกับ Maximo ลง maximo_sync — ดูได้จากหน้า sync"""
+    if not trace:
+        return {}
+    return {"maximo_request": trace.get("request"),
+            "maximo_response": trace.get("response"),
+            "http": trace.get("http")}
+
+
 def _no_ok(detail: dict) -> dict:
     """
     ตัด key `ok` ออกก่อนกระจายเข้า _record()
@@ -659,6 +668,7 @@ async def ensure_work_order(coll, report_id, report: dict) -> dict:
     description = f"[iMPS CM {issue_id}] {station_name} — {report.get('problem_details') or ''}"
 
     assignees = _as_list(report.get("assignees"))
+    trace: dict = {}
     try:
         data = await maximo.create_workorder(
             description=description,
@@ -670,11 +680,12 @@ async def ensure_work_order(coll, report_id, report: dict) -> dict:
             supervisor=resolve_person_id(report.get("inspector") or "") or None,
             failure_code=maximo_failure_class(report.get("faulty_equipment")),
             imps_wonum=issue_id,
+            trace=trace,
         )
     except MaximoError as e:
-        log.warning(f"  ⚠️ IN01 create WO failed ({issue_id}): {e}")
+        log.warning(f"  ⚠️ IN01 create WO failed ({issue_id}): {_err_detail(e)}")
         result = _fail(e)
-        await _record(coll, report_id, "IN01", False, **_no_ok(result))
+        await _record(coll, report_id, "IN01", False, **_no_ok(result), **_trace(trace))
         return result
 
     wonum = str(data.get("wonum") or "").strip()
@@ -683,7 +694,7 @@ async def ensure_work_order(coll, report_id, report: dict) -> dict:
         {"$set": {"maximo_wonum": wonum, "maximo_location": location}},
     )
     await _record(coll, report_id, "IN01", True, wonum=wonum, location=location,
-                  assignees=assignees or None)
+                  assignees=assignees or None, **_trace(trace))
     return _ok(wonum=wonum, location=location)
 
 
@@ -706,15 +717,17 @@ async def push_status(coll, report_id, report: dict, *, memo: str = "") -> dict:
     if (report.get("maximo_sync") or {}).get("IN02", {}).get("status") == status:
         return _ok(status=status, unchanged=True)
 
+    trace: dict = {}
     try:
-        await maximo.update_wo_status(wonum, status, memo=memo)
+        await maximo.update_wo_status(wonum, status, memo=memo, trace=trace)
     except MaximoError as e:
         log.warning(f"  ⚠️ IN02 status push failed (WO {wonum} → {status}): {e}")
         result = _fail(e)
-        await _record(coll, report_id, "IN02", False, wonum=wonum, status=status, **_no_ok(result))
+        await _record(coll, report_id, "IN02", False, wonum=wonum, status=status,
+                      **_no_ok(result), **_trace(trace))
         return result
 
-    await _record(coll, report_id, "IN02", True, wonum=wonum, status=status)
+    await _record(coll, report_id, "IN02", True, wonum=wonum, status=status, **_trace(trace))
     return _ok(wonum=wonum, status=status)
 
 
@@ -736,19 +749,22 @@ async def push_attachment(
     if not link:
         return _skip("ตั้งค่า PUBLIC_BASE_URL ก่อน ถึงจะสร้างลิงก์ที่ Maximo เปิดได้")
 
+    trace: dict = {}
     try:
         await maximo.attach_wo_link(
             wonum, link,
-            name=name or f"{report.get('issue_id') or 'CM'}",
+            name=name or f"{report.get('issue_id') or 'CM'}.pdf",
             description=description or f"iMPS CM {report.get('doc_name') or ''}",
+            trace=trace,
         )
     except MaximoError as e:
-        log.warning(f"  ⚠️ IN03 attach failed (WO {wonum}): {e}")
+        log.warning(f"  ⚠️ IN03 attach failed (WO {wonum}): {_err_detail(e)}")
         result = _fail(e)
-        await _record(coll, report_id, "IN03", False, wonum=wonum, url=link, **_no_ok(result))
+        await _record(coll, report_id, "IN03", False, wonum=wonum, url=link,
+                      **_no_ok(result), **_trace(trace))
         return result
 
-    await _record(coll, report_id, "IN03", True, wonum=wonum, url=link)
+    await _record(coll, report_id, "IN03", True, wonum=wonum, url=link, **_trace(trace))
     return _ok(wonum=wonum, url=link)
 
 
@@ -810,6 +826,7 @@ async def push_failure_report(coll, report_id, report: dict) -> dict:
 
     fail_date = _combine(report.get("found_date"), report.get("found_time"))
     sent, errors = 0, []
+    trace: dict = {}
     for row in rows:
         try:
             await maximo.report_wo_failure(
@@ -817,6 +834,7 @@ async def push_failure_report(coll, report_id, report: dict) -> dict:
                 failure_code=failure_code,
                 remarks=report.get("inprogress_remarks") or report.get("problem_details"),
                 fail_date=fail_date or None,
+                trace=trace,
                 **row,
             )
             sent += 1
@@ -827,8 +845,7 @@ async def push_failure_report(coll, report_id, report: dict) -> dict:
     ok = sent == len(rows)
     await _record(coll, report_id, "IN05", ok, wonum=wonum, sent=sent,
                   total=len(rows), errors=errors or None,
-                  # เก็บสิ่งที่ยิงไปไว้ด้วย เวลา 400 จะได้รู้ว่าโค้ดชุดไหนไม่ถูกใจ Maximo
-                  failure_code=failure_code, rows=rows if not ok else None)
+                  failure_code=failure_code, **_trace(trace))
     return _ok(wonum=wonum, sent=sent) if ok else {
         "ok": False, "wonum": wonum, "sent": sent, "total": len(rows), "errors": errors
     }
@@ -864,6 +881,7 @@ async def push_labor_time(coll, report_id, report: dict) -> dict:
             report.get("station_id") or "", report.get("faulty_equipment") or ""
         )
         contractor = str(report.get("maximo_contractor") or "").strip()
+        trace: dict = {}
         for labor in valid:
             memo = f"iMPS CM {report.get('issue_id') or ''}"
             # EVCONTRACTOR เป็นรหัสกลาง — ต่อชื่อผู้รับเหมาจริงเข้าไปใน memo
@@ -873,7 +891,7 @@ async def push_labor_time(coll, report_id, report: dict) -> dict:
                 await maximo.create_labtrans(
                     wonum, labor, start=start, finish=finish or None,
                     location=location or None,
-                    memo=memo,
+                    memo=memo, trace=trace,
                 )
                 sent += 1
             except MaximoError as e:
@@ -882,7 +900,7 @@ async def push_labor_time(coll, report_id, report: dict) -> dict:
         ok = sent > 0 and not errors and not unknown
         await _record(coll, report_id, "IN09", ok, wonum=wonum, sent=sent,
                       total=len(picked), errors=errors or None, unmapped=unknown or None,
-                      source="form")
+                      source="form", **_trace(trace))
         if ok:
             return _ok(wonum=wonum, sent=sent)
         return {"ok": False, "wonum": wonum, "sent": sent, "total": len(picked),
