@@ -628,7 +628,7 @@ def _open_dedup_key(doc: dict) -> dict:
     return {"location": doc["location"], "pm_date": doc.get("pm_date")}
 
 
-async def _upsert_open(items: list[dict]) -> dict:
+async def _upsert_open(items: list[dict], inbound: dict | None = None) -> dict:
     coll = _open_coll()
     try:
         await coll.create_index("wonum", sparse=True)
@@ -643,10 +643,16 @@ async def _upsert_open(items: list[dict]) -> dict:
         if not doc:
             skipped += 1
             continue
+        # เก็บของดิบที่ Maximo ยิงมา + สิ่งที่เราตอบกลับ ไว้ดูย้อนหลังได้
+        # (ที่ผ่านมามีแต่ log ฝั่ง server ซึ่งหมุนทิ้งแล้วตามไม่ได้)
+        set_doc = dict(doc)
+        if inbound is not None:
+            set_doc["maximo_inbound"] = {**inbound, "item": raw}
+
         res = await coll.update_one(
             _open_dedup_key(doc),
             {
-                "$set": doc,
+                "$set": set_doc,
                 # selected_equipment เป็นค่าที่ผู้ใช้เลือกฝั่ง iMPS — ตั้งค่าเริ่มต้น
                 # เฉพาะตอน insert เท่านั้น เพื่อไม่ให้ Maximo ยิงซ้ำมาล้างของที่เลือกไว้
                 "$setOnInsert": {
@@ -779,7 +785,19 @@ async def maximo_pm_open(
     if warnings:
         log.warning("  ⚠️  IN06 field ไม่ครบ: %s", "; ".join(warnings))
 
-    stats = await _upsert_open(items)
+    response_body = {"status": "OK"}
+    inbound = {
+        "at": datetime.now(timezone.utc),
+        "content_type": ctype,
+        "token_headers": seen_headers or None,
+        # body ดิบทั้งก้อน (ตัดที่ 4000 ตัว) — เห็นว่าเขาส่งมาจริง ๆ หน้าตาแบบไหน
+        "raw_body": (body_bytes[:4000].decode("utf-8", "replace") or None),
+        "received": len(items),
+        "warnings": warnings or None,
+        "response": response_body,
+    }
+
+    stats = await _upsert_open(items, inbound=inbound)
     log.info(f"  ✅ IN06 stored: {stats} ({len(items)} received)")
 
     # สเปก IN06 กำหนด response ไว้แค่ {"status": "OK"} — ตอบเกินไปกว่านี้ไม่ได้
@@ -985,6 +1003,39 @@ async def _load_pm_report(report_id: str, sn: str):
     if not doc:
         raise HTTPException(status_code=404, detail="Report not found")
     return coll, oid, doc
+
+
+@router.get("/pm-maximo/wo/{wonum}/sync")
+async def pm_wo_sync_status(
+    wonum: str,
+    current: UserClaims = Depends(get_current_user),
+):
+    """
+    ใบงาน PM 1 ใบ: Maximo ส่งอะไรเข้ามา (IN06) และเรายิงอะไรกลับไปแล้วบ้าง
+
+    ใช้ได้ตั้งแต่ยังไม่มีเอกสาร PM (ด่านวางแผนของ planner) ต่างจาก
+    /pm-maximo/{report_id}/sync ที่ต้องมีเอกสารก่อน
+    """
+    wonum = (wonum or "").strip()
+    wo = await _find_open_wo(wonum)
+    if not wo:
+        raise HTTPException(status_code=404, detail=f"ไม่พบใบงาน wonum={wonum}")
+
+    inbound = dict(wo.get("maximo_inbound") or {})
+    if isinstance(inbound.get("at"), datetime):
+        inbound["at"] = inbound["at"].isoformat()
+
+    return {
+        "wonum": wonum,
+        "location": wo.get("location") or "",
+        "station_id": _station_id_of_wo(wo),
+        "planning_status": wo.get("planning_status") or "pending",
+        "assignees": wo.get("assignees") or [],
+        # ขาเข้า: IN06 ที่ Maximo ยิงมา + response ที่เราตอบกลับ
+        "inbound": inbound or None,
+        # ขาออก: IN02 (INPRG) ที่ยิงตอน planner กด Assign
+        "interfaces": _serialize_sync(wo),
+    }
 
 
 @router.get("/pm-maximo/{report_id}/sync")
