@@ -429,6 +429,51 @@ LABOR_CODES_KNOWN: set[str] = {
     c.strip() for c in os.getenv("MAXIMO_LABOR_CODES", "").split(",") if c.strip()
 }
 
+# laborcode กลางของผู้รับเหมา — ไม่ได้ผูกกับคนใดคนหนึ่ง ต้องให้ช่างพิมพ์ชื่อจริงมาเอง
+# แล้วแนบไปใน memo ของ labtrans ไม่งั้น Maximo จะไม่รู้ว่าใครมาทำงาน
+CONTRACTOR_LABOR_CODE = os.getenv("MAXIMO_CONTRACTOR_LABOR_CODE", "EVCONTRACTOR").strip().upper()
+
+
+# laborcode ที่ใช้ได้จริง + ชื่อคน — ให้ฟอร์มเอาไปทำ dropdown ให้ช่างเลือกเอง
+# (ทางเดิมคือผูก users.maximo_laborcode ล่วงหน้า ซึ่งยังไม่ได้ทำครบ)
+_labor_code_cache: dict[str, Any] = {"items": None}
+
+
+async def get_labor_codes(refresh: bool = False) -> list[dict]:
+    """
+    [{laborcode, name}] ของ laborcode ที่ยืนยันแล้วว่ามีเรคคอร์ด LABOR ใน Maximo
+
+    รายชื่อรหัสมาจาก env MAXIMO_LABOR_CODES ส่วนชื่อคนดึงจาก ZAPIPERSON (IN08)
+    — ดึงไม่ได้ก็ยังคืนรหัสเปล่า ๆ ให้เลือกได้ ไม่ปล่อยให้ dropdown ว่าง
+    """
+    if _labor_code_cache["items"] is not None and not refresh:
+        return _labor_code_cache["items"]
+
+    codes = sorted(LABOR_CODES_KNOWN)
+    names: dict[str, str] = {}
+    if codes and CM_MAXIMO_ENABLED:
+        try:
+            where = "personid in [" + ",".join(f'"{c}"' for c in codes) + "]"
+            people = await maximo._get_all(
+                maximo.MAXIMO_PERSON_OS,
+                {"oslc.select": "personid,displayname", "oslc.where": where},
+            )
+            for p in people:
+                pid = str(p.get("personid") or "").strip()
+                if pid:
+                    names[pid] = str(p.get("displayname") or "").strip()
+        except Exception as e:
+            log.warning(f"  ⚠️ ดึงชื่อ labor ไม่สำเร็จ ใช้รหัสเปล่าแทน: {e}")
+
+    items = [{
+        "laborcode": c,
+        "name": names.get(c) or c,
+        # รหัสกลางของผู้รับเหมา — ฟอร์มต้องขึ้นช่องให้กรอกชื่อจริงเพิ่ม
+        "needs_name": c.upper() == CONTRACTOR_LABOR_CODE,
+    } for c in codes]
+    _labor_code_cache["items"] = items
+    return items
+
 
 # ══════════════════════════════════════════════════════════════════
 # Location — ใบงาน CM ผูกกับ Maximo location ตัวไหน
@@ -769,6 +814,40 @@ async def push_labor_time(coll, report_id, report: dict) -> dict:
     finish = _combine(report.get("resolved_date"), report.get("resolved_time"))
     if not start:
         return _skip("ยังไม่มีวันเวลาเริ่มซ่อม")
+
+    # ช่างเลือก laborcode เองในฟอร์ม = ใช้ตรง ๆ ไม่ต้องพึ่ง users.maximo_laborcode
+    picked = _as_list(report.get("maximo_labor"))
+    if picked:
+        valid = [c for c in picked if not LABOR_CODES_KNOWN or c in LABOR_CODES_KNOWN]
+        unknown = [c for c in picked if c not in valid]
+        sent, errors = 0, []
+        location = report.get("maximo_location") or resolve_location(
+            report.get("station_id") or "", report.get("faulty_equipment") or ""
+        )
+        contractor = str(report.get("maximo_contractor") or "").strip()
+        for labor in valid:
+            memo = f"iMPS CM {report.get('issue_id') or ''}"
+            # EVCONTRACTOR เป็นรหัสกลาง — ต่อชื่อผู้รับเหมาจริงเข้าไปใน memo
+            if labor.upper() == CONTRACTOR_LABOR_CODE and contractor:
+                memo = f"{memo} — {contractor}"
+            try:
+                await maximo.create_labtrans(
+                    wonum, labor, start=start, finish=finish or None,
+                    location=location or None,
+                    memo=memo,
+                )
+                sent += 1
+            except MaximoError as e:
+                log.warning(f"  ⚠️ IN09 labtrans failed (WO {wonum} / {labor}): {_err_detail(e)}")
+                errors.append(f"{labor}: {_err_detail(e)}")
+        ok = sent > 0 and not errors and not unknown
+        await _record(coll, report_id, "IN09", ok, wonum=wonum, sent=sent,
+                      total=len(picked), errors=errors or None, unmapped=unknown or None,
+                      source="form")
+        if ok:
+            return _ok(wonum=wonum, sent=sent)
+        return {"ok": False, "wonum": wonum, "sent": sent, "total": len(picked),
+                "errors": errors, "unmapped": unknown}
 
     assignees = _as_list(report.get("assignees")) or _as_list(report.get("inspector"))
     if not assignees:

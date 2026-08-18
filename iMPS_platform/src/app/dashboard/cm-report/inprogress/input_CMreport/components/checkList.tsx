@@ -82,6 +82,15 @@ const T = {
     // preventiveAction: { th: "วิธีป้องกันไม่ให้เกิดซ้ำ", en: "Preventive Action" },
     addPreventive: { th: "เพิ่ม", en: "Add" },
     resolvedDate: { th: "วันที่เริ่มแก้ไข", en: "Start Repair Date" },
+    maximoLabor: { th: "ช่างที่ลงเวลากับ Maximo", en: "Technicians for Maximo time log" },
+    maximoLaborHint: {
+        th: "เลือกคนที่จะลงเวลาทำงานเข้า Maximo (IN09) — ไม่เลือกจะใช้ช่างที่ผู้วางแผนมอบหมายแทน",
+        en: "Who gets an actual-labor record in Maximo (IN09) — leave empty to fall back to the assigned technicians",
+    },
+    maximoLaborEmpty: { th: "ยังไม่มีรหัสช่างจาก Maximo", en: "No Maximo labor codes available" },
+    contractorName: { th: "ชื่อผู้รับเหมา", en: "Contractor name" },
+    contractorPlaceholder: { th: "ระบุชื่อผู้รับเหมาที่มาทำงานจริง", en: "Name of the contractor who did the work" },
+    contractorRequired: { th: "เลือกผู้รับเหมาแล้วต้องระบุชื่อด้วย", en: "Enter the contractor name" },
     completedDate: { th: "วันที่แก้ไขเสร็จ", en: "Completed Date" },
 
     // Section 3 - Problem Summary
@@ -1003,6 +1012,12 @@ export default function CMInProgressForm() {
     // ประวัติผลซ่อมรอบก่อน ๆ (อ่านอย่างเดียว) — flat fields คือรอบที่กำลังกรอก
     const [repairHistory, setRepairHistory] = useState<RepairRound[]>([]);
     const [assignees, setAssignees] = useState<string[]>([]);   // ช่างที่ planner มอบหมายตอนวางแผน
+    // laborcode ฝั่ง Maximo ที่ช่างเลือกเอง — ใช้ส่งเวลาทำงานเข้า Maximo (IN09)
+    // แยกจาก assignees เพราะ username ใน iMPS กับ laborcode ของ Maximo คนละชุดกัน
+    const [laborOptions, setLaborOptions] = useState<{ laborcode: string; name: string; needs_name?: boolean }[]>([]);
+    const [maximoLabor, setMaximoLabor] = useState<string[]>([]);
+    // EVCONTRACTOR เป็นรหัสกลาง ไม่ผูกกับคน — ต้องให้พิมพ์ชื่อผู้รับเหมาจริงเพิ่ม
+    const [maximoContractor, setMaximoContractor] = useState<string>("");
     // ตาราง failure code จาก Maximo (IN04) — ผสมกับตารางในโค้ดเพื่อทำ dropdown ปัญหา→สาเหตุ→การแก้ไข
     const maximoTree = useMaximoFailureTree();
     const [currentUsername, setCurrentUsername] = useState("");
@@ -2239,6 +2254,8 @@ export default function CMInProgressForm() {
                 }
                 // ช่างที่ planner มอบหมายตอนวางแผน — ใช้จำกัดว่าใครกรอกใบงานเฟสซ่อมได้
                 setAssignees(Array.isArray(data.assignees) ? data.assignees.filter(Boolean) : []);
+                setMaximoLabor(Array.isArray(data.maximo_labor) ? data.maximo_labor.filter(Boolean) : []);
+                setMaximoContractor(data.maximo_contractor ?? "");
 
                 // Photos สำหรับ Section 1
                 if (data.photos_problem) {
@@ -2329,6 +2346,30 @@ export default function CMInProgressForm() {
         })();
         return () => { alive = false; };
     }, []);
+    useEffect(() => {
+        let alive = true;
+        (async () => {
+            try {
+                const res = await fetch(`${API_BASE}/cm-maximo/labor-codes`, { credentials: "include" });
+                if (!res.ok) return;
+                const data = await res.json();
+                if (alive && Array.isArray(data?.items)) setLaborOptions(data.items);
+            } catch {
+                // ดึงไม่ได้ = ไม่โชว์ตัวเลือก ไม่ต้องบล็อกการกรอกใบงาน
+            }
+        })();
+        return () => { alive = false; };
+    }, []);
+
+    const toggleMaximoLabor = (code: string) =>
+        setMaximoLabor(prev => prev.includes(code) ? prev.filter(c => c !== code) : [...prev, code]);
+
+    // ติ๊กรหัสกลางของผู้รับเหมาไว้ = ต้องมีชื่อจริงกำกับ
+    const contractorPicked = laborOptions.some(
+        (o) => o.needs_name && maximoLabor.includes(o.laborcode)
+    );
+    const contractorMissing = contractorPicked && !maximoContractor.trim();
+
     // ==================== HANDLERS ====================
     // อนุมัติปิดใบงาน — ย้ายมาจากตาราง In Progress เพื่อให้ผู้อนุมัติเห็นรายละเอียดใบงานก่อนกด
     const onApprove = async () => {
@@ -2664,6 +2705,8 @@ export default function CMInProgressForm() {
                         // ประทับเวลาเริ่มแก้ไขครั้งแรกพร้อมวันที่ — ใบเก่าที่มีวันที่แต่ไม่มีเวลา ไม่เติมย้อนหลัง
                         start_repair_time: job.start_repair_time || (job.start_repair_date ? "" : localNowHHMM()),
                         resolved_time: (!keepStatus && hasResolvedDate) ? (isClosedResult && job.resolved_time ? job.resolved_time : localNowHHMM()) : "",
+                        maximo_labor: maximoLabor,
+                        maximo_contractor: contractorPicked ? maximoContractor.trim() : "",
                     }
                 })
             });
@@ -3110,6 +3153,56 @@ export default function CMInProgressForm() {
                                             containerProps={{ className: "!tw-min-w-0 !tw-h-12" }}
                                         />
                                     </div>
+                                </div>
+                            )}
+
+                            {/* ช่างที่จะลงเวลาเข้า Maximo — laborcode คนละชุดกับ username ใน iMPS
+                                จึงต้องให้เลือกเอง ไม่งั้น IN09 จะ unmapped ทั้งใบ */}
+                            {!viewOnly && (
+                                <div className="tw-space-y-2">
+                                    <label className="tw-flex tw-items-center tw-gap-2 tw-text-sm tw-font-semibold tw-text-gray-700">
+                                        <span className="tw-w-1.5 tw-h-1.5 tw-rounded-full tw-bg-blue-500"></span>
+                                        {t("maximoLabor", lang)}
+                                    </label>
+                                    <p className="tw-text-xs tw-text-gray-500">{t("maximoLaborHint", lang)}</p>
+                                    {laborOptions.length === 0 ? (
+                                        <p className="tw-text-xs tw-text-orange-600">{t("maximoLaborEmpty", lang)}</p>
+                                    ) : (
+                                        <div className="tw-rounded-xl tw-border tw-border-gray-200 tw-bg-white tw-divide-y tw-divide-gray-100 tw-max-h-56 tw-overflow-y-auto">
+                                            {laborOptions.map((o) => (
+                                                <label key={o.laborcode} className="tw-flex tw-items-center tw-gap-2.5 tw-px-3 tw-py-2.5 tw-cursor-pointer hover:tw-bg-blue-50/60 tw-transition-colors">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={maximoLabor.includes(o.laborcode)}
+                                                        onChange={() => toggleMaximoLabor(o.laborcode)}
+                                                        className="tw-h-4 tw-w-4 tw-shrink-0 tw-rounded tw-border-gray-300 tw-text-blue-600 focus:tw-ring-blue-500 tw-cursor-pointer"
+                                                    />
+                                                    <span className="tw-min-w-0 tw-truncate tw-text-sm tw-text-gray-800">{o.name}</span>
+                                                    <span className="tw-ml-auto tw-font-mono tw-text-xs tw-text-gray-400">{o.laborcode}</span>
+                                                </label>
+                                            ))}
+                                        </div>
+                                    )}
+
+                                    {contractorPicked && (
+                                        <div className="tw-space-y-1.5 tw-pt-1">
+                                            <label className="tw-block tw-text-sm tw-font-semibold tw-text-gray-700">
+                                                {t("contractorName", lang)} <span className="tw-text-red-500">*</span>
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={maximoContractor}
+                                                onChange={(e) => setMaximoContractor(e.target.value)}
+                                                placeholder={t("contractorPlaceholder", lang)}
+                                                className={`tw-w-full tw-h-12 tw-rounded-xl tw-border tw-px-4 tw-text-sm tw-text-gray-700 focus:tw-outline-none ${contractorMissing
+                                                    ? "tw-border-red-400 focus:tw-border-red-500"
+                                                    : "tw-border-gray-200 focus:tw-border-blue-500"}`}
+                                            />
+                                            {contractorMissing && (
+                                                <p className="tw-text-xs tw-text-red-600">{t("contractorRequired", lang)}</p>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
                             )}
 
