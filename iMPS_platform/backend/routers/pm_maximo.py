@@ -909,7 +909,9 @@ class EquipmentItem(BaseModel):
 
 
 class SelectEquipmentIn(BaseModel):
-    equipment: list[EquipmentItem] = Field(default_factory=list)
+    # None = ไม่แตะรายการอุปกรณ์เดิม (หน้าวางแผน PM ไม่ได้ให้เลือกอุปกรณ์แล้ว)
+    # []   = ล้างรายการทิ้ง
+    equipment: Optional[list[EquipmentItem]] = None
     planned_at: Optional[str] = None
     sched_start: Optional[str] = None
     sched_finish: Optional[str] = None
@@ -989,7 +991,7 @@ async def set_pm_equipment(
 
     items: list[dict] = []
     seen: set[str] = set()
-    for e in body.equipment:
+    for e in (body.equipment or []):
         etype = _norm_equip_type(e.type)
         if etype not in EQUIP_TYPES:
             raise HTTPException(
@@ -1044,23 +1046,32 @@ async def set_pm_equipment(
     sched_finish_value = (body.sched_finish or "").strip()
     assignees = [str(x).strip() for x in body.assignees if str(x or "").strip()]
 
-    res = await _open_coll().update_one(
-        {"wonum": wonum},
-        {"$set": {
-            "selected_equipment": items,
-            "selected_at": now,
-            "selected_by": current.username or current.sub,
-            "planning_status": "planned" if items else "pending",
-            "planned_at": planned_at_value,
-            "planned_by": current.username or current.sub,
-            "sched_start": sched_start_value,
-            "sched_finish": sched_finish_value,
-            "assignees": assignees,
-        }},
-    )
+    # ไม่ส่ง equipment มา = คงรายการเดิมไว้ (ผู้เรียกที่ยังมี picker ส่ง list มาเหมือนเดิม)
+    keep_equipment = body.equipment is None
+    effective_items = (wo.get("selected_equipment") or []) if keep_equipment else items
+
+    # วางแผนเสร็จเมื่อเลือกอุปกรณ์แล้ว "หรือ" มีกำหนดการ + ช่างครบ
+    # (หน้าวางแผน PM มอบหมายด้วยกำหนดการ+ช่างอย่างเดียว ไม่ได้เลือกอุปกรณ์)
+    schedule_complete = bool(sched_start_value and sched_finish_value and assignees)
+    planning_status = "planned" if (effective_items or schedule_complete) else "pending"
+
+    update: dict = {
+        "selected_at": now,
+        "selected_by": current.username or current.sub,
+        "planning_status": planning_status,
+        "planned_at": planned_at_value,
+        "planned_by": current.username or current.sub,
+        "sched_start": sched_start_value,
+        "sched_finish": sched_finish_value,
+        "assignees": assignees,
+    }
+    if not keep_equipment:
+        update["selected_equipment"] = items
+
+    res = await _open_coll().update_one({"wonum": wonum}, {"$set": update})
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail=f"ไม่พบใบงาน wonum={wonum}")
 
     doc = await _find_open_wo(wonum)
-    log.info(f"  ✅ PM equipment selected for {wonum}: {len(items)} item(s)")
+    log.info(f"  ✅ PM plan saved for {wonum}: {len(effective_items)} equipment item(s), status={planning_status}")
     return {"ok": True, "wonum": wonum, "item": _serialize_open(doc)}
