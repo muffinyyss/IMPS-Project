@@ -169,3 +169,28 @@ th {
 .fc-prev-button.fc-button.fc-button-primary {
   @apply !tw-mr-1;
 }
+
+/* ── โหมดตรวจใบงาน PM (อ่านอย่างเดียว) ──────────────────────────────────
+   ฟอร์มถูกครอบด้วย <fieldset disabled> เพื่อกันแก้ข้อมูลที่ช่างส่งมาแล้ว
+   แต่ค่า default ของเบราว์เซอร์ทำให้ตัวอักษรกับปุ่มจางลงจนอ่านแทบไม่ออก
+   ซึ่งขัดกับงานของผู้อนุมัติที่ต้องนั่งตรวจทีละข้อ จึงดึงความเข้มกลับมาเต็ม
+   ล็อกไว้แค่ "แก้ไม่ได้" ไม่ใช่ "ดูไม่ได้" */
+fieldset.pm-readonly:disabled input,
+fieldset.pm-readonly:disabled textarea,
+fieldset.pm-readonly:disabled select {
+  opacity: 1 !important;
+  color: #263238 !important;              /* blue-gray-900 */
+  -webkit-text-fill-color: #263238;        /* Safari/iOS ไม่ฟังสี color ของ input ที่ disabled */
+  background-color: #fff;
+  cursor: default;
+}
+
+/* ผล PASS/FAIL แสดงด้วยปุ่มที่ถูกเลือกเป็นสีทึบ ถ้าปล่อยให้จางตามค่า disabled
+   ผู้อนุมัติจะแยกไม่ออกว่าข้อไหนช่างตอบอะไร */
+fieldset.pm-readonly:disabled button:disabled {
+  opacity: 1 !important;
+  cursor: default;
+}
+
+/* ปุ่มลบรูปกดไม่ได้อยู่แล้วในโหมดนี้ โชว์ไว้มีแต่หลอกตา */
+fieldset.pm-readonly:disabled [data-photo-remove] { display: none; }
