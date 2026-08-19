@@ -1171,6 +1171,12 @@ export default function StationPMReport() {
                 if (data.comment_pre) setCommentPre(data.comment_pre);
                 if (data.summary) setSummary(data.summary);
                 setCmpPhotos({ pre: data.photos_pre ?? {}, post: data.photos ?? {} });
+                // สรุปผล/หมายเหตุเดิมอ่านจาก draft ในเครื่องอย่างเดียว คนที่ไม่ได้เป็นคนกรอก
+                // (ผู้อนุมัติ) จึงเปิดมาเจอช่องว่าง ต้องดึงจากตัวเอกสารด้วย
+                if (reviewMode) {
+                    if (typeof data.summary === "string") setSummary(data.summary);
+                    if (data.summaryCheck) setSummaryCheck(data.summaryCheck as PF);
+                }
                 if (data.rows_pre) { setRowsPre(data.rows_pre); }
                 if (data.rows) {
                     setRows((prev) => { const next = { ...prev }; Object.entries(data.rows).forEach(([k, v]) => { next[k] = v as { pf: PF; remark: string }; }); return next; });
@@ -2032,6 +2038,35 @@ export default function StationPMReport() {
         return out;
     }, [rowsPre, rows, lang]);
 
+
+    // กล่องหมายเหตุ + สรุปผลการตรวจสอบ — ประกาศครั้งเดียว วางได้สองที่
+    // ตอนกรอกอยู่ในฟอร์มตามเดิม ตอนตรวจย้ายลงไปล่างสุดใต้ตารางเทียบ
+    const summaryBlock = (
+                        <div id={`${ID_PREFIX}-summary-section`} className="tw-mt-6 sm:tw-mt-8 tw-space-y-3">
+                            <Typography variant="h6" className="tw-mb-1 tw-text-sm sm:tw-text-base">{t("comment", lang)}</Typography>
+                            {displayTab === "post" && commentPre && (
+                                <div className="tw-mb-3 tw-p-3 tw-bg-amber-50 tw-rounded-lg tw-border tw-border-amber-300">
+                                    <div className="tw-flex tw-items-center tw-gap-2 tw-mb-1">
+                                        <svg className="tw-w-4 tw-h-4 tw-text-amber-600" fill="currentColor" viewBox="0 0 20 20">
+                                            <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                                        </svg>
+                                        <Typography variant="small" className="tw-font-semibold tw-text-amber-700">
+                                            {lang === "th" ? "Comment (ก่อน PM)" : "Comment (Pre-PM)"}
+                                        </Typography>
+                                    </div>
+                                    <Typography variant="small" className="tw-text-amber-900 tw-ml-6">{commentPre}</Typography>
+                                </div>
+                            )}
+                            <Textarea label={t("comment", lang)} value={summary} onChange={(e) => setSummary(e.target.value)} rows={3} required={isPostMode} autoComplete="off" containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full !tw-text-sm resize-none" />
+                            {displayTab === "post" && (
+                                <div className="tw-pt-3 sm:tw-pt-4 tw-border-t tw-border-gray-200">
+                                    <PassFailRow label={t("summaryResult", lang)} value={summaryCheck} onChange={(v) => setSummaryCheck(v)} lang={lang}
+                                        labels={{ PASS: t("summaryPassLabel", lang), FAIL: t("summaryFailLabel", lang), NA: t("summaryNALabel", lang) }} />
+                                </div>
+                            )}
+                        </div>
+    );
+
     return (
         <section className="tw-pb-24">
             <div className="tw-mx-auto tw-max-w-6xl tw-flex tw-items-center tw-justify-between tw-mb-4">
@@ -2105,29 +2140,8 @@ export default function StationPMReport() {
                         {!reviewMode && (QUESTIONS.filter((q) => !(displayTab === "pre" && q.no === 11)).map((q) => renderQuestionBlock(q, displayTab)))}
                     </div>
 
-                    <div id={`${ID_PREFIX}-summary-section`} className="tw-mt-6 sm:tw-mt-8 tw-space-y-3">
-                        <Typography variant="h6" className="tw-mb-1 tw-text-sm sm:tw-text-base">{t("comment", lang)}</Typography>
-                        {displayTab === "post" && commentPre && (
-                            <div className="tw-mb-3 tw-p-3 tw-bg-amber-50 tw-rounded-lg tw-border tw-border-amber-300">
-                                <div className="tw-flex tw-items-center tw-gap-2 tw-mb-1">
-                                    <svg className="tw-w-4 tw-h-4 tw-text-amber-600" fill="currentColor" viewBox="0 0 20 20">
-                                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                                    </svg>
-                                    <Typography variant="small" className="tw-font-semibold tw-text-amber-700">
-                                        {lang === "th" ? "Comment (ก่อน PM)" : "Comment (Pre-PM)"}
-                                    </Typography>
-                                </div>
-                                <Typography variant="small" className="tw-text-amber-900 tw-ml-6">{commentPre}</Typography>
-                            </div>
-                        )}
-                        <Textarea label={t("comment", lang)} value={summary} onChange={(e) => setSummary(e.target.value)} rows={3} required={isPostMode} autoComplete="off" containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full !tw-text-sm resize-none" />
-                        {displayTab === "post" && (
-                            <div className="tw-pt-3 sm:tw-pt-4 tw-border-t tw-border-gray-200">
-                                <PassFailRow label={t("summaryResult", lang)} value={summaryCheck} onChange={(v) => setSummaryCheck(v)} lang={lang}
-                                    labels={{ PASS: t("summaryPassLabel", lang), FAIL: t("summaryFailLabel", lang), NA: t("summaryNALabel", lang) }} />
-                            </div>
-                        )}
-                    </div>
+                    {/* โหมดตรวจ: ย้ายไปไว้ล่างสุด ให้อ่านหลังดูตารางเทียบเสร็จ */}
+                    {!reviewMode && summaryBlock}
 
                     <div className="tw-mt-6 sm:tw-mt-8 tw-flex tw-flex-col tw-gap-3">
                     {/* ด่านก่อนเริ่มกรอก — ช่างอ่านข้อมูลใบงานก่อน แล้วค่อยกดเริ่ม (เหมือนหน้า CM)
@@ -2214,21 +2228,24 @@ export default function StationPMReport() {
                         </div>
                     )}
 
-                        <PMValidationCard
-                            lang={lang}
-                            displayTab={displayTab}
-                            isPostMode={isPostMode}
-                            allPhotosAttached={allPhotosAttached}
-                            missingPhotoItems={missingPhotoItems}
-                            allRemarksFilledPre={allRemarksFilledPre}
-                            missingRemarksPre={missingRemarksPre}
-                            allPFAnswered={allPFAnswered}
-                            missingPFItems={missingPFItems}
-                            allRemarksFilledPost={allRemarksFilledPost}
-                            missingRemarksPost={missingRemarksPost}
-                            isSummaryFilled={isSummaryFilled}
-                            isSummaryCheckFilled={isSummaryCheckFilled}
-                        />
+                        {/* โหมดตรวจไม่ต้องมี ฟอร์มฝั่งช่างดักความครบถ้วนไว้ตั้งแต่ตอนกรอกแล้ว */}
+                        {!reviewMode && (
+                            <PMValidationCard
+                                lang={lang}
+                                displayTab={displayTab}
+                                isPostMode={isPostMode}
+                                allPhotosAttached={allPhotosAttached}
+                                missingPhotoItems={missingPhotoItems}
+                                allRemarksFilledPre={allRemarksFilledPre}
+                                missingRemarksPre={missingRemarksPre}
+                                allPFAnswered={allPFAnswered}
+                                missingPFItems={missingPFItems}
+                                allRemarksFilledPost={allRemarksFilledPost}
+                                missingRemarksPost={missingRemarksPost}
+                                isSummaryFilled={isSummaryFilled}
+                                isSummaryCheckFilled={isSummaryCheckFilled}
+                            />
+                        )}
                         {/* ดูอย่างเดียว: ตรวจได้ แต่ไม่มีปุ่มบันทึกให้กด */}
                         {!reviewMode && (
                             <div className="tw-flex tw-flex-col sm:tw-flex-row tw-justify-end tw-gap-2 sm:tw-gap-3">
@@ -2261,6 +2278,13 @@ export default function StationPMReport() {
                     apiBase={API_BASE}
                     summaryPost={summary}
                 />
+            )}
+            {reviewMode && editId && (
+                <div className="tw-mx-auto tw-max-w-6xl tw-mt-6 tw-rounded-xl tw-border tw-border-blue-gray-100 tw-bg-white tw-p-5 tw-shadow-sm sm:tw-p-6">
+                    <fieldset disabled className="pm-readonly tw-m-0 tw-min-w-0 tw-border-0 tw-p-0">
+                        {summaryBlock}
+                    </fieldset>
+                </div>
             )}
             {/* ตรวจเสร็จแล้วกดต่อได้เลย ไม่ต้องเลื่อนกลับขึ้นไปข้างบน */}
             {approveMode && editId && (
