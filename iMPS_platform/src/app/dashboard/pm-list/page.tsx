@@ -323,10 +323,14 @@ export default function PMListPage() {
           tab, view: "form", wonum: r.wonum || r.id, from: PM_ORIGIN_LIST,
           ...(canPlan ? { planning: "1" } : { wo_info: "1" }),
         })
-      // ใบที่รออนุมัติ + เป็นผู้อนุมัติ → เปิดโหมดตรวจ (เห็นของที่ช่างกรอก + ปุ่มอนุมัติ/ตีกลับ)
+      // ใบที่รออนุมัติ → เปิดหน้าตรวจหน้าเดียวกันทุก role
+      //   ผู้อนุมัติ  → approve=1 มีปุ่มอนุมัติ/ตีกลับ
+      //   ช่างเจ้าของงาน → review=1 เห็นข้อมูลชุดเดียวกันแต่แก้ไม่ได้
       : new URLSearchParams({
           tab, view: "form", edit_id: r.id, from: PM_ORIGIN_LIST,
-          ...(canApprove && stageOf(r) === "wait_approve" ? { approve: "1", action: "post", pmtab: "post" } : {}),
+          ...(stageOf(r) === "wait_approve"
+            ? { [canApprove ? "approve" : "review"]: "1", action: "post", pmtab: "post" }
+            : {}),
         });
     if (tab === "charger" && r.sn && r.sn !== "-") params.set("sn", r.sn);
     else if (r.station_id) params.set("station_id", r.station_id);

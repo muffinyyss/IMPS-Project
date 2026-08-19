@@ -1093,6 +1093,9 @@ export default function StationPMReport() {
     // planner เปิดเอกสารที่ช่างส่งมาเพื่อตรวจก่อนอนุมัติ (?approve=1)
 
     const approveMode = searchParams.get("approve") === "1";
+    // ช่างเปิดดูใบที่ตัวเองส่งไปแล้ว (?review=1) — เห็นหน้าเดียวกับ planner
+    // แต่แก้อะไรไม่ได้ และไม่มีปุ่ม Reject/Approve
+    const reviewMode = approveMode || searchParams.get("review") === "1";
 
 
     const pmStarted = pmStartedManually || !!editId || !!workStart
@@ -2032,6 +2035,8 @@ export default function StationPMReport() {
             </div>
 
             <form action="#" noValidate onSubmit={(e) => { e.preventDefault(); return false; }} onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }}>
+                {/* ดูอย่างเดียว: fieldset ปิดทั้งช่องกรอกและปุ่มบันทึกในทีเดียว */}
+                <fieldset disabled={reviewMode} className="tw-m-0 tw-min-w-0 tw-border-0 tw-p-0">
                 <div className="tw-mx-auto tw-max-w-6xl tw-bg-white tw-border tw-border-blue-gray-100 tw-rounded-xl tw-shadow-sm tw-p-6 md:tw-p-8 tw-print:tw-shadow-none tw-print:tw-border-0">
                     <div className="tw-flex tw-flex-col tw-gap-4 md:tw-flex-row md:tw-items-start md:tw-justify-between md:tw-gap-6">
                         <div className="tw-flex tw-items-start tw-gap-3 md:tw-gap-4">
@@ -2208,9 +2213,10 @@ export default function StationPMReport() {
                         </div>
                     </div>
                 </div>
+                </fieldset>
             </form>
             {/* เทียบผลก่อน/หลังของหัวข้อเดียวกันในบรรทัดเดียว */}
-            {approveMode && editId && (
+            {reviewMode && editId && (
                 <PmCompareTable
                     rows={compareRows}
                     lang={lang}
