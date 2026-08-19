@@ -279,11 +279,18 @@ async def wo_completion(wonum: str) -> dict:
 
 def post_submit_fields(body: Any) -> dict:
     """ฟิลด์เพิ่มเติมตอนบันทึก Post-PM ที่ทุกชนิดใช้ร่วมกัน"""
-    return {
+    fields = {
         "work_start": (getattr(body, "work_start", None) or "").strip(),
         "work_finish": (getattr(body, "work_finish", None) or "").strip(),
-        "wonum": (getattr(body, "wonum", None) or "").strip(),
         # laborcode ที่ช่างเลือกเอง + ชื่อผู้รับเหมา (ถ้าเลือกรหัสกลาง) — ใช้ส่ง IN09
         "maximo_labor": list(getattr(body, "maximo_labor", None) or []),
         "maximo_contractor": (getattr(body, "maximo_contractor", None) or "").strip(),
     }
+
+    # wonum ว่าง = "ไม่รู้" ไม่ใช่ "ให้ลบ" — เลขนี้ผูกตั้งแต่ตอนบันทึก Pre-PM
+    # ถ้าเขียนทับด้วยค่าว่างตอน Post ใบงานจะหลุดจาก Maximo ทันที ปิดงานแล้วก็
+    # ยิงกลับไม่ได้ เพราะ wo_completion กับ sync ทั้งชุดอ่านจากฟิลด์นี้
+    wonum = (getattr(body, "wonum", None) or "").strip()
+    if wonum:
+        fields["wonum"] = wonum
+    return fields

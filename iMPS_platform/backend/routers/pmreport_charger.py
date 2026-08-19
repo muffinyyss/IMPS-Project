@@ -522,6 +522,8 @@ async def pmreport_pre_submit(body: PMSubmitIn, current: UserClaims = Depends(ge
 class PMPostIn(BaseModel):
     report_id: str | None = None
     sn: str
+    # เลขใบงาน Maximo — ปกติผูกไว้ตั้งแต่ Pre-PM รับตรงนี้ด้วยเผื่อใบเก่าที่ยังไม่มี
+    wonum: Optional[str] = None
     # เวลาทำงานจริงของช่าง — ส่งเข้า Maximo ทาง IN09 ตอนปิดใบงาน
     # รูปแบบ datetime-local ของ input ("2026-08-18T09:30")
     work_start: Optional[str] = None

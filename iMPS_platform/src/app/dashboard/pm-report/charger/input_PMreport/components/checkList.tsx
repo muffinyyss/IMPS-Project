@@ -3283,7 +3283,14 @@ export default function ChargerPMForm() {
             clearDraftLocal(key);
             setPhotos({});
 
-            router.replace(`${pathname}?sn=${encodeURIComponent(sn)}&action=post&edit_id=${report_id}&pmtab=post`);
+            // ต่อจาก query เดิม ไม่ใช่เขียนใหม่ทั้งเส้น — ?wonum= กับ ?from= ต้องติดไปด้วย
+            // ไม่งั้นตอนบันทึก Post จะหาเลขใบงานไม่เจอ และปุ่มย้อนกลับก็ลืมว่ามาจากไหน
+            const nextParams = new URLSearchParams(searchParams.toString());
+            nextParams.set("sn", sn);
+            nextParams.set("action", "post");
+            nextParams.set("edit_id", report_id);
+            nextParams.set("pmtab", "post");
+            router.replace(`${pathname}?${nextParams.toString()}`);
         } catch (err: any) { alert(`${t("alertSaveFailed", lang)} ${err?.message ?? err}`); } finally { setSubmitting(false); }
     };
 
@@ -3312,7 +3319,7 @@ export default function ChargerPMForm() {
                 }
             }
             if (!report_id) {
-                const payload = { sn: sn, rows, measures: { m16: m16.state, cp }, summary, ...(summaryCheck ? { summaryCheck } : {}), work_start: workStart, work_finish: workFinish, maximo_labor: maximoLabor, maximo_contractor: contractorPicked ? maximoContractor.trim() : "", dust_filter: dustFilterChanged, side: "post" as TabId, report_id: editId };
+                const payload = { sn: sn, rows, measures: { m16: m16.state, cp }, summary, ...(summaryCheck ? { summaryCheck } : {}), work_start: workStart, work_finish: workFinish, maximo_labor: maximoLabor, maximo_contractor: contractorPicked ? maximoContractor.trim() : "", wonum: searchParams.get("wonum") ?? "", dust_filter: dustFilterChanged, side: "post" as TabId, report_id: editId };
                 const submitRes = await apiFetch(`${API_BASE}/pmreport/submit`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
                 if (!submitRes.ok) throw new Error(await submitRes.text());
                 const jsonRes = await submitRes.json() as { report_id: string };
