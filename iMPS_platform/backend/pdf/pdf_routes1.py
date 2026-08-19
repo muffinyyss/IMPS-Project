@@ -128,6 +128,47 @@ def _delete_report_photos(template: str, coll_key: str, report_id: str, coll) ->
         pass
 
 
+@router.head("/{template}/{id}/export")
+@router.head("/{template}/{id}/{filename}")
+async def export_pdf_head(
+    template: str,
+    id: str,
+    sn: str = Query(None),
+    station_id: str = Query(None),
+):
+    """
+    ตอบ HEAD ให้ตัวที่ "เช็คลิงก์ก่อนเปิด" — Maximo/proxy/ตัวสแกนลิงก์ยิง HEAD มาก่อน GET
+
+    FastAPI ไม่แถม HEAD ให้ route ที่ประกาศเป็น GET (ต่างจาก Starlette ล้วน) ลิงก์
+    เอกสารที่แนบเข้า Maximo (IN03) จึงเคยตอบ 405 ให้ตัวเช็ค แล้วถูกมองว่าลิงก์เสีย
+    ทั้งที่กด GET แล้วได้ไฟล์ปกติ
+
+    ตรวจแค่ว่าเอกสารมีอยู่จริง ไม่เรนเดอร์ PDF — HEAD ไม่มี body อยู่แล้ว และใบ PM
+    บางใบหนักเป็นสิบ MB ไม่มีเหตุให้เรนเดอร์ทิ้ง
+    """
+    if template not in TEMPLATE_MAP:
+        raise HTTPException(status_code=400, detail=f"ไม่พบ template '{template}'")
+
+    try:
+        oid = ObjectId(id)
+    except InvalidId:
+        raise HTTPException(status_code=400, detail="รูปแบบ id ไม่ถูกต้อง")
+
+    coll_key = sn if template in ["charger", "ac", "dc"] else station_id
+    if not coll_key:
+        raise HTTPException(
+            status_code=400,
+            detail="ต้องระบุ sn สำหรับ template charger" if template in ["charger", "ac", "dc"]
+            else "ต้องระบุ station_id สำหรับ template นี้",
+        )
+
+    coll = pymongo_client[TEMPLATE_MAP[template]["db"]][coll_key]
+    if not coll.find_one({"_id": oid}, {"_id": 1}):
+        raise HTTPException(status_code=404, detail="ไม่พบข้อมูลเอกสารนี้")
+
+    return Response(status_code=200, media_type="application/pdf")
+
+
 @router.get("/{template}/{id}/export")
 async def export_pdf_redirect(
     request: Request,

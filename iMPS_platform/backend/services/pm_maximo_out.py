@@ -25,6 +25,7 @@ import logging
 import os
 from datetime import datetime, timezone
 from typing import Any
+from urllib.parse import quote
 
 from config import client
 from services import maximo
@@ -40,6 +41,9 @@ PM_MAXIMO_ENABLED = os.getenv("PM_MAXIMO_ENABLED", "true").lower() == "true"
 PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", os.getenv("FRONTEND_BASE_URL", "")).rstrip("/")
 
 # ภาษาของ PDF ที่แนบเข้า Maximo (ใช้ค่าเดียวกับฝั่ง CM)
+# ⚠️ ค่านี้ตกไปกับลิงก์ในรูป ?…&lang= ซึ่ง maximo_safe_url() ตัดทิ้งตอนยิงเข้า Maximo
+#    ฝั่ง Maximo จึงได้ภาษาตาม default ของ route /pdf ("th") เสมอ ตั้งเป็น en เมื่อไหร่
+#    ไฟล์ที่ pm_pdf ปั๊มไว้ล่วงหน้าจะคนละภาษากับที่ลิงก์เปิด (ยังเปิดได้ แต่ต้องรอเรนเดอร์สด)
 PDF_LANG = os.getenv("MAXIMO_PDF_LANG", "th").strip() or "th"
 
 # ชนิดใบงาน PM → template ของ route /pdf/{template}/{id}
@@ -135,25 +139,37 @@ def public_url(path: str) -> str:
     return f"{PUBLIC_BASE_URL}/{p.lstrip('/')}"
 
 
-def report_url(report: dict, report_id: Any, kind: str = "charger") -> str:
+def report_url(report: dict, report_id: Any, kind: str = "charger", coll_key: str = "") -> str:
     """
     ลิงก์ PDF เอกสาร PM — ใช้แนบเข้า Maximo (IN03)
 
     แนบตัวเอกสาร PDF ไม่ใช่หน้าเว็บ คนที่เปิดจาก Maximo จะได้ไฟล์เลย
     ยิงตอนปิดงานเท่านั้น ตอนนั้น PDF ถึงจะมีเนื้อหาครบ
+
+    coll_key = ชื่อคอลเลกชันที่ใบงานอยู่จริง (charger/ac/dc = SN, ที่เหลือ = station_id)
+    route /pdf หาเอกสารจากชื่อคอลเลกชัน ไม่ใช่ฟิลด์ในเอกสาร — เดาจากฟิลด์เมื่อไหร่
+    ใบที่ไม่มี sn/station_id เก็บไว้ในตัวเอกสารจะได้ลิงก์ที่เปิดแล้ว 400/404
+    ทั้งที่ใบงานมีอยู่จริง
+
+    ลิงก์ตรงนี้เต็มเหมือนเดิม (มี lang/dl) — Maximo กิน & ไม่ได้ แต่ไปตัดตอนยิงออก
+    ที่ maximo.maximo_safe_url() แทน จะได้ไม่กระทบลิงก์ที่ฝั่ง iMPS ใช้เอง
     """
     if not PUBLIC_BASE_URL:
         return ""
     # template ต้องตรงกับชนิดใบงาน ไม่งั้น route /pdf ไปเปิดคนละคอลเลกชันแล้ว 404
     template = PDF_TEMPLATE_OF.get(kind, "charger")
-    sn = (report.get("sn") or "").strip()
-    station_id = (report.get("station_id") or "").strip()
-    scope = f"sn={sn}" if sn else f"station_id={station_id}"
-    qs = f"{scope}&lang={PDF_LANG}&dl=true"
+    key = (coll_key or "").strip()
+    if template in ("charger", "ac", "dc"):
+        param, key = "sn", key or (report.get("sn") or "").strip()
+    else:
+        param, key = "station_id", key or (report.get("station_id") or "").strip()
+    if not key:
+        return ""
+    qs = f"{param}={quote(key, safe='')}&lang={PDF_LANG}&dl=true"
     issue_id = str(report.get("issue_id") or "").strip()
     # ลิงก์ตรงไปที่ไฟล์ (.pdf) — /export เป็นแค่ตัว 307 redirect มาที่นี่อีกที
     if issue_id:
-        return f"{PUBLIC_BASE_URL}/pdf/{template}/{report_id}/{issue_id}.pdf?{qs}"
+        return f"{PUBLIC_BASE_URL}/pdf/{template}/{report_id}/{quote(issue_id, safe='')}.pdf?{qs}"
     return f"{PUBLIC_BASE_URL}/pdf/{template}/{report_id}/export?{qs}"
 
 
@@ -193,7 +209,8 @@ async def push_attachment(
     if not wonum:
         return _skip("เอกสารนี้ไม่ได้ผูกกับใบงาน Maximo")
 
-    link = public_url(url)
+    # จด/ส่งด้วยค่าเดียวกับที่ Maximo ได้รับจริง (ตัด query ที่เกิน param แรกทิ้ง)
+    link = maximo.maximo_safe_url(public_url(url))
     if not link:
         return _skip("ตั้งค่า PUBLIC_BASE_URL ก่อน ถึงจะสร้างลิงก์ที่ Maximo เปิดได้")
 
@@ -369,7 +386,8 @@ async def sync_closed(coll, report_id, report: dict, *, memo: str = "", kind: st
 
     # ── 3. IN03 แนบลิงก์เอกสาร (ครั้งเดียวพอ) ──
     if not (report.get("maximo_sync") or {}).get("IN03", {}).get("ok"):
-        out["IN03"] = await push_attachment(coll, report_id, report, report_url(report, report_id, kind))
+        link = report_url(report, report_id, kind, coll_key=getattr(coll, "name", "") or "")
+        out["IN03"] = await push_attachment(coll, report_id, report, link)
 
     # ── 4. IN09 เวลาทำงานจริงของช่าง ──
     # ยิงครั้งเดียวพอ — labtrans เป็น POST create ยิงซ้ำ = ชั่วโมงถูกนับซ้ำ

@@ -739,6 +739,28 @@ async def update_wo_status(
 # ══════════════════════════════════════════════════════════════════
 # IN03 — แนบ Link Attachment ให้ Work Order  (POST ZAPIATTACHWO)
 # ══════════════════════════════════════════════════════════════════
+def maximo_safe_url(url: str) -> str:
+    """
+    ตัดลิงก์ให้เหลือ query param ตัวเดียวก่อนส่งเข้า Maximo (IN03)
+
+    EGAT ยืนยัน 2026-08-19: ลิงก์ที่มี & ต่อท้าย (…?station_id=X&lang=th&dl=true)
+    กดจาก Maximo แล้วเปิดไม่ได้ (401/404) พอเหลือ param เดียวก็เปิดได้ทันที
+    ทั้งที่ DOCINFO ฝั่ง Maximo เก็บ urlname ไว้ครบทุกตัวอักษร (ตรวจด้วย MXAPIDOCINFO)
+    ⇒ ตัวที่ทำพังอยู่ระหว่างทางฝั่งเขา ไม่ใช่ payload ที่เราส่ง
+
+    ตัดเฉพาะตอนยิงออกเท่านั้น ลิงก์ฝั่ง iMPS ยังเต็มเหมือนเดิม — param ตัวแรกคือ
+    ตัวที่ route /pdf ต้องใช้หาเอกสาร (sn/station_id) ที่เหลือเป็นของแต่ง
+    (lang/dl) ซึ่ง route มี default ให้อยู่แล้ว
+    """
+    base, sep, query = (url or "").partition("?")
+    if not sep or "&" not in query:
+        return url
+    first = query.split("&", 1)[0]
+    dropped = query.split("&", 1)[1]
+    log.info(f"  ✂️ ตัด query ออกจากลิงก์ก่อนส่งเข้า Maximo: {dropped}")
+    return f"{base}?{first}" if first else base
+
+
 async def attach_wo_link(
     wonum: str,
     url: str,
@@ -777,6 +799,7 @@ async def attach_wo_link(
     if not url:
         raise MaximoError("url is required")
 
+    url = maximo_safe_url(url)
     doc_name = (name or url.rsplit("/", 1)[-1] or "attachment")[:100]
     payload = [_clean({
         "_action": "AddChange",

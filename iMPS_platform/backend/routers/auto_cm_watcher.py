@@ -45,6 +45,10 @@ GUN_TEMP_DURATION_HOURS = int(os.getenv("GUN_TEMP_DURATION_HOURS", "24"))
 GUN_TEMP_SCAN_LIMIT = int(os.getenv("GUN_TEMP_SCAN_LIMIT", "5000"))
 CHECK_INTERVAL_SEC = int(os.getenv("CM_CHECK_INTERVAL", "60"))
 
+# ใบที่ระบบเปิดเองยังไม่ต้องเปิด SR ที่ Maximo — รอ EGAT พร้อมรับใบแบบ auto ก่อน
+# ค่อยตั้ง AUTO_CM_MAXIMO_SR=true (interface IN01–IN09 ยังยิงตามปกติตอนคนเดินใบต่อ)
+AUTO_CM_MAXIMO_SR_ENABLED = os.getenv("AUTO_CM_MAXIMO_SR", "false").lower() == "true"
+
 # ── Trigger 4+: Fault-based (PE CUT, IMD SELF CHECK, ...) ──
 PE_CUT_DAILY_THRESHOLD = int(os.getenv("PE_CUT_DAILY_THRESHOLD", "5"))
 PE_CUT_CONSEC_DAYS = int(os.getenv("PE_CUT_CONSEC_DAYS", "3"))
@@ -222,7 +226,7 @@ async def _create_auto_cm(
         insert_result = await coll.insert_one(cm_doc)
 
         maximo_loc = info.get("maximo_location", "")
-        if maximo_loc:
+        if AUTO_CM_MAXIMO_SR_ENABLED and maximo_loc:
             # ใช้รูปแบบเดียวกับการเปิด CM แบบ Manual:
             # [iMPS CM] สถานี / หมายเลขตู้หรือ S/N / รายละเอียดปัญหา
             charger_label = info.get("charger_no") or sn or faulty
