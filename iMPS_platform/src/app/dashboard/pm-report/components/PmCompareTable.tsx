@@ -131,7 +131,7 @@ function AfterCell({ pf, remark }: { pf?: string; remark?: string }) {
 }
 
 export default function PmCompareTable({
-  rows, lang, summaryPre, summaryPost, prePhotos, postPhotos, apiBase = "",
+  rows, lang, summaryPre, summaryPost, prePhotos, postPhotos, apiBase = "", photoKeysOf,
 }: {
   rows: CompareRow[];
   lang: Lang;
@@ -140,6 +140,14 @@ export default function PmCompareTable({
   prePhotos?: PhotoMap;
   postPhotos?: PhotoMap;
   apiBase?: string;
+  /**
+   * คีย์รูปของแถวนั้นใน photos_pre / photos
+   *
+   * ทั้ง 5 ฟอร์มตั้งคีย์รูปคนละสูตรกัน (บางอันยังคนละฐานกับคีย์คำตอบ) เดาจาก
+   * ตรงนี้ไม่ได้ ให้ฟอร์มที่รู้สูตรของตัวเองส่งเข้ามา
+   * คีย์ไหนไม่มีฟอร์มไหนอ้าง จะถูกยกไปรวมไว้ที่แถวรูปของข้อนั้นแทน ไม่หายไป
+   */
+  photoKeysOf?: (row: CompareRow) => string[];
 }) {
   // จัดเป็นข้อใหญ่แบบเดียวกับ PDF: รูปเป็นของทั้งข้อ ไม่ใช่ของข้อย่อยรายตัว
   const groups = React.useMemo(() => {
@@ -150,17 +158,34 @@ export default function PmCompareTable({
       if (last && last.title === title && last.qNo === r.qNo) last.items.push(r);
       else out.push({ key: `${title}#${r.key}`, title, qNo: r.qNo, items: [r] });
     });
+
+    const pick = (map: PhotoMap | undefined, keys: string[]) =>
+      keys.flatMap((k) => (map?.[k] ?? []).filter((p) => p?.url));
+
     return out
-      .map((g) => ({
-        ...g,
-        // ข้อย่อยที่ช่างไม่ได้ตอบอะไรเลยไม่ต้องโชว์ แต่ถ้ามีรูปของข้อนั้นก็ยังต้องเห็นข้อ
-        items: g.items.filter((r) =>
-          r.prePf || r.postPf || r.preRemark?.trim() || r.postRemark?.trim()),
-        pre: photosOfQuestion(prePhotos, g.qNo),
-        post: photosOfQuestion(postPhotos, g.qNo),
-      }))
+      .map((g) => {
+        const claimed = new Set<string>();
+        const items = g.items
+          .map((r) => {
+            const keys = photoKeysOf?.(r) ?? [];
+            keys.forEach((k) => claimed.add(k));
+            return { row: r, pre: pick(prePhotos, keys), post: pick(postPhotos, keys) };
+          })
+          // ข้อย่อยที่ไม่มีทั้งคำตอบ หมายเหตุ และรูป ไม่ต้องโชว์
+          .filter(({ row, pre, post }) =>
+            row.prePf || row.postPf || row.preRemark?.trim() || row.postRemark?.trim()
+            || pre.length > 0 || post.length > 0);
+
+        // รูปที่ไม่มีแถวไหนอ้าง = ฟอร์มนั้นเก็บรูปไว้ระดับข้อ ไม่ได้แยกรายข้อย่อย
+        const rest = (map: PhotoMap | undefined) =>
+          Object.entries(map ?? {})
+            .filter(([k]) => !claimed.has(k) && Number(k.match(/\d+/)?.[0]) === g.qNo)
+            .flatMap(([, v]) => (v ?? []).filter((p) => p?.url));
+
+        return { ...g, items, pre: rest(prePhotos), post: rest(postPhotos) };
+      })
       .filter((g) => g.items.length > 0 || g.pre.length > 0 || g.post.length > 0);
-  }, [rows, prePhotos, postPhotos]);
+  }, [rows, prePhotos, postPhotos, photoKeysOf]);
 
   return (
     <div className="tw-mx-auto tw-max-w-6xl tw-mb-6 tw-rounded-xl tw-border tw-border-blue-gray-100 tw-bg-white tw-shadow-sm tw-overflow-hidden">
@@ -218,17 +243,19 @@ export default function PmCompareTable({
                       </tr>
                     )}
 
-                    {g.items.map((r) => {
+                    {g.items.map(({ row: r, pre, post }) => {
                       // FAIL = ข้อที่ยังไม่ผ่านหลังทำ PM ต้องอ่านให้ละเอียดกว่าข้ออื่น
                       const failed = String(r.postPf ?? "").trim().toUpperCase() === "FAIL";
                       return (
                         <tr key={r.key} className={`tw-border-t tw-border-blue-gray-50 ${failed ? "tw-bg-red-50/60" : ""}`}>
                           <td className="tw-px-4 tw-py-2.5 tw-align-top tw-text-blue-gray-800">{r.label}</td>
-                          <td className="tw-px-4 tw-py-2.5 tw-align-top">
+                          <td className="tw-px-4 tw-py-2.5 tw-align-top tw-space-y-2">
                             <BeforeCell pf={r.prePf} remark={r.preRemark} lang={lang} />
+                            {pre.length > 0 && <Thumbs items={pre} apiBase={apiBase} lang={lang} />}
                           </td>
-                          <td className="tw-px-4 tw-py-2.5 tw-align-top">
+                          <td className="tw-px-4 tw-py-2.5 tw-align-top tw-space-y-2">
                             <AfterCell pf={r.postPf} remark={r.postRemark} />
+                            {post.length > 0 && <Thumbs items={post} apiBase={apiBase} lang={lang} />}
                           </td>
                         </tr>
                       );

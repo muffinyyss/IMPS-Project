@@ -3462,6 +3462,14 @@ export default function ChargerPMForm() {
     // ── ตารางเทียบก่อน/หลัง PM (โหมดตรวจอนุมัติ) ──
     // ใช้ state ที่โหลดเอกสารมาแล้ว: rowsPre = คำตอบก่อน PM, rows = หลัง PM
     // คีย์ที่ไม่ได้อยู่ใน QUESTIONS (ข้อย่อยแบบ r5_1) เอามาต่อท้ายด้วย จะได้ไม่ตกหล่น
+    // คีย์รูปของ charger: ข้อหลัก g{n} · ข้อย่อย g{n}_{idx} โดย idx เริ่มที่ 0
+    // ส่วนคีย์คำตอบใช้ subNo = idx + 1 คนละฐานกัน ต้องลบหนึ่งก่อนถึงจะตรงเส้น
+    const photoKeysOf = useCallback((row: { key: string }) => {
+        const m = row.key.match(/^r(\d+)_(\d+)$/);
+        if (m) return [`g${m[1]}_${Number(m[2]) - 1}`];
+        return [`g${row.key.replace(/^r/, "")}`];
+    }, []);
+
     const compareRows = useMemo(() => {
         // ป้ายหัวข้อต้องตรงกับที่ช่างเห็นตอนกรอก — ข้อย่อยอย่าง r3_1 ฟอร์มสร้างขึ้นมาเอง
         // ตอนรันไทม์ (ตามจำนวนหัวชาร์จ/ช่องของสถานีนั้น) ไม่ได้อยู่ใน QUESTIONS
@@ -3803,6 +3811,7 @@ export default function ChargerPMForm() {
                     prePhotos={cmpPhotos.pre}
                     postPhotos={cmpPhotos.post}
                     apiBase={API_BASE}
+                    photoKeysOf={photoKeysOf}
                     summaryPre={summaryPre}
                     summaryPost={summary}
                 />

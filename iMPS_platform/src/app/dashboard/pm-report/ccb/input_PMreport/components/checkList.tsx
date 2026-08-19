@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useRef, useState, useEffect } from "react";
+import React, { useMemo, useCallback, useRef, useState, useEffect } from "react";
 import {
     Button,
     Card,
@@ -2845,6 +2845,16 @@ export default function CCBPMReport() {
     // ── ตารางเทียบก่อน/หลัง PM (โหมดตรวจอนุมัติ) ──
     // ใช้ state ที่โหลดเอกสารมาแล้ว: rowsPre = คำตอบก่อน PM, rows = หลัง PM
     // คีย์ที่ไม่ได้อยู่ใน QUESTIONS (ข้อย่อยแบบ r5_1) เอามาต่อท้ายด้วย จะได้ไม่ตกหล่น
+    // คีย์รูปของ ccb ผ่าน getPhotoKeyForQuestion → toGroupKey:
+    // ข้อย่อย r3_1 → 31 → g3_1 · r10_sub2 → 102 → g10_2 · เมนเบรกเกอร์ r9 → 90 → g9
+    const photoKeysOf = useCallback((row: { key: string }) => {
+        const sub = row.key.match(/^r(\d+)_sub(\d+)$/);
+        if (sub) return [`g${sub[1]}_${sub[2]}`];
+        const m = row.key.match(/^r(\d+)_(\d+)$/);
+        if (m) return [`g${m[1]}_${m[2]}`];
+        return [`g${row.key.replace(/^r/, "")}`];
+    }, []);
+
     const compareRows = useMemo(() => {
         // ป้ายหัวข้อต้องตรงกับที่ช่างเห็นตอนกรอก — ข้อย่อยอย่าง r3_1 ฟอร์มสร้างขึ้นมาเอง
         // ตอนรันไทม์ (ตามจำนวนหัวชาร์จ/ช่องของสถานีนั้น) ไม่ได้อยู่ใน QUESTIONS
@@ -3138,6 +3148,7 @@ export default function CCBPMReport() {
                     prePhotos={cmpPhotos.pre}
                     postPhotos={cmpPhotos.post}
                     apiBase={API_BASE}
+                    photoKeysOf={photoKeysOf}
                     summaryPost={summary}
                 />
             )}

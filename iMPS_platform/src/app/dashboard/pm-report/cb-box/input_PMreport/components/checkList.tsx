@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useRef, useState, useEffect } from "react";
+import React, { useMemo, useCallback, useRef, useState, useEffect } from "react";
 import { Button, Input, Typography, Textarea, Tooltip } from "@material-tailwind/react";
 import { draftKey, saveDraftLocal, loadDraftLocal, clearDraftLocal } from "@/app/dashboard/pm-report/cb-box/input_PMreport/lib/draft";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
@@ -1551,6 +1551,9 @@ export default function CBBOXPMForm() {
     // ── ตารางเทียบก่อน/หลัง PM (โหมดตรวจอนุมัติ) ──
     // ใช้ state ที่โหลดเอกสารมาแล้ว: rowsPre = คำตอบก่อน PM, rows = หลัง PM
     // คีย์ที่ไม่ได้อยู่ใน QUESTIONS (ข้อย่อยแบบ r5_1) เอามาต่อท้ายด้วย จะได้ไม่ตกหล่น
+    // cb-box ไม่มีข้อย่อย รูปผูกกับข้อหลักตรงๆ
+    const photoKeysOf = useCallback((row: { key: string }) => [`g${row.key.replace(/^r/, "")}`], []);
+
     const compareRows = useMemo(() => {
         // ป้ายหัวข้อต้องตรงกับที่ช่างเห็นตอนกรอก — ข้อย่อยอย่าง r3_1 ฟอร์มสร้างขึ้นมาเอง
         // ตอนรันไทม์ (ตามจำนวนหัวชาร์จ/ช่องของสถานีนั้น) ไม่ได้อยู่ใน QUESTIONS
@@ -1805,6 +1808,7 @@ export default function CBBOXPMForm() {
                     prePhotos={cmpPhotos.pre}
                     postPhotos={cmpPhotos.post}
                     apiBase={API_BASE}
+                    photoKeysOf={photoKeysOf}
                     summaryPost={summary}
                 />
             )}
