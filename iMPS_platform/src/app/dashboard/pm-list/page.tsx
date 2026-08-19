@@ -21,6 +21,7 @@ import { apiFetch } from "@/utils/api";
 import useLanguage from "@/utils/useLanguage";
 import { PM_ORIGIN_LIST } from "@/app/dashboard/pm-report/lib/origin";
 import { PM_PLANNING_ROLES } from "@/app/dashboard/pm-report/components/planning";
+import { PM_APPROVE_ROLES } from "@/app/dashboard/pm-report/components/flow";
 
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 500;
@@ -314,6 +315,9 @@ export default function PMListPage() {
     // ส่วนคนที่วางแผนไม่ได้ (ช่าง) ไปหน้าข้อมูลใบงานที่มีปุ่ม "เริ่ม PM"
     // from= ให้ปุ่มย้อนกลับในฟอร์มรู้ว่าต้องพากลับมาหน้านี้ ไม่ใช่ตาราง tab
     const canPlan = PM_PLANNING_ROLES.includes(me?.role ?? "");
+    // สิทธิ์อนุมัติแคบกว่าสิทธิ์วางแผน (owner วางแผนได้ แต่อนุมัติไม่ได้)
+    // ใช้ชุดเดียวกับที่ backend เช็ค ไม่งั้นโชว์ปุ่มแล้วกดไปโดน 403
+    const canApprove = PM_APPROVE_ROLES.includes(me?.role ?? "");
     const params = r.kind === "wo"
       ? new URLSearchParams({
           tab, view: "form", wonum: r.wonum || r.id, from: PM_ORIGIN_LIST,
@@ -322,7 +326,7 @@ export default function PMListPage() {
       // ใบที่รออนุมัติ + เป็นผู้อนุมัติ → เปิดโหมดตรวจ (เห็นของที่ช่างกรอก + ปุ่มอนุมัติ/ตีกลับ)
       : new URLSearchParams({
           tab, view: "form", edit_id: r.id, from: PM_ORIGIN_LIST,
-          ...(canPlan && stageOf(r) === "wait_approve" ? { approve: "1", pmtab: "post" } : {}),
+          ...(canApprove && stageOf(r) === "wait_approve" ? { approve: "1", pmtab: "post" } : {}),
         });
     if (tab === "charger" && r.sn && r.sn !== "-") params.set("sn", r.sn);
     else if (r.station_id) params.set("station_id", r.station_id);
