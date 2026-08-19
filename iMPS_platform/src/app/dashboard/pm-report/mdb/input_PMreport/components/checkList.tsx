@@ -1076,8 +1076,8 @@ export default function MDBPMForm() {
 
     // รหัสที่ช่างเลือกไว้ต้องโชว์ได้เสมอ ถึงรายชื่อจาก Maximo จะโหลดไม่ขึ้น
     // (เน็ตหลุด / สิทธิ์ไม่ถึง) ไม่งั้นหน้าอนุมัติจะกลายเป็นว่าไม่ได้เลือกใครเลย
-    const laborList: { laborcode: string; name: string; needs_name?: boolean }[] = useMemo(() => {
-        const have = new Set(laborList.map((o) => o.laborcode));
+    const laborList = useMemo(() => {
+        const have = new Set(laborOptions.map((o) => o.laborcode));
         const missing = maximoLabor.filter((c) => !have.has(c)).map((c) => ({ laborcode: c, name: c }));
         return missing.length ? [...laborOptions, ...missing] : laborOptions;
     }, [laborOptions, maximoLabor]);
@@ -2583,7 +2583,7 @@ export default function MDBPMForm() {
                                 <p className="tw-text-xs tw-text-orange-600">{t("maximoLaborEmpty", lang)}</p>
                             ) : (
                                 <div className="tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-divide-y tw-divide-blue-gray-50 tw-max-h-56 tw-overflow-y-auto">
-                                    {laborOptions.map((o) => (
+                                    {laborList.map((o) => (
                                         <label key={o.laborcode} className="tw-flex tw-items-center tw-gap-2.5 tw-px-3 tw-py-2.5 tw-cursor-pointer hover:tw-bg-blue-gray-50/60 tw-transition-colors">
                                             <input type="checkbox" checked={maximoLabor.includes(o.laborcode)}
                                                 onChange={() => toggleMaximoLabor(o.laborcode)}
