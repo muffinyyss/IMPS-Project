@@ -2249,25 +2249,6 @@ export default function StationPMReport() {
             </form>
             {/* เทียบผลก่อน/หลังของหัวข้อเดียวกันในบรรทัดเดียว */}
             {reviewMode && editId && (
-                <div className="tw-mx-auto tw-max-w-6xl tw-mb-4">
-                    <PMValidationCard
-                                lang={lang}
-                                displayTab={displayTab}
-                                isPostMode={isPostMode}
-                                allPhotosAttached={allPhotosAttached}
-                                missingPhotoItems={missingPhotoItems}
-                                allRemarksFilledPre={allRemarksFilledPre}
-                                missingRemarksPre={missingRemarksPre}
-                                allPFAnswered={allPFAnswered}
-                                missingPFItems={missingPFItems}
-                                allRemarksFilledPost={allRemarksFilledPost}
-                                missingRemarksPost={missingRemarksPost}
-                                isSummaryFilled={isSummaryFilled}
-                                isSummaryCheckFilled={isSummaryCheckFilled}
-                            />
-                </div>
-            )}
-            {reviewMode && editId && (
                 <PmCompareTable
                     rows={compareRows}
                     lang={lang}

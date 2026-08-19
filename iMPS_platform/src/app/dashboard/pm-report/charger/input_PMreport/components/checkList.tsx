@@ -3754,27 +3754,6 @@ export default function ChargerPMForm() {
             <BackgroundUploadBanner lang={lang} />
             {/* เทียบผลก่อน/หลังของหัวข้อเดียวกันในบรรทัดเดียว */}
             {reviewMode && editId && (
-                <div className="tw-mx-auto tw-max-w-6xl tw-mb-4">
-                    <PMValidationCard
-                                lang={lang}
-                                displayTab={displayTab}
-                                isPostMode={isPostMode}
-                                allPhotosAttached={allPhotosAttached}
-                                missingPhotoItems={missingPhotoItems}
-                                allRequiredInputsFilled={allRequiredInputsFilled}
-                                missingInputsDetailed={missingInputsDetailed}
-                                allRemarksFilledPre={allRemarksFilledPre}
-                                missingRemarksPre={missingRemarksPre}
-                                allPFAnsweredPost={allPFAnsweredPost}
-                                missingPFItemsPost={missingPFItemsPost}
-                                allRemarksFilledPost={allRemarksFilledPost}
-                                missingRemarksPost={missingRemarksPost}
-                                isSummaryFilled={isSummaryFilled}
-                                isSummaryCheckFilled={isSummaryCheckFilled}
-                            />
-                </div>
-            )}
-            {reviewMode && editId && (
                 <PmCompareTable
                     rows={compareRows}
                     lang={lang}
