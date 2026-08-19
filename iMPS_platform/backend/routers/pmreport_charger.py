@@ -22,7 +22,7 @@ from config import (
 )
 from deps import UserClaims, get_current_user
 from routers import pm_flow
-from services import pm_maximo_out
+from services import pm_maximo_out, pm_pdf
 from uploads_access import assert_station_access, assert_sn_access
 from routers.pm_helpers import (
     UPLOADS_ROOT,
@@ -862,16 +862,20 @@ async def pmreport_approve(
     fresh = await coll.find_one({"_id": oid}) or {}
 
     # ใบงาน Maximo 1 ใบครอบหลายอุปกรณ์ — ปิดครบทุกตัวก่อนถึงจะยิงปิด WO
+    # ใบงานปิดแล้ว = เนื้อหานิ่ง สร้าง PDF เก็บไว้เลยตั้งแต่ตอนนี้
+    # ลิงก์ที่ IN03 แนบเข้า Maximo จะได้เปิดปุ๊บได้ไฟล์ ไม่ใช่ให้คนกดเป็นคนรอเรนเดอร์
+    pdf_result = await pm_pdf.ensure_report_pdf("charger", sn, report_id)
+
     progress = await pm_flow.wo_completion(fresh.get("wonum") or "")
     if not progress["complete"]:
-        return {"ok": True, "status": PM_STATUS_CLOSED,
+        return {"ok": True, "status": PM_STATUS_CLOSED, "pdf": pdf_result,
                 "maximo": {"skipped": "ยังกรอกไม่ครบทุกอุปกรณ์ในใบงาน"}, "progress": progress}
 
     maximo_result = await pm_maximo_out.safe_sync_closed(
         coll, oid, fresh, memo=f"closed by {current.username}"
     )
 
-    return {"ok": True, "status": PM_STATUS_CLOSED, "maximo": maximo_result, "progress": progress}
+    return {"ok": True, "status": PM_STATUS_CLOSED, "pdf": pdf_result, "maximo": maximo_result, "progress": progress}
 
 
 class PMRejectIn(BaseModel):
