@@ -809,7 +809,9 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     if (!row.id) return;
     const params = new URLSearchParams(searchParams.toString());
     params.set("view", "form"); params.set("edit_id", row.id);
-    params.set("approve", "1"); params.set("pmtab", "post");
+    // ฟอร์มดู action=post เป็นตัวตัดสินโหมด ไม่ใช่ pmtab — ขาดตัวนี้จะเปิดเป็น Pre-PM
+    // แล้วไม่เห็นสิ่งที่ช่างกรอกฝั่ง Post เลย
+    params.set("approve", "1"); params.set("action", "post"); params.set("pmtab", "post");
     params.delete("planning"); params.delete("wo_info"); params.delete("wonum");
     router.push(`${pathname}?${params.toString()}`, { scroll: false });
   };
