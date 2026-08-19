@@ -4,8 +4,12 @@
  * ตารางเทียบผลตรวจ "ก่อน PM" กับ "หลัง PM" ของหัวข้อเดียวกัน
  *
  * ใช้ในโหมดตรวจเพื่ออนุมัติ — เดิมผู้อนุมัติต้องสลับแท็บไปมาแล้วจำเอาเองว่า
- * ข้อไหนก่อนเป็นอะไร หลังเป็นอะไร ตารางนี้วางคู่กันให้เห็นในบรรทัดเดียว
- * และไฮไลต์ข้อที่ผลเปลี่ยน (เช่น FAIL → PASS หรือแย่ลง)
+ * ข้อไหนก่อนกรอกอะไร หลังกรอกอะไร ตารางนี้วางคู่กันในบรรทัดเดียว
+ *
+ * โครงข้อมูลสองฝั่งไม่เหมือนกัน:
+ *   ก่อน PM  = รูป + หมายเหตุ (ไม่มี PASS/FAIL — มีได้แค่ NA ว่าไม่เกี่ยวข้อง)
+ *   หลัง PM  = รูป + หมายเหตุ + PASS/FAIL
+ * จึงไม่เทียบ pf สองฝั่งกัน แต่ไฮไลต์ข้อที่หลัง PM เป็น FAIL ให้เห็นชัดแทน
  */
 
 import React from "react";
@@ -23,12 +27,14 @@ export type CompareRow = {
 const T = {
   title: { th: "เทียบผลก่อน / หลัง PM", en: "Before / after PM comparison" },
   hint: {
-    th: "แถวที่ผลเปลี่ยนจะถูกไฮไลต์ไว้ — ข้อที่ยังไม่ได้ตอบจะขึ้นเป็น “—”",
-    en: "Rows where the result changed are highlighted — unanswered items show “—”",
+    th: "ก่อน PM มีแค่หมายเหตุกับรูป · หลัง PM ถึงมีผล PASS/FAIL — ข้อที่ผลเป็น FAIL ถูกไฮไลต์ไว้",
+    en: "Before PM has notes and photos only · PASS/FAIL comes after PM — failed items are highlighted",
   },
   item: { th: "หัวข้อ", en: "Item" },
-  before: { th: "ก่อน PM", en: "Before PM" },
-  after: { th: "หลัง PM", en: "After PM" },
+  before: { th: "ก่อน PM (หมายเหตุ)", en: "Before PM (notes)" },
+  after: { th: "หลัง PM (ผล + หมายเหตุ)", en: "After PM (result + notes)" },
+  na: { th: "ไม่เกี่ยวข้อง", en: "N/A" },
+  noNote: { th: "ไม่มีหมายเหตุ", en: "No note" },
   summary: { th: "สรุปผล", en: "Summary" },
   empty: { th: "ยังไม่มีข้อมูลให้เทียบ", en: "Nothing to compare yet" },
 } as const;
@@ -43,7 +49,25 @@ function pfClass(pf?: string) {
   return "tw-bg-gray-50 tw-text-gray-400";
 }
 
-function Pf({ pf, remark }: { pf?: string; remark?: string }) {
+/** ฝั่งก่อน PM — ไม่มี PASS/FAIL มีแต่หมายเหตุ (NA = ทำเครื่องหมายว่าไม่เกี่ยวข้อง) */
+function BeforeCell({ pf, remark, lang }: { pf?: string; remark?: string; lang: Lang }) {
+  const isNA = String(pf ?? "").trim().toUpperCase() === "NA";
+  return (
+    <div className="tw-space-y-1">
+      {isNA && (
+        <span className="tw-inline-block tw-rounded tw-bg-gray-100 tw-px-2 tw-py-0.5 tw-text-xs tw-font-semibold tw-text-gray-600">
+          {t("na", lang)}
+        </span>
+      )}
+      <p className={`tw-text-xs tw-break-words ${remark?.trim() ? "tw-text-blue-gray-600" : "tw-text-blue-gray-300"}`}>
+        {remark?.trim() || t("noNote", lang)}
+      </p>
+    </div>
+  );
+}
+
+/** ฝั่งหลัง PM — มีผล PASS/FAIL/NA พร้อมหมายเหตุ */
+function AfterCell({ pf, remark }: { pf?: string; remark?: string }) {
   const v = String(pf ?? "").trim();
   return (
     <div className="tw-space-y-1">
@@ -65,7 +89,8 @@ export default function PmCompareTable({
   summaryPre?: string;
   summaryPost?: string;
 }) {
-  const shown = rows.filter((r) => r.prePf || r.postPf || r.preRemark || r.postRemark);
+  // ฝั่งก่อน PM ไม่มี pf จึงต้องดูหมายเหตุด้วย ไม่งั้นข้อที่ช่างจดไว้ก่อนทำจะหายไป
+  const shown = rows.filter((r) => r.prePf || r.postPf || r.preRemark?.trim() || r.postRemark?.trim());
 
   return (
     <div className="tw-mx-auto tw-max-w-6xl tw-mb-6 tw-rounded-xl tw-border tw-border-blue-gray-100 tw-bg-white tw-shadow-sm tw-overflow-hidden">
@@ -88,14 +113,13 @@ export default function PmCompareTable({
             </thead>
             <tbody>
               {shown.map((r) => {
-                // ผลเปลี่ยน = ต้องอ่านให้ละเอียดกว่าข้ออื่น
-                const changed =
-                  String(r.prePf ?? "").toUpperCase() !== String(r.postPf ?? "").toUpperCase();
+                // FAIL = ข้อที่ยังไม่ผ่านหลังทำ PM ต้องอ่านให้ละเอียดกว่าข้ออื่น
+                const failed = String(r.postPf ?? "").trim().toUpperCase() === "FAIL";
                 return (
-                  <tr key={r.key} className={`tw-border-t tw-border-blue-gray-50 ${changed ? "tw-bg-amber-50/60" : ""}`}>
+                  <tr key={r.key} className={`tw-border-t tw-border-blue-gray-50 ${failed ? "tw-bg-red-50/60" : ""}`}>
                     <td className="tw-px-4 tw-py-2.5 tw-text-blue-gray-800">{r.label}</td>
-                    <td className="tw-px-4 tw-py-2.5"><Pf pf={r.prePf} remark={r.preRemark} /></td>
-                    <td className="tw-px-4 tw-py-2.5"><Pf pf={r.postPf} remark={r.postRemark} /></td>
+                    <td className="tw-px-4 tw-py-2.5"><BeforeCell pf={r.prePf} remark={r.preRemark} lang={lang} /></td>
+                    <td className="tw-px-4 tw-py-2.5"><AfterCell pf={r.postPf} remark={r.postRemark} /></td>
                   </tr>
                 );
               })}
