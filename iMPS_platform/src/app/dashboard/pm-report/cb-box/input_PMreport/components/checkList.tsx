@@ -1532,12 +1532,26 @@ export default function CBBOXPMForm() {
     // ใช้ state ที่โหลดเอกสารมาแล้ว: rowsPre = คำตอบก่อน PM, rows = หลัง PM
     // คีย์ที่ไม่ได้อยู่ใน QUESTIONS (ข้อย่อยแบบ r5_1) เอามาต่อท้ายด้วย จะได้ไม่ตกหล่น
     const compareRows = useMemo(() => {
-        const labelOf = (key: string) => {
-            const q: any = (QUESTIONS as any[]).find((x: any) => x?.key === key);
-            if (!q) return key;
-            try { return getQuestionLabel(q, "post" as any, lang); }
-            catch { return q?.label?.[lang] ?? q?.label ?? key; }
+        // ป้ายหัวข้อต้องตรงกับที่ช่างเห็นตอนกรอก — ข้อย่อยอย่าง r3_1 ฟอร์มสร้างขึ้นมาเอง
+        // ตอนรันไทม์ (ตามจำนวนหัวชาร์จ/ช่องของสถานีนั้น) ไม่ได้อยู่ใน QUESTIONS
+        // ถ้าไม่ไล่เก็บจากแหล่งเดียวกับที่ฟอร์มใช้ ตารางจะโชว์เป็นคีย์ดิบ
+        const textOf = (l: any): string =>
+            typeof l === "string" ? l
+                : l && typeof l === "object" ? (l[lang] ?? l.th ?? l.en ?? "") : "";
+        const labels = new Map<string, string>();
+        const put = (k: any, v: any) => {
+            const text = textOf(v);
+            if (typeof k === "string" && text.trim() && !labels.has(k)) labels.set(k, text.trim());
         };
+        const labelOfItem = (it: any) =>
+            it?.label !== undefined ? it.label : it?.labelKey ? (t as any)(it.labelKey, lang) : "";
+        (QUESTIONS as any[]).forEach((q: any) => {
+            put(q?.key, labelOfItem(q));
+            (q?.items ?? []).forEach((it: any) => put(it?.key, labelOfItem(it)));
+        });
+        ([] as any[]).forEach((arr: any) =>
+            (arr ?? []).forEach((it: any) => put(it?.key, labelOfItem(it))));
+        const labelOf = (key: string) => labels.get(key) ?? key;
         // เรียงตามลำดับข้อในฟอร์มกรอก ข้อย่อยที่ช่างเพิ่มเอง (r5_1, r5_2)
         // ต้องต่อท้ายข้อแม่ของมัน ไม่ใช่ไปกองรวมกันท้ายตาราง
         const answered = Array.from(new Set([...Object.keys(rowsPre ?? {}), ...Object.keys(rows ?? {})]));
