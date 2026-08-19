@@ -1989,11 +1989,20 @@ export default function StationPMReport() {
             try { return getQuestionLabel(q, "post" as any, lang); }
             catch { return q?.label?.[lang] ?? q?.label ?? key; }
         };
+        // เรียงตามลำดับข้อในฟอร์มกรอก ข้อย่อยที่ช่างเพิ่มเอง (r5_1, r5_2)
+        // ต้องต่อท้ายข้อแม่ของมัน ไม่ใช่ไปกองรวมกันท้ายตาราง
+        const answered = Array.from(new Set([...Object.keys(rowsPre ?? {}), ...Object.keys(rows ?? {})]));
+        const subNo = (k: string) => Number(k.split("_")[1] ?? 0) || 0;
         const keys: string[] = [];
-        (QUESTIONS as any[]).forEach((q: any) => { if (q?.key) keys.push(q.key); });
-        [...Object.keys(rowsPre ?? {}), ...Object.keys(rows ?? {})].forEach((k) => {
-            if (!keys.includes(k)) keys.push(k);
+        (QUESTIONS as any[]).forEach((q: any) => {
+            if (!q?.key) return;
+            keys.push(q.key);
+            answered
+                .filter((k) => k !== q.key && k.split("_")[0] === q.key)
+                .sort((a, b) => subNo(a) - subNo(b))
+                .forEach((k) => keys.push(k));
         });
+        answered.forEach((k) => { if (!keys.includes(k)) keys.push(k); });
         return keys.map((k) => ({
             key: k,
             label: labelOf(k),
@@ -2010,31 +2019,37 @@ export default function StationPMReport() {
                 <Button variant="outlined" size="sm" onClick={() => router.back()} title={t("backToList", lang)}>
                     <ArrowLeftIcon className="tw-w-4 tw-h-4 tw-stroke-gray-900 tw-stroke-2" />
                 </Button>
-                <Tabs value={displayTab} key={displayTab}>
-                    <TabsHeader className="tw-bg-gray-50 tw-rounded-lg">
-                        {TABS.map((tb) => {
-                            const isPreDisabled = isPostMode && tb.id === "pre";
-                            const isLockedAfter = tb.id === "post" && !canGoAfter;
-                            return (
-                                <Tab
-                                    key={tb.id}
-                                    value={tb.id}
-                                    disabled={isPreDisabled || isLockedAfter}
-                                    onClick={() => {
-                                        if (isPreDisabled) return;
-                                        if (isLockedAfter) { alert(t("alertFillPreFirst", lang)); return; }
-                                        go(tb.id);
-                                    }}
-                                    className={`tw-px-4 tw-py-2 tw-font-medium ${isPreDisabled || isLockedAfter ? "tw-opacity-50 tw-cursor-not-allowed" : ""}`}>
-                                    {tb.label}
-                                </Tab>
-                            );
-                        })}
-                    </TabsHeader>
-                </Tabs>
+                {!reviewMode && (
+                    <Tabs value={displayTab} key={displayTab}>
+                        <TabsHeader className="tw-bg-gray-50 tw-rounded-lg">
+                            {TABS.map((tb) => {
+                                const isPreDisabled = isPostMode && tb.id === "pre";
+                                const isLockedAfter = tb.id === "post" && !canGoAfter;
+                                return (
+                                    <Tab
+                                        key={tb.id}
+                                        value={tb.id}
+                                        disabled={isPreDisabled || isLockedAfter}
+                                        onClick={() => {
+                                            if (isPreDisabled) return;
+                                            if (isLockedAfter) { alert(t("alertFillPreFirst", lang)); return; }
+                                            go(tb.id);
+                                        }}
+                                        className={`tw-px-4 tw-py-2 tw-font-medium ${isPreDisabled || isLockedAfter ? "tw-opacity-50 tw-cursor-not-allowed" : ""}`}>
+                                        {tb.label}
+                                    </Tab>
+                                );
+                            })}
+                        </TabsHeader>
+                    </Tabs>
+                )}
             </div>
 
-            <form action="#" noValidate onSubmit={(e) => { e.preventDefault(); return false; }} onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }}>
+            {/* โหมดตรวจ: ฟอร์มกรอกไม่ต้องโชว์ ดูจากตารางเทียบก่อน/หลังด้านล่างแทน
+
+                แต่ยังต้อง mount ไว้ ค่าที่คำนวณจากฟอร์ม (ความครบถ้วน, สรุป) ใช้ต่อข้างล่าง */}
+
+            <form action="#" noValidate onSubmit={(e) => { e.preventDefault(); return false; }} onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }} className={reviewMode ? "tw-hidden" : undefined}>
                 {/* ดูอย่างเดียว: fieldset ปิดทั้งช่องกรอกและปุ่มบันทึกในทีเดียว */}
                 <fieldset disabled={reviewMode} className="pm-readonly tw-m-0 tw-min-w-0 tw-border-0 tw-p-0">
                 <div className="tw-mx-auto tw-max-w-6xl tw-bg-white tw-border tw-border-blue-gray-100 tw-rounded-xl tw-shadow-sm tw-p-6 md:tw-p-8 tw-print:tw-shadow-none tw-print:tw-border-0">
@@ -2220,12 +2235,37 @@ export default function StationPMReport() {
             </form>
             {/* เทียบผลก่อน/หลังของหัวข้อเดียวกันในบรรทัดเดียว */}
             {reviewMode && editId && (
+                <div className="tw-mx-auto tw-max-w-6xl tw-mb-4">
+                    <PMValidationCard
+                                lang={lang}
+                                displayTab={displayTab}
+                                isPostMode={isPostMode}
+                                allPhotosAttached={allPhotosAttached}
+                                missingPhotoItems={missingPhotoItems}
+                                allRemarksFilledPre={allRemarksFilledPre}
+                                missingRemarksPre={missingRemarksPre}
+                                allPFAnswered={allPFAnswered}
+                                missingPFItems={missingPFItems}
+                                allRemarksFilledPost={allRemarksFilledPost}
+                                missingRemarksPost={missingRemarksPost}
+                                isSummaryFilled={isSummaryFilled}
+                                isSummaryCheckFilled={isSummaryCheckFilled}
+                            />
+                </div>
+            )}
+            {reviewMode && editId && (
                 <PmCompareTable
                     rows={compareRows}
                     lang={lang}
                     prePhotos={cmpPhotos.pre}
                     postPhotos={cmpPhotos.post}
                     apiBase={API_BASE}
+                    docNo={docName}
+                    assetLabel={stationId ?? ""}
+                    workStart={workStart}
+                    workFinish={workFinish}
+                    labor={laborOptions.filter((o) => maximoLabor.includes(o.laborcode))}
+                    contractor={maximoContractor}
                     summaryPost={summary}
                 />
             )}
