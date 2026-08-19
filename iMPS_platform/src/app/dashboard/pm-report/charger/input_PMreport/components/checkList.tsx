@@ -2218,6 +2218,14 @@ export default function ChargerPMForm() {
         setMaximoLabor(prev => prev.includes(code) ? prev.filter(c => c !== code) : [...prev, code]);
 
     // ติ๊กรหัสกลางของผู้รับเหมาไว้ = ต้องมีชื่อจริงกำกับ
+
+    // รหัสที่ช่างเลือกไว้ต้องโชว์ได้เสมอ ถึงรายชื่อจาก Maximo จะโหลดไม่ขึ้น
+    // (เน็ตหลุด / สิทธิ์ไม่ถึง) ไม่งั้นหน้าอนุมัติจะกลายเป็นว่าไม่ได้เลือกใครเลย
+    const laborList: { laborcode: string; name: string; needs_name?: boolean }[] = useMemo(() => {
+        const have = new Set(laborList.map((o) => o.laborcode));
+        const missing = maximoLabor.filter((c) => !have.has(c)).map((c) => ({ laborcode: c, name: c }));
+        return missing.length ? [...laborOptions, ...missing] : laborOptions;
+    }, [laborOptions, maximoLabor]);
     const contractorPicked = laborOptions.some((o) => o.needs_name && maximoLabor.includes(o.laborcode));
     const contractorMissing = contractorPicked && !maximoContractor.trim();
 
@@ -2475,6 +2483,12 @@ export default function ChargerPMForm() {
                 // สรุปผล/หมายเหตุเดิมอ่านจาก draft ในเครื่องอย่างเดียว คนที่ไม่ได้เป็นคนกรอก
                 // (ผู้อนุมัติ) จึงเปิดมาเจอช่องว่าง ต้องดึงจากตัวเอกสารด้วย
                 if (reviewMode) {
+                    // เวลาทำงาน/laborcode ก็เก็บอยู่ใน draft ของเครื่องช่างเหมือนกัน
+                    // ผู้อนุมัติต้องอ่านจากตัวเอกสาร ไม่งั้นเห็นเป็นช่องว่าง
+                    if (typeof data.work_start === "string") setWorkStart(data.work_start);
+                    if (typeof data.work_finish === "string") setWorkFinish(data.work_finish);
+                    if (Array.isArray(data.maximo_labor)) setMaximoLabor(data.maximo_labor);
+                    if (typeof data.maximo_contractor === "string") setMaximoContractor(data.maximo_contractor);
                     if (typeof data.summary_pre === "string") setSummaryPre(data.summary_pre);
                     if (typeof data.summary === "string") setSummary(data.summary);
                     if (data.summaryCheck) setSummaryCheck(data.summaryCheck as PF);
@@ -3604,7 +3618,7 @@ export default function ChargerPMForm() {
                                             <Typography variant="h6" className="tw-text-sm sm:tw-text-base">{t("maximoLabor", lang)}</Typography>
                                             <Typography variant="small" className="tw-text-xs tw-font-normal tw-text-blue-gray-400">{t("maximoLaborHint", lang)}</Typography>
                                         </div>
-                                        {laborOptions.length === 0 ? (
+                                        {laborList.length === 0 ? (
                                             <p className="tw-text-xs tw-text-orange-600">{t("maximoLaborEmpty", lang)}</p>
                                         ) : (
                                             <div className="tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-divide-y tw-divide-blue-gray-50 tw-max-h-56 tw-overflow-y-auto">
@@ -3619,7 +3633,7 @@ export default function ChargerPMForm() {
                                                 ))}
                                             </div>
                                         )}
-                                        {contractorPicked && (
+                                        {(contractorPicked || (reviewMode && !!maximoContractor.trim())) && (
                                             <div className="tw-mt-3 tw-space-y-1.5">
                                                 <label className="tw-block tw-text-xs tw-font-semibold tw-text-blue-gray-700">
                                                     {t("contractorName", lang)} <span className="tw-text-red-500">*</span>
