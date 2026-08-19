@@ -37,6 +37,10 @@ import MDBPMForm from "@/app/dashboard/pm-report/mdb/input_PMreport/components/c
 import { apiFetch } from "@/utils/api";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
 
+// ใบที่เปิดดูหน้าตรวจได้: รออนุมัติ (ยังตัดสินใจได้) และปิดแล้ว (ดูย้อนหลัง)
+const REVIEWABLE: ReturnType<typeof toPmFlow>[] = ["wait_approve", "closed"];
+
+
 // ==================== TRANSLATIONS ====================
 const T = {
   pageTitle: { th: "Preventive Maintenance Checklist - MDB", en: "Preventive Maintenance Checklist - MDB" },
@@ -411,6 +415,12 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
   };
 
   const leaveWoInfo = () => {
+    // มาจากหน้า PM List → กลับไปหน้านั้น ไม่ใช่ตาราง tab ที่ผู้ใช้ไม่เคยเปิด
+    const back = pmBackRoute(searchParams);
+    if (back) {
+      router.push(back);
+      return;
+    }
     const params = new URLSearchParams(searchParams.toString());
     ["view", "wo_info", "wonum", "started", "pmtab"].forEach((k) => params.delete(k));
     router.push(`${pathname}?${params.toString()}`, { scroll: false });
@@ -441,9 +451,10 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
     params.set("view", "form"); params.set("edit_id", row.id);
     // ฟอร์มดู action=post เป็นตัวตัดสินโหมด ไม่ใช่ pmtab — ขาดตัวนี้จะเปิดเป็น Pre-PM
     // แล้วไม่เห็นสิ่งที่ช่างกรอกฝั่ง Post เลย
-    // ผู้มีสิทธิ์อนุมัติ → โหมดอนุมัติ (มีปุ่ม Reject/Approve)
-    // คนอื่นรวมถึงช่างเจ้าของงาน → โหมดดูอย่างเดียว เห็นข้อมูลชุดเดียวกัน
-    params.set(canApprove ? "approve" : "review", "1");
+    // โหมดอนุมัติ (มีปุ่ม Reject/Approve) เฉพาะผู้มีสิทธิ์ + ใบที่ยังรออนุมัติอยู่
+    // ใบที่ปิดไปแล้วไม่มีอะไรให้ตัดสินใจ เปิดดูอย่างเดียวเหมือนกันทุก role
+    const canDecide = canApprove && toPmFlow(row) === "wait_approve";
+    params.set(canDecide ? "approve" : "review", "1");
     params.set("action", "post"); params.set("pmtab", "post");
     params.delete("planning"); params.delete("wo_info"); params.delete("wonum");
     router.push(`${pathname}?${params.toString()}`, { scroll: false });
@@ -643,7 +654,8 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
                 </>
               )}
               {/* ยังไม่มีสิทธิ์อนุมัติ (เช่นช่างเจ้าของงาน) → เปิดดูใบเดิมได้แบบอ่านอย่างเดียว */}
-              {!canApprove && toPmFlow(info.row.original) === "wait_approve" && (
+              {REVIEWABLE.includes(toPmFlow(info.row.original))
+                && !(canApprove && toPmFlow(info.row.original) === "wait_approve") && (
                 <Button size="sm" color="blue-gray" variant="outlined"
                   className="tw-shrink-0 tw-text-[10px] sm:tw-text-xs tw-px-2 sm:tw-px-3 tw-py-1 tw-min-h-0 tw-h-auto tw-font-medium tw-rounded-md"
                   onClick={() => goReview(info.row.original)}>{t("viewReport", lang)}</Button>

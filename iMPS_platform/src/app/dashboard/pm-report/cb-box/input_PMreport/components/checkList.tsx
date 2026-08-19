@@ -13,6 +13,7 @@ import { putPhoto, getPhotoByDbKey, delPhoto, type PhotoRef } from "../lib/draft
 import { isFileReadable, isImageDecodable, resolveUsableFile, reportMissingDraftPhoto, reportPhotoStorageFailure } from "@/utils/upload-safety";
 import { collectPending, unrecoverablePhotos, expectedCountByGroup, findShortfall, shortfallMessage, pendingMessage, unrecoverableMessage } from "@/utils/pm-photo-sync";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
+import { pmBackRoute } from "@/app/dashboard/pm-report/lib/origin";
 
 const T = {
     pageTitle: { th: "Preventive Maintenance Checklist - Safety Switch / Circuit Breaker - Box", en: "Preventive Maintenance Checklist - Safety Switch / Circuit Breaker - Box" },
@@ -952,6 +953,15 @@ export default function CBBOXPMForm() {
     const router = useRouter();
     const pathname = usePathname();
     const searchParams = useSearchParams();
+
+    // ปุ่มย้อนกลับ: เปิดมาจากหน้า PM List ให้กลับไปหน้านั้นตรงๆ
+    // router.back() ใช้ไม่ได้ เพราะสลับ pmtab ในฟอร์มก็ดันประวัติเพิ่มทุกครั้ง
+    // กดกลับเลยแค่ถอยการสลับแท็บ ไม่ได้ออกจากใบงาน
+    const goBackToList = useCallback(() => {
+        const back = pmBackRoute(searchParams);
+        if (back) router.push(back);
+        else router.back();
+    }, [router, searchParams]);
     const editId = searchParams.get("edit_id") ?? "";
     const action = searchParams.get("action");
     const isPostMode = action === "post";
@@ -1634,7 +1644,7 @@ export default function CBBOXPMForm() {
     return (
         <section className="tw-pb-24">
             <div className="tw-mx-auto tw-max-w-6xl tw-flex tw-items-center tw-justify-between tw-mb-4">
-                <Button variant="outlined" size="sm" onClick={() => router.back()} title={t("backToList", lang)}><ArrowLeftIcon className="tw-w-4 tw-h-4 tw-stroke-gray-900 tw-stroke-2" /></Button>
+                <Button variant="outlined" size="sm" onClick={goBackToList} title={t("backToList", lang)}><ArrowLeftIcon className="tw-w-4 tw-h-4 tw-stroke-gray-900 tw-stroke-2" /></Button>
                 {!reviewMode && (
                     <Tabs value={displayTab} key={displayTab}>
                         <TabsHeader className="tw-bg-gray-100 tw-rounded-lg">
@@ -1831,7 +1841,7 @@ export default function CBBOXPMForm() {
                         prefix="cbboxpmreport" reportId={editId}
                         scope={{ station_id: stationId }}
                         apiBase={API_BASE}
-                        onDone={(msg) => { alert(msg); router.back(); }}
+                        onDone={(msg) => { alert(msg); goBackToList(); }}
                     />
                 </div>
             )}

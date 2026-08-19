@@ -325,13 +325,16 @@ export default function PMListPage() {
           tab, view: "form", wonum: r.wonum || r.id, from: PM_ORIGIN_LIST,
           ...(canPlan ? { planning: "1" } : { wo_info: "1" }),
         })
-      // ใบที่รออนุมัติ → เปิดหน้าตรวจหน้าเดียวกันทุก role
-      //   ผู้อนุมัติ  → approve=1 มีปุ่มอนุมัติ/ตีกลับ
-      //   ช่างเจ้าของงาน → review=1 เห็นข้อมูลชุดเดียวกันแต่แก้ไม่ได้
+      // ใบที่รออนุมัติหรือปิดไปแล้ว → เปิดหน้าตรวจหน้าเดียวกันทุก role
+      //   ผู้อนุมัติ + ยังรออนุมัติ → approve=1 มีปุ่มอนุมัติ/ตีกลับ
+      //   นอกนั้น (รวมใบที่ปิดแล้ว)  → review=1 ดูอย่างเดียว มีแค่ปุ่มย้อนกลับ
       : new URLSearchParams({
           tab, view: "form", edit_id: r.id, from: PM_ORIGIN_LIST,
-          ...(stageOf(r) === "wait_approve"
-            ? { [canApprove ? "approve" : "review"]: "1", action: "post", pmtab: "post" }
+          ...(["wait_approve", "closed"].includes(stageOf(r))
+            ? {
+                [canApprove && stageOf(r) === "wait_approve" ? "approve" : "review"]: "1",
+                action: "post", pmtab: "post",
+              }
             : {}),
         });
     if (tab === "charger" && r.sn && r.sn !== "-") params.set("sn", r.sn);
