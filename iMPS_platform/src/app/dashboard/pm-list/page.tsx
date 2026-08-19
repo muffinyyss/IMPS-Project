@@ -326,7 +326,7 @@ export default function PMListPage() {
       // ใบที่รออนุมัติ + เป็นผู้อนุมัติ → เปิดโหมดตรวจ (เห็นของที่ช่างกรอก + ปุ่มอนุมัติ/ตีกลับ)
       : new URLSearchParams({
           tab, view: "form", edit_id: r.id, from: PM_ORIGIN_LIST,
-          ...(canApprove && stageOf(r) === "wait_approve" ? { approve: "1", pmtab: "post" } : {}),
+          ...(canApprove && stageOf(r) === "wait_approve" ? { approve: "1", action: "post", pmtab: "post" } : {}),
         });
     if (tab === "charger" && r.sn && r.sn !== "-") params.set("sn", r.sn);
     else if (r.station_id) params.set("station_id", r.station_id);
