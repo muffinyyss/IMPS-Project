@@ -922,7 +922,7 @@ function PhotoMultiInput({ photos, setPhotos, max = 10, draftKey, qNo, lang, id 
                         <div key={p.id} className="tw-border tw-rounded-lg tw-overflow-hidden tw-bg-gray-100 tw-shadow-xs tw-flex tw-flex-col">
                             <div className="tw-relative tw-aspect-[4/3] tw-bg-gray-100">
                                 {p.preview && <img src={p.preview} alt="preview" className="tw-w-full tw-h-full tw-object-contain" />}
-                                <button onClick={() => { void handleRemove(p.id); }} className="tw-absolute tw-top-2 tw-right-2 tw-bg-red-500 tw-text-white tw-w-6 tw-h-6 tw-rounded-full tw-flex tw-items-center tw-justify-center tw-shadow-md hover:tw-bg-red-600 tw-transition-colors">×</button>
+                                <button data-photo-remove onClick={() => { void handleRemove(p.id); }} className="tw-absolute tw-top-2 tw-right-2 tw-bg-red-500 tw-text-white tw-w-6 tw-h-6 tw-rounded-full tw-flex tw-items-center tw-justify-center tw-shadow-md hover:tw-bg-red-600 tw-transition-colors">×</button>
                             </div>
                         </div>
                     ))}
@@ -1582,7 +1582,7 @@ export default function CBBOXPMForm() {
             </div>
             <form noValidate onSubmit={e => { e.preventDefault(); return false; }} onKeyDown={e => { if (e.key === "Enter") e.preventDefault(); }}>
                 {/* ดูอย่างเดียว: fieldset ปิดทั้งช่องกรอกและปุ่มบันทึกในทีเดียว */}
-                <fieldset disabled={reviewMode} className="tw-m-0 tw-min-w-0 tw-border-0 tw-p-0">
+                <fieldset disabled={reviewMode} className="pm-readonly tw-m-0 tw-min-w-0 tw-border-0 tw-p-0">
                 <div className="tw-mx-auto tw-max-w-6xl tw-bg-white tw-border tw-border-gray-200 tw-rounded-xl tw-shadow-sm tw-p-4 sm:tw-p-6 md:tw-p-8">
                     <div className="tw-flex tw-flex-col tw-gap-4 md:tw-flex-row md:tw-items-start md:tw-justify-between md:tw-gap-6">
                         <div className="tw-flex tw-items-start tw-gap-3 md:tw-gap-4">
@@ -1694,25 +1694,25 @@ export default function CBBOXPMForm() {
                         </div>
                     )}
 
-                        {/* ดูอย่างเดียว: ไม่ต้องมีการ์ดเช็คความครบถ้วนกับปุ่มบันทึก */}
-                        {!reviewMode && (<>
-                            <PMValidationCard
-                                lang={lang}
-                                displayTab={displayTab}
-                                isPostMode={isPostMode}
-                                allPhotosAttached={allPhotosAttached}
-                                missingPhotoItems={missingPhotoItemsFormatted}
-                                allRequiredInputsFilled={allRequiredInputsFilled}
-                                missingInputsDetailed={missingInputsDetailed}
-                                allRemarksFilledPre={allRemarksFilledPre}
-                                missingRemarksPre={missingRemarksPre}
-                                allPFAnsweredPost={allPFAnsweredForUI}
-                                missingPFItemsPost={missingPFItemsForUI}
-                                allRemarksFilledPost={allRemarksFilledPost}
-                                missingRemarksPost={missingRemarksPost}
-                                isSummaryFilled={isSummaryFilled}
-                                isSummaryCheckFilled={isSummaryCheckFilled}
-                            />
+                        <PMValidationCard
+                            lang={lang}
+                            displayTab={displayTab}
+                            isPostMode={isPostMode}
+                            allPhotosAttached={allPhotosAttached}
+                            missingPhotoItems={missingPhotoItemsFormatted}
+                            allRequiredInputsFilled={allRequiredInputsFilled}
+                            missingInputsDetailed={missingInputsDetailed}
+                            allRemarksFilledPre={allRemarksFilledPre}
+                            missingRemarksPre={missingRemarksPre}
+                            allPFAnsweredPost={allPFAnsweredForUI}
+                            missingPFItemsPost={missingPFItemsForUI}
+                            allRemarksFilledPost={allRemarksFilledPost}
+                            missingRemarksPost={missingRemarksPost}
+                            isSummaryFilled={isSummaryFilled}
+                            isSummaryCheckFilled={isSummaryCheckFilled}
+                        />
+                        {/* ดูอย่างเดียว: ตรวจได้ แต่ไม่มีปุ่มบันทึกให้กด */}
+                        {!reviewMode && (
                             <div className="tw-flex tw-flex-col sm:tw-flex-row tw-justify-end tw-gap-2 sm:tw-gap-3">
                                 {displayTab === "pre" ? (
                                     <Button className="tw-text-sm tw-py-2.5 tw-bg-gray-800 hover:tw-bg-gray-900 tw-w-full sm:tw-w-auto" type="button" onClick={onPreSave} disabled={!canGoAfter || submitting}>{submitting ? t("saving", lang) : t("save", lang)}</Button>
@@ -1720,7 +1720,7 @@ export default function CBBOXPMForm() {
                                     <Button className="tw-text-sm tw-py-2.5 tw-bg-gray-800 hover:tw-bg-gray-900 tw-w-full sm:tw-w-auto" type="button" onClick={onFinalSave} disabled={!canFinalSave || submitting}>{submitting ? t("saving", lang) : t("save", lang)}</Button>
                                 )}
                             </div>
-                        </>)}
+                        )}
                     </div>
                 </div>
                 </fieldset>

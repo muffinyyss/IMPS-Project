@@ -1702,7 +1702,7 @@ function PhotoMultiInput({
                                         {p.location && <span className="tw-block tw-opacity-80 tw-truncate">📍 {p.location}</span>}
                                     </span>
                                 )} */}
-                                <button onClick={() => { void handleRemove(p.id); }}
+                                <button data-photo-remove onClick={() => { void handleRemove(p.id); }}
                                     className="tw-absolute tw-top-2 tw-right-2 tw-bg-red-500 tw-text-white tw-w-6 tw-h-6 tw-rounded-full tw-flex tw-items-center tw-justify-center tw-shadow-md hover:tw-bg-red-600 tw-transition-colors">×</button>
                             </div>
                         </div>
@@ -3506,7 +3506,7 @@ export default function ChargerPMForm() {
 
             <form action="#" noValidate onSubmit={(e) => { e.preventDefault(); return false; }} onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }}>
                 {/* ดูอย่างเดียว: fieldset ปิดทั้งช่องกรอกและปุ่มบันทึกในทีเดียว */}
-                <fieldset disabled={reviewMode} className="tw-m-0 tw-min-w-0 tw-border-0 tw-p-0">
+                <fieldset disabled={reviewMode} className="pm-readonly tw-m-0 tw-min-w-0 tw-border-0 tw-p-0">
                 <div className="tw-mx-auto tw-max-w-6xl tw-bg-white tw-border tw-border-blue-gray-100 tw-rounded-xl tw-shadow-sm tw-p-6 md:tw-p-8 tw-print:tw-shadow-none tw-print:tw-border-0">
                     <div className="tw-flex tw-flex-col tw-gap-4 md:tw-flex-row md:tw-items-start md:tw-justify-between md:tw-gap-6">
                         <div className="tw-flex tw-items-start tw-gap-3 md:tw-gap-4">
@@ -3683,25 +3683,25 @@ export default function ChargerPMForm() {
                     </div>
 
                     <div className="tw-mt-6 sm:tw-mt-8 tw-flex tw-flex-col tw-gap-3">
-                        {/* ดูอย่างเดียว: ไม่ต้องมีการ์ดเช็คความครบถ้วนกับปุ่มบันทึก */}
-                        {!reviewMode && (<>
-                            <PMValidationCard
-                                lang={lang}
-                                displayTab={displayTab}
-                                isPostMode={isPostMode}
-                                allPhotosAttached={allPhotosAttached}
-                                missingPhotoItems={missingPhotoItems}
-                                allRequiredInputsFilled={allRequiredInputsFilled}
-                                missingInputsDetailed={missingInputsDetailed}
-                                allRemarksFilledPre={allRemarksFilledPre}
-                                missingRemarksPre={missingRemarksPre}
-                                allPFAnsweredPost={allPFAnsweredPost}
-                                missingPFItemsPost={missingPFItemsPost}
-                                allRemarksFilledPost={allRemarksFilledPost}
-                                missingRemarksPost={missingRemarksPost}
-                                isSummaryFilled={isSummaryFilled}
-                                isSummaryCheckFilled={isSummaryCheckFilled}
-                            />
+                        <PMValidationCard
+                            lang={lang}
+                            displayTab={displayTab}
+                            isPostMode={isPostMode}
+                            allPhotosAttached={allPhotosAttached}
+                            missingPhotoItems={missingPhotoItems}
+                            allRequiredInputsFilled={allRequiredInputsFilled}
+                            missingInputsDetailed={missingInputsDetailed}
+                            allRemarksFilledPre={allRemarksFilledPre}
+                            missingRemarksPre={missingRemarksPre}
+                            allPFAnsweredPost={allPFAnsweredPost}
+                            missingPFItemsPost={missingPFItemsPost}
+                            allRemarksFilledPost={allRemarksFilledPost}
+                            missingRemarksPost={missingRemarksPost}
+                            isSummaryFilled={isSummaryFilled}
+                            isSummaryCheckFilled={isSummaryCheckFilled}
+                        />
+                        {/* ดูอย่างเดียว: ตรวจได้ แต่ไม่มีปุ่มบันทึกให้กด */}
+                        {!reviewMode && (
                             <div className="tw-flex tw-flex-col sm:tw-flex-row tw-justify-end tw-gap-2 sm:tw-gap-3">
                                 {displayTab === "pre" ? (
                                     <Button type="button" onClick={onPreSave} disabled={!canGoAfter || submitting}
@@ -3717,7 +3717,7 @@ export default function ChargerPMForm() {
                                     </Button>
                                 )}
                             </div>
-                        </>)}
+                        )}
                     </div>
                 </div>
                 </fieldset>

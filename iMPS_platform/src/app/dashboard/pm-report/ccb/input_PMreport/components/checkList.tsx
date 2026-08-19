@@ -1253,7 +1253,7 @@ function PhotoMultiInput({ photos, setPhotos, max = 10, draftKey, qNo, lang, id,
             )}
             {photos.length > 0 ? (
                 <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 md:tw-grid-cols-4 tw-gap-2 sm:tw-gap-3">
-                    {photos.map((p) => (<div key={p.id} className="tw-border tw-rounded-lg tw-overflow-hidden tw-bg-white tw-shadow-xs tw-flex tw-flex-col"><div className="tw-relative tw-aspect-[4/3] tw-bg-blue-gray-50">{p.preview && <img src={p.preview} alt={t("photoPreviewAlt", lang)} className="tw-w-full tw-h-full tw-object-cover" />}<button onClick={() => { void handleRemove(p.id); }} className="tw-absolute tw-top-1.5 tw-right-1.5 sm:tw-top-2 sm:tw-right-2 tw-bg-red-500 tw-text-white tw-w-5 tw-h-5 sm:tw-w-6 sm:tw-h-6 tw-rounded-full tw-flex tw-items-center tw-justify-center tw-shadow-md hover:tw-bg-red-600 tw-transition-colors tw-text-xs sm:tw-text-sm">×</button></div></div>))}
+                    {photos.map((p) => (<div key={p.id} className="tw-border tw-rounded-lg tw-overflow-hidden tw-bg-white tw-shadow-xs tw-flex tw-flex-col"><div className="tw-relative tw-aspect-[4/3] tw-bg-blue-gray-50">{p.preview && <img src={p.preview} alt={t("photoPreviewAlt", lang)} className="tw-w-full tw-h-full tw-object-cover" />}<button data-photo-remove onClick={() => { void handleRemove(p.id); }} className="tw-absolute tw-top-1.5 tw-right-1.5 sm:tw-top-2 sm:tw-right-2 tw-bg-red-500 tw-text-white tw-w-5 tw-h-5 sm:tw-w-6 sm:tw-h-6 tw-rounded-full tw-flex tw-items-center tw-justify-center tw-shadow-md hover:tw-bg-red-600 tw-transition-colors tw-text-xs sm:tw-text-sm">×</button></div></div>))}
                 </div>
             ) : (<Typography variant="small" className="!tw-text-blue-gray-500 tw-text-xs sm:tw-text-sm">{t("noPhotos", lang)}</Typography>)}
         </div>
@@ -2885,7 +2885,7 @@ export default function CCBPMReport() {
 
             <form action="#" noValidate onSubmit={(e) => { e.preventDefault(); return false; }} onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }}>
                 {/* ดูอย่างเดียว: fieldset ปิดทั้งช่องกรอกและปุ่มบันทึกในทีเดียว */}
-                <fieldset disabled={reviewMode} className="tw-m-0 tw-min-w-0 tw-border-0 tw-p-0">
+                <fieldset disabled={reviewMode} className="pm-readonly tw-m-0 tw-min-w-0 tw-border-0 tw-p-0">
                 <div className="tw-mx-auto tw-max-w-6xl tw-bg-white tw-border tw-border-blue-gray-100 tw-rounded-xl tw-shadow-sm tw-p-6 md:tw-p-8 tw-print:tw-shadow-none tw-print:tw-border-0">
                     <div className="tw-flex tw-flex-col tw-gap-4 md:tw-flex-row md:tw-items-start md:tw-justify-between md:tw-gap-6">
                         <div className="tw-flex tw-items-start tw-gap-3 md:tw-gap-4">
@@ -3029,17 +3029,17 @@ export default function CCBPMReport() {
                         </div>
                     )}
 
-                        {/* ดูอย่างเดียว: ไม่ต้องมีการ์ดเช็คความครบถ้วนกับปุ่มบันทึก */}
-                        {!reviewMode && (<>
-                            <PMValidationCard
-                                lang={lang} displayTab={displayTab} isPostMode={isPostMode}
-                                allPhotosAttached={allPhotosAttached} missingPhotoItems={missingPhotoItemsFormatted}
-                                allRequiredInputsFilled={allRequiredInputsFilled} missingInputsDetailed={missingInputsDetailed}
-                                allRemarksFilledPre={allRemarksFilledPre} missingRemarksPre={missingRemarksPre}
-                                allPFAnsweredPost={allPFAnsweredForUI} missingPFItemsPost={missingPFItemsForUI}
-                                allRemarksFilledPost={allRemarksFilledPost} missingRemarksPost={missingRemarksPost}
-                                isSummaryFilled={isSummaryFilled} isSummaryCheckFilled={isSummaryCheckFilled}
-                            />
+                        <PMValidationCard
+                            lang={lang} displayTab={displayTab} isPostMode={isPostMode}
+                            allPhotosAttached={allPhotosAttached} missingPhotoItems={missingPhotoItemsFormatted}
+                            allRequiredInputsFilled={allRequiredInputsFilled} missingInputsDetailed={missingInputsDetailed}
+                            allRemarksFilledPre={allRemarksFilledPre} missingRemarksPre={missingRemarksPre}
+                            allPFAnsweredPost={allPFAnsweredForUI} missingPFItemsPost={missingPFItemsForUI}
+                            allRemarksFilledPost={allRemarksFilledPost} missingRemarksPost={missingRemarksPost}
+                            isSummaryFilled={isSummaryFilled} isSummaryCheckFilled={isSummaryCheckFilled}
+                        />
+                        {/* ดูอย่างเดียว: ตรวจได้ แต่ไม่มีปุ่มบันทึกให้กด */}
+                        {!reviewMode && (
                             <div className="tw-flex tw-flex-col sm:tw-flex-row tw-justify-end tw-gap-2 sm:tw-gap-3">
                                 {displayTab === "pre" ? (
                                     <Button type="button" onClick={onPreSave} disabled={!canGoAfter || submitting}
@@ -3053,7 +3053,7 @@ export default function CCBPMReport() {
                                     </Button>
                                 )}
                             </div>
-                        </>)}
+                        )}
                     </div>
                 </div>
                 </fieldset>
