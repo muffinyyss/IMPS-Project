@@ -2218,6 +2218,14 @@ export default function ChargerPMForm() {
         setMaximoLabor(prev => prev.includes(code) ? prev.filter(c => c !== code) : [...prev, code]);
 
     // ติ๊กรหัสกลางของผู้รับเหมาไว้ = ต้องมีชื่อจริงกำกับ
+
+    // รหัสที่ช่างเลือกไว้ต้องโชว์ได้เสมอ ถึงรายชื่อจาก Maximo จะโหลดไม่ขึ้น
+    // (เน็ตหลุด / สิทธิ์ไม่ถึง) ไม่งั้นหน้าอนุมัติจะกลายเป็นว่าไม่ได้เลือกใครเลย
+    const laborList: { laborcode: string; name: string; needs_name?: boolean }[] = useMemo(() => {
+        const have = new Set(laborList.map((o) => o.laborcode));
+        const missing = maximoLabor.filter((c) => !have.has(c)).map((c) => ({ laborcode: c, name: c }));
+        return missing.length ? [...laborOptions, ...missing] : laborOptions;
+    }, [laborOptions, maximoLabor]);
     const contractorPicked = laborOptions.some((o) => o.needs_name && maximoLabor.includes(o.laborcode));
     const contractorMissing = contractorPicked && !maximoContractor.trim();
 
@@ -2472,6 +2480,19 @@ export default function ChargerPMForm() {
                 if (data.doc_name) setDocName(data.doc_name);
                 if (data.inspector) setInspector(data.inspector);
                 setCmpPhotos({ pre: data.photos_pre ?? {}, post: data.photos ?? {} });
+                // สรุปผล/หมายเหตุเดิมอ่านจาก draft ในเครื่องอย่างเดียว คนที่ไม่ได้เป็นคนกรอก
+                // (ผู้อนุมัติ) จึงเปิดมาเจอช่องว่าง ต้องดึงจากตัวเอกสารด้วย
+                if (reviewMode) {
+                    // เวลาทำงาน/laborcode ก็เก็บอยู่ใน draft ของเครื่องช่างเหมือนกัน
+                    // ผู้อนุมัติต้องอ่านจากตัวเอกสาร ไม่งั้นเห็นเป็นช่องว่าง
+                    if (typeof data.work_start === "string") setWorkStart(data.work_start);
+                    if (typeof data.work_finish === "string") setWorkFinish(data.work_finish);
+                    if (Array.isArray(data.maximo_labor)) setMaximoLabor(data.maximo_labor);
+                    if (typeof data.maximo_contractor === "string") setMaximoContractor(data.maximo_contractor);
+                    if (typeof data.summary_pre === "string") setSummaryPre(data.summary_pre);
+                    if (typeof data.summary === "string") setSummary(data.summary);
+                    if (data.summaryCheck) setSummaryCheck(data.summaryCheck as PF);
+                }
                 if (data.rows_pre) {
                     setRowsPre(data.rows_pre);
                     const q5Count = Object.keys(data.rows_pre).filter(k => /^r5_\d+$/.test(k)).length;
@@ -3491,6 +3512,144 @@ export default function ChargerPMForm() {
         return out;
     }, [rowsPre, rows, lang, fixedItemsMap, q7Items]);
 
+
+    // กล่องหมายเหตุ + สรุปผลการตรวจสอบ — ประกาศครั้งเดียว วางได้สองที่
+    // ตอนกรอกอยู่ในฟอร์มตามเดิม ตอนตรวจย้ายลงไปล่างสุดใต้ตารางเทียบ
+    const summaryBlock = (
+                        <div id="pm-summary-section" className="tw-mt-6 sm:tw-mt-8 tw-space-y-3 tw-transition-all tw-duration-300">
+                            <Typography variant="h6" className="tw-mb-1 tw-text-sm sm:tw-text-base">{t("comment", lang)}</Typography>
+
+                            {displayTab === "pre" ? (
+                                // Pre-PM: ใช้ summaryPre แยกต่างหาก
+                                <Textarea
+                                    label={t("comment", lang)}
+                                    value={summaryPre}
+                                    onChange={(e) => setSummaryPre(e.target.value)}
+                                    rows={3}
+                                    autoComplete="off"
+                                    containerProps={{ className: "!tw-min-w-0" }}
+                                    className="!tw-w-full !tw-text-sm resize-none"
+                                />
+                            ) : (
+                                // Post-PM: ใช้ summary เดิม
+                                <>
+                                    <Textarea
+                                        label={t("comment", lang)}
+                                        value={summary}
+                                        onChange={(e) => setSummary(e.target.value)}
+                                        rows={3}
+                                        required={isPostMode}
+                                        autoComplete="off"
+                                        containerProps={{ className: "!tw-min-w-0" }}
+                                        className="!tw-w-full !tw-text-sm resize-none"
+                                    />
+                                    <div className="tw-pt-3 sm:tw-pt-4 tw-border-t tw-border-gray-200">
+                                        <PassFailRow
+                                            label={t("summaryResult", lang)}
+                                            value={summaryCheck}
+                                            onChange={(v) => setSummaryCheck(v)}
+                                            labels={{ PASS: t("summaryPass", lang), FAIL: t("summaryFail", lang), NA: t("summaryNA", lang) }}
+                                            lang={lang}
+                                        />
+                                    </div>
+
+                        {/* ด่านก่อนเริ่มกรอก — ช่างอ่านข้อมูลใบงานก่อน แล้วค่อยกดเริ่ม (เหมือนหน้า CM)
+                            ใบที่เคยเริ่มกรอกไปแล้วเข้ามาก็ทำต่อได้เลย ไม่ต้องกดซ้ำ */}
+                        {!pmStarted && (
+                            <div className="tw-mx-auto tw-max-w-6xl tw-mb-6 tw-rounded-xl tw-border tw-border-amber-200 tw-bg-amber-50 tw-px-5 tw-py-6 tw-text-center">
+                                <p className="tw-mb-4 tw-text-sm tw-text-amber-800">{t("startPmHint", lang)}</p>
+                                <Button
+                                    type="button"
+                                    onClick={() => setPmStartedManually(true)}
+                                    className="tw-bg-amber-500 hover:tw-bg-amber-600 tw-text-white tw-font-semibold tw-text-base tw-px-8 tw-py-3 tw-rounded-xl hover:tw-shadow-xl hover:tw-shadow-amber-500/30 tw-transition-all"
+                                >
+                                    {t("startPm", lang)}
+                                </Button>
+                            </div>
+                        )}
+
+                                    {/* เวลาทำงานจริงของช่าง — ต้องกรอกก่อนส่งปิดใบงาน (ส่งเข้า Maximo IN09) */}
+                                    <div className="tw-pt-3 sm:tw-pt-4 tw-border-t tw-border-gray-200">
+                                        <div className="tw-mb-2">
+                                            <Typography variant="h6" className="tw-text-sm sm:tw-text-base">
+                                                {t("workTime", lang)} <span className="tw-text-red-500">*</span>
+                                            </Typography>
+                                            <Typography variant="small" className="tw-text-xs tw-font-normal tw-text-blue-gray-400">
+                                                {t("workTimeHint", lang)}
+                                            </Typography>
+                                        </div>
+                                        <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 tw-gap-3">
+                                            <div>
+                                                <label className="tw-mb-1.5 tw-block tw-text-xs tw-font-semibold tw-text-blue-gray-700">
+                                                    {t("workStart", lang)}
+                                                </label>
+                                                <input
+                                                    type="datetime-local"
+                                                    value={workStart}
+                                                    onChange={(e) => setWorkStart(e.target.value)}
+                                                    className="tw-w-full tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-px-3 tw-py-2.5 tw-text-sm tw-text-blue-gray-800 focus:tw-outline-none focus:tw-border-blue-500"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="tw-mb-1.5 tw-block tw-text-xs tw-font-semibold tw-text-blue-gray-700">
+                                                    {t("workFinish", lang)}
+                                                </label>
+                                                {/* min กัน picker เลือกย้อนหลัง — ยังต้อง validate เพราะพิมพ์มือเลี่ยงได้ */}
+                                                <input
+                                                    type="datetime-local"
+                                                    value={workFinish}
+                                                    min={workStart || undefined}
+                                                    onChange={(e) => setWorkFinish(e.target.value)}
+                                                    className={`tw-w-full tw-rounded-lg tw-border tw-bg-white tw-px-3 tw-py-2.5 tw-text-sm tw-text-blue-gray-800 focus:tw-outline-none ${workStart && workFinish && workFinish < workStart
+                                                        ? "tw-border-red-400 focus:tw-border-red-500"
+                                                        : "tw-border-blue-gray-200 focus:tw-border-blue-500"}`}
+                                                />
+                                                {workStart && workFinish && workFinish < workStart && (
+                                                    <p className="tw-mt-1.5 tw-text-xs tw-text-red-600">{t("alertWorkTimeOrder", lang)}</p>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* ช่างที่จะลงเวลาเข้า Maximo — laborcode คนละชุดกับ username ใน iMPS
+                                        จึงต้องให้เลือกเอง ไม่งั้น IN09 จะ unmapped ทั้งใบ (ล่างสุดของฟอร์ม) */}
+                                    <div className="tw-pt-3 sm:tw-pt-4 tw-border-t tw-border-gray-200">
+                                        <div className="tw-mb-2">
+                                            <Typography variant="h6" className="tw-text-sm sm:tw-text-base">{t("maximoLabor", lang)}</Typography>
+                                            <Typography variant="small" className="tw-text-xs tw-font-normal tw-text-blue-gray-400">{t("maximoLaborHint", lang)}</Typography>
+                                        </div>
+                                        {laborList.length === 0 ? (
+                                            <p className="tw-text-xs tw-text-orange-600">{t("maximoLaborEmpty", lang)}</p>
+                                        ) : (
+                                            <div className="tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-divide-y tw-divide-blue-gray-50 tw-max-h-56 tw-overflow-y-auto">
+                                                {laborOptions.map((o) => (
+                                                    <label key={o.laborcode} className="tw-flex tw-items-center tw-gap-2.5 tw-px-3 tw-py-2.5 tw-cursor-pointer hover:tw-bg-blue-gray-50/60 tw-transition-colors">
+                                                        <input type="checkbox" checked={maximoLabor.includes(o.laborcode)}
+                                                            onChange={() => toggleMaximoLabor(o.laborcode)}
+                                                            className="tw-h-4 tw-w-4 tw-shrink-0 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500 tw-cursor-pointer" />
+                                                        <span className="tw-min-w-0 tw-truncate tw-text-sm tw-text-blue-gray-800">{o.name}</span>
+                                                        <span className="tw-ml-auto tw-font-mono tw-text-xs tw-text-blue-gray-400">{o.laborcode}</span>
+                                                    </label>
+                                                ))}
+                                            </div>
+                                        )}
+                                        {(contractorPicked || (reviewMode && !!maximoContractor.trim())) && (
+                                            <div className="tw-mt-3 tw-space-y-1.5">
+                                                <label className="tw-block tw-text-xs tw-font-semibold tw-text-blue-gray-700">
+                                                    {t("contractorName", lang)} <span className="tw-text-red-500">*</span>
+                                                </label>
+                                                <input type="text" value={maximoContractor} onChange={(e) => setMaximoContractor(e.target.value)}
+                                                    placeholder={t("contractorPlaceholder", lang)}
+                                                    className={`tw-w-full tw-rounded-lg tw-border tw-px-3 tw-py-2.5 tw-text-sm tw-text-blue-gray-800 focus:tw-outline-none ${contractorMissing ? "tw-border-red-400 focus:tw-border-red-500" : "tw-border-blue-gray-200 focus:tw-border-blue-500"}`} />
+                                                {contractorMissing && <p className="tw-text-xs tw-text-red-600">{t("contractorRequired", lang)}</p>}
+                                            </div>
+                                        )}
+                                    </div>
+                                </>
+                            )}
+                        </div>
+    );
+
     return (
         <section className="tw-pb-24">
             <LoadingOverlay show={pageLoading} text={t("loading", lang)} />
@@ -3582,157 +3741,30 @@ export default function ChargerPMForm() {
                         {!reviewMode && (QUESTIONS.filter((q) => !(displayTab === "pre" && q.postOnly)).map((q) => renderQuestionBlock(q, displayTab)))}
                     </div>
 
-                    <div id="pm-summary-section" className="tw-mt-6 sm:tw-mt-8 tw-space-y-3 tw-transition-all tw-duration-300">
-                        <Typography variant="h6" className="tw-mb-1 tw-text-sm sm:tw-text-base">{t("comment", lang)}</Typography>
-
-                        {displayTab === "pre" ? (
-                            // Pre-PM: ใช้ summaryPre แยกต่างหาก
-                            <Textarea
-                                label={t("comment", lang)}
-                                value={summaryPre}
-                                onChange={(e) => setSummaryPre(e.target.value)}
-                                rows={3}
-                                autoComplete="off"
-                                containerProps={{ className: "!tw-min-w-0" }}
-                                className="!tw-w-full !tw-text-sm resize-none"
-                            />
-                        ) : (
-                            // Post-PM: ใช้ summary เดิม
-                            <>
-                                <Textarea
-                                    label={t("comment", lang)}
-                                    value={summary}
-                                    onChange={(e) => setSummary(e.target.value)}
-                                    rows={3}
-                                    required={isPostMode}
-                                    autoComplete="off"
-                                    containerProps={{ className: "!tw-min-w-0" }}
-                                    className="!tw-w-full !tw-text-sm resize-none"
-                                />
-                                <div className="tw-pt-3 sm:tw-pt-4 tw-border-t tw-border-gray-200">
-                                    <PassFailRow
-                                        label={t("summaryResult", lang)}
-                                        value={summaryCheck}
-                                        onChange={(v) => setSummaryCheck(v)}
-                                        labels={{ PASS: t("summaryPass", lang), FAIL: t("summaryFail", lang), NA: t("summaryNA", lang) }}
-                                        lang={lang}
-                                    />
-                                </div>
-
-                    {/* ด่านก่อนเริ่มกรอก — ช่างอ่านข้อมูลใบงานก่อน แล้วค่อยกดเริ่ม (เหมือนหน้า CM)
-                        ใบที่เคยเริ่มกรอกไปแล้วเข้ามาก็ทำต่อได้เลย ไม่ต้องกดซ้ำ */}
-                    {!pmStarted && (
-                        <div className="tw-mx-auto tw-max-w-6xl tw-mb-6 tw-rounded-xl tw-border tw-border-amber-200 tw-bg-amber-50 tw-px-5 tw-py-6 tw-text-center">
-                            <p className="tw-mb-4 tw-text-sm tw-text-amber-800">{t("startPmHint", lang)}</p>
-                            <Button
-                                type="button"
-                                onClick={() => setPmStartedManually(true)}
-                                className="tw-bg-amber-500 hover:tw-bg-amber-600 tw-text-white tw-font-semibold tw-text-base tw-px-8 tw-py-3 tw-rounded-xl hover:tw-shadow-xl hover:tw-shadow-amber-500/30 tw-transition-all"
-                            >
-                                {t("startPm", lang)}
-                            </Button>
-                        </div>
-                    )}
-
-                                {/* เวลาทำงานจริงของช่าง — ต้องกรอกก่อนส่งปิดใบงาน (ส่งเข้า Maximo IN09) */}
-                                <div className="tw-pt-3 sm:tw-pt-4 tw-border-t tw-border-gray-200">
-                                    <div className="tw-mb-2">
-                                        <Typography variant="h6" className="tw-text-sm sm:tw-text-base">
-                                            {t("workTime", lang)} <span className="tw-text-red-500">*</span>
-                                        </Typography>
-                                        <Typography variant="small" className="tw-text-xs tw-font-normal tw-text-blue-gray-400">
-                                            {t("workTimeHint", lang)}
-                                        </Typography>
-                                    </div>
-                                    <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 tw-gap-3">
-                                        <div>
-                                            <label className="tw-mb-1.5 tw-block tw-text-xs tw-font-semibold tw-text-blue-gray-700">
-                                                {t("workStart", lang)}
-                                            </label>
-                                            <input
-                                                type="datetime-local"
-                                                value={workStart}
-                                                onChange={(e) => setWorkStart(e.target.value)}
-                                                className="tw-w-full tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-px-3 tw-py-2.5 tw-text-sm tw-text-blue-gray-800 focus:tw-outline-none focus:tw-border-blue-500"
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="tw-mb-1.5 tw-block tw-text-xs tw-font-semibold tw-text-blue-gray-700">
-                                                {t("workFinish", lang)}
-                                            </label>
-                                            {/* min กัน picker เลือกย้อนหลัง — ยังต้อง validate เพราะพิมพ์มือเลี่ยงได้ */}
-                                            <input
-                                                type="datetime-local"
-                                                value={workFinish}
-                                                min={workStart || undefined}
-                                                onChange={(e) => setWorkFinish(e.target.value)}
-                                                className={`tw-w-full tw-rounded-lg tw-border tw-bg-white tw-px-3 tw-py-2.5 tw-text-sm tw-text-blue-gray-800 focus:tw-outline-none ${workStart && workFinish && workFinish < workStart
-                                                    ? "tw-border-red-400 focus:tw-border-red-500"
-                                                    : "tw-border-blue-gray-200 focus:tw-border-blue-500"}`}
-                                            />
-                                            {workStart && workFinish && workFinish < workStart && (
-                                                <p className="tw-mt-1.5 tw-text-xs tw-text-red-600">{t("alertWorkTimeOrder", lang)}</p>
-                                            )}
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* ช่างที่จะลงเวลาเข้า Maximo — laborcode คนละชุดกับ username ใน iMPS
-                                    จึงต้องให้เลือกเอง ไม่งั้น IN09 จะ unmapped ทั้งใบ (ล่างสุดของฟอร์ม) */}
-                                <div className="tw-pt-3 sm:tw-pt-4 tw-border-t tw-border-gray-200">
-                                    <div className="tw-mb-2">
-                                        <Typography variant="h6" className="tw-text-sm sm:tw-text-base">{t("maximoLabor", lang)}</Typography>
-                                        <Typography variant="small" className="tw-text-xs tw-font-normal tw-text-blue-gray-400">{t("maximoLaborHint", lang)}</Typography>
-                                    </div>
-                                    {laborOptions.length === 0 ? (
-                                        <p className="tw-text-xs tw-text-orange-600">{t("maximoLaborEmpty", lang)}</p>
-                                    ) : (
-                                        <div className="tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-divide-y tw-divide-blue-gray-50 tw-max-h-56 tw-overflow-y-auto">
-                                            {laborOptions.map((o) => (
-                                                <label key={o.laborcode} className="tw-flex tw-items-center tw-gap-2.5 tw-px-3 tw-py-2.5 tw-cursor-pointer hover:tw-bg-blue-gray-50/60 tw-transition-colors">
-                                                    <input type="checkbox" checked={maximoLabor.includes(o.laborcode)}
-                                                        onChange={() => toggleMaximoLabor(o.laborcode)}
-                                                        className="tw-h-4 tw-w-4 tw-shrink-0 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500 tw-cursor-pointer" />
-                                                    <span className="tw-min-w-0 tw-truncate tw-text-sm tw-text-blue-gray-800">{o.name}</span>
-                                                    <span className="tw-ml-auto tw-font-mono tw-text-xs tw-text-blue-gray-400">{o.laborcode}</span>
-                                                </label>
-                                            ))}
-                                        </div>
-                                    )}
-                                    {contractorPicked && (
-                                        <div className="tw-mt-3 tw-space-y-1.5">
-                                            <label className="tw-block tw-text-xs tw-font-semibold tw-text-blue-gray-700">
-                                                {t("contractorName", lang)} <span className="tw-text-red-500">*</span>
-                                            </label>
-                                            <input type="text" value={maximoContractor} onChange={(e) => setMaximoContractor(e.target.value)}
-                                                placeholder={t("contractorPlaceholder", lang)}
-                                                className={`tw-w-full tw-rounded-lg tw-border tw-px-3 tw-py-2.5 tw-text-sm tw-text-blue-gray-800 focus:tw-outline-none ${contractorMissing ? "tw-border-red-400 focus:tw-border-red-500" : "tw-border-blue-gray-200 focus:tw-border-blue-500"}`} />
-                                            {contractorMissing && <p className="tw-text-xs tw-text-red-600">{t("contractorRequired", lang)}</p>}
-                                        </div>
-                                    )}
-                                </div>
-                            </>
-                        )}
-                    </div>
+                    {/* โหมดตรวจ: ย้ายไปไว้ล่างสุด ให้อ่านหลังดูตารางเทียบเสร็จ */}
+                    {!reviewMode && summaryBlock}
 
                     <div className="tw-mt-6 sm:tw-mt-8 tw-flex tw-flex-col tw-gap-3">
-                        <PMValidationCard
-                            lang={lang}
-                            displayTab={displayTab}
-                            isPostMode={isPostMode}
-                            allPhotosAttached={allPhotosAttached}
-                            missingPhotoItems={missingPhotoItems}
-                            allRequiredInputsFilled={allRequiredInputsFilled}
-                            missingInputsDetailed={missingInputsDetailed}
-                            allRemarksFilledPre={allRemarksFilledPre}
-                            missingRemarksPre={missingRemarksPre}
-                            allPFAnsweredPost={allPFAnsweredPost}
-                            missingPFItemsPost={missingPFItemsPost}
-                            allRemarksFilledPost={allRemarksFilledPost}
-                            missingRemarksPost={missingRemarksPost}
-                            isSummaryFilled={isSummaryFilled}
-                            isSummaryCheckFilled={isSummaryCheckFilled}
-                        />
+                        {/* โหมดตรวจไม่ต้องมี ฟอร์มฝั่งช่างดักความครบถ้วนไว้ตั้งแต่ตอนกรอกแล้ว */}
+                        {!reviewMode && (
+                            <PMValidationCard
+                                lang={lang}
+                                displayTab={displayTab}
+                                isPostMode={isPostMode}
+                                allPhotosAttached={allPhotosAttached}
+                                missingPhotoItems={missingPhotoItems}
+                                allRequiredInputsFilled={allRequiredInputsFilled}
+                                missingInputsDetailed={missingInputsDetailed}
+                                allRemarksFilledPre={allRemarksFilledPre}
+                                missingRemarksPre={missingRemarksPre}
+                                allPFAnsweredPost={allPFAnsweredPost}
+                                missingPFItemsPost={missingPFItemsPost}
+                                allRemarksFilledPost={allRemarksFilledPost}
+                                missingRemarksPost={missingRemarksPost}
+                                isSummaryFilled={isSummaryFilled}
+                                isSummaryCheckFilled={isSummaryCheckFilled}
+                            />
+                        )}
                         {/* ดูอย่างเดียว: ตรวจได้ แต่ไม่มีปุ่มบันทึกให้กด */}
                         {!reviewMode && (
                             <div className="tw-flex tw-flex-col sm:tw-flex-row tw-justify-end tw-gap-2 sm:tw-gap-3">
@@ -3767,6 +3799,13 @@ export default function ChargerPMForm() {
                     summaryPre={summaryPre}
                     summaryPost={summary}
                 />
+            )}
+            {reviewMode && editId && (
+                <div className="tw-mx-auto tw-max-w-6xl tw-mt-6 tw-rounded-xl tw-border tw-border-blue-gray-100 tw-bg-white tw-p-5 tw-shadow-sm sm:tw-p-6">
+                    <fieldset disabled className="pm-readonly tw-m-0 tw-min-w-0 tw-border-0 tw-p-0">
+                        {summaryBlock}
+                    </fieldset>
+                </div>
             )}
             {/* ตรวจเสร็จแล้วกดต่อได้เลย ไม่ต้องเลื่อนกลับขึ้นไปข้างบน */}
             {approveMode && editId && (
