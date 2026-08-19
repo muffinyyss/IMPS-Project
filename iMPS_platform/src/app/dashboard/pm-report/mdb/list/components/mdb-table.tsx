@@ -415,6 +415,12 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
   };
 
   const leaveWoInfo = () => {
+    // มาจากหน้า PM List → กลับไปหน้านั้น ไม่ใช่ตาราง tab ที่ผู้ใช้ไม่เคยเปิด
+    const back = pmBackRoute(searchParams);
+    if (back) {
+      router.push(back);
+      return;
+    }
     const params = new URLSearchParams(searchParams.toString());
     ["view", "wo_info", "wonum", "started", "pmtab"].forEach((k) => params.delete(k));
     router.push(`${pathname}?${params.toString()}`, { scroll: false });
