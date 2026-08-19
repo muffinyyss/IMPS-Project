@@ -42,6 +42,15 @@ PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", os.getenv("FRONTEND_BASE_URL", ""
 # ภาษาของ PDF ที่แนบเข้า Maximo (ใช้ค่าเดียวกับฝั่ง CM)
 PDF_LANG = os.getenv("MAXIMO_PDF_LANG", "th").strip() or "th"
 
+# ชนิดใบงาน PM → template ของ route /pdf/{template}/{id}
+PDF_TEMPLATE_OF = {
+    "charger": "charger",
+    "mdb": "mdb",
+    "ccb": "ccb",
+    "cbbox": "cbbox",
+    "station": "station",
+}
+
 # สถานะที่ยิงตอนปิดงาน — ใช้ COMP เหมือน CM ไม่ใช่ CLOSE
 # (CLOSE ใน Maximo ปิดตายแก้ไม่ได้อีก ปล่อยให้ EGAT เป็นคนกดเอง)
 PM_CLOSE_STATUS = os.getenv("MAXIMO_PM_CLOSE_STATUS", "COMP").strip().upper()
@@ -126,7 +135,7 @@ def public_url(path: str) -> str:
     return f"{PUBLIC_BASE_URL}/{p.lstrip('/')}"
 
 
-def report_url(report: dict, report_id: Any) -> str:
+def report_url(report: dict, report_id: Any, kind: str = "charger") -> str:
     """
     ลิงก์ PDF เอกสาร PM — ใช้แนบเข้า Maximo (IN03)
 
@@ -135,6 +144,8 @@ def report_url(report: dict, report_id: Any) -> str:
     """
     if not PUBLIC_BASE_URL:
         return ""
+    # template ต้องตรงกับชนิดใบงาน ไม่งั้น route /pdf ไปเปิดคนละคอลเลกชันแล้ว 404
+    template = PDF_TEMPLATE_OF.get(kind, "charger")
     sn = (report.get("sn") or "").strip()
     station_id = (report.get("station_id") or "").strip()
     scope = f"sn={sn}" if sn else f"station_id={station_id}"
@@ -142,8 +153,8 @@ def report_url(report: dict, report_id: Any) -> str:
     issue_id = str(report.get("issue_id") or "").strip()
     # ลิงก์ตรงไปที่ไฟล์ (.pdf) — /export เป็นแค่ตัว 307 redirect มาที่นี่อีกที
     if issue_id:
-        return f"{PUBLIC_BASE_URL}/pdf/charger/{report_id}/{issue_id}.pdf?{qs}"
-    return f"{PUBLIC_BASE_URL}/pdf/charger/{report_id}/export?{qs}"
+        return f"{PUBLIC_BASE_URL}/pdf/{template}/{report_id}/{issue_id}.pdf?{qs}"
+    return f"{PUBLIC_BASE_URL}/pdf/{template}/{report_id}/export?{qs}"
 
 
 async def push_status(
@@ -346,7 +357,7 @@ def _blocking_failures(results: dict) -> list[str]:
     ]
 
 
-async def sync_closed(coll, report_id, report: dict, *, memo: str = "") -> dict:
+async def sync_closed(coll, report_id, report: dict, *, memo: str = "", kind: str = "charger") -> dict:
     """
     ขั้น 3–5 ของ sequencing — ยิงทีละเส้นเรียงกัน เรียกซ้ำได้ปลอดภัย
     (IN02 กันยิงซ้ำสถานะเดิม, IN03 แนบครั้งเดียวพอ)
@@ -358,7 +369,7 @@ async def sync_closed(coll, report_id, report: dict, *, memo: str = "") -> dict:
 
     # ── 3. IN03 แนบลิงก์เอกสาร (ครั้งเดียวพอ) ──
     if not (report.get("maximo_sync") or {}).get("IN03", {}).get("ok"):
-        out["IN03"] = await push_attachment(coll, report_id, report, report_url(report, report_id))
+        out["IN03"] = await push_attachment(coll, report_id, report, report_url(report, report_id, kind))
 
     # ── 4. IN09 เวลาทำงานจริงของช่าง ──
     # ยิงครั้งเดียวพอ — labtrans เป็น POST create ยิงซ้ำ = ชั่วโมงถูกนับซ้ำ
@@ -385,10 +396,10 @@ async def sync_closed(coll, report_id, report: dict, *, memo: str = "") -> dict:
     return out
 
 
-async def safe_sync_closed(coll, report_id, report: dict, *, memo: str = "") -> dict:
+async def safe_sync_closed(coll, report_id, report: dict, *, memo: str = "", kind: str = "charger") -> dict:
     """sync_closed แบบกลืนทุก exception — Maximo ล่มต้องไม่ทำให้ปิดใบงานล้ม"""
     try:
-        return await sync_closed(coll, report_id, report, memo=memo)
+        return await sync_closed(coll, report_id, report, memo=memo, kind=kind)
     except Exception as e:
         log.warning(f"  ⚠️ PM Maximo sync error ({report.get('issue_id')}): {e}")
         return {"error": str(e)}

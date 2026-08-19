@@ -805,18 +805,18 @@ async def cbboxpmreport_approve(
     # อ่านใบงานหลังบันทึกเพื่อให้ข้อมูลที่ส่งไปตรงกับที่เก็บจริง
     fresh = await coll.find_one({"_id": oid}) or {}
 
-    # ใบงาน Maximo 1 ใบครอบหลายอุปกรณ์ — ปิดครบทุกตัวก่อนถึงจะยิงปิด WO
     # ใบงานปิดแล้ว = เนื้อหานิ่ง สร้าง PDF เก็บไว้เลยตั้งแต่ตอนนี้
     # ลิงก์ที่ IN03 แนบเข้า Maximo จะได้เปิดปุ๊บได้ไฟล์ ไม่ใช่ให้คนกดเป็นคนรอเรนเดอร์
     pdf_result = await pm_pdf.ensure_report_pdf("cbbox", station_id, report_id)
 
+    # ใบงาน Maximo 1 ใบครอบหลายอุปกรณ์ — ปิดครบทุกตัวก่อนถึงจะยิงปิด WO
     progress = await pm_flow.wo_completion(fresh.get("wonum") or "")
     if not progress["complete"]:
         return {**result, "pdf": pdf_result, "maximo": {"skipped": "ยังกรอกไม่ครบทุกอุปกรณ์ในใบงาน"},
                 "progress": progress}
 
     maximo_result = await pm_maximo_out.safe_sync_closed(
-        coll, oid, fresh, memo=f"closed by {current.username}"
+        coll, oid, fresh, memo=f"closed by {current.username}", kind="cbbox"
     )
     return {**result, "pdf": pdf_result, "maximo": maximo_result, "progress": progress}
 
