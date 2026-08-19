@@ -407,9 +407,10 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
   const woInfoWonum = searchParams.get("wo_info") === "1" ? (searchParams.get("wonum") ?? "") : "";
 
   // กด "เริ่ม PM" → เปิดฟอร์ม Pre-PM (started=1 กันไม่ให้ถามซ้ำในฟอร์ม)
-  const startPmFromInfo = () => {
+  const startPmFromInfo = (snFromWo?: string) => {
     const params = new URLSearchParams(searchParams.toString());
     params.delete("wo_info");
+
     params.set("started", "1");
     params.set("pmtab", "pre");
     router.push(`${pathname}?${params.toString()}`, { scroll: false });

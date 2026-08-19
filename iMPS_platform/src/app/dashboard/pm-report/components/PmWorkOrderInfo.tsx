@@ -62,6 +62,7 @@ const T = {
   noEquipment: { th: "ยังไม่ได้เลือกอุปกรณ์", en: "No equipment selected" },
 
   startPm: { th: "เริ่ม PM", en: "Start PM" },
+  pickCharger: { th: "เลือกตู้ที่จะเริ่ม PM", en: "Pick a charger to start" },
   waitPlanner: {
     th: "ผู้วางแผนยังไม่ได้เลือกอุปกรณ์ที่ต้อง PM — รอให้วางแผนเสร็จก่อนจึงเริ่มได้",
     en: "The planner has not selected the equipment yet — wait for the plan to be completed",
@@ -75,7 +76,8 @@ type Props = {
   /** SN สำหรับ charger, station_id สำหรับ tab อื่น */
   identifier?: string | null;
   wonum: string;
-  onStart: () => void;
+  /** sn = ตู้ที่ช่างเลือกเริ่มทำ (เฉพาะ charger) — ฟอร์มต้องใช้ดึงข้อมูลหัวเอกสาร */
+  onStart: (sn?: string) => void;
   onCancel: () => void;
 };
 
@@ -115,6 +117,11 @@ export default function PmWorkOrderInfo({ source, identifier, wonum, onStart, on
 
   const assignees = (wo?.assignees ?? []).filter(Boolean);
   const equipment = wo?.selected_equipment ?? [];
+  // ฟอร์ม charger ผูกกับ sn ของตู้ ถ้าเข้ามาทางหน้า PM List จะไม่มี sn ติดมาใน URL
+  // (หน้านั้นล้าง selected_sn ทิ้งด้วย) ต้องหยิบจากอุปกรณ์ที่ planner เลือกไว้ในใบงาน
+  const chargers = source === "charger"
+    ? equipment.filter((e) => e.type === "charger" && (e.sn ?? "").trim())
+    : [];
 
   return (
     <section className="tw-pb-24">
@@ -267,15 +274,22 @@ export default function PmWorkOrderInfo({ source, identifier, wonum, onStart, on
 
       {/* ปุ่มเริ่มงานอยู่ท้ายหน้า — อ่านรายละเอียดใบงานจบแล้วค่อยกด
           ยังไม่มีอุปกรณ์ให้ทำก็ยังเริ่มไม่ได้ (planner ยังวางแผนไม่เสร็จ) */}
-      <div className="tw-mx-auto tw-max-w-6xl tw-mt-6 tw-flex tw-justify-end">
-        <Button
-          type="button"
-          onClick={onStart}
-          disabled={loading || !wo || equipment.length === 0}
-          className="tw-bg-amber-500 hover:tw-bg-amber-600 tw-text-white tw-font-semibold tw-text-base tw-px-8 tw-py-3 tw-rounded-xl hover:tw-shadow-lg hover:tw-shadow-amber-500/30 tw-transition-all disabled:tw-opacity-50 disabled:tw-shadow-none"
-        >
-          {t("startPm", lang)}
-        </Button>
+      <div className="tw-mx-auto tw-max-w-6xl tw-mt-6 tw-flex tw-flex-wrap tw-items-center tw-justify-end tw-gap-2">
+        {/* ใบงานเดียวครอบได้หลายตู้ — ต้องรู้ว่าจะเริ่มตู้ไหนก่อนถึงจะเปิดฟอร์มถูกใบ */}
+        {chargers.length > 1 && (
+          <span className="tw-mr-auto tw-text-sm tw-text-blue-gray-500">{t("pickCharger", lang)}</span>
+        )}
+        {(chargers.length > 1 ? chargers : [null]).map((c, i) => (
+          <Button
+            key={c?.sn ?? `start-${i}`}
+            type="button"
+            onClick={() => onStart(c?.sn ?? chargers[0]?.sn ?? undefined)}
+            disabled={loading || !wo || equipment.length === 0}
+            className="tw-bg-amber-500 hover:tw-bg-amber-600 tw-text-white tw-font-semibold tw-text-base tw-px-8 tw-py-3 tw-rounded-xl hover:tw-shadow-lg hover:tw-shadow-amber-500/30 tw-transition-all disabled:tw-opacity-50 disabled:tw-shadow-none"
+          >
+            {c ? `${t("startPm", lang)} · ${equipLabel(c)}` : t("startPm", lang)}
+          </Button>
+        ))}
       </div>
     </section>
   );
