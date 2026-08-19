@@ -811,7 +811,10 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     params.set("view", "form"); params.set("edit_id", row.id);
     // ฟอร์มดู action=post เป็นตัวตัดสินโหมด ไม่ใช่ pmtab — ขาดตัวนี้จะเปิดเป็น Pre-PM
     // แล้วไม่เห็นสิ่งที่ช่างกรอกฝั่ง Post เลย
-    params.set("approve", "1"); params.set("action", "post"); params.set("pmtab", "post");
+    // ผู้มีสิทธิ์อนุมัติ → โหมดอนุมัติ (มีปุ่ม Reject/Approve)
+    // คนอื่นรวมถึงช่างเจ้าของงาน → โหมดดูอย่างเดียว เห็นข้อมูลชุดเดียวกัน
+    params.set(canApprove ? "approve" : "review", "1");
+    params.set("action", "post"); params.set("pmtab", "post");
     params.delete("planning"); params.delete("wo_info"); params.delete("wonum");
     router.push(`${pathname}?${params.toString()}`, { scroll: false });
   };
@@ -1606,8 +1609,9 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
                       // planner/admin → หน้าวางแผน · ช่าง → หน้าข้อมูลใบงานที่มีปุ่มเริ่ม PM
                       // ช่างกดใบที่ยังไม่ได้วางแผนไม่ได้ ยังไม่รู้ว่าต้อง PM อะไร
                       onClick={
-                        // ใบที่ช่างส่งมารออนุมัติ — ผู้อนุมัติเปิดดูของที่กรอกมาก่อนตัดสินใจ
-                        !isWo && canApprove && toPmFlow(row.original) === "wait_approve"
+                        // ใบที่ส่งมารออนุมัติ — เปิดหน้าตรวจได้ทุก role
+                        // (ผู้อนุมัติได้ปุ่มอนุมัติ/ตีกลับ · ช่างเจ้าของงานดูอย่างเดียว)
+                        !isWo && toPmFlow(row.original) === "wait_approve"
                           ? () => goReview(row.original)
                           : !isWo ? undefined
                             : canPlan ? () => goPlan(row.original)
@@ -1621,7 +1625,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
                             : t("fillPmBtn", lang))
                           : undefined
                       }
-                      className={`tw-transition-colors hover:tw-bg-blue-50/40 hover:tw-shadow-[inset_3px_0_0_0_#2196F3] ${index % 2 === 0 ? 'tw-bg-white' : 'tw-bg-blue-gray-50/30'} ${(isWo && (canPlan || planned)) || (!isWo && canApprove && toPmFlow(row.original) === "wait_approve") ? "tw-cursor-pointer" : ""}`}
+                      className={`tw-transition-colors hover:tw-bg-blue-50/40 hover:tw-shadow-[inset_3px_0_0_0_#2196F3] ${index % 2 === 0 ? 'tw-bg-white' : 'tw-bg-blue-gray-50/30'} ${(isWo && (canPlan || planned)) || (!isWo && toPmFlow(row.original) === "wait_approve") ? "tw-cursor-pointer" : ""}`}
                     >
                       {row.getVisibleCells().map((cell) => {
                         const align = (cell.column.columnDef as any).meta?.cellAlign ?? "left";

@@ -83,6 +83,7 @@ const T = {
   fillPmBtn: { th: "กรอก PM", en: "Fill PM" },
   fixAndResubmit: { th: "แก้ไข", en: "Fix" },
   approve: { th: "อนุมัติ", en: "Approve" },
+  viewReport: { th: "ดูข้อมูล", en: "View" },
   reject: { th: "ตีกลับ", en: "Reject" },
   approveTitle: { th: "อนุมัติปิดใบงาน PM", en: "Approve and close PM work order" },
   approveConfirm: { th: "ยืนยันอนุมัติปิดใบงานนี้หรือไม่?", en: "Close this work order?" },
@@ -441,7 +442,10 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     params.set("view", "form"); params.set("edit_id", row.id);
     // ฟอร์มดู action=post เป็นตัวตัดสินโหมด ไม่ใช่ pmtab — ขาดตัวนี้จะเปิดเป็น Pre-PM
     // แล้วไม่เห็นสิ่งที่ช่างกรอกฝั่ง Post เลย
-    params.set("approve", "1"); params.set("action", "post"); params.set("pmtab", "post");
+    // ผู้มีสิทธิ์อนุมัติ → โหมดอนุมัติ (มีปุ่ม Reject/Approve)
+    // คนอื่นรวมถึงช่างเจ้าของงาน → โหมดดูอย่างเดียว เห็นข้อมูลชุดเดียวกัน
+    params.set(canApprove ? "approve" : "review", "1");
+    params.set("action", "post"); params.set("pmtab", "post");
     params.delete("planning"); params.delete("wo_info"); params.delete("wonum");
     router.push(`${pathname}?${params.toString()}`, { scroll: false });
   };
@@ -641,6 +645,12 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
                     className="tw-shrink-0 tw-text-[10px] sm:tw-text-xs tw-px-2 sm:tw-px-3 tw-py-1 tw-min-h-0 tw-h-auto tw-font-medium tw-rounded-md"
                     onClick={() => { setRejectRemark(""); setRejectRow(info.row.original); }}>{t("reject", lang)}</Button>
                 </>
+              )}
+              {/* ยังไม่มีสิทธิ์อนุมัติ (เช่นช่างเจ้าของงาน) → เปิดดูใบเดิมได้แบบอ่านอย่างเดียว */}
+              {!canApprove && toPmFlow(info.row.original) === "wait_approve" && (
+                <Button size="sm" color="blue-gray" variant="outlined"
+                  className="tw-shrink-0 tw-text-[10px] sm:tw-text-xs tw-px-2 sm:tw-px-3 tw-py-1 tw-min-h-0 tw-h-auto tw-font-medium tw-rounded-md"
+                  onClick={() => goReview(info.row.original)}>{t("viewReport", lang)}</Button>
               )}
               {/* โดนตีกลับ → ช่างเปิดฟอร์มเดิมกลับเข้าไปแก้แล้วส่งใหม่ */}
               {toPmFlow(info.row.original) === "rejected" && (

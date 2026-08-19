@@ -12,6 +12,7 @@ import { draftKey, saveDraftLocal, loadDraftLocal, clearDraftLocal } from "../li
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { pmBackRoute } from "@/app/dashboard/pm-report/lib/origin";
 import PmApprovalBar from "@/app/dashboard/pm-report/components/PmApprovalBar";
+import PmCompareTable from "@/app/dashboard/pm-report/components/PmCompareTable";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 import { Tabs, TabsHeader, Tab } from "@material-tailwind/react";
 import { putPhoto, getPhotoByDbKey, delPhoto, type PhotoRef } from "../lib/draftPhotos";
@@ -2186,6 +2187,9 @@ export default function ChargerPMForm() {
     const [workFinish, setWorkFinish] = useState<string>("");
     // planner เปิดเอกสารที่ช่างส่งมาเพื่อตรวจก่อนอนุมัติ (?approve=1)
     const approveMode = searchParams.get("approve") === "1";
+    // ช่างเปิดดูใบที่ตัวเองส่งไปแล้ว (?review=1) — เห็นหน้าเดียวกับ planner
+    // แต่แก้อะไรไม่ได้ และไม่มีปุ่ม Reject/Approve
+    const reviewMode = approveMode || searchParams.get("review") === "1";
 
     const pmStarted = pmStartedManually || !!editId || !!workStart
         || searchParams.get("started") === "1";
@@ -2267,6 +2271,10 @@ export default function ChargerPMForm() {
     useEffect(() => { void prefetchLocation(); }, []);
 
     const [rowsPre, setRowsPre] = useState<Record<string, { pf: PF; remark: string }>>({});
+
+    // รูปทั้งสองฝั่งจากเอกสาร (ใช้ในตารางเทียบตอนตรวจอนุมัติ)
+    // state รูปปกติของฟอร์มมีเฉพาะฝั่งที่กำลังกรอกอยู่ จึงต้องเก็บของ document ไว้ต่างหาก
+    const [cmpPhotos, setCmpPhotos] = useState<{ pre: any; post: any }>({ pre: {}, post: {} });
     const [rows, setRows] = useState<Record<string, { pf: PF; remark: string }>>(() => {
         const initial: Record<string, { pf: PF; remark: string }> = {};
         QUESTIONS.forEach((q) => { initial[q.key] = { pf: "", remark: "" }; });
@@ -2463,6 +2471,7 @@ export default function ChargerPMForm() {
                 }
                 if (data.doc_name) setDocName(data.doc_name);
                 if (data.inspector) setInspector(data.inspector);
+                setCmpPhotos({ pre: data.photos_pre ?? {}, post: data.photos ?? {} });
                 if (data.rows_pre) {
                     setRowsPre(data.rows_pre);
                     const q5Count = Object.keys(data.rows_pre).filter(k => /^r5_\d+$/.test(k)).length;
@@ -3428,6 +3437,32 @@ export default function ChargerPMForm() {
         router.push(`${pathname}?${params.toString()}`, { scroll: false });
     };
 
+
+    // ── ตารางเทียบก่อน/หลัง PM (โหมดตรวจอนุมัติ) ──
+    // ใช้ state ที่โหลดเอกสารมาแล้ว: rowsPre = คำตอบก่อน PM, rows = หลัง PM
+    // คีย์ที่ไม่ได้อยู่ใน QUESTIONS (ข้อย่อยแบบ r5_1) เอามาต่อท้ายด้วย จะได้ไม่ตกหล่น
+    const compareRows = useMemo(() => {
+        const labelOf = (key: string) => {
+            const q: any = (QUESTIONS as any[]).find((x: any) => x?.key === key);
+            if (!q) return key;
+            try { return getQuestionLabel(q, "post" as any, lang); }
+            catch { return q?.label?.[lang] ?? q?.label ?? key; }
+        };
+        const keys: string[] = [];
+        (QUESTIONS as any[]).forEach((q: any) => { if (q?.key) keys.push(q.key); });
+        [...Object.keys(rowsPre ?? {}), ...Object.keys(rows ?? {})].forEach((k) => {
+            if (!keys.includes(k)) keys.push(k);
+        });
+        return keys.map((k) => ({
+            key: k,
+            label: labelOf(k),
+            prePf: (rowsPre as any)?.[k]?.pf,
+            preRemark: (rowsPre as any)?.[k]?.remark,
+            postPf: (rows as any)?.[k]?.pf,
+            postRemark: (rows as any)?.[k]?.remark,
+        }));
+    }, [rowsPre, rows, lang]);
+
     return (
         <section className="tw-pb-24">
             <LoadingOverlay show={pageLoading} text={t("loading", lang)} />
@@ -3439,18 +3474,6 @@ export default function ChargerPMForm() {
                     : `Uploading ${uploadProgress.side === "post" ? "Post-PM" : "Pre-PM"} photos... ${uploadProgress.completed}/${uploadProgress.total}`}
             />
             <div className="tw-mx-auto tw-max-w-6xl tw-flex tw-items-center tw-justify-between tw-mb-4">
-
-                {/* ตรวจเพื่ออนุมัติ — ปุ่มอยู่คู่กับปุ่มย้อนกลับ เห็นทันทีไม่ต้องเลื่อน */}
-                {approveMode && editId && (
-                    <div className="tw-flex tw-items-center tw-gap-2">
-                        <PmApprovalBar
-                            prefix="pmreport" reportId={editId}
-                            scope={{ sn }}
-                            apiBase={API_BASE}
-                            onDone={(msg) => { alert(msg); goBackToList(); }}
-                        />
-                    </div>
-                )}
                 <Button variant="outlined" size="sm" onClick={goBackToList} title={t("backToList", lang)}>
                     <ArrowLeftIcon className="tw-w-4 tw-h-4 tw-stroke-blue-gray-900 tw-stroke-2" />
                 </Button>
@@ -3482,6 +3505,8 @@ export default function ChargerPMForm() {
             </div>
 
             <form action="#" noValidate onSubmit={(e) => { e.preventDefault(); return false; }} onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }}>
+                {/* ดูอย่างเดียว: fieldset ปิดทั้งช่องกรอกและปุ่มบันทึกในทีเดียว */}
+                <fieldset disabled={reviewMode} className="tw-m-0 tw-min-w-0 tw-border-0 tw-p-0">
                 <div className="tw-mx-auto tw-max-w-6xl tw-bg-white tw-border tw-border-blue-gray-100 tw-rounded-xl tw-shadow-sm tw-p-6 md:tw-p-8 tw-print:tw-shadow-none tw-print:tw-border-0">
                     <div className="tw-flex tw-flex-col tw-gap-4 md:tw-flex-row md:tw-items-start md:tw-justify-between md:tw-gap-6">
                         <div className="tw-flex tw-items-start tw-gap-3 md:tw-gap-4">
@@ -3692,8 +3717,32 @@ export default function ChargerPMForm() {
                         </div>
                     </div>
                 </div>
+                </fieldset>
             </form>
             <BackgroundUploadBanner lang={lang} />
+            {/* เทียบผลก่อน/หลังของหัวข้อเดียวกันในบรรทัดเดียว */}
+            {reviewMode && editId && (
+                <PmCompareTable
+                    rows={compareRows}
+                    lang={lang}
+                    prePhotos={cmpPhotos.pre}
+                    postPhotos={cmpPhotos.post}
+                    apiBase={API_BASE}
+                    summaryPre={summaryPre}
+                    summaryPost={summary}
+                />
+            )}
+            {/* ตรวจเสร็จแล้วกดต่อได้เลย ไม่ต้องเลื่อนกลับขึ้นไปข้างบน */}
+            {approveMode && editId && (
+                <div id="pm-approve-bottom" className="tw-mx-auto tw-max-w-6xl tw-mt-6 tw-flex tw-items-center tw-justify-end tw-gap-2 tw-border-t tw-border-blue-gray-100 tw-pt-5">
+                    <PmApprovalBar
+                        prefix="pmreport" reportId={editId}
+                        scope={{ sn }}
+                        apiBase={API_BASE}
+                        onDone={(msg) => { alert(msg); goBackToList(); }}
+                    />
+                </div>
+            )}
         </section>
     );
 }

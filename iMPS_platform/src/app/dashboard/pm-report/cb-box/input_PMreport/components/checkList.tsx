@@ -5,6 +5,7 @@ import { Button, Input, Typography, Textarea, Tooltip } from "@material-tailwind
 import { draftKey, saveDraftLocal, loadDraftLocal, clearDraftLocal } from "@/app/dashboard/pm-report/cb-box/input_PMreport/lib/draft";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import PmApprovalBar from "@/app/dashboard/pm-report/components/PmApprovalBar";
+import PmCompareTable from "@/app/dashboard/pm-report/components/PmCompareTable";
 import Image from "next/image";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 import { Tabs, TabsHeader, Tab } from "@material-tailwind/react";
@@ -969,6 +970,9 @@ export default function CBBOXPMForm() {
     const [workFinish, setWorkFinish] = useState<string>("");
     // planner เปิดเอกสารที่ช่างส่งมาเพื่อตรวจก่อนอนุมัติ (?approve=1)
     const approveMode = searchParams.get("approve") === "1";
+    // ช่างเปิดดูใบที่ตัวเองส่งไปแล้ว (?review=1) — เห็นหน้าเดียวกับ planner
+    // แต่แก้อะไรไม่ได้ และไม่มีปุ่ม Reject/Approve
+    const reviewMode = approveMode || searchParams.get("review") === "1";
 
     const pmStarted = pmStartedManually || !!editId || !!workStart
         || searchParams.get("started") === "1";
@@ -1018,6 +1022,10 @@ export default function CBBOXPMForm() {
     }, []);
 
     const [rowsPre, setRowsPre] = useState<Record<string, { pf: PF; remark: string }>>({});
+
+    // รูปทั้งสองฝั่งจากเอกสาร (ใช้ในตารางเทียบตอนตรวจอนุมัติ)
+    // state รูปปกติของฟอร์มมีเฉพาะฝั่งที่กำลังกรอกอยู่ จึงต้องเก็บของ document ไว้ต่างหาก
+    const [cmpPhotos, setCmpPhotos] = useState<{ pre: any; post: any }>({ pre: {}, post: {} });
     const [rows, setRows] = useState<Record<string, { pf: PF; remark: string }>>(() => {
         const initial: Record<string, { pf: PF; remark: string }> = {};
         QUESTIONS.forEach(q => { initial[q.key] = { pf: "", remark: "" }; });
@@ -1143,6 +1151,7 @@ export default function CBBOXPMForm() {
             if (data.dropdownQ2) setDropdownQ2(data.dropdownQ2);
             if (data.comment_pre) setCommentPre(data.comment_pre);
             if (data.summary) setSummary(data.summary);
+            setCmpPhotos({ pre: data.photos_pre ?? {}, post: data.photos ?? {} });
             if (data.rows_pre) setRowsPre(data.rows_pre);
             if (data.rows) setRows(prev => ({ ...prev, ...data.rows }));
             else if (data.rows_pre) setRows(prev => { const next = { ...prev }; Object.entries(data.rows_pre).forEach(([k, v]) => { next[k] = { pf: (v as any).pf, remark: "" }; }); return next; });
@@ -1518,21 +1527,35 @@ export default function CBBOXPMForm() {
         router.push(`${pathname}?${params.toString()}`, { scroll: false });
     };
 
+
+    // ── ตารางเทียบก่อน/หลัง PM (โหมดตรวจอนุมัติ) ──
+    // ใช้ state ที่โหลดเอกสารมาแล้ว: rowsPre = คำตอบก่อน PM, rows = หลัง PM
+    // คีย์ที่ไม่ได้อยู่ใน QUESTIONS (ข้อย่อยแบบ r5_1) เอามาต่อท้ายด้วย จะได้ไม่ตกหล่น
+    const compareRows = useMemo(() => {
+        const labelOf = (key: string) => {
+            const q: any = (QUESTIONS as any[]).find((x: any) => x?.key === key);
+            if (!q) return key;
+            try { return getQuestionLabel(q, "post" as any, lang); }
+            catch { return q?.label?.[lang] ?? q?.label ?? key; }
+        };
+        const keys: string[] = [];
+        (QUESTIONS as any[]).forEach((q: any) => { if (q?.key) keys.push(q.key); });
+        [...Object.keys(rowsPre ?? {}), ...Object.keys(rows ?? {})].forEach((k) => {
+            if (!keys.includes(k)) keys.push(k);
+        });
+        return keys.map((k) => ({
+            key: k,
+            label: labelOf(k),
+            prePf: (rowsPre as any)?.[k]?.pf,
+            preRemark: (rowsPre as any)?.[k]?.remark,
+            postPf: (rows as any)?.[k]?.pf,
+            postRemark: (rows as any)?.[k]?.remark,
+        }));
+    }, [rowsPre, rows, lang]);
+
     return (
         <section className="tw-pb-24">
             <div className="tw-mx-auto tw-max-w-6xl tw-flex tw-items-center tw-justify-between tw-mb-4">
-
-                {/* ตรวจเพื่ออนุมัติ — ปุ่มอยู่คู่กับปุ่มย้อนกลับ เห็นทันทีไม่ต้องเลื่อน */}
-                {approveMode && editId && (
-                    <div className="tw-flex tw-items-center tw-gap-2">
-                        <PmApprovalBar
-                            prefix="cbboxpmreport" reportId={editId}
-                            scope={{ station_id: stationId }}
-                            apiBase={API_BASE}
-                            onDone={(msg) => { alert(msg); router.back(); }}
-                        />
-                    </div>
-                )}
                 <Button variant="outlined" size="sm" onClick={() => router.back()} title={t("backToList", lang)}><ArrowLeftIcon className="tw-w-4 tw-h-4 tw-stroke-gray-900 tw-stroke-2" /></Button>
                 <Tabs value={displayTab} key={displayTab}>
                     <TabsHeader className="tw-bg-gray-100 tw-rounded-lg">
@@ -1558,6 +1581,8 @@ export default function CBBOXPMForm() {
                 </Tabs>
             </div>
             <form noValidate onSubmit={e => { e.preventDefault(); return false; }} onKeyDown={e => { if (e.key === "Enter") e.preventDefault(); }}>
+                {/* ดูอย่างเดียว: fieldset ปิดทั้งช่องกรอกและปุ่มบันทึกในทีเดียว */}
+                <fieldset disabled={reviewMode} className="tw-m-0 tw-min-w-0 tw-border-0 tw-p-0">
                 <div className="tw-mx-auto tw-max-w-6xl tw-bg-white tw-border tw-border-gray-200 tw-rounded-xl tw-shadow-sm tw-p-4 sm:tw-p-6 md:tw-p-8">
                     <div className="tw-flex tw-flex-col tw-gap-4 md:tw-flex-row md:tw-items-start md:tw-justify-between md:tw-gap-6">
                         <div className="tw-flex tw-items-start tw-gap-3 md:tw-gap-4">
@@ -1695,7 +1720,30 @@ export default function CBBOXPMForm() {
                         </div>
                     </div>
                 </div>
+                </fieldset>
             </form>
+            {/* เทียบผลก่อน/หลังของหัวข้อเดียวกันในบรรทัดเดียว */}
+            {reviewMode && editId && (
+                <PmCompareTable
+                    rows={compareRows}
+                    lang={lang}
+                    prePhotos={cmpPhotos.pre}
+                    postPhotos={cmpPhotos.post}
+                    apiBase={API_BASE}
+                    summaryPost={summary}
+                />
+            )}
+            {/* ตรวจเสร็จแล้วกดต่อได้เลย ไม่ต้องเลื่อนกลับขึ้นไปข้างบน */}
+            {approveMode && editId && (
+                <div id="pm-approve-bottom" className="tw-mx-auto tw-max-w-6xl tw-mt-6 tw-flex tw-items-center tw-justify-end tw-gap-2 tw-border-t tw-border-blue-gray-100 tw-pt-5">
+                    <PmApprovalBar
+                        prefix="cbboxpmreport" reportId={editId}
+                        scope={{ station_id: stationId }}
+                        apiBase={API_BASE}
+                        onDone={(msg) => { alert(msg); router.back(); }}
+                    />
+                </div>
+            )}
         </section>
     );
 }
