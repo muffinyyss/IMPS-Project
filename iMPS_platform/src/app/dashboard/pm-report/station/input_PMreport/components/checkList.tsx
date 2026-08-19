@@ -2027,9 +2027,10 @@ export default function StationPMReport() {
         // ต้องต่อท้ายข้อแม่ของมัน ไม่ใช่ไปกองรวมกันท้ายตาราง
         const answered = Array.from(new Set([...Object.keys(rowsPre ?? {}), ...Object.keys(rows ?? {})]));
         const subNo = (k: string) => Number(k.split("_")[1] ?? 0) || 0;
-        const mk = (k: string, section: string, label: string) => ({
+        const mk = (k: string, section: string, label: string, qNo?: number) => ({
             key: k,
             section,
+            qNo,
             label,
             prePf: (rowsPre as any)?.[k]?.pf,
             preRemark: (rowsPre as any)?.[k]?.remark,
@@ -2042,13 +2043,19 @@ export default function StationPMReport() {
         (QUESTIONS as any[]).forEach((q: any) => {
             if (!q?.key) return;
             const section = labelOf(q.key);
-            out.push(mk(q.key, section, ""));
+            // เลขข้อ — ใช้รวมรูปของทั้งข้อในตารางเทียบ แบบเดียวกับที่ PDF ทำ
+            const qNo: number | undefined = typeof q?.no === "number" ? q.no
+                : Number(String(q?.key ?? "").replace(/^r/, "")) || undefined;
+            out.push(mk(q.key, section, "", qNo));
             answered
                 .filter((k) => k !== q.key && k.split("_")[0] === q.key)
                 .sort((a, b) => subNo(a) - subNo(b))
-                .forEach((k) => out.push(mk(k, section, labelOf(k))));
+                .forEach((k) => out.push(mk(k, section, labelOf(k), qNo)));
         });
-        answered.forEach((k) => { if (!out.some((r) => r.key === k)) out.push(mk(k, "", labelOf(k))); });
+        answered.forEach((k) => {
+            if (out.some((r) => r.key === k)) return;
+            out.push(mk(k, "", labelOf(k), Number(k.replace(/^r/, "").split("_")[0]) || undefined));
+        });
         return out;
     }, [rowsPre, rows, lang]);
 
