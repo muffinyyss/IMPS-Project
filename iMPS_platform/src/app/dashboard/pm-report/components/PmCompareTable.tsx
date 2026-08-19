@@ -45,6 +45,12 @@ const T = {
   noPhoto: { th: "ไม่มีรูป", en: "No photo" },
   noNote: { th: "ไม่มีหมายเหตุ", en: "No note" },
   summary: { th: "สรุปผล", en: "Summary" },
+  workTime: { th: "เวลาทำงาน", en: "Work time" },
+  labor: { th: "ช่างที่ลงเวลากับ Maximo", en: "Technicians logged to Maximo" },
+  contractor: { th: "ผู้รับเหมา", en: "Contractor" },
+  none: { th: "—", en: "—" },
+  docNo: { th: "เลขที่เอกสาร", en: "Document no." },
+  asset: { th: "อุปกรณ์", en: "Asset" },
   empty: { th: "ยังไม่มีข้อมูลให้เทียบ", en: "Nothing to compare yet" },
 } as const;
 
@@ -113,6 +119,7 @@ function AfterCell({ pf, remark }: { pf?: string; remark?: string }) {
 
 export default function PmCompareTable({
   rows, lang, summaryPre, summaryPost, prePhotos, postPhotos, apiBase = "",
+  workStart, workFinish, labor, contractor, docNo, assetLabel,
 }: {
   rows: CompareRow[];
   lang: Lang;
@@ -121,6 +128,15 @@ export default function PmCompareTable({
   prePhotos?: PhotoMap;
   postPhotos?: PhotoMap;
   apiBase?: string;
+  /** เวลาทำงานจริงที่ช่างกรอก — ส่งเข้า Maximo ทาง IN09 ตอนปิดใบงาน */
+  workStart?: string;
+  workFinish?: string;
+  /** laborcode ที่ช่างเลือก (ชื่อ + รหัส) */
+  labor?: { laborcode: string; name: string }[];
+  contractor?: string;
+  /** หัวเอกสาร — ฟอร์มถูกซ่อนในโหมดตรวจ ต้องบอกให้รู้ว่ากำลังดูใบไหนของอุปกรณ์ไหน */
+  docNo?: string;
+  assetLabel?: string;
 }) {
   // ฝั่งก่อน PM ไม่มี pf จึงต้องดูหมายเหตุด้วย ไม่งั้นข้อที่ช่างจดไว้ก่อนทำจะหายไป
   const shown = rows.filter((r) => {
@@ -135,6 +151,48 @@ export default function PmCompareTable({
         <div className="tw-font-semibold tw-text-base">{t("title", lang)}</div>
         <div className="tw-text-xs tw-text-white/70 tw-mt-0.5">{t("hint", lang)}</div>
       </div>
+
+      {(docNo?.trim() || assetLabel?.trim()) && (
+        <div className="tw-flex tw-flex-wrap tw-gap-x-6 tw-gap-y-1 tw-border-b tw-border-blue-gray-100 tw-px-4 tw-py-2.5 tw-text-sm">
+          {docNo?.trim() && (
+            <span><span className="tw-text-blue-gray-500">{t("docNo", lang)}: </span><span className="tw-font-medium tw-text-blue-gray-800">{docNo}</span></span>
+          )}
+          {assetLabel?.trim() && (
+            <span><span className="tw-text-blue-gray-500">{t("asset", lang)}: </span><span className="tw-font-mono tw-text-blue-gray-800">{assetLabel}</span></span>
+          )}
+        </div>
+      )}
+
+      {(workStart || workFinish || (labor?.length ?? 0) > 0 || contractor?.trim()) && (
+        <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 tw-gap-4 tw-border-b tw-border-blue-gray-100 tw-bg-blue-gray-50/40 tw-px-4 tw-py-3">
+          <div>
+            <div className="tw-text-xs tw-font-semibold tw-text-blue-gray-500">{t("workTime", lang)}</div>
+            <div className="tw-text-sm tw-text-blue-gray-800">
+              {workStart || workFinish ? `${workStart || "—"}  →  ${workFinish || "—"}` : t("none", lang)}
+            </div>
+          </div>
+          <div>
+            <div className="tw-text-xs tw-font-semibold tw-text-blue-gray-500">{t("labor", lang)}</div>
+            {(labor?.length ?? 0) === 0 ? (
+              <div className="tw-text-sm tw-text-blue-gray-400">{t("none", lang)}</div>
+            ) : (
+              <ul className="tw-text-sm tw-text-blue-gray-800">
+                {labor!.map((l) => (
+                  <li key={l.laborcode} className="tw-flex tw-gap-2">
+                    <span className="tw-truncate">{l.name}</span>
+                    <span className="tw-ml-auto tw-font-mono tw-text-xs tw-text-blue-gray-400">{l.laborcode}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {contractor?.trim() && (
+              <div className="tw-mt-1 tw-text-sm tw-text-blue-gray-800">
+                {t("contractor", lang)}: {contractor}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {shown.length === 0 ? (
         <p className="tw-px-4 tw-py-6 tw-text-center tw-text-sm tw-text-blue-gray-400">{t("empty", lang)}</p>
