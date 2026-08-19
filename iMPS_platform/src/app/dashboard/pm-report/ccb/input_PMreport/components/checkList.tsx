@@ -17,6 +17,7 @@ import { draftKey, saveDraftLocal, loadDraftLocal, clearDraftLocal } from "../li
 
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import PmApprovalBar from "@/app/dashboard/pm-report/components/PmApprovalBar";
+import PmCompareTable from "@/app/dashboard/pm-report/components/PmCompareTable";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 import { Tabs, TabsHeader, Tab } from "@material-tailwind/react";
 import { putPhoto, getPhotoByDbKey, delPhoto, type PhotoRef } from "../lib/draftPhotos";
@@ -2812,6 +2813,32 @@ export default function CCBPMReport() {
         });
     }, [missingPhotoItems]);
 
+
+    // ── ตารางเทียบก่อน/หลัง PM (โหมดตรวจอนุมัติ) ──
+    // ใช้ state ที่โหลดเอกสารมาแล้ว: rowsPre = คำตอบก่อน PM, rows = หลัง PM
+    // คีย์ที่ไม่ได้อยู่ใน QUESTIONS (ข้อย่อยแบบ r5_1) เอามาต่อท้ายด้วย จะได้ไม่ตกหล่น
+    const compareRows = useMemo(() => {
+        const labelOf = (key: string) => {
+            const q: any = (QUESTIONS as any[]).find((x: any) => x?.key === key);
+            if (!q) return key;
+            try { return getQuestionLabel(q, "post" as any, lang); }
+            catch { return q?.label?.[lang] ?? q?.label ?? key; }
+        };
+        const keys: string[] = [];
+        (QUESTIONS as any[]).forEach((q: any) => { if (q?.key) keys.push(q.key); });
+        [...Object.keys(rowsPre ?? {}), ...Object.keys(rows ?? {})].forEach((k) => {
+            if (!keys.includes(k)) keys.push(k);
+        });
+        return keys.map((k) => ({
+            key: k,
+            label: labelOf(k),
+            prePf: (rowsPre as any)?.[k]?.pf,
+            preRemark: (rowsPre as any)?.[k]?.remark,
+            postPf: (rows as any)?.[k]?.pf,
+            postRemark: (rows as any)?.[k]?.remark,
+        }));
+    }, [rowsPre, rows, lang]);
+
     return (
         <section className="tw-pb-24">
             <LoadingOverlay show={pageLoading} text={t("loading", lang)} />
@@ -3030,6 +3057,14 @@ export default function CCBPMReport() {
                 </div>
             </form>
             <BackgroundUploadBanner lang={lang} />
+            {/* เทียบผลก่อน/หลังของหัวข้อเดียวกันในบรรทัดเดียว */}
+            {approveMode && editId && (
+                <PmCompareTable
+                    rows={compareRows}
+                    lang={lang}
+                    summaryPost={summary}
+                />
+            )}
             {/* ตรวจเสร็จแล้วกดต่อได้เลย ไม่ต้องเลื่อนกลับขึ้นไปข้างบน */}
             {approveMode && editId && (
                 <div id="pm-approve-bottom" className="tw-mx-auto tw-max-w-6xl tw-mt-6 tw-flex tw-items-center tw-justify-end tw-gap-2 tw-border-t tw-border-blue-gray-100 tw-pt-5">
