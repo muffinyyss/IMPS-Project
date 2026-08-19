@@ -1696,6 +1696,17 @@ export default function CBBOXPMForm() {
                     </div>
                 </div>
             </form>
+            {/* ตรวจเสร็จแล้วกดต่อได้เลย ไม่ต้องเลื่อนกลับขึ้นไปข้างบน */}
+            {approveMode && editId && (
+                <div id="pm-approve-bottom" className="tw-mx-auto tw-max-w-6xl tw-mt-6 tw-flex tw-items-center tw-justify-end tw-gap-2 tw-border-t tw-border-blue-gray-100 tw-pt-5">
+                    <PmApprovalBar
+                        prefix="cbboxpmreport" reportId={editId}
+                        scope={{ station_id: stationId }}
+                        apiBase={API_BASE}
+                        onDone={(msg) => { alert(msg); router.back(); }}
+                    />
+                </div>
+            )}
         </section>
     );
 }
