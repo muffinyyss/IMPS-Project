@@ -341,6 +341,7 @@ const T = {
         en: "Who gets an actual-labor record in Maximo (IN09) — leave empty to fall back to the assigned technicians",
     },
     maximoLaborEmpty: { th: "ยังไม่มีรหัสช่างจาก Maximo", en: "No Maximo labor codes available" },
+    maximoLaborNone: { th: "ช่างไม่ได้เลือกใครไว้", en: "No technician selected" },
     contractorName: { th: "ชื่อผู้รับเหมา", en: "Contractor name" },
     contractorPlaceholder: { th: "ระบุชื่อผู้รับเหมาที่มาทำงานจริง", en: "Name of the contractor who did the work" },
     contractorRequired: { th: "เลือกผู้รับเหมาแล้วต้องระบุชื่อด้วย", en: "Enter the contractor name" },
@@ -1131,8 +1132,10 @@ export default function StationPMReport() {
     const laborList = useMemo(() => {
         const have = new Set(laborOptions.map((o) => o.laborcode));
         const missing = maximoLabor.filter((c) => !have.has(c)).map((c) => ({ laborcode: c, name: c }));
-        return missing.length ? [...laborOptions, ...missing] : laborOptions;
-    }, [laborOptions, maximoLabor]);
+        const all = missing.length ? [...laborOptions, ...missing] : laborOptions;
+        // โหมดตรวจไม่ต้องเห็นรายชื่อทั้งกรม เอาเฉพาะคนที่ช่างเลือกลงใบงานนี้
+        return reviewMode ? all.filter((o) => maximoLabor.includes(o.laborcode)) : all;
+    }, [laborOptions, maximoLabor, reviewMode]);
     const contractorPicked = laborOptions.some((o) => o.needs_name && maximoLabor.includes(o.laborcode));
     const contractorMissing = contractorPicked && !maximoContractor.trim();
     const [inspector, setInspector] = useState<string>("");
@@ -2226,14 +2229,16 @@ export default function StationPMReport() {
                                 </Typography>
                             </div>
                             {laborList.length === 0 ? (
-                                <p className="tw-text-xs tw-text-orange-600">{t("maximoLaborEmpty", lang)}</p>
+                                <p className="tw-text-xs tw-text-orange-600">
+                                                {reviewMode ? t("maximoLaborNone", lang) : t("maximoLaborEmpty", lang)}
+                                            </p>
                             ) : (
                                 <div className="tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-divide-y tw-divide-blue-gray-50 tw-max-h-56 tw-overflow-y-auto">
                                     {laborList.map((o) => (
                                         <label key={o.laborcode} className="tw-flex tw-items-center tw-gap-2.5 tw-px-3 tw-py-2.5 tw-cursor-pointer hover:tw-bg-blue-gray-50/60 tw-transition-colors">
-                                            <input type="checkbox" checked={maximoLabor.includes(o.laborcode)}
+                                            {!reviewMode && (<input type="checkbox" checked={maximoLabor.includes(o.laborcode)}
                                                 onChange={() => toggleMaximoLabor(o.laborcode)}
-                                                className="tw-h-4 tw-w-4 tw-shrink-0 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500 tw-cursor-pointer" />
+                                                className="tw-h-4 tw-w-4 tw-shrink-0 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500 tw-cursor-pointer" />)}
                                             <span className="tw-min-w-0 tw-truncate tw-text-sm tw-text-blue-gray-800">{o.name}</span>
                                             <span className="tw-ml-auto tw-font-mono tw-text-xs tw-text-blue-gray-400">{o.laborcode}</span>
                                         </label>

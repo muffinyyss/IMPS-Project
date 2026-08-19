@@ -88,7 +88,7 @@ const TYPE_TO_TAB: Record<string, string> = {
   STATION: "station",
 };
 
-type SortKey = "station" | "wo" | "document" | "technician" | "date" | "status";
+type SortKey = "station" | "wo" | "technician" | "date" | "status";
 type SortDir = "asc" | "desc";
 
 const STAGE_RANK: Record<PmStage, number> = { open: 0, in_progress: 1, wait_approve: 2, closed: 3 };
@@ -253,9 +253,10 @@ export default function PMListPage() {
       openReportTitle: "เปิดเอกสาร PM",
       openPlanTitle: "เปิดหน้าวางแผน",
       notInMaximo: "เลขใบงานนี้ไม่มีอยู่จริงใน Maximo — วางแผนแล้วส่งสถานะกลับไม่ได้",
+      noWonum: "เอกสารนี้ไม่ได้ผูกกับใบงาน Maximo",
       sortAsc: "เรียงจากน้อยไปมาก", sortDesc: "เรียงจากมากไปน้อย",
       headers: {
-        station: "สถานี", wo: "WO", document: "ชื่อเอกสาร",
+        station: "สถานี", wo: "WO (Maximo)",
         technician: "ผู้ตรวจสอบ", date: "วันที่ PM", status: "สถานะ",
       },
       stage: { open: "Open", in_progress: "In Progress", wait_approve: "Wait for approve", closed: "Closed" },
@@ -282,9 +283,10 @@ export default function PMListPage() {
       openReportTitle: "Open PM report",
       openPlanTitle: "Open planning page",
       notInMaximo: "This work order does not exist in Maximo — status updates will fail",
+      noWonum: "This document is not linked to a Maximo work order",
       sortAsc: "Sort ascending", sortDesc: "Sort descending",
       headers: {
-        station: "Station", wo: "WO", document: "Document",
+        station: "Station", wo: "WO (Maximo)",
         technician: "Inspector", date: "PM date", status: "Status",
       },
       stage: { open: "Open", in_progress: "In Progress", wait_approve: "Wait for approve", closed: "Closed" },
@@ -416,8 +418,7 @@ export default function PMListPage() {
   const sortValue = useCallback((r: PMRow, key: SortKey): string | number => {
     switch (key) {
       case "station": return (r.station_name || r.station_id || "").toLowerCase();
-      case "wo": return (r.wonum || r.issue_id || "").toLowerCase();
-      case "document": return (r.document_name || "").toLowerCase();
+      case "wo": return (r.wonum || "").toLowerCase();
       case "technician": return (r.technician || "").toLowerCase();
       case "date": return r.pm_date || "";
       case "status": return STAGE_RANK[stageOf(r)];
@@ -466,7 +467,6 @@ export default function PMListPage() {
   const columns: { key: SortKey; label: string }[] = [
     { key: "station", label: t.headers.station },
     { key: "wo", label: t.headers.wo },
-    { key: "document", label: t.headers.document },
     { key: "technician", label: t.headers.technician },
     { key: "date", label: t.headers.date },
     { key: "status", label: t.headers.status },
@@ -679,10 +679,16 @@ export default function PMListPage() {
                   >
                     <td className="tw-px-4 tw-py-3 tw-text-gray-400">{page * pageSize + i + 1}</td>
                     <td className="tw-px-4 tw-py-3 tw-font-medium tw-text-gray-800">{r.station_name || r.station_id}</td>
-                    {/* ใบเก่าที่ยังไม่ผูก wonum ให้ถอยไปใช้ issue_id เดิม */}
+                    {/* คอลัมน์นี้คือเลขใบงานฝั่ง Maximo เท่านั้น
+                        เดิมถ้าไม่มีจะถอยไปโชว์ issue_id ของ iMPS ซึ่งคนละเลขกัน
+                        อ่านแล้วนึกว่าเป็น WO ทั้งที่ใบนั้นไม่ได้ผูกกับ Maximo เลย */}
                     <td className="tw-px-4 tw-py-3 tw-text-gray-600">
                       <span className="tw-inline-flex tw-items-center tw-gap-1.5">
-                        {r.wonum || r.issue_id || "-"}
+                        {r.wonum ? (
+                          <span className="tw-font-mono">{r.wonum}</span>
+                        ) : (
+                          <span className="tw-text-gray-300" title={t.noWonum}>—</span>
+                        )}
                         {/* เลขที่ Maximo ไม่รู้จัก — วางแผนไปก็ส่งสถานะกลับไม่ได้ */}
                         {r.exists_in_maximo === false && (
                           <span
@@ -692,11 +698,6 @@ export default function PMListPage() {
                             !
                           </span>
                         )}
-                      </span>
-                    </td>
-                    <td className="tw-px-4 tw-py-3 tw-text-gray-600">
-                      <span className="tw-block tw-max-w-[240px] tw-truncate" title={r.document_name || ""}>
-                        {r.document_name || "-"}
                       </span>
                     </td>
                     <td className="tw-px-4 tw-py-3 tw-text-gray-600">{r.technician || "-"}</td>
