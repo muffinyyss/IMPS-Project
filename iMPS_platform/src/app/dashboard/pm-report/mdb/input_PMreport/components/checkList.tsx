@@ -2546,30 +2546,33 @@ export default function MDBPMForm() {
                         </div>
                     )}
 
-                        <PMValidationCard
-                            lang={lang} displayTab={displayTab} isPostMode={isPostMode}
-                            allPhotosAttached={allPhotosAttached} missingPhotoItems={missingPhotoItems}
-                            allRequiredInputsFilled={allRequiredInputsFilled} missingInputsDetailed={missingInputsDetailed}
-                            allRemarksFilledPre={allRemarksFilledPre} missingRemarksPre={missingRemarksPre}
-                            allPFAnsweredPost={allPFAnsweredPost} missingPFItemsPost={missingPFItemsPost}
-                            allRemarksFilledPost={allRemarksFilledPost} missingRemarksPost={missingRemarksPost}
-                            isSummaryFilled={isSummaryFilled} isSummaryCheckFilled={isSummaryCheckFilled}
-                        />
-                        <div className="tw-flex tw-flex-col sm:tw-flex-row tw-justify-end tw-gap-2 sm:tw-gap-3">
-                            {displayTab === "pre" ? (
-                                <Button type="button" onClick={onPreSave} disabled={!canGoAfter || submitting}
-                                    className="tw-text-sm tw-py-2.5 tw-bg-gray-800 hover:tw-bg-gray-900"
-                                    title={!allPhotosAttachedPre ? t("photoNotComplete", lang) : !allRequiredInputsFilled ? t("inputNotComplete", lang) : !allRemarksFilledPre ? `${t("alertFillRemark", lang)} ${missingRemarksPre.join(", ")}` : undefined}>
-                                    {submitting ? t("saving", lang) : t("save", lang)}
-                                </Button>
-                            ) : (
-                                <Button type="button" onClick={onFinalSave} disabled={!canFinalSave || submitting}
-                                    className="tw-text-sm tw-py-2.5 tw-bg-gray-800 hover:tw-bg-gray-900"
-                                    title={!canFinalSave ? t("allNotComplete", lang) : undefined}>
-                                    {submitting ? t("saving", lang) : t("save", lang)}
-                                </Button>
-                            )}
-                        </div>
+                        {/* ดูอย่างเดียว: ไม่ต้องมีการ์ดเช็คความครบถ้วนกับปุ่มบันทึก */}
+                        {!reviewMode && (<>
+                            <PMValidationCard
+                                lang={lang} displayTab={displayTab} isPostMode={isPostMode}
+                                allPhotosAttached={allPhotosAttached} missingPhotoItems={missingPhotoItems}
+                                allRequiredInputsFilled={allRequiredInputsFilled} missingInputsDetailed={missingInputsDetailed}
+                                allRemarksFilledPre={allRemarksFilledPre} missingRemarksPre={missingRemarksPre}
+                                allPFAnsweredPost={allPFAnsweredPost} missingPFItemsPost={missingPFItemsPost}
+                                allRemarksFilledPost={allRemarksFilledPost} missingRemarksPost={missingRemarksPost}
+                                isSummaryFilled={isSummaryFilled} isSummaryCheckFilled={isSummaryCheckFilled}
+                            />
+                            <div className="tw-flex tw-flex-col sm:tw-flex-row tw-justify-end tw-gap-2 sm:tw-gap-3">
+                                {displayTab === "pre" ? (
+                                    <Button type="button" onClick={onPreSave} disabled={!canGoAfter || submitting}
+                                        className="tw-text-sm tw-py-2.5 tw-bg-gray-800 hover:tw-bg-gray-900"
+                                        title={!allPhotosAttachedPre ? t("photoNotComplete", lang) : !allRequiredInputsFilled ? t("inputNotComplete", lang) : !allRemarksFilledPre ? `${t("alertFillRemark", lang)} ${missingRemarksPre.join(", ")}` : undefined}>
+                                        {submitting ? t("saving", lang) : t("save", lang)}
+                                    </Button>
+                                ) : (
+                                    <Button type="button" onClick={onFinalSave} disabled={!canFinalSave || submitting}
+                                        className="tw-text-sm tw-py-2.5 tw-bg-gray-800 hover:tw-bg-gray-900"
+                                        title={!canFinalSave ? t("allNotComplete", lang) : undefined}>
+                                        {submitting ? t("saving", lang) : t("save", lang)}
+                                    </Button>
+                                )}
+                            </div>
+                        </>)}
                     </div>
                 </div>
                 </fieldset>

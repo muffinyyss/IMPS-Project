@@ -3029,28 +3029,31 @@ export default function CCBPMReport() {
                         </div>
                     )}
 
-                        <PMValidationCard
-                            lang={lang} displayTab={displayTab} isPostMode={isPostMode}
-                            allPhotosAttached={allPhotosAttached} missingPhotoItems={missingPhotoItemsFormatted}
-                            allRequiredInputsFilled={allRequiredInputsFilled} missingInputsDetailed={missingInputsDetailed}
-                            allRemarksFilledPre={allRemarksFilledPre} missingRemarksPre={missingRemarksPre}
-                            allPFAnsweredPost={allPFAnsweredForUI} missingPFItemsPost={missingPFItemsForUI}
-                            allRemarksFilledPost={allRemarksFilledPost} missingRemarksPost={missingRemarksPost}
-                            isSummaryFilled={isSummaryFilled} isSummaryCheckFilled={isSummaryCheckFilled}
-                        />
-                        <div className="tw-flex tw-flex-col sm:tw-flex-row tw-justify-end tw-gap-2 sm:tw-gap-3">
-                            {displayTab === "pre" ? (
-                                <Button type="button" onClick={onPreSave} disabled={!canGoAfter || submitting}
-                                    className="tw-text-sm tw-py-2.5 tw-w-full sm:tw-w-auto tw-bg-gray-800 hover:tw-bg-gray-900 disabled:tw-bg-gray-800 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed">
-                                    {submitting ? t("saving", lang) : t("save", lang)}
-                                </Button>
-                            ) : (
-                                <Button type="button" onClick={onFinalSave} disabled={!canFinalSave || submitting}
-                                    className="tw-text-sm tw-py-2.5 tw-w-full sm:tw-w-auto tw-bg-gray-800 hover:tw-bg-gray-900 disabled:tw-bg-gray-800 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed">
-                                    {submitting ? t("saving", lang) : t("save", lang)}
-                                </Button>
-                            )}
-                        </div>
+                        {/* ดูอย่างเดียว: ไม่ต้องมีการ์ดเช็คความครบถ้วนกับปุ่มบันทึก */}
+                        {!reviewMode && (<>
+                            <PMValidationCard
+                                lang={lang} displayTab={displayTab} isPostMode={isPostMode}
+                                allPhotosAttached={allPhotosAttached} missingPhotoItems={missingPhotoItemsFormatted}
+                                allRequiredInputsFilled={allRequiredInputsFilled} missingInputsDetailed={missingInputsDetailed}
+                                allRemarksFilledPre={allRemarksFilledPre} missingRemarksPre={missingRemarksPre}
+                                allPFAnsweredPost={allPFAnsweredForUI} missingPFItemsPost={missingPFItemsForUI}
+                                allRemarksFilledPost={allRemarksFilledPost} missingRemarksPost={missingRemarksPost}
+                                isSummaryFilled={isSummaryFilled} isSummaryCheckFilled={isSummaryCheckFilled}
+                            />
+                            <div className="tw-flex tw-flex-col sm:tw-flex-row tw-justify-end tw-gap-2 sm:tw-gap-3">
+                                {displayTab === "pre" ? (
+                                    <Button type="button" onClick={onPreSave} disabled={!canGoAfter || submitting}
+                                        className="tw-text-sm tw-py-2.5 tw-w-full sm:tw-w-auto tw-bg-gray-800 hover:tw-bg-gray-900 disabled:tw-bg-gray-800 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed">
+                                        {submitting ? t("saving", lang) : t("save", lang)}
+                                    </Button>
+                                ) : (
+                                    <Button type="button" onClick={onFinalSave} disabled={!canFinalSave || submitting}
+                                        className="tw-text-sm tw-py-2.5 tw-w-full sm:tw-w-auto tw-bg-gray-800 hover:tw-bg-gray-900 disabled:tw-bg-gray-800 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed">
+                                        {submitting ? t("saving", lang) : t("save", lang)}
+                                    </Button>
+                                )}
+                            </div>
+                        </>)}
                     </div>
                 </div>
                 </fieldset>
