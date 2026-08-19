@@ -772,9 +772,13 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
   const woInfoWonum = searchParams.get("wo_info") === "1" ? (searchParams.get("wonum") ?? "") : "";
 
   // กด "เริ่ม PM" → เปิดฟอร์ม Pre-PM (started=1 กันไม่ให้ถามซ้ำในฟอร์ม)
-  const startPmFromInfo = () => {
+  const startPmFromInfo = (snFromWo?: string) => {
     const params = new URLSearchParams(searchParams.toString());
     params.delete("wo_info");
+    // ตู้ที่ช่างเลือกจากใบงาน — ฟอร์มอ่าน sn จาก URL ไปดึงหัวเอกสาร
+    // ไม่มีตัวนี้หน้าฟอร์มจะโล่ง เหลือแต่ชื่อผู้ตรวจที่มาจาก /me
+    if (snFromWo) params.set("sn", snFromWo);
+
     params.set("started", "1");
     params.set("pmtab", "pre");
     router.push(`${pathname}?${params.toString()}`, { scroll: false });
