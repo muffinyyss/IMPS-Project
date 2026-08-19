@@ -1612,7 +1612,7 @@ export default function CBBOXPMForm() {
             </div>
             {/* โหมดตรวจ: ฟอร์มกรอกไม่ต้องโชว์ ดูจากตารางเทียบก่อน/หลังด้านล่างแทน
                 แต่ยังต้อง mount ไว้ ค่าที่คำนวณจากฟอร์ม (ความครบถ้วน, สรุป) ใช้ต่อข้างล่าง */}
-            <form noValidate onSubmit={e => { e.preventDefault(); return false; }} onKeyDown={e => { if (e.key === "Enter") e.preventDefault(); }} className={reviewMode ? "tw-hidden" : undefined}>
+            <form noValidate onSubmit={e => { e.preventDefault(); return false; }} onKeyDown={e => { if (e.key === "Enter") e.preventDefault(); }}>
                 {/* ดูอย่างเดียว: fieldset ปิดทั้งช่องกรอกและปุ่มบันทึกในทีเดียว */}
                 <fieldset disabled={reviewMode} className="pm-readonly tw-m-0 tw-min-w-0 tw-border-0 tw-p-0">
                 <div className="tw-mx-auto tw-max-w-6xl tw-bg-white tw-border tw-border-gray-200 tw-rounded-xl tw-shadow-sm tw-p-4 sm:tw-p-6 md:tw-p-8">
@@ -1629,7 +1629,9 @@ export default function CBBOXPMForm() {
                         <div className="sm:tw-col-span-2 lg:tw-col-span-2"><Input label={t("inspector", lang)} value={inspector} readOnly crossOrigin="" containerProps={{ className: "!tw-min-w-0" }} className="!tw-bg-gray-50" /></div>
                         <div className="lg:tw-col-span-1"><Input label={t("pmDate", lang)} type="text" value={job.date} readOnly crossOrigin="" containerProps={{ className: "!tw-min-w-0" }} className="!tw-bg-gray-50" /></div>
                     </div>
-                    <div className="tw-space-y-4 tw-mt-6">{QUESTIONS.filter(q => !(displayTab === "pre" && q.no === 9)).map(q => renderQuestionBlock(q, displayTab))}</div>
+                    <div className="tw-space-y-4 tw-mt-6">{/* โหมดตรวจ: ตัดเฉพาะรายการข้อที่ช่างกรอก ดูจากตารางเทียบก่อน/หลังด้านล่างแทน
+                            ส่วนหัวเอกสารกับข้อมูลสถานีคงไว้ ผู้อนุมัติต้องรู้ว่ากำลังดูใบไหน */}
+                        {!reviewMode && (QUESTIONS.filter(q => !(displayTab === "pre" && q.no === 9)).map(q => renderQuestionBlock(q, displayTab)))}</div>
                     <div id={`${ID_PREFIX}-summary-section`} className="tw-space-y-3 tw-mt-6">
                         <Typography variant="h6">{t("comment", lang)}</Typography>
                         {displayTab === "post" && commentPre && (
@@ -1765,12 +1767,6 @@ export default function CBBOXPMForm() {
                     prePhotos={cmpPhotos.pre}
                     postPhotos={cmpPhotos.post}
                     apiBase={API_BASE}
-                    docNo={docName}
-                    assetLabel={stationId ?? ""}
-                    workStart={workStart}
-                    workFinish={workFinish}
-                    labor={laborOptions.filter((o) => maximoLabor.includes(o.laborcode))}
-                    contractor={maximoContractor}
                     summaryPost={summary}
                 />
             )}

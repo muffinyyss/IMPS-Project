@@ -2064,11 +2064,8 @@ export default function StationPMReport() {
                 )}
             </div>
 
-            {/* โหมดตรวจ: ฟอร์มกรอกไม่ต้องโชว์ ดูจากตารางเทียบก่อน/หลังด้านล่างแทน
-
-                แต่ยังต้อง mount ไว้ ค่าที่คำนวณจากฟอร์ม (ความครบถ้วน, สรุป) ใช้ต่อข้างล่าง */}
-
-            <form action="#" noValidate onSubmit={(e) => { e.preventDefault(); return false; }} onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }} className={reviewMode ? "tw-hidden" : undefined}>
+            
+            <form action="#" noValidate onSubmit={(e) => { e.preventDefault(); return false; }} onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }}>
                 {/* ดูอย่างเดียว: fieldset ปิดทั้งช่องกรอกและปุ่มบันทึกในทีเดียว */}
                 <fieldset disabled={reviewMode} className="pm-readonly tw-m-0 tw-min-w-0 tw-border-0 tw-p-0">
                 <div className="tw-mx-auto tw-max-w-6xl tw-bg-white tw-border tw-border-blue-gray-100 tw-rounded-xl tw-shadow-sm tw-p-6 md:tw-p-8 tw-print:tw-shadow-none tw-print:tw-border-0">
@@ -2103,7 +2100,9 @@ export default function StationPMReport() {
                     </div>
 
                     <div className="tw-mt-6 sm:tw-mt-8 tw-space-y-4 sm:tw-space-y-6">
-                        {QUESTIONS.filter((q) => !(displayTab === "pre" && q.no === 11)).map((q) => renderQuestionBlock(q, displayTab))}
+                        {/* โหมดตรวจ: ตัดเฉพาะรายการข้อที่ช่างกรอก ดูจากตารางเทียบก่อน/หลังด้านล่างแทน
+                            ส่วนหัวเอกสารกับข้อมูลสถานีคงไว้ ผู้อนุมัติต้องรู้ว่ากำลังดูใบไหน */}
+                        {!reviewMode && (QUESTIONS.filter((q) => !(displayTab === "pre" && q.no === 11)).map((q) => renderQuestionBlock(q, displayTab)))}
                     </div>
 
                     <div id={`${ID_PREFIX}-summary-section`} className="tw-mt-6 sm:tw-mt-8 tw-space-y-3">
@@ -2260,12 +2259,6 @@ export default function StationPMReport() {
                     prePhotos={cmpPhotos.pre}
                     postPhotos={cmpPhotos.post}
                     apiBase={API_BASE}
-                    docNo={docName}
-                    assetLabel={stationId ?? ""}
-                    workStart={workStart}
-                    workFinish={workFinish}
-                    labor={laborOptions.filter((o) => maximoLabor.includes(o.laborcode))}
-                    contractor={maximoContractor}
                     summaryPost={summary}
                 />
             )}
