@@ -88,7 +88,7 @@ const TYPE_TO_TAB: Record<string, string> = {
   STATION: "station",
 };
 
-type SortKey = "station" | "wo" | "document" | "technician" | "date" | "status";
+type SortKey = "station" | "wo" | "technician" | "date" | "status";
 type SortDir = "asc" | "desc";
 
 const STAGE_RANK: Record<PmStage, number> = { open: 0, in_progress: 1, wait_approve: 2, closed: 3 };
@@ -256,7 +256,7 @@ export default function PMListPage() {
       noWonum: "เอกสารนี้ไม่ได้ผูกกับใบงาน Maximo",
       sortAsc: "เรียงจากน้อยไปมาก", sortDesc: "เรียงจากมากไปน้อย",
       headers: {
-        station: "สถานี", wo: "WO (Maximo)", document: "ชื่อเอกสาร",
+        station: "สถานี", wo: "WO (Maximo)",
         technician: "ผู้ตรวจสอบ", date: "วันที่ PM", status: "สถานะ",
       },
       stage: { open: "Open", in_progress: "In Progress", wait_approve: "Wait for approve", closed: "Closed" },
@@ -286,7 +286,7 @@ export default function PMListPage() {
       noWonum: "This document is not linked to a Maximo work order",
       sortAsc: "Sort ascending", sortDesc: "Sort descending",
       headers: {
-        station: "Station", wo: "WO (Maximo)", document: "Document",
+        station: "Station", wo: "WO (Maximo)",
         technician: "Inspector", date: "PM date", status: "Status",
       },
       stage: { open: "Open", in_progress: "In Progress", wait_approve: "Wait for approve", closed: "Closed" },
@@ -419,7 +419,6 @@ export default function PMListPage() {
     switch (key) {
       case "station": return (r.station_name || r.station_id || "").toLowerCase();
       case "wo": return (r.wonum || "").toLowerCase();
-      case "document": return (r.document_name || "").toLowerCase();
       case "technician": return (r.technician || "").toLowerCase();
       case "date": return r.pm_date || "";
       case "status": return STAGE_RANK[stageOf(r)];
@@ -468,7 +467,6 @@ export default function PMListPage() {
   const columns: { key: SortKey; label: string }[] = [
     { key: "station", label: t.headers.station },
     { key: "wo", label: t.headers.wo },
-    { key: "document", label: t.headers.document },
     { key: "technician", label: t.headers.technician },
     { key: "date", label: t.headers.date },
     { key: "status", label: t.headers.status },
@@ -700,11 +698,6 @@ export default function PMListPage() {
                             !
                           </span>
                         )}
-                      </span>
-                    </td>
-                    <td className="tw-px-4 tw-py-3 tw-text-gray-600">
-                      <span className="tw-block tw-max-w-[240px] tw-truncate" title={r.document_name || ""}>
-                        {r.document_name || "-"}
                       </span>
                     </td>
                     <td className="tw-px-4 tw-py-3 tw-text-gray-600">{r.technician || "-"}</td>
