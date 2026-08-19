@@ -7,8 +7,8 @@ services/cm_maximo.py
   1. master data  — cache ตาราง failure code (IN04) และรายชื่อช่าง (IN08) ลง MongoDB
                     ให้ฟอร์ม CM ดึงไปทำ dropdown ได้โดยไม่ต้องยิง Maximo ทุกครั้ง
   2. lifecycle    — hook ที่ routers/cmreport.py เรียกตามจังหวะของใบงาน
-                    วางแผน → IN01, เปลี่ยนสถานะ → IN02, ปิดงาน → IN05 + IN09,
-                    มีไฟล์แนบ → IN03
+                    วางแผน → IN01, เปลี่ยนสถานะ → IN02, ปิดงาน → IN05,
+                    มีไฟล์แนบ → IN03, ปิดรอบซ่อมแต่ละรอบ → IN09
   3. bookkeeping  — บันทึกผลทุกครั้งไว้ที่ field maximo_sync ของใบงาน
                     ยิงไม่ผ่านก็ไม่ทำให้การบันทึกใบงานล้ม และยิงซ้ำได้ทีหลัง
 
@@ -19,9 +19,11 @@ import asyncio
 import json
 import logging
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
+from zoneinfo import ZoneInfo
 
 from config import client, charger_collection, station_collection, users_collection
 from services import maximo
@@ -41,23 +43,31 @@ _DEFAULT_FAILURE_CLASS_MAP = {
     "STATFC": "STATION",
 }
 
+# สถานะที่ยิงตอน planner อนุมัติปิดงาน — EGAT ให้ปิดถึง CLOSED เลย ไม่หยุดที่ COMP
+# ⚠️ ค่าที่ Maximo รับต้องตรงกับ domain WOSTATUS ของ EGAT — ถ้ายิงแล้วโดนตีกลับว่า
+#    สถานะไม่ถูกต้อง เปลี่ยนที่ env ได้เลย (เช่น CLOSE) ไม่ต้องแก้โค้ด
+CM_CLOSE_STATUS = os.getenv("MAXIMO_CM_CLOSE_STATUS", "CLOSED").strip().upper()
+
 # สถานะใบงาน CM ฝั่ง iMPS → สถานะ WO ฝั่ง Maximo
 #   Wait for approve (ด่าน cs)   → WAPPR  รออนุมัติ
 #   Wait for schedule            → APPR   อนุมัติแล้ว รอจัดตาราง
 #   In Progress                  → INPRG  กำลังดำเนินการ
-#   Wait for approve (ด่านปิดงาน) → COMP   ซ่อมเสร็จ รออนุมัติปิด
-#   Closed / Complete            → COMP   ปิดงาน (CLOSE ใน Maximo ปิดตายแก้ไม่ได้อีก
-#                                          จึงหยุดที่ COMP ให้ EGAT เป็นคนกด CLOSE เอง)
+#   Wait for approve (ด่านปิดงาน) → ไม่ยิง — ช่างส่งใบให้ planner เป็นขั้นตอนภายใน iMPS
+#                                  (ดู is_close_approval_wait)
+#   Closed / Complete            → CLOSED ปิดงาน
 #   Cancelled                    → CAN
 _DEFAULT_STATUS_MAP = {
     "wait for approve": "WAPPR",
     "wait for schedule": "APPR",
     "in progress": "INPRG",
     "pending": "INPRG",
-    "complete": "COMP",
-    "closed": "COMP",
+    "complete": CM_CLOSE_STATUS,
+    "closed": CM_CLOSE_STATUS,
     "cancelled": "CAN",
 }
+
+# ใบที่จบแล้ว — สถานะใบชนะผลซ่อมเสมอ (ดู maximo_wo_status)
+_FINAL_STATUSES = {"complete", "closed", "cancelled"}
 
 # ผลซ่อมที่แปลว่า "ยังทำต่อไม่ได้" → สถานะรอฝั่ง Maximo
 _WAIT_RESULT_STATUS = {
@@ -105,6 +115,8 @@ STATUS_MAP = {k.lower(): v for k, v in
 PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", os.getenv("FRONTEND_BASE_URL", "")).rstrip("/")
 
 # ภาษาของ PDF ที่แนบเข้า Maximo
+# ⚠️ ค่านี้ตกไปกับลิงก์ในรูป ?…&lang= ซึ่ง maximo_safe_url() ตัดทิ้งตอนยิงเข้า Maximo
+#    ฝั่ง Maximo จึงได้ภาษาตาม default ของ route /pdf ("th") เสมอ
 MAXIMO_PDF_LANG = PDF_LANG = os.getenv("MAXIMO_PDF_LANG", "th").strip() or "th"
 
 # เปิด/ปิดการยิงเข้า Maximo ของฝั่ง CM แยกจาก MAXIMO_ENABLED รวม
@@ -124,11 +136,15 @@ def maximo_wo_status(imps_status: Any, repair_result: Any = None) -> str:
     สถานะใบงาน CM → สถานะ WO ของ Maximo
 
     ผลซ่อมที่เป็นสถานะรอ (รออะไหล่/รอหน้างาน) มีความหมายชัดกว่า status จึงใช้ก่อน
+    — ยกเว้นใบที่จบแล้ว ตรงนั้นสถานะใบชนะ ไม่งั้นผลซ่อมที่ค้างเป็น "รออะไหล่"
+    จะดึง WO กลับไป WMATL ตอน planner กดปิดงาน แทนที่จะปิดจริง
     """
-    wait = _WAIT_RESULT_STATUS.get(str(repair_result or "").strip().lower())
-    if wait:
-        return wait
-    return STATUS_MAP.get(str(imps_status or "").strip().lower(), "")
+    status_key = str(imps_status or "").strip().lower()
+    if status_key not in _FINAL_STATUSES:
+        wait = _WAIT_RESULT_STATUS.get(str(repair_result or "").strip().lower())
+        if wait:
+            return wait
+    return STATUS_MAP.get(status_key, "")
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -550,22 +566,29 @@ def public_url(path: str) -> str:
     return f"{PUBLIC_BASE_URL}/{p.lstrip('/')}"
 
 
-def report_url(report: dict, report_id: Any) -> str:
+def report_url(report: dict, report_id: Any, coll_key: str = "") -> str:
     """
     ลิงก์ PDF ใบงาน CM — ใช้แนบเข้า Maximo (IN03)
 
     แนบตัวเอกสาร PDF ไม่ใช่หน้าเว็บ คนที่เปิดจาก Maximo จะได้ไฟล์เลย
     ไม่ต้อง login เข้า iMPS ก่อน
+
+    coll_key = ชื่อคอลเลกชันที่ใบงานอยู่จริง (CMReport แยกตาม station_id)
+    route /pdf หาเอกสารจากชื่อคอลเลกชัน ไม่ใช่ฟิลด์ในเอกสาร — ใบที่ station_id
+    ในเอกสารไม่ตรงกับคอลเลกชันจะได้ลิงก์ที่เปิดแล้ว 404 ทั้งที่ใบงานมีอยู่จริง
+
+    ลิงก์ตรงนี้เต็มเหมือนเดิม (มี lang/dl) — Maximo กิน & ไม่ได้ แต่ไปตัดตอนยิงออก
+    ที่ maximo.maximo_safe_url() แทน จะได้ไม่กระทบลิงก์ที่ฝั่ง iMPS ใช้เอง
     """
-    station_id = report.get("station_id") or ""
+    station_id = (coll_key or "").strip() or (report.get("station_id") or "").strip()
     if not station_id or not PUBLIC_BASE_URL:
         return ""
-    qs = f"station_id={station_id}&lang={PDF_LANG}&dl=true"
+    qs = f"station_id={quote(station_id, safe='')}&lang={PDF_LANG}&dl=true"
     issue_id = str(report.get("issue_id") or "").strip()
     # ลิงก์ตรงไปที่ไฟล์ (.pdf) — /export เป็นแค่ตัว 307 redirect มาที่นี่อีกที
     # client ที่ไม่ตาม redirect จะได้ไฟล์เลย และชื่อไฟล์อ่านออกตอนเซฟ
     if issue_id:
-        return f"{PUBLIC_BASE_URL}/pdf/cm/{report_id}/{issue_id}.pdf?{qs}"
+        return f"{PUBLIC_BASE_URL}/pdf/cm/{report_id}/{quote(issue_id, safe='')}.pdf?{qs}"
     return f"{PUBLIC_BASE_URL}/pdf/cm/{report_id}/export?{qs}"
 
 
@@ -751,7 +774,8 @@ async def push_attachment(
     if not wonum:
         return _skip("ใบงานนี้ยังไม่มี Maximo WO")
 
-    link = public_url(url)
+    # จด/ส่งด้วยค่าเดียวกับที่ Maximo ได้รับจริง (ตัด query ที่เกิน param แรกทิ้ง)
+    link = maximo.maximo_safe_url(public_url(url))
     if not link:
         return _skip("ตั้งค่า PUBLIC_BASE_URL ก่อน ถึงจะสร้างลิงก์ที่ Maximo เปิดได้")
 
@@ -858,12 +882,107 @@ async def push_failure_report(coll, report_id, report: dict) -> dict:
 
 
 # ══════════════════════════════════════════════════════════════════
-# IN09 — ลงเวลาทำงานจริงของช่าง
+# IN09 — ลงเวลาทำงานจริงของช่าง (แยกตามรอบเข้าซ่อม)
 # ══════════════════════════════════════════════════════════════════
+_TH_TZ = ZoneInfo("Asia/Bangkok")
+
+# เผื่อนาฬิกาเครื่องช่างคลาดจากเซิร์ฟเวอร์ (เท่ากับฝั่ง PM ใน routers/pm_flow.finalize)
+_FUTURE_GRACE_MINUTES = 5
+
+
+def _round_key(start: str, finish: str) -> str:
+    """
+    คีย์กันยิงซ้ำของรอบซ่อม
+
+    entry ใน repair_history ไม่มี id (ฟอร์มเขียนทับทั้ง array ทุกครั้งที่บันทึก)
+    จึงใช้ช่วงเวลาของรอบเป็นคีย์แทน — ระดับนาที ชนกันไม่ได้ในทางปฏิบัติ
+    ห้ามมี "." เพราะคีย์นี้ไปเป็นชื่อ field ใน MongoDB
+    """
+    return f"{start}|{finish}"
+
+
+def repair_rounds(report: dict) -> list[dict]:
+    """
+    รอบเข้าซ่อมที่ "ปิดรอบแล้ว" ทั้งหมด เรียงตามลำดับที่เกิดจริง
+
+    ช่างเข้าซ่อมได้หลายรอบ (รอบแรกซ่อมไม่จบ → รออะไหล่/รอหน้างาน → กลับมาซ่อมใหม่)
+    รอบที่ปิดไปแล้วย้ายไปเก็บใน repair_history ส่วนรอบล่าสุดยังอยู่ที่ flat field
+    ระดับ root ของใบงาน — Maximo ต้องได้ labtrans แยกใบตามช่วงเวลาจริงของแต่ละรอบ
+    ไม่ใช่ก้อนเดียวคลุมตั้งแต่รอบแรกถึงรอบสุดท้าย
+    """
+    history = report.get("repair_history")
+    if not history and isinstance(report.get("job"), dict):
+        # ใบเก่าเก็บประวัติไว้ใต้ job.repair_history (ฝั่งอ่านใน routers/cmreport.py
+        # ก็ fallback แบบเดียวกัน) ไม่เผื่อไว้ = ใบเก่าจะเห็นแค่รอบสุดท้ายรอบเดียว
+        history = report["job"].get("repair_history")
+
+    raw: list[tuple[str, str]] = []
+    for rnd in history or []:
+        if not isinstance(rnd, dict):
+            continue
+        raw.append((
+            _combine(rnd.get("start_repair_date"), rnd.get("start_repair_time")),
+            # ใบเก่าเก็บเวลาปิดรอบไว้ที่ saved_* — ความหมายตรงกับ finish_* ไม่ใช่ start
+            _combine(rnd.get("finish_date") or rnd.get("saved_date"),
+                     rnd.get("finish_time") or rnd.get("saved_time")),
+        ))
+
+    # รอบล่าสุด — นับว่าปิดรอบก็ต่อเมื่อมี resolved_* แล้ว
+    # (ยังซ่อมค้างอยู่ = ยังไม่รู้ชั่วโมง ส่งไปก็ได้ labtrans ที่ไม่มีเวลาจบ)
+    raw.append((
+        _combine(report.get("start_repair_date"), report.get("start_repair_time")),
+        _combine(report.get("resolved_date"), report.get("resolved_time")),
+    ))
+
+    seen, rounds = set(), []
+    for start, finish in raw:
+        if not start or not finish:
+            continue
+        key = _round_key(start, finish)
+        # กันรอบซ้ำ — ใบเก่าบางใบ archive รอบสุดท้ายไว้ใน history แล้วยังค้างที่ flat field ด้วย
+        if key in seen:
+            continue
+        seen.add(key)
+        rounds.append({"key": key, "start": start, "finish": finish})
+    return rounds
+
+
+def _is_future(dt_str: str) -> bool:
+    """
+    เวลาที่ยังมาไม่ถึง — Maximo ตีกลับด้วย BMXAA2641E
+    ("You cannot enter actual labor with future dates and times")
+    """
+    limit = datetime.now(_TH_TZ) + timedelta(minutes=_FUTURE_GRACE_MINUTES)
+    return dt_str > limit.strftime("%Y-%m-%dT%H:%M")
+
+
+def _labor_targets(report: dict) -> tuple[list[str], list[str], str]:
+    """laborcode ที่ต้องลงเวลา, รายชื่อที่ผูกรหัสไม่ได้, ที่มาของรหัส"""
+    # ช่างเลือก laborcode เองในฟอร์ม = ใช้ตรง ๆ ไม่ต้องพึ่ง users.maximo_laborcode
+    picked = _as_list(report.get("maximo_labor"))
+    if picked:
+        valid = [c for c in picked if not LABOR_CODES_KNOWN or c in LABOR_CODES_KNOWN]
+        return valid, [c for c in picked if c not in valid], "form"
+
+    labor, unmapped = [], []
+    for username in _as_list(report.get("assignees")) or _as_list(report.get("inspector")):
+        code = resolve_labor_code(username)
+        if code:
+            labor.append(code)
+        else:
+            # ยังไม่ได้ผูก users.maximo_laborcode — ยิงไปก็โดน BMXAA2627E เปล่า ๆ
+            unmapped.append(username)
+    return labor, unmapped, "assignees"
+
+
 async def push_labor_time(coll, report_id, report: dict) -> dict:
     """
-    ลงเวลาช่างทุกคนที่ถูกมอบหมาย โดยใช้ช่วงเวลาซ่อมจริงของใบงาน
-    (start_repair_date/time → resolved_date/time)
+    ลงเวลาช่างแยกตามรอบเข้าซ่อม — 1 รอบ × ช่าง 1 คน = labtrans 1 ใบ
+
+    เรียกได้ทุกครั้งที่บันทึกใบงาน: รอบที่เพิ่งปิดจะถูกส่งเพิ่ม ส่วนรอบเดิมไม่ถูกส่งซ้ำ
+    เพราะ labtrans เป็น POST create — ยิงซ้ำ = ได้เรคคอร์ดใหม่ทุกครั้ง ชั่วโมงทำงาน
+    จะถูกนับซ้ำ (ต่างจาก IN03/IN05 ที่เป็น AddChange/MERGE) จึงจดคู่ (รอบ, laborcode)
+    ที่ส่งผ่านแล้วไว้ที่ maximo_sync.IN09.rounds
     """
     if not CM_MAXIMO_ENABLED:
         return _skip("CM_MAXIMO_ENABLED=false")
@@ -872,80 +991,88 @@ async def push_labor_time(coll, report_id, report: dict) -> dict:
     if not wonum:
         return _skip("ใบงานนี้ยังไม่มี Maximo WO")
 
-    start = _combine(report.get("start_repair_date"), report.get("start_repair_time"))
-    finish = _combine(report.get("resolved_date"), report.get("resolved_time"))
-    if not start:
-        return _skip("ยังไม่มีวันเวลาเริ่มซ่อม")
+    rounds = repair_rounds(report)
+    if not rounds:
+        return _skip("ยังไม่มีรอบซ่อมที่ปิดรอบแล้ว")
 
-    # ช่างเลือก laborcode เองในฟอร์ม = ใช้ตรง ๆ ไม่ต้องพึ่ง users.maximo_laborcode
-    picked = _as_list(report.get("maximo_labor"))
-    if picked:
-        valid = [c for c in picked if not LABOR_CODES_KNOWN or c in LABOR_CODES_KNOWN]
-        unknown = [c for c in picked if c not in valid]
-        sent, errors = 0, []
-        location = report.get("maximo_location") or resolve_location(
-            report.get("station_id") or "", report.get("faulty_equipment") or ""
-        )
-        contractor = str(report.get("maximo_contractor") or "").strip()
-        trace: dict = {}
-        for labor in valid:
-            memo = f"iMPS CM {report.get('issue_id') or ''}"
-            # EVCONTRACTOR เป็นรหัสกลาง — ต่อชื่อผู้รับเหมาจริงเข้าไปใน memo
-            if labor.upper() == CONTRACTOR_LABOR_CODE and contractor:
-                memo = f"{memo} — {contractor}"
-            try:
-                await maximo.create_labtrans(
-                    wonum, labor, start=start, finish=finish or None,
-                    location=location or None,
-                    memo=memo, trace=trace,
-                )
-                sent += 1
-            except MaximoError as e:
-                log.warning(f"  ⚠️ IN09 labtrans failed (WO {wonum} / {labor}): {_err_detail(e)}")
-                errors.append(f"{labor}: {_err_detail(e)}")
-        ok = sent > 0 and not errors and not unknown
-        await _record(coll, report_id, "IN09", ok, wonum=wonum, sent=sent,
-                      total=len(picked), errors=errors or None, unmapped=unknown or None,
-                      source="form", **_trace(trace))
-        if ok:
-            return _ok(wonum=wonum, sent=sent)
-        return {"ok": False, "wonum": wonum, "sent": sent, "total": len(picked),
-                "errors": errors, "unmapped": unknown}
+    labor, unmapped, source = _labor_targets(report)
+    if not labor:
+        if not unmapped:
+            return _skip("ใบงานยังไม่มีช่างที่รับผิดชอบ")
+        # มีช่างแต่ผูกรหัสไม่ได้เลย = ต้องแก้ก่อน ห้ามปล่อยผ่านไปปิด WO
+        await _record(coll, report_id, "IN09", False, wonum=wonum, sent=0,
+                      unmapped=unmapped, source=source)
+        return {"ok": False, "wonum": wonum, "sent": 0, "unmapped": unmapped}
 
-    assignees = _as_list(report.get("assignees")) or _as_list(report.get("inspector"))
-    if not assignees:
-        return _skip("ใบงานยังไม่มีช่างที่รับผิดชอบ")
+    prev = (report.get("maximo_sync") or {}).get("IN09") or {}
+    ledger = {k: dict(v) for k, v in (prev.get("rounds") or {}).items() if isinstance(v, dict)}
+    if not ledger and prev.get("ok"):
+        # ใบที่ซิงก์ด้วยโค้ดชุดเก่า (กันซ้ำด้วย flag เดียวทั้งใบ ยังไม่มีสมุดรายรอบ)
+        # ถือว่าทุกรอบที่มีอยู่ตอนนี้ลงเวลาไปแล้ว — ยิงใหม่ = ชั่วโมงถูกนับซ้ำ
+        ledger = {r["key"]: {"ok": True, "sent_labor": list(labor), "legacy": True}
+                  for r in rounds}
 
     location = report.get("maximo_location") or resolve_location(
         report.get("station_id") or "", report.get("faulty_equipment") or ""
     )
+    contractor = str(report.get("maximo_contractor") or "").strip()
 
-    sent, errors, unmapped = 0, [], []
-    for username in assignees:
-        labor = resolve_labor_code(username)
-        if not labor:
-            # ยังไม่ได้ผูก users.maximo_laborcode — ยิงไปก็โดน BMXAA2627E เปล่า ๆ
-            unmapped.append(username)
+    sent, errors, future = 0, [], []
+    trace: dict = {}
+    for rnd in rounds:
+        done_labor = list((ledger.get(rnd["key"]) or {}).get("sent_labor") or [])
+        pending = [c for c in labor if c not in done_labor]
+        if not pending:
             continue
-        try:
-            await maximo.create_labtrans(
-                wonum, labor,
-                start=start, finish=finish or None,
-                location=location or None,
-                memo=f"iMPS CM {report.get('issue_id') or ''}",
-            )
-            sent += 1
-        except MaximoError as e:
-            log.warning(f"  ⚠️ IN09 labtrans failed (WO {wonum} / {labor}): {_err_detail(e)}")
-            errors.append(f"{username}: {_err_detail(e)}")
+        # Maximo ไม่รับเวลาที่ยังมาไม่ถึง — ข้ามเฉพาะรอบนั้น อย่าให้ทั้งใบตก
+        # (ฝั่ง PM กันตั้งแต่ตอน finalize ได้ แต่ฝั่ง CM รอบเก่าอยู่ใน repair_history
+        #  ที่ฟอร์มไม่ให้แก้แล้ว ต้องปล่อยรอบที่เหลือให้ผ่านไปก่อน)
+        if _is_future(rnd["finish"]):
+            future.append(rnd["key"])
+            continue
 
-    ok = sent > 0 and not errors and not unmapped
+        round_errors = []
+        for code in pending:
+            memo = f"iMPS CM {report.get('issue_id') or ''}"
+            # EVCONTRACTOR เป็นรหัสกลาง — ต่อชื่อผู้รับเหมาจริงเข้าไปใน memo
+            if code.upper() == CONTRACTOR_LABOR_CODE and contractor:
+                memo = f"{memo} — {contractor}"
+            try:
+                await maximo.create_labtrans(
+                    wonum, code, start=rnd["start"], finish=rnd["finish"],
+                    location=location or None, memo=memo, trace=trace,
+                )
+                sent += 1
+                done_labor.append(code)
+            except MaximoError as e:
+                detail = _err_detail(e)
+                log.warning(
+                    f"  ⚠️ IN09 labtrans failed (WO {wonum} / {code} / {rnd['key']}): {detail}"
+                )
+                round_errors.append(f"{rnd['key']} / {code}: {detail}")
+
+        errors.extend(round_errors)
+        # จดเฉพาะรหัสที่ส่งผ่านจริง — รอบที่ตกบางคนยิงซ้ำได้เฉพาะคนที่ยังไม่ผ่าน
+        entry = {
+            "ok": not round_errors,
+            "start": rnd["start"],
+            "finish": rnd["finish"],
+            "sent_labor": done_labor,
+            "at": datetime.now(timezone.utc),
+        }
+        if round_errors:
+            entry["errors"] = round_errors
+        ledger[rnd["key"]] = entry
+
+    ok = not errors and not unmapped and not future
     await _record(coll, report_id, "IN09", ok, wonum=wonum, sent=sent,
-                  total=len(assignees), errors=errors or None, unmapped=unmapped or None)
-    return _ok(wonum=wonum, sent=sent) if ok else {
-        "ok": False, "wonum": wonum, "sent": sent, "total": len(assignees),
-        "errors": errors, "unmapped": unmapped,
-    }
+                  rounds=ledger, total_rounds=len(rounds), source=source,
+                  errors=errors or None, unmapped=unmapped or None,
+                  future=future or None, **_trace(trace))
+    if ok:
+        return _ok(wonum=wonum, sent=sent, rounds=len(rounds))
+    return {"ok": False, "wonum": wonum, "sent": sent, "rounds": len(rounds),
+            "errors": errors, "unmapped": unmapped, "future": future}
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -986,6 +1113,23 @@ def is_planning_save(report: dict) -> bool:
     return bool(report.get("sched_start"))
 
 
+def is_close_approval_wait(report: dict) -> bool:
+    """
+    ช่างซ่อมเสร็จแล้วกดส่งใบให้ planner อนุมัติปิดหรือยัง
+
+    ด่านนี้เป็นขั้นตอนภายในของ iMPS — ฝั่ง Maximo งานยังเดินอยู่ (INPRG)
+    ยิง WAPPR ไปตอนนี้จะดึง WO ถอยกลับไปสถานะรออนุมัติ สถานะจริงค่อยส่งตอน
+    planner อนุมัติปิด (COMP) ทีเดียว
+
+    stage ที่ไม่ใช่ cs_approval = ด่านปิดงาน (ตรงกับที่ POST /approve ใช้คัดใบ
+    — ข้อมูลเก่าที่ไม่มี stage ก็นับเป็นด่านปิดงานเหมือนกัน)
+    """
+    if str(report.get("status") or "").strip().lower() != "wait for approve":
+        return False
+    stage = report.get("stage") or (report.get("job") or {}).get("stage") or ""
+    return str(stage).strip().lower() != "cs_approval"
+
+
 def _blocking_failures(results: dict) -> list[str]:
     """
     เส้นที่ "ยิงแล้วไม่ผ่าน" ก่อนถึงขั้นปิดสถานะ
@@ -1006,11 +1150,13 @@ async def sync_report(coll, report_id, report: dict, *, memo: str = "") -> dict:
 
     ลำดับตาม sequencing ที่ตกลงกับ EGAT (Maximo x iMPS — CM):
       1. IN01 create wo      — planner วางแผนเสร็จ
-      2. IN02 wo status      — เปลี่ยนสถานะระหว่างทาง (In Progress ฯลฯ)
-      3. IN03 attachment     ┐
-      4. IN05 failure report ├ ตอนปิดใบงาน ยิงทีละเส้นเรียงกัน (ห้ามส่งพร้อมกัน)
-      5. IN09 actual labor   ┘
-      6. IN02 wo status      — COMPLETE ต้องเป็นเส้นสุดท้ายเสมอ
+      2. IN09 actual labor   — ลงเวลารอบที่ช่างเพิ่งปิด (ซ่อมหลายรอบ = ลงหลายครั้ง)
+      3. IN02 wo status      — เปลี่ยนสถานะระหว่างทาง (In Progress ฯลฯ)
+                               ยกเว้นตอนช่างส่งใบให้ planner อนุมัติ — ข้ามไป
+      4. IN03 attachment     ┐
+      5. IN05 failure report ├ ตอนปิดใบงาน ยิงทีละเส้นเรียงกัน (ห้ามส่งพร้อมกัน)
+      6. IN09 actual labor   ┘ (เฉพาะรอบสุดท้ายที่ยังไม่ได้ลง)
+      7. IN02 wo status      — ปิดงาน (CLOSED) ต้องเป็นเส้นสุดท้ายเสมอ
 
     ข้อ 6 สำคัญ: พอ WO ขึ้น COMP แล้ว Maximo ไม่ให้เพิ่ม failure report / labor
     เข้าไปอีก ยิงสถานะปิดก่อนขั้น 3–5 จะทำให้ 3 เส้นนั้นตกทั้งหมด
@@ -1029,8 +1175,22 @@ async def sync_report(coll, report_id, report: dict, *, memo: str = "") -> dict:
     is_closing = str(report.get("status") or "").strip().lower() in CLOSING_STATUSES
 
     if not is_closing:
-        # ── 2. IN02 — สถานะระหว่างทาง ──
-        out["IN02"] = await push_status(coll, report_id, report, memo=memo)
+        # ── 2. IN09 — เวลาทำงานของรอบที่ช่างเพิ่งปิดไป ──
+        # ช่างซ่อมไม่จบในรอบเดียว (รออะไหล่/รอนัดใหม่) แล้วกลับมาซ่อมอีกรอบ
+        # ต้องลงเวลาให้รอบนั้นตั้งแต่ตอนนี้ รอจนปิดใบไม่ได้ เพราะพอ WO ขึ้น COMP
+        # แล้ว Maximo ไม่ให้เติม labor ย้อนหลัง (push_labor_time กันยิงซ้ำรายรอบเอง)
+        if report.get("maximo_wonum"):
+            out["IN09"] = await push_labor_time(coll, report_id, report)
+            if out["IN09"].get("sent"):
+                await _settle()
+
+        # ── 3. IN02 — สถานะระหว่างทาง ──
+        # IN09 ตกไม่บล็อกตรงนี้ — สถานะระหว่างทางไม่ใช่ COMP ยังเติมย้อนหลังได้
+        if is_close_approval_wait(report):
+            # ช่างส่งใบให้ planner = ขั้นตอนภายใน iMPS ยังไม่ต้องแตะสถานะ WO
+            out["IN02"] = _skip("ช่างส่งใบให้ planner อนุมัติ — ยังไม่เปลี่ยนสถานะ WO")
+        else:
+            out["IN02"] = await push_status(coll, report_id, report, memo=memo)
         return out
 
     # ── 3. IN03 — แนบ PDF ใบงาน (ครั้งเดียวพอ) ──
@@ -1038,7 +1198,8 @@ async def sync_report(coll, report_id, report: dict, *, memo: str = "") -> dict:
     # (บล็อกนี้อยู่ใต้ is_closing อยู่แล้ว)
     if not (report.get("maximo_sync") or {}).get("IN03", {}).get("ok"):
         out["IN03"] = await push_attachment(
-            coll, report_id, report, report_url(report, report_id),
+            coll, report_id, report,
+            report_url(report, report_id, coll_key=getattr(coll, "name", "") or ""),
             name=f"{report.get('issue_id') or 'CM'}.pdf",
             description=f"iMPS CM report {report.get('doc_name') or ''}".strip(),
         )
@@ -1047,14 +1208,11 @@ async def sync_report(coll, report_id, report: dict, *, memo: str = "") -> dict:
     await _settle()
     out["IN05"] = await push_failure_report(coll, report_id, report)
 
-    # ── 5. IN09 — เวลาทำงานจริงของช่าง ──
-    # ยิงครั้งเดียวพอ — labtrans เป็น POST create ยิงซ้ำ = ได้เรคคอร์ดใหม่ทุกครั้ง
-    # ชั่วโมงทำงานจะถูกนับซ้ำ (ต่างจาก IN03/IN05 ที่เป็น AddChange/MERGE)
-    if (report.get("maximo_sync") or {}).get("IN09", {}).get("ok"):
-        out["IN09"] = {"ok": True, "skipped": True, "reason": "ลงเวลาไปแล้ว ไม่ยิงซ้ำ"}
-    else:
-        await _settle()
-        out["IN09"] = await push_labor_time(coll, report_id, report)
+    # ── 5. IN09 — เวลาทำงานจริงของช่าง (รอบที่ยังไม่ได้ลง) ──
+    # รอบก่อน ๆ ถูกลงไปแล้วตอนบันทึกระหว่างทาง เหลือแค่รอบสุดท้ายที่เพิ่งปิด
+    # push_labor_time กันยิงซ้ำรายรอบเองที่ maximo_sync.IN09.rounds — เรียกได้เลย
+    await _settle()
+    out["IN09"] = await push_labor_time(coll, report_id, report)
 
     # ── 6. IN02 — ปิดสถานะเป็นเส้นสุดท้าย ──
     # ต้องยิง 3–5 ให้ครบก่อน มีเส้นไหนไม่ผ่านห้ามปิด WO เด็ดขาด
