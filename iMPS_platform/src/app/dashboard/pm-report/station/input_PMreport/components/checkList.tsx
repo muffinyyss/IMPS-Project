@@ -2004,18 +2004,6 @@ export default function StationPMReport() {
     return (
         <section className="tw-pb-24">
             <div className="tw-mx-auto tw-max-w-6xl tw-flex tw-items-center tw-justify-between tw-mb-4">
-
-                {/* ตรวจเพื่ออนุมัติ — ปุ่มอยู่คู่กับปุ่มย้อนกลับ เห็นทันทีไม่ต้องเลื่อน */}
-                {approveMode && editId && (
-                    <div className="tw-flex tw-items-center tw-gap-2">
-                        <PmApprovalBar
-                            prefix="stationpmreport" reportId={editId}
-                            scope={{ station_id: stationId }}
-                            apiBase={API_BASE}
-                            onDone={(msg) => { alert(msg); router.back(); }}
-                        />
-                    </div>
-                )}
                 <Button variant="outlined" size="sm" onClick={() => router.back()} title={t("backToList", lang)}>
                     <ArrowLeftIcon className="tw-w-4 tw-h-4 tw-stroke-gray-900 tw-stroke-2" />
                 </Button>

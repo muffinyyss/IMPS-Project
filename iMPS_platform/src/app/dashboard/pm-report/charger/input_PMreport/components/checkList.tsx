@@ -3471,18 +3471,6 @@ export default function ChargerPMForm() {
                     : `Uploading ${uploadProgress.side === "post" ? "Post-PM" : "Pre-PM"} photos... ${uploadProgress.completed}/${uploadProgress.total}`}
             />
             <div className="tw-mx-auto tw-max-w-6xl tw-flex tw-items-center tw-justify-between tw-mb-4">
-
-                {/* ตรวจเพื่ออนุมัติ — ปุ่มอยู่คู่กับปุ่มย้อนกลับ เห็นทันทีไม่ต้องเลื่อน */}
-                {approveMode && editId && (
-                    <div className="tw-flex tw-items-center tw-gap-2">
-                        <PmApprovalBar
-                            prefix="pmreport" reportId={editId}
-                            scope={{ sn }}
-                            apiBase={API_BASE}
-                            onDone={(msg) => { alert(msg); goBackToList(); }}
-                        />
-                    </div>
-                )}
                 <Button variant="outlined" size="sm" onClick={goBackToList} title={t("backToList", lang)}>
                     <ArrowLeftIcon className="tw-w-4 tw-h-4 tw-stroke-blue-gray-900 tw-stroke-2" />
                 </Button>
