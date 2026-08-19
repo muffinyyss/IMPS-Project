@@ -2826,34 +2826,53 @@ export default function CCBPMReport() {
     // ใช้ state ที่โหลดเอกสารมาแล้ว: rowsPre = คำตอบก่อน PM, rows = หลัง PM
     // คีย์ที่ไม่ได้อยู่ใน QUESTIONS (ข้อย่อยแบบ r5_1) เอามาต่อท้ายด้วย จะได้ไม่ตกหล่น
     const compareRows = useMemo(() => {
-        const labelOf = (key: string) => {
-            const q: any = (QUESTIONS as any[]).find((x: any) => x?.key === key);
-            if (!q) return key;
-            try { return getQuestionLabel(q, "post" as any, lang); }
-            catch { return q?.label?.[lang] ?? q?.label ?? key; }
+        // ป้ายหัวข้อต้องตรงกับที่ช่างเห็นตอนกรอก — ข้อย่อยอย่าง r3_1 ฟอร์มสร้างขึ้นมาเอง
+        // ตอนรันไทม์ (ตามจำนวนหัวชาร์จ/ช่องของสถานีนั้น) ไม่ได้อยู่ใน QUESTIONS
+        // ถ้าไม่ไล่เก็บจากแหล่งเดียวกับที่ฟอร์มใช้ ตารางจะโชว์เป็นคีย์ดิบ
+        const textOf = (l: any): string =>
+            typeof l === "string" ? l
+                : l && typeof l === "object" ? (l[lang] ?? l.th ?? l.en ?? "") : "";
+        const labels = new Map<string, string>();
+        const put = (k: any, v: any) => {
+            const text = textOf(v);
+            if (typeof k === "string" && text.trim() && !labels.has(k)) labels.set(k, text.trim());
         };
+        const labelOfItem = (it: any) =>
+            it?.label !== undefined ? it.label : it?.labelKey ? (t as any)(it.labelKey, lang) : "";
+        (QUESTIONS as any[]).forEach((q: any) => {
+            put(q?.key, labelOfItem(q));
+            (q?.items ?? []).forEach((it: any) => put(it?.key, labelOfItem(it)));
+        });
+        ([] as any[]).forEach((arr: any) =>
+            (arr ?? []).forEach((it: any) => put(it?.key, labelOfItem(it))));
+        const labelOf = (key: string) => labels.get(key) ?? key;
         // เรียงตามลำดับข้อในฟอร์มกรอก ข้อย่อยที่ช่างเพิ่มเอง (r5_1, r5_2)
         // ต้องต่อท้ายข้อแม่ของมัน ไม่ใช่ไปกองรวมกันท้ายตาราง
         const answered = Array.from(new Set([...Object.keys(rowsPre ?? {}), ...Object.keys(rows ?? {})]));
         const subNo = (k: string) => Number(k.split("_")[1] ?? 0) || 0;
-        const keys: string[] = [];
-        (QUESTIONS as any[]).forEach((q: any) => {
-            if (!q?.key) return;
-            keys.push(q.key);
-            answered
-                .filter((k) => k !== q.key && k.split("_")[0] === q.key)
-                .sort((a, b) => subNo(a) - subNo(b))
-                .forEach((k) => keys.push(k));
-        });
-        answered.forEach((k) => { if (!keys.includes(k)) keys.push(k); });
-        return keys.map((k) => ({
+        const mk = (k: string, section: string, label: string) => ({
             key: k,
-            label: labelOf(k),
+            section,
+            label,
             prePf: (rowsPre as any)?.[k]?.pf,
             preRemark: (rowsPre as any)?.[k]?.remark,
             postPf: (rows as any)?.[k]?.pf,
             postRemark: (rows as any)?.[k]?.remark,
-        }));
+        });
+        // วางโครงเดียวกับฟอร์มกรอก: หัวข้อใหญ่เป็นแถบคั่น แล้วข้อย่อยเรียงอยู่ใต้มัน
+        // ข้อธรรมดาที่ไม่มีข้อย่อย ตัวมันเองคือเนื้อในของแถบ ช่องหัวข้อจึงเว้นว่าง
+        const out: ReturnType<typeof mk>[] = [];
+        (QUESTIONS as any[]).forEach((q: any) => {
+            if (!q?.key) return;
+            const section = labelOf(q.key);
+            out.push(mk(q.key, section, ""));
+            answered
+                .filter((k) => k !== q.key && k.split("_")[0] === q.key)
+                .sort((a, b) => subNo(a) - subNo(b))
+                .forEach((k) => out.push(mk(k, section, labelOf(k))));
+        });
+        answered.forEach((k) => { if (!out.some((r) => r.key === k)) out.push(mk(k, "", labelOf(k))); });
+        return out;
     }, [rowsPre, rows, lang]);
 
     return (
@@ -2894,11 +2913,8 @@ export default function CCBPMReport() {
                 )}
             </div>
 
-            {/* โหมดตรวจ: ฟอร์มกรอกไม่ต้องโชว์ ดูจากตารางเทียบก่อน/หลังด้านล่างแทน
-
-                แต่ยังต้อง mount ไว้ ค่าที่คำนวณจากฟอร์ม (ความครบถ้วน, สรุป) ใช้ต่อข้างล่าง */}
-
-            <form action="#" noValidate onSubmit={(e) => { e.preventDefault(); return false; }} onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }} className={reviewMode ? "tw-hidden" : undefined}>
+            
+            <form action="#" noValidate onSubmit={(e) => { e.preventDefault(); return false; }} onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }}>
                 {/* ดูอย่างเดียว: fieldset ปิดทั้งช่องกรอกและปุ่มบันทึกในทีเดียว */}
                 <fieldset disabled={reviewMode} className="pm-readonly tw-m-0 tw-min-w-0 tw-border-0 tw-p-0">
                 <div className="tw-mx-auto tw-max-w-6xl tw-bg-white tw-border tw-border-blue-gray-100 tw-rounded-xl tw-shadow-sm tw-p-6 md:tw-p-8 tw-print:tw-shadow-none tw-print:tw-border-0">
@@ -2930,7 +2946,9 @@ export default function CCBPMReport() {
                     </div>
 
                     <div className="tw-mt-6 sm:tw-mt-8 tw-space-y-4 sm:tw-space-y-6">
-                        {QUESTIONS.filter((q) => !(displayTab === "pre" && q.no === 11)).map((q) => renderQuestionBlock(q, displayTab))}
+                        {/* โหมดตรวจ: ตัดเฉพาะรายการข้อที่ช่างกรอก ดูจากตารางเทียบก่อน/หลังด้านล่างแทน
+                            ส่วนหัวเอกสารกับข้อมูลสถานีคงไว้ ผู้อนุมัติต้องรู้ว่ากำลังดูใบไหน */}
+                        {!reviewMode && (QUESTIONS.filter((q) => !(displayTab === "pre" && q.no === 11)).map((q) => renderQuestionBlock(q, displayTab)))}
                     </div>
 
                     <div id={`${ID_PREFIX}-summary-section`} className="tw-mt-6 sm:tw-mt-8 tw-space-y-3 tw-transition-all tw-duration-300">
@@ -3076,31 +3094,12 @@ export default function CCBPMReport() {
             <BackgroundUploadBanner lang={lang} />
             {/* เทียบผลก่อน/หลังของหัวข้อเดียวกันในบรรทัดเดียว */}
             {reviewMode && editId && (
-                <div className="tw-mx-auto tw-max-w-6xl tw-mb-4">
-                    <PMValidationCard
-                                lang={lang} displayTab={displayTab} isPostMode={isPostMode}
-                                allPhotosAttached={allPhotosAttached} missingPhotoItems={missingPhotoItemsFormatted}
-                                allRequiredInputsFilled={allRequiredInputsFilled} missingInputsDetailed={missingInputsDetailed}
-                                allRemarksFilledPre={allRemarksFilledPre} missingRemarksPre={missingRemarksPre}
-                                allPFAnsweredPost={allPFAnsweredForUI} missingPFItemsPost={missingPFItemsForUI}
-                                allRemarksFilledPost={allRemarksFilledPost} missingRemarksPost={missingRemarksPost}
-                                isSummaryFilled={isSummaryFilled} isSummaryCheckFilled={isSummaryCheckFilled}
-                            />
-                </div>
-            )}
-            {reviewMode && editId && (
                 <PmCompareTable
                     rows={compareRows}
                     lang={lang}
                     prePhotos={cmpPhotos.pre}
                     postPhotos={cmpPhotos.post}
                     apiBase={API_BASE}
-                    docNo={docName}
-                    assetLabel={stationId ?? ""}
-                    workStart={workStart}
-                    workFinish={workFinish}
-                    labor={laborOptions.filter((o) => maximoLabor.includes(o.laborcode))}
-                    contractor={maximoContractor}
                     summaryPost={summary}
                 />
             )}
