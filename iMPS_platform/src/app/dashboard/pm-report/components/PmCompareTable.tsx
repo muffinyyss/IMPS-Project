@@ -19,6 +19,8 @@ export type CompareRow = {
   key: string;
   /** ชื่อหัวข้อใหญ่ที่แถวนี้อยู่ใต้ — ใช้ขึ้นแถบคั่นให้เหมือนหน้าฟอร์มกรอก */
   section?: string;
+  /** เลขข้อหลัก — ใช้รวมรูปของทั้งข้อเข้าด้วยกันแบบเดียวกับ PDF */
+  qNo?: number;
   label: string;
   prePf?: string;
   preRemark?: string;
@@ -29,9 +31,23 @@ export type CompareRow = {
 /** รูปที่เก็บใน document — key เป็นกลุ่มรูป (g16, g5_1) ค่าเป็นรายการรูปของกลุ่มนั้น */
 export type PhotoMap = Record<string, { url?: string }[] | undefined>;
 
-/** คีย์คำตอบ (r16) → คีย์กลุ่มรูป (g16) — ใช้สูตรเดียวกับตอนอัปโหลด */
-function photoGroupOf(rowKey: string) {
-  return rowKey.replace(/^r/, "g");
+/**
+ * รวมรูปของข้อหลักข้อหนึ่ง — ตรรกะเดียวกับ _collect_photos_for_main_idx ใน PDF
+ *
+ * จับคู่รูปกับข้อย่อยตรงๆ ไม่ได้ แต่ละฟอร์มตั้งคีย์รูปคนละแบบ และของ charger
+ * ยังคนละฐานกับคีย์คำตอบด้วย (คำตอบ r3_1 = เส้นที่ 1 แต่รูปเก็บที่ g3_0)
+ * แมปตรงๆ เลยได้รูปผิดเส้น PDF จึงเลือกรวมรูปทั้งข้อไว้ด้วยกัน ที่นี่ทำตาม
+ *
+ * คีย์ที่เจอจริง: g16 · g3_0 · gr5_1 · gq7 · g10_1 — เลขชุดแรกคือเลขข้อเสมอ
+ */
+function photosOfQuestion(photos: PhotoMap | undefined, qNo?: number) {
+  if (!photos || !qNo) return [];
+  const out: { url?: string }[] = [];
+  for (const [k, items] of Object.entries(photos)) {
+    if (Number(k.match(/\d+/)?.[0]) !== qNo) continue;
+    (items ?? []).forEach((p) => { if (p?.url) out.push(p); });
+  }
+  return out;
 }
 
 const T = {
@@ -41,12 +57,13 @@ const T = {
     en: "Before PM has notes and photos only · PASS/FAIL comes after PM — failed items are highlighted",
   },
   item: { th: "หัวข้อ", en: "Item" },
-  before: { th: "ก่อน PM (รูป + หมายเหตุ)", en: "Before PM (photos + notes)" },
-  after: { th: "หลัง PM (ผล + รูป + หมายเหตุ)", en: "After PM (result + photos + notes)" },
+  before: { th: "ก่อน PM", en: "Before PM" },
+  after: { th: "หลัง PM", en: "After PM" },
   na: { th: "ไม่เกี่ยวข้อง", en: "N/A" },
   noPhoto: { th: "ไม่มีรูป", en: "No photo" },
   noNote: { th: "ไม่มีหมายเหตุ", en: "No note" },
   summary: { th: "สรุปผล", en: "Summary" },
+  photos: { th: "รูปภาพอ้างอิง", en: "Reference photos" },
   empty: { th: "ยังไม่มีข้อมูลให้เทียบ", en: "Nothing to compare yet" },
 } as const;
 
@@ -124,12 +141,26 @@ export default function PmCompareTable({
   postPhotos?: PhotoMap;
   apiBase?: string;
 }) {
-  // ฝั่งก่อน PM ไม่มี pf จึงต้องดูหมายเหตุด้วย ไม่งั้นข้อที่ช่างจดไว้ก่อนทำจะหายไป
-  const shown = rows.filter((r) => {
-    const g = photoGroupOf(r.key);
-    return r.prePf || r.postPf || r.preRemark?.trim() || r.postRemark?.trim()
-      || (prePhotos?.[g]?.length ?? 0) > 0 || (postPhotos?.[g]?.length ?? 0) > 0;
-  });
+  // จัดเป็นข้อใหญ่แบบเดียวกับ PDF: รูปเป็นของทั้งข้อ ไม่ใช่ของข้อย่อยรายตัว
+  const groups = React.useMemo(() => {
+    const out: { key: string; title: string; qNo?: number; items: CompareRow[] }[] = [];
+    rows.forEach((r) => {
+      const title = r.section?.trim() ?? "";
+      const last = out[out.length - 1];
+      if (last && last.title === title && last.qNo === r.qNo) last.items.push(r);
+      else out.push({ key: `${title}#${r.key}`, title, qNo: r.qNo, items: [r] });
+    });
+    return out
+      .map((g) => ({
+        ...g,
+        // ข้อย่อยที่ช่างไม่ได้ตอบอะไรเลยไม่ต้องโชว์ แต่ถ้ามีรูปของข้อนั้นก็ยังต้องเห็นข้อ
+        items: g.items.filter((r) =>
+          r.prePf || r.postPf || r.preRemark?.trim() || r.postRemark?.trim()),
+        pre: photosOfQuestion(prePhotos, g.qNo),
+        post: photosOfQuestion(postPhotos, g.qNo),
+      }))
+      .filter((g) => g.items.length > 0 || g.pre.length > 0 || g.post.length > 0);
+  }, [rows, prePhotos, postPhotos]);
 
   return (
     <div className="tw-mx-auto tw-max-w-6xl tw-mb-6 tw-rounded-xl tw-border tw-border-blue-gray-100 tw-bg-white tw-shadow-sm tw-overflow-hidden">
@@ -138,8 +169,7 @@ export default function PmCompareTable({
         <div className="tw-text-xs tw-text-white/70 tw-mt-0.5">{t("hint", lang)}</div>
       </div>
 
-
-      {shown.length === 0 ? (
+      {groups.length === 0 ? (
         <p className="tw-px-4 tw-py-6 tw-text-center tw-text-sm tw-text-blue-gray-400">{t("empty", lang)}</p>
       ) : (
         <div className="tw-overflow-x-auto">
@@ -152,42 +182,57 @@ export default function PmCompareTable({
               </tr>
             </thead>
             <tbody>
-              {shown.map((r, idx) => {
-                // แถบคั่นหัวข้อใหญ่ — ขึ้นเมื่อเปลี่ยนหัวข้อ หน้าตาเดียวกับ SectionCard ในฟอร์ม
-                const section = r.section?.trim();
-                const newSection = !!section && section !== shown[idx - 1]?.section?.trim();
-                const secNo = section?.match(/^(\d+)\)/)?.[1];
-                // FAIL = ข้อที่ยังไม่ผ่านหลังทำ PM ต้องอ่านให้ละเอียดกว่าข้ออื่น
-                const failed = String(r.postPf ?? "").trim().toUpperCase() === "FAIL";
+              {groups.map((g) => {
+                // แถบคั่นหัวข้อใหญ่ หน้าตาเดียวกับ SectionCard ในฟอร์ม
+                const secNo = g.title.match(/^(\d+)\)/)?.[1];
                 return (
-                  <React.Fragment key={r.key}>
-                  {newSection && (
-                    <tr>
-                      <td colSpan={3} className="tw-bg-gray-800 tw-px-4 tw-py-2.5">
-                        <div className="tw-flex tw-items-center tw-gap-3">
-                          {secNo && (
-                            <span className="tw-flex tw-h-7 tw-w-7 tw-flex-shrink-0 tw-items-center tw-justify-center tw-rounded-full tw-bg-white tw-text-xs tw-font-bold tw-text-gray-800">
-                              {secNo}
+                  <React.Fragment key={g.key}>
+                    {g.title && (
+                      <tr>
+                        <td colSpan={3} className="tw-bg-gray-800 tw-px-4 tw-py-2.5">
+                          <div className="tw-flex tw-items-center tw-gap-3">
+                            {secNo && (
+                              <span className="tw-flex tw-h-7 tw-w-7 tw-flex-shrink-0 tw-items-center tw-justify-center tw-rounded-full tw-bg-white tw-text-xs tw-font-bold tw-text-gray-800">
+                                {secNo}
+                              </span>
+                            )}
+                            <span className="tw-text-sm tw-font-semibold tw-text-white">
+                              {secNo ? g.title.replace(/^\d+\)\s*/, "") : g.title}
                             </span>
-                          )}
-                          <span className="tw-text-sm tw-font-semibold tw-text-white">
-                            {secNo ? section!.replace(/^\d+\)\s*/, "") : section}
-                          </span>
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-                  <tr className={`tw-border-t tw-border-blue-gray-50 ${failed ? "tw-bg-red-50/60" : ""}`}>
-                    <td className="tw-px-4 tw-py-2.5 tw-text-blue-gray-800">{r.label}</td>
-                    <td className="tw-px-4 tw-py-2.5 tw-align-top tw-space-y-2">
-                      <BeforeCell pf={r.prePf} remark={r.preRemark} lang={lang} />
-                      <Thumbs items={prePhotos?.[photoGroupOf(r.key)]} apiBase={apiBase} lang={lang} />
-                    </td>
-                    <td className="tw-px-4 tw-py-2.5 tw-align-top tw-space-y-2">
-                      <AfterCell pf={r.postPf} remark={r.postRemark} />
-                      <Thumbs items={postPhotos?.[photoGroupOf(r.key)]} apiBase={apiBase} lang={lang} />
-                    </td>
-                  </tr>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+
+                    {(g.pre.length > 0 || g.post.length > 0) && (
+                      <tr className="tw-border-t tw-border-blue-gray-50 tw-bg-blue-gray-50/20">
+                        <td className="tw-px-4 tw-py-2.5 tw-align-top tw-text-xs tw-font-semibold tw-text-blue-gray-500">
+                          {t("photos", lang)}
+                        </td>
+                        <td className="tw-px-4 tw-py-2.5 tw-align-top">
+                          <Thumbs items={g.pre} apiBase={apiBase} lang={lang} />
+                        </td>
+                        <td className="tw-px-4 tw-py-2.5 tw-align-top">
+                          <Thumbs items={g.post} apiBase={apiBase} lang={lang} />
+                        </td>
+                      </tr>
+                    )}
+
+                    {g.items.map((r) => {
+                      // FAIL = ข้อที่ยังไม่ผ่านหลังทำ PM ต้องอ่านให้ละเอียดกว่าข้ออื่น
+                      const failed = String(r.postPf ?? "").trim().toUpperCase() === "FAIL";
+                      return (
+                        <tr key={r.key} className={`tw-border-t tw-border-blue-gray-50 ${failed ? "tw-bg-red-50/60" : ""}`}>
+                          <td className="tw-px-4 tw-py-2.5 tw-align-top tw-text-blue-gray-800">{r.label}</td>
+                          <td className="tw-px-4 tw-py-2.5 tw-align-top">
+                            <BeforeCell pf={r.prePf} remark={r.preRemark} lang={lang} />
+                          </td>
+                          <td className="tw-px-4 tw-py-2.5 tw-align-top">
+                            <AfterCell pf={r.postPf} remark={r.postRemark} />
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </React.Fragment>
                 );
               })}
