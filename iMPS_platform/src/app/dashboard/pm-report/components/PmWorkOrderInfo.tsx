@@ -126,16 +126,6 @@ export default function PmWorkOrderInfo({ source, identifier, wonum, onStart, on
         >
           <ArrowLeftIcon className="tw-w-4 tw-h-4" />
         </Button>
-        {/* ยังไม่มีอุปกรณ์ให้ทำก็ยังเริ่มไม่ได้ (planner ยังวางแผนไม่เสร็จ) */}
-        <Button
-          type="button"
-          size="sm"
-          onClick={onStart}
-          disabled={loading || !wo || equipment.length === 0}
-          className="tw-bg-amber-500 hover:tw-bg-amber-600 tw-text-white tw-font-semibold tw-px-6 tw-rounded-lg hover:tw-shadow-lg hover:tw-shadow-amber-500/30 tw-transition-all disabled:tw-opacity-50 disabled:tw-shadow-none"
-        >
-          {t("startPm", lang)}
-        </Button>
       </div>
 
       <div className="tw-mx-auto tw-max-w-6xl tw-bg-white tw-border tw-border-blue-gray-100 tw-rounded-xl tw-shadow-md tw-shadow-blue-gray-500/5 tw-p-6 md:tw-p-8">
@@ -265,7 +255,7 @@ export default function PmWorkOrderInfo({ source, identifier, wonum, onStart, on
               </div>
             </div>
 
-            {/* เริ่มไม่ได้ต้องบอกว่ารออะไรอยู่ — ปุ่มอยู่ข้างบนข้างปุ่ม back */}
+            {/* เริ่มไม่ได้ต้องบอกว่ารออะไรอยู่ — ปุ่มอยู่ล่างสุด */}
             {equipment.length === 0 && (
               <div className="tw-rounded-xl tw-border tw-border-amber-200 tw-bg-amber-50 tw-px-5 tw-py-4 tw-text-center">
                 <p className="tw-text-sm tw-text-amber-800">{t("waitPlanner", lang)}</p>
@@ -273,6 +263,19 @@ export default function PmWorkOrderInfo({ source, identifier, wonum, onStart, on
             )}
           </>
         )}
+      </div>
+
+      {/* ปุ่มเริ่มงานอยู่ท้ายหน้า — อ่านรายละเอียดใบงานจบแล้วค่อยกด
+          ยังไม่มีอุปกรณ์ให้ทำก็ยังเริ่มไม่ได้ (planner ยังวางแผนไม่เสร็จ) */}
+      <div className="tw-mx-auto tw-max-w-6xl tw-mt-6 tw-flex tw-justify-end">
+        <Button
+          type="button"
+          onClick={onStart}
+          disabled={loading || !wo || equipment.length === 0}
+          className="tw-bg-amber-500 hover:tw-bg-amber-600 tw-text-white tw-font-semibold tw-text-base tw-px-8 tw-py-3 tw-rounded-xl hover:tw-shadow-lg hover:tw-shadow-amber-500/30 tw-transition-all disabled:tw-opacity-50 disabled:tw-shadow-none"
+        >
+          {t("startPm", lang)}
+        </Button>
       </div>
     </section>
   );
