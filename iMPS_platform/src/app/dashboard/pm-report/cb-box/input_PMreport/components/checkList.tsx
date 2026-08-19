@@ -1556,24 +1556,29 @@ export default function CBBOXPMForm() {
         // ต้องต่อท้ายข้อแม่ของมัน ไม่ใช่ไปกองรวมกันท้ายตาราง
         const answered = Array.from(new Set([...Object.keys(rowsPre ?? {}), ...Object.keys(rows ?? {})]));
         const subNo = (k: string) => Number(k.split("_")[1] ?? 0) || 0;
-        const keys: string[] = [];
-        (QUESTIONS as any[]).forEach((q: any) => {
-            if (!q?.key) return;
-            keys.push(q.key);
-            answered
-                .filter((k) => k !== q.key && k.split("_")[0] === q.key)
-                .sort((a, b) => subNo(a) - subNo(b))
-                .forEach((k) => keys.push(k));
-        });
-        answered.forEach((k) => { if (!keys.includes(k)) keys.push(k); });
-        return keys.map((k) => ({
+        const mk = (k: string, section: string, label: string) => ({
             key: k,
-            label: labelOf(k),
+            section,
+            label,
             prePf: (rowsPre as any)?.[k]?.pf,
             preRemark: (rowsPre as any)?.[k]?.remark,
             postPf: (rows as any)?.[k]?.pf,
             postRemark: (rows as any)?.[k]?.remark,
-        }));
+        });
+        // วางโครงเดียวกับฟอร์มกรอก: หัวข้อใหญ่เป็นแถบคั่น แล้วข้อย่อยเรียงอยู่ใต้มัน
+        // ข้อธรรมดาที่ไม่มีข้อย่อย ตัวมันเองคือเนื้อในของแถบ ช่องหัวข้อจึงเว้นว่าง
+        const out: ReturnType<typeof mk>[] = [];
+        (QUESTIONS as any[]).forEach((q: any) => {
+            if (!q?.key) return;
+            const section = labelOf(q.key);
+            out.push(mk(q.key, section, ""));
+            answered
+                .filter((k) => k !== q.key && k.split("_")[0] === q.key)
+                .sort((a, b) => subNo(a) - subNo(b))
+                .forEach((k) => out.push(mk(k, section, labelOf(k))));
+        });
+        answered.forEach((k) => { if (!out.some((r) => r.key === k)) out.push(mk(k, "", labelOf(k))); });
+        return out;
     }, [rowsPre, rows, lang]);
 
     return (

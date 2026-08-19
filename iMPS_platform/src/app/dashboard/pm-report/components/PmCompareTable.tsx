@@ -17,6 +17,8 @@ import type { Lang } from "@/utils/useLanguage";
 
 export type CompareRow = {
   key: string;
+  /** ชื่อหัวข้อใหญ่ที่แถวนี้อยู่ใต้ — ใช้ขึ้นแถบคั่นให้เหมือนหน้าฟอร์มกรอก */
+  section?: string;
   label: string;
   prePf?: string;
   preRemark?: string;
@@ -207,11 +209,32 @@ export default function PmCompareTable({
               </tr>
             </thead>
             <tbody>
-              {shown.map((r) => {
+              {shown.map((r, idx) => {
+                // แถบคั่นหัวข้อใหญ่ — ขึ้นเมื่อเปลี่ยนหัวข้อ หน้าตาเดียวกับ SectionCard ในฟอร์ม
+                const section = r.section?.trim();
+                const newSection = !!section && section !== shown[idx - 1]?.section?.trim();
+                const secNo = section?.match(/^(\d+)\)/)?.[1];
                 // FAIL = ข้อที่ยังไม่ผ่านหลังทำ PM ต้องอ่านให้ละเอียดกว่าข้ออื่น
                 const failed = String(r.postPf ?? "").trim().toUpperCase() === "FAIL";
                 return (
-                  <tr key={r.key} className={`tw-border-t tw-border-blue-gray-50 ${failed ? "tw-bg-red-50/60" : ""}`}>
+                  <React.Fragment key={r.key}>
+                  {newSection && (
+                    <tr>
+                      <td colSpan={3} className="tw-bg-gray-800 tw-px-4 tw-py-2.5">
+                        <div className="tw-flex tw-items-center tw-gap-3">
+                          {secNo && (
+                            <span className="tw-flex tw-h-7 tw-w-7 tw-flex-shrink-0 tw-items-center tw-justify-center tw-rounded-full tw-bg-white tw-text-xs tw-font-bold tw-text-gray-800">
+                              {secNo}
+                            </span>
+                          )}
+                          <span className="tw-text-sm tw-font-semibold tw-text-white">
+                            {secNo ? section!.replace(/^\d+\)\s*/, "") : section}
+                          </span>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  <tr className={`tw-border-t tw-border-blue-gray-50 ${failed ? "tw-bg-red-50/60" : ""}`}>
                     <td className="tw-px-4 tw-py-2.5 tw-text-blue-gray-800">{r.label}</td>
                     <td className="tw-px-4 tw-py-2.5 tw-align-top tw-space-y-2">
                       <BeforeCell pf={r.prePf} remark={r.preRemark} lang={lang} />
@@ -222,6 +245,7 @@ export default function PmCompareTable({
                       <Thumbs items={postPhotos?.[photoGroupOf(r.key)]} apiBase={apiBase} lang={lang} />
                     </td>
                   </tr>
+                  </React.Fragment>
                 );
               })}
             </tbody>
