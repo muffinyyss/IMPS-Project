@@ -24,6 +24,14 @@ export type CompareRow = {
   postRemark?: string;
 };
 
+/** รูปที่เก็บใน document — key เป็นกลุ่มรูป (g16, g5_1) ค่าเป็นรายการรูปของกลุ่มนั้น */
+export type PhotoMap = Record<string, { url?: string }[] | undefined>;
+
+/** คีย์คำตอบ (r16) → คีย์กลุ่มรูป (g16) — ใช้สูตรเดียวกับตอนอัปโหลด */
+function photoGroupOf(rowKey: string) {
+  return rowKey.replace(/^r/, "g");
+}
+
 const T = {
   title: { th: "เทียบผลก่อน / หลัง PM", en: "Before / after PM comparison" },
   hint: {
@@ -31,9 +39,10 @@ const T = {
     en: "Before PM has notes and photos only · PASS/FAIL comes after PM — failed items are highlighted",
   },
   item: { th: "หัวข้อ", en: "Item" },
-  before: { th: "ก่อน PM (หมายเหตุ)", en: "Before PM (notes)" },
-  after: { th: "หลัง PM (ผล + หมายเหตุ)", en: "After PM (result + notes)" },
+  before: { th: "ก่อน PM (รูป + หมายเหตุ)", en: "Before PM (photos + notes)" },
+  after: { th: "หลัง PM (ผล + รูป + หมายเหตุ)", en: "After PM (result + photos + notes)" },
   na: { th: "ไม่เกี่ยวข้อง", en: "N/A" },
+  noPhoto: { th: "ไม่มีรูป", en: "No photo" },
   noNote: { th: "ไม่มีหมายเหตุ", en: "No note" },
   summary: { th: "สรุปผล", en: "Summary" },
   empty: { th: "ยังไม่มีข้อมูลให้เทียบ", en: "Nothing to compare yet" },
@@ -47,6 +56,27 @@ function pfClass(pf?: string) {
   if (v === "FAIL") return "tw-bg-red-100 tw-text-red-800";
   if (v === "NA") return "tw-bg-gray-100 tw-text-gray-600";
   return "tw-bg-gray-50 tw-text-gray-400";
+}
+
+/** แถวรูปย่อของกลุ่มหนึ่ง — กดแล้วเปิดรูปเต็มในแท็บใหม่ */
+function Thumbs({ items, apiBase, lang }: { items?: { url?: string }[]; apiBase: string; lang: Lang }) {
+  const list = (items ?? []).filter((p) => p?.url);
+  if (list.length === 0) {
+    return <p className="tw-text-xs tw-text-blue-gray-300">{t("noPhoto", lang)}</p>;
+  }
+  const href = (u: string) => (u.startsWith("http") ? u : `${apiBase}${u}`);
+  return (
+    <div className="tw-flex tw-flex-wrap tw-gap-1.5">
+      {list.map((p, i) => (
+        <a key={`${p.url}-${i}`} href={href(p.url!)} target="_blank" rel="noopener noreferrer"
+           className="tw-block tw-h-14 tw-w-14 tw-overflow-hidden tw-rounded tw-border tw-border-blue-gray-100 hover:tw-border-blue-400">
+          {/* รูปจาก uploads ของ iMPS เอง ไม่ผ่าน next/image เพื่อเลี่ยง config domain */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={href(p.url!)} alt="" className="tw-h-full tw-w-full tw-object-cover" loading="lazy" />
+        </a>
+      ))}
+    </div>
+  );
 }
 
 /** ฝั่งก่อน PM — ไม่มี PASS/FAIL มีแต่หมายเหตุ (NA = ทำเครื่องหมายว่าไม่เกี่ยวข้อง) */
@@ -82,15 +112,22 @@ function AfterCell({ pf, remark }: { pf?: string; remark?: string }) {
 }
 
 export default function PmCompareTable({
-  rows, lang, summaryPre, summaryPost,
+  rows, lang, summaryPre, summaryPost, prePhotos, postPhotos, apiBase = "",
 }: {
   rows: CompareRow[];
   lang: Lang;
   summaryPre?: string;
   summaryPost?: string;
+  prePhotos?: PhotoMap;
+  postPhotos?: PhotoMap;
+  apiBase?: string;
 }) {
   // ฝั่งก่อน PM ไม่มี pf จึงต้องดูหมายเหตุด้วย ไม่งั้นข้อที่ช่างจดไว้ก่อนทำจะหายไป
-  const shown = rows.filter((r) => r.prePf || r.postPf || r.preRemark?.trim() || r.postRemark?.trim());
+  const shown = rows.filter((r) => {
+    const g = photoGroupOf(r.key);
+    return r.prePf || r.postPf || r.preRemark?.trim() || r.postRemark?.trim()
+      || (prePhotos?.[g]?.length ?? 0) > 0 || (postPhotos?.[g]?.length ?? 0) > 0;
+  });
 
   return (
     <div className="tw-mx-auto tw-max-w-6xl tw-mb-6 tw-rounded-xl tw-border tw-border-blue-gray-100 tw-bg-white tw-shadow-sm tw-overflow-hidden">
@@ -107,8 +144,8 @@ export default function PmCompareTable({
             <thead>
               <tr className="tw-bg-blue-gray-50/60 tw-text-xs tw-font-semibold tw-uppercase tw-text-blue-gray-500">
                 <th className="tw-px-4 tw-py-2.5">{t("item", lang)}</th>
-                <th className="tw-px-4 tw-py-2.5 tw-w-[28%]">{t("before", lang)}</th>
-                <th className="tw-px-4 tw-py-2.5 tw-w-[28%]">{t("after", lang)}</th>
+                <th className="tw-px-4 tw-py-2.5 tw-w-[34%]">{t("before", lang)}</th>
+                <th className="tw-px-4 tw-py-2.5 tw-w-[34%]">{t("after", lang)}</th>
               </tr>
             </thead>
             <tbody>
@@ -118,8 +155,14 @@ export default function PmCompareTable({
                 return (
                   <tr key={r.key} className={`tw-border-t tw-border-blue-gray-50 ${failed ? "tw-bg-red-50/60" : ""}`}>
                     <td className="tw-px-4 tw-py-2.5 tw-text-blue-gray-800">{r.label}</td>
-                    <td className="tw-px-4 tw-py-2.5"><BeforeCell pf={r.prePf} remark={r.preRemark} lang={lang} /></td>
-                    <td className="tw-px-4 tw-py-2.5"><AfterCell pf={r.postPf} remark={r.postRemark} /></td>
+                    <td className="tw-px-4 tw-py-2.5 tw-align-top tw-space-y-2">
+                      <BeforeCell pf={r.prePf} remark={r.preRemark} lang={lang} />
+                      <Thumbs items={prePhotos?.[photoGroupOf(r.key)]} apiBase={apiBase} lang={lang} />
+                    </td>
+                    <td className="tw-px-4 tw-py-2.5 tw-align-top tw-space-y-2">
+                      <AfterCell pf={r.postPf} remark={r.postRemark} />
+                      <Thumbs items={postPhotos?.[photoGroupOf(r.key)]} apiBase={apiBase} lang={lang} />
+                    </td>
                   </tr>
                 );
               })}

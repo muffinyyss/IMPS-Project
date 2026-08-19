@@ -1079,6 +1079,10 @@ export default function MDBPMForm() {
     useEffect(() => { void prefetchLocation(); }, []);
 
     const [rowsPre, setRowsPre] = useState<Record<string, { pf: PF; remark: string }>>({});
+
+    // รูปทั้งสองฝั่งจากเอกสาร (ใช้ในตารางเทียบตอนตรวจอนุมัติ)
+    // state รูปปกติของฟอร์มมีเฉพาะฝั่งที่กำลังกรอกอยู่ จึงต้องเก็บของ document ไว้ต่างหาก
+    const [cmpPhotos, setCmpPhotos] = useState<{ pre: any; post: any }>({ pre: {}, post: {} });
     const [rows, setRows] = useState<Record<string, { pf: PF; remark: string }>>(() => {
         const initial: Record<string, { pf: PF; remark: string }> = {};
         QUESTIONS.forEach(q => { if (q.kind === "simple" || q.kind === "measure") initial[q.key] = { pf: "", remark: "" }; else if (q.kind === "group" && q.items) q.items.forEach(it => { initial[it.key] = { pf: "", remark: "" }; }); });
@@ -1170,6 +1174,7 @@ export default function MDBPMForm() {
                 if (data?.measures_pre?.m7) setM7Pre(data.measures_pre.m7);
                 if (data.doc_name) setDocName(data.doc_name);
                 if (data.inspector) setInspector(data.inspector);
+                setCmpPhotos({ pre: data.photos_pre ?? {}, post: data.photos ?? {} });
                 if (data.rows_pre) setRowsPre(data.rows_pre);
                 if (data.rows) setRows(prev => { const n = { ...prev }; Object.entries(data.rows).forEach(([k, v]) => { n[k] = v as { pf: PF; remark: string }; }); return n; });
                 setPostApiLoaded(true);
@@ -2581,6 +2586,9 @@ export default function MDBPMForm() {
                 <PmCompareTable
                     rows={compareRows}
                     lang={lang}
+                    prePhotos={cmpPhotos.pre}
+                    postPhotos={cmpPhotos.post}
+                    apiBase={API_BASE}
                     summaryPre={summaryPre}
                     summaryPost={summary}
                 />

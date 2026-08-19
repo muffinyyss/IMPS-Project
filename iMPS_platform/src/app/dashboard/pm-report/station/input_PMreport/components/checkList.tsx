@@ -1141,6 +1141,10 @@ export default function StationPMReport() {
     }, []);
 
     const [rowsPre, setRowsPre] = useState<Record<string, { pf: PF; remark: string }>>({});
+
+    // รูปทั้งสองฝั่งจากเอกสาร (ใช้ในตารางเทียบตอนตรวจอนุมัติ)
+    // state รูปปกติของฟอร์มมีเฉพาะฝั่งที่กำลังกรอกอยู่ จึงต้องเก็บของ document ไว้ต่างหาก
+    const [cmpPhotos, setCmpPhotos] = useState<{ pre: any; post: any }>({ pre: {}, post: {} });
     const [rows, setRows] = useState<Record<string, { pf: PF; remark: string }>>(() => {
         const initial: Record<string, { pf: PF; remark: string }> = {};
         QUESTIONS.forEach((q) => {
@@ -1163,6 +1167,7 @@ export default function StationPMReport() {
                 if (data.inspector) setInspector(data.inspector);
                 if (data.comment_pre) setCommentPre(data.comment_pre);
                 if (data.summary) setSummary(data.summary);
+                setCmpPhotos({ pre: data.photos_pre ?? {}, post: data.photos ?? {} });
                 if (data.rows_pre) { setRowsPre(data.rows_pre); }
                 if (data.rows) {
                     setRows((prev) => { const next = { ...prev }; Object.entries(data.rows).forEach(([k, v]) => { next[k] = v as { pf: PF; remark: string }; }); return next; });
@@ -2221,6 +2226,9 @@ export default function StationPMReport() {
                 <PmCompareTable
                     rows={compareRows}
                     lang={lang}
+                    prePhotos={cmpPhotos.pre}
+                    postPhotos={cmpPhotos.post}
+                    apiBase={API_BASE}
                     summaryPost={summary}
                 />
             )}
