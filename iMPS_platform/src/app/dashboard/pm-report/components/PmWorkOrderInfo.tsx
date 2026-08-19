@@ -66,10 +66,6 @@ const T = {
     th: "ผู้วางแผนยังไม่ได้เลือกอุปกรณ์ที่ต้อง PM — รอให้วางแผนเสร็จก่อนจึงเริ่มได้",
     en: "The planner has not selected the equipment yet — wait for the plan to be completed",
   },
-  startHint: {
-    th: "ตรวจข้อมูลใบงานให้เรียบร้อย แล้วกด “เริ่ม PM” เพื่อเปิดแบบฟอร์มก่อนทำ PM",
-    en: "Review the work order, then press “Start PM” to open the Pre-PM checklist",
-  },
 } as const;
 
 const t = (key: keyof typeof T, lang: Lang) => T[key][lang === "en" ? "en" : "th"];
@@ -122,13 +118,23 @@ export default function PmWorkOrderInfo({ source, identifier, wonum, onStart, on
 
   return (
     <section className="tw-pb-24">
-      <div className="tw-mx-auto tw-max-w-6xl tw-mb-6 tw-flex tw-items-center tw-justify-between">
+      <div className="tw-mx-auto tw-max-w-6xl tw-mb-6 tw-flex tw-items-center tw-gap-3">
         <Button
           variant="outlined" size="sm" onClick={onCancel}
           title={t("back", lang)} aria-label={t("back", lang)}
           className="tw-border-blue-gray-200 tw-text-blue-gray-700 hover:tw-border-blue-gray-300"
         >
           <ArrowLeftIcon className="tw-w-4 tw-h-4" />
+        </Button>
+        {/* ยังไม่มีอุปกรณ์ให้ทำก็ยังเริ่มไม่ได้ (planner ยังวางแผนไม่เสร็จ) */}
+        <Button
+          type="button"
+          size="sm"
+          onClick={onStart}
+          disabled={loading || !wo || equipment.length === 0}
+          className="tw-bg-amber-500 hover:tw-bg-amber-600 tw-text-white tw-font-semibold tw-px-6 tw-rounded-lg hover:tw-shadow-lg hover:tw-shadow-amber-500/30 tw-transition-all disabled:tw-opacity-50 disabled:tw-shadow-none"
+        >
+          {t("startPm", lang)}
         </Button>
       </div>
 
@@ -259,20 +265,12 @@ export default function PmWorkOrderInfo({ source, identifier, wonum, onStart, on
               </div>
             </div>
 
-            {/* เริ่มกรอก — ยังไม่มีอุปกรณ์ให้ทำก็ยังเริ่มไม่ได้ (planner ยังวางแผนไม่เสร็จ) */}
-            <div className="tw-rounded-xl tw-border tw-border-amber-200 tw-bg-amber-50 tw-px-5 tw-py-6 tw-text-center">
-              <p className="tw-mb-4 tw-text-sm tw-text-amber-800">
-                {equipment.length === 0 ? t("waitPlanner", lang) : t("startHint", lang)}
-              </p>
-              <Button
-                type="button"
-                onClick={onStart}
-                disabled={equipment.length === 0}
-                className="tw-bg-amber-500 hover:tw-bg-amber-600 tw-text-white tw-font-semibold tw-text-base tw-px-8 tw-py-3 tw-rounded-xl hover:tw-shadow-xl hover:tw-shadow-amber-500/30 tw-transition-all"
-              >
-                {t("startPm", lang)}
-              </Button>
-            </div>
+            {/* เริ่มไม่ได้ต้องบอกว่ารออะไรอยู่ — ปุ่มอยู่ข้างบนข้างปุ่ม back */}
+            {equipment.length === 0 && (
+              <div className="tw-rounded-xl tw-border tw-border-amber-200 tw-bg-amber-50 tw-px-5 tw-py-4 tw-text-center">
+                <p className="tw-text-sm tw-text-amber-800">{t("waitPlanner", lang)}</p>
+              </div>
+            )}
           </>
         )}
       </div>

@@ -4,6 +4,7 @@ import React, { useMemo, useRef, useState, useEffect } from "react";
 import { Button, Input, Typography, Textarea, Tooltip } from "@material-tailwind/react";
 import { draftKey, saveDraftLocal, loadDraftLocal, clearDraftLocal } from "@/app/dashboard/pm-report/cb-box/input_PMreport/lib/draft";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
+import PmApprovalBar from "@/app/dashboard/pm-report/components/PmApprovalBar";
 import Image from "next/image";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 import { Tabs, TabsHeader, Tab } from "@material-tailwind/react";
@@ -966,6 +967,9 @@ export default function CBBOXPMForm() {
 
     const [workStart, setWorkStart] = useState<string>("");
     const [workFinish, setWorkFinish] = useState<string>("");
+    // planner เปิดเอกสารที่ช่างส่งมาเพื่อตรวจก่อนอนุมัติ (?approve=1)
+    const approveMode = searchParams.get("approve") === "1";
+
     const pmStarted = pmStartedManually || !!editId || !!workStart
         || searchParams.get("started") === "1";
 
@@ -1517,6 +1521,18 @@ export default function CBBOXPMForm() {
     return (
         <section className="tw-pb-24">
             <div className="tw-mx-auto tw-max-w-6xl tw-flex tw-items-center tw-justify-between tw-mb-4">
+
+                {/* ตรวจเพื่ออนุมัติ — ปุ่มอยู่คู่กับปุ่มย้อนกลับ เห็นทันทีไม่ต้องเลื่อน */}
+                {approveMode && editId && (
+                    <div className="tw-flex tw-items-center tw-gap-2">
+                        <PmApprovalBar
+                            prefix="cbboxpmreport" reportId={editId}
+                            scope={{ station_id: stationId }}
+                            apiBase={API_BASE}
+                            onDone={(msg) => { alert(msg); router.back(); }}
+                        />
+                    </div>
+                )}
                 <Button variant="outlined" size="sm" onClick={() => router.back()} title={t("backToList", lang)}><ArrowLeftIcon className="tw-w-4 tw-h-4 tw-stroke-gray-900 tw-stroke-2" /></Button>
                 <Tabs value={displayTab} key={displayTab}>
                     <TabsHeader className="tw-bg-gray-100 tw-rounded-lg">

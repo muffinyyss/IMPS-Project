@@ -20,6 +20,7 @@ import { DocumentArrowDownIcon } from "@heroicons/react/24/outline";
 import { apiFetch } from "@/utils/api";
 import useLanguage from "@/utils/useLanguage";
 import { PM_ORIGIN_LIST } from "@/app/dashboard/pm-report/lib/origin";
+import { PM_PLANNING_ROLES } from "@/app/dashboard/pm-report/components/planning";
 
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 500;
@@ -45,6 +46,7 @@ type PMRow = {
   file_url: string;
   /** แถวใบงาน Maximo ที่ยังไม่มีเอกสาร PM — ด่าน Open ของ flow */
   kind?: "report" | "wo";
+  planning_status?: string;
   assignees?: string[];
   /** false = เลข wonum นี้ไม่มีอยู่จริงใน Maximo · null = เช็คไม่ได้ */
   exists_in_maximo?: boolean | null;
@@ -55,7 +57,12 @@ type PmStage = "open" | "in_progress" | "wait_approve" | "closed";
 
 /** ใบเก่าไม่มี status / เป็น "submitted" = ปิดไปแล้วก่อนมี flow อนุมัติ */
 function stageOf(row: PMRow): PmStage {
-  if (row.kind === "wo") return "open";
+  // ใบงาน Maximo: assign แล้ว = In Progress เหมือนในตารางของแต่ละ tab
+  if (row.kind === "wo") {
+    return String(row.planning_status ?? "pending").trim().toLowerCase() === "planned"
+      ? "in_progress"
+      : "open";
+  }
   const s = String(row.status ?? "").trim().toLowerCase();
   if (s === "wait for approve") return "wait_approve";
   if (s === "draft") return "in_progress";
@@ -196,6 +203,7 @@ export default function PMListPage() {
               pm_type: WO_PM_TYPE_LABEL[String(w?.pm_type || "").toUpperCase()] ?? "CHARGER",
               pm_date: String(w?.pm_date || ""),
               status: "Open",
+              planning_status: String(w?.planning_status || "pending"),
               // ผู้ตรวจสอบ = คนที่กรอกเอกสารจริง ใบงานที่ยังไม่มีเอกสารจึงเว้นว่าง
               // (ช่างที่ถูกมอบหมายยังอยู่ใน assignees ใช้กรองงานของช่างได้เหมือนเดิม)
               technician: "",
@@ -302,15 +310,24 @@ export default function PMListPage() {
       window.dispatchEvent(new CustomEvent("station:selected"));
     }
 
-    // แถวใบงาน Maximo ยังไม่มีเอกสาร → ไปหน้าวางแผนของ planner แทน
+    // แถวใบงาน Maximo ยังไม่มีเอกสาร → planner ไปหน้าวางแผน
+    // ส่วนคนที่วางแผนไม่ได้ (ช่าง) ไปหน้าข้อมูลใบงานที่มีปุ่ม "เริ่ม PM"
     // from= ให้ปุ่มย้อนกลับในฟอร์มรู้ว่าต้องพากลับมาหน้านี้ ไม่ใช่ตาราง tab
+    const canPlan = PM_PLANNING_ROLES.includes(me?.role ?? "");
     const params = r.kind === "wo"
-      ? new URLSearchParams({ tab, view: "form", planning: "1", wonum: r.wonum || r.id, from: PM_ORIGIN_LIST })
-      : new URLSearchParams({ tab, view: "form", edit_id: r.id, from: PM_ORIGIN_LIST });
+      ? new URLSearchParams({
+          tab, view: "form", wonum: r.wonum || r.id, from: PM_ORIGIN_LIST,
+          ...(canPlan ? { planning: "1" } : { wo_info: "1" }),
+        })
+      // ใบที่รออนุมัติ + เป็นผู้อนุมัติ → เปิดโหมดตรวจ (เห็นของที่ช่างกรอก + ปุ่มอนุมัติ/ตีกลับ)
+      : new URLSearchParams({
+          tab, view: "form", edit_id: r.id, from: PM_ORIGIN_LIST,
+          ...(canPlan && stageOf(r) === "wait_approve" ? { approve: "1", pmtab: "post" } : {}),
+        });
     if (tab === "charger" && r.sn && r.sn !== "-") params.set("sn", r.sn);
     else if (r.station_id) params.set("station_id", r.station_id);
     router.push(`/dashboard/pm-report?${params.toString()}`);
-  }, [router]);
+  }, [router, me]);
 
   const clearAll = () => {
     setTypeFilter(null);

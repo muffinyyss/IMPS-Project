@@ -434,6 +434,16 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     router.push(`${pathname}?${params.toString()}`, { scroll: false });
   };
 
+  // เปิดเอกสารที่ช่างส่งมาเพื่อตรวจก่อนอนุมัติ
+  const goReview = (row: TData) => {
+    if (!row.id) return;
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("view", "form"); params.set("edit_id", row.id);
+    params.set("approve", "1"); params.set("pmtab", "post");
+    params.delete("planning"); params.delete("wo_info"); params.delete("wonum");
+    router.push(`${pathname}?${params.toString()}`, { scroll: false });
+  };
+
   const leavePlanning = () => {
     const back = pmBackRoute(searchParams);
     if (back) { router.push(back); return; }
@@ -624,7 +634,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
                 <>
                   <Button size="sm" color="green" variant="outlined"
                     className="tw-shrink-0 tw-text-[10px] sm:tw-text-xs tw-px-2 sm:tw-px-3 tw-py-1 tw-min-h-0 tw-h-auto tw-font-medium tw-rounded-md"
-                    onClick={() => setApproveRow(info.row.original)}>{t("approve", lang)}</Button>
+                    onClick={() => goReview(info.row.original)}>{t("approve", lang)}</Button>
                   <Button size="sm" color="amber" variant="outlined"
                     className="tw-shrink-0 tw-text-[10px] sm:tw-text-xs tw-px-2 sm:tw-px-3 tw-py-1 tw-min-h-0 tw-h-auto tw-font-medium tw-rounded-md"
                     onClick={() => { setRejectRemark(""); setRejectRow(info.row.original); }}>{t("reject", lang)}</Button>
