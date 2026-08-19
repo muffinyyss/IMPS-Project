@@ -274,6 +274,7 @@ const T = {
     workTimeHint: { th: "ใช้ส่งเวลาทำงานของช่างเข้า Maximo", en: "Sent to Maximo as actual labor time" },
     alertWorkTime: { th: "กรุณากรอกเวลาเริ่มงานและเวลาเสร็จงาน", en: "Please fill in the start and finish time" },
     alertWorkTimeOrder: { th: "เวลาเสร็จงานต้องไม่ก่อนเวลาเริ่มงาน", en: "Finish time must not be before the start time" },
+    alertWorkTimeFuture: { th: "เวลาทำงานต้องไม่เป็นเวลาในอนาคต — Maximo ไม่รับเวลาที่ยังมาไม่ถึง", en: "Work time cannot be in the future — Maximo rejects labor times that have not happened yet" },
     startPm: { th: "เริ่ม PM", en: "Start PM" },
     startPmHint: {
         th: "ตรวจข้อมูลใบงานด้านบนให้เรียบร้อย แล้วกด “เริ่ม PM” เพื่อเปิดแบบฟอร์มกรอก",
@@ -1931,6 +1932,11 @@ export default function MDBPMForm() {
             if (!workStart || !workFinish) { alert(t("alertWorkTime", lang)); setSubmitting(false); return; }
             if (contractorMissing) { alert(t("contractorRequired", lang)); setSubmitting(false); return; }
             if (workFinish < workStart) { alert(t("alertWorkTimeOrder", lang)); setSubmitting(false); return; }
+            // Maximo ตีกลับ IN09 ด้วย BMXAA2641E ถ้าเวลาทำงานยังมาไม่ถึง
+            // ปล่อยผ่านตรงนี้ = ปิดใบงานได้แต่ปิด WO ในระบบเขาไม่ได้ ต้องมาแก้ย้อนหลัง
+            const nowLocal = new Date(Date.now() - new Date().getTimezoneOffset() * 60000)
+                .toISOString().slice(0, 16);
+            if (workStart > nowLocal || workFinish > nowLocal) { alert(t("alertWorkTimeFuture", lang)); setSubmitting(false); return; }
 
             const finalizeRes = await apiFetch(`${API_BASE}/${PM_PREFIX}/${report_id}/finalize`, {
                 method: "POST", credentials: "include",

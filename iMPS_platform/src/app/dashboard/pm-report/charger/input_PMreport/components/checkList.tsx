@@ -270,6 +270,7 @@ const T = {
     workTimeHint: { th: "ใช้ส่งเวลาทำงานของช่างเข้า Maximo", en: "Sent to Maximo as actual labor time" },
     alertWorkTime: { th: "กรุณากรอกเวลาเริ่มงานและเวลาเสร็จงาน", en: "Please fill in the start and finish time" },
     alertWorkTimeOrder: { th: "เวลาเสร็จงานต้องไม่ก่อนเวลาเริ่มงาน", en: "Finish time must not be before the start time" },
+    alertWorkTimeFuture: { th: "เวลาทำงานต้องไม่เป็นเวลาในอนาคต — Maximo ไม่รับเวลาที่ยังมาไม่ถึง", en: "Work time cannot be in the future — Maximo rejects labor times that have not happened yet" },
 
     // Photo Section
     maxPhotos: { th: "สูงสุด", en: "Max" },
@@ -3305,6 +3306,11 @@ export default function ChargerPMForm() {
         if (!workStart || !workFinish) { alert(t("alertWorkTime", lang)); return; }
         if (contractorMissing) { alert(t("contractorRequired", lang)); return; }
         if (workFinish < workStart) { alert(t("alertWorkTimeOrder", lang)); return; }
+        // Maximo ตีกลับ IN09 ด้วย BMXAA2641E ถ้าเวลาทำงานยังมาไม่ถึง
+        // ปล่อยผ่านตรงนี้ = ปิดใบงานได้แต่ปิด WO ในระบบเขาไม่ได้ ต้องมาแก้ย้อนหลัง
+        const nowLocal = new Date(Date.now() - new Date().getTimezoneOffset() * 60000)
+            .toISOString().slice(0, 16);
+        if (workStart > nowLocal || workFinish > nowLocal) { alert(t("alertWorkTimeFuture", lang)); return; }
         if (submitting) return;
         setSubmitting(true);
         try {

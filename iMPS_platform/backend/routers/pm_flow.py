@@ -12,7 +12,8 @@ charger ใช้ SN เป็น key ส่วนอีก 4 ชนิดใช
 """
 
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from typing import Any, Optional
 
 from bson.objectid import ObjectId
@@ -23,6 +24,9 @@ from deps import UserClaims
 
 # ── สถานะในflow ──
 PM_STATUS_DRAFT = "draft"
+# เวลาที่ช่างกรอกเป็นเวลาท้องถิ่นไทย ไม่มี timezone ติดมา เทียบกับ now ต้องใช้โซนเดียวกัน
+_TH_TZ = ZoneInfo("Asia/Bangkok")
+
 PM_STATUS_WAIT_APPROVE = "Wait for approve"
 PM_STATUS_CLOSED = "Closed"
 
@@ -103,10 +107,27 @@ async def finalize(coll, oid: ObjectId, scope_filter: dict) -> None:
     if str(doc.get("status") or "").strip().lower() in PM_CLOSED_STATUSES:
         raise HTTPException(status_code=409, detail="Report is already closed")
 
-    if not str(doc.get("work_start") or "").strip() or not str(doc.get("work_finish") or "").strip():
+    work_start = str(doc.get("work_start") or "").strip()
+    work_finish = str(doc.get("work_finish") or "").strip()
+    if not work_start or not work_finish:
         raise HTTPException(
             status_code=400,
             detail="กรุณากรอกเวลาเริ่มงานและเวลาเสร็จงานก่อนส่งปิดใบงาน",
+        )
+
+    # Maximo ตีกลับ IN09 ด้วย BMXAA2641E ถ้าเวลาทำงานยังมาไม่ถึง
+    # ("You cannot enter actual labor with future dates and times")
+    # ปล่อยผ่าน = ใบงานปิดฝั่งเราแต่ปิด WO ฝั่งเขาไม่ได้ ต้องตามแก้ย้อนหลัง
+    # เผื่อ 5 นาที ให้นาฬิกาเครื่องช่างคลาดจากเซิร์ฟเวอร์ได้บ้าง
+    limit = (datetime.now(_TH_TZ) + timedelta(minutes=5)).strftime("%Y-%m-%dT%H:%M")
+    future = [v for v in (work_start, work_finish) if v > limit]
+    if future:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"เวลาทำงานเป็นเวลาในอนาคต ({', '.join(future)}) — "
+                "Maximo ไม่รับ กรุณาแก้ก่อนส่งปิดใบงาน"
+            ),
         )
 
     now = datetime.now(timezone.utc)
