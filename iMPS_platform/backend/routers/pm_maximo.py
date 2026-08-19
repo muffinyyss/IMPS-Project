@@ -29,6 +29,7 @@ from pydantic import BaseModel, Field
 from config import client, station_collection, charger_collection
 from deps import get_current_user, UserClaims
 from services import maximo as maximo_svc
+from routers import pm_flow
 from services.maximo import query_workorders
 
 log = logging.getLogger("pm_maximo")
@@ -1096,6 +1097,17 @@ async def pm_wo_sync_status(
         log.warning(f"  ⚠️ เช็ค wonum {wonum} กับ Maximo ไม่สำเร็จ: {e}")
         exists, in_maximo = None, None
 
+    # IN03/IN09/IN02(COMP) จดไว้บนเอกสาร PM ไม่ใช่บนใบงาน — ใบงานมีแต่ IN02(INPRG)
+    # ถ้าอ่านแค่ใบงาน หน้านี้จะค้างอยู่ที่ INPRG ตลอดกาลทั้งที่ปิดงานไปแล้ว
+    reports = await pm_flow.wo_reports(wonum)
+
+    merged = _serialize_sync(wo)
+    for rep in reports:
+        rep["interfaces"] = _serialize_sync(rep)
+        rep.pop("maximo_sync", None)
+        # เอกสารเป็นตัวยิงจริง ทับของใบงานได้เลยเมื่อชนกัน (IN02 COMP มาทีหลัง INPRG)
+        merged.update(rep["interfaces"])
+
     return {
         "wonum": wonum,
         "exists_in_maximo": exists,
@@ -1106,8 +1118,11 @@ async def pm_wo_sync_status(
         "assignees": wo.get("assignees") or [],
         # ขาเข้า: IN06 ที่ Maximo ยิงมา + response ที่เราตอบกลับ
         "inbound": inbound or None,
-        # ขาออก: IN02 (INPRG) ที่ยิงตอน planner กด Assign
-        "interfaces": _serialize_sync(wo),
+        # ขาออก: รวมของใบงาน (IN02 INPRG ตอน assign) กับของเอกสารทุกใบในใบงานนี้
+        "interfaces": merged,
+        # แยกรายเอกสารไว้ด้วย ใบงานเดียวมีได้หลายอุปกรณ์
+        "reports": reports,
+        "progress": await pm_flow.wo_completion(wonum),
     }
 
 
