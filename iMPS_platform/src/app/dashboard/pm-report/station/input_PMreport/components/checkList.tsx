@@ -1,5 +1,5 @@
 "use client";
-import React, { useMemo, useRef, useState, useEffect } from "react";
+import React, { useMemo, useCallback, useRef, useState, useEffect } from "react";
 import {
     Button,
     Card,
@@ -2002,6 +2002,11 @@ export default function StationPMReport() {
     // ── ตารางเทียบก่อน/หลัง PM (โหมดตรวจอนุมัติ) ──
     // ใช้ state ที่โหลดเอกสารมาแล้ว: rowsPre = คำตอบก่อน PM, rows = หลัง PM
     // คีย์ที่ไม่ได้อยู่ใน QUESTIONS (ข้อย่อยแบบ r5_1) เอามาต่อท้ายด้วย จะได้ไม่ตกหล่น
+    // station รวมรูปของทั้งข้อไว้ที่คีย์เดียว (toGroupKey ส่งทั้ง q{n} และ r{n}_{i}
+    // กลับมาเป็น q.key) แยกรายข้อย่อยไม่ได้ ปล่อยให้ตกไปรวมที่แถวรูปของข้อ
+    const photoKeysOf = useCallback((row: { key: string }) =>
+        /_/.test(row.key) ? [] : [row.key, `g${row.key.replace(/^r/, "")}`], []);
+
     const compareRows = useMemo(() => {
         // ป้ายหัวข้อต้องตรงกับที่ช่างเห็นตอนกรอก — ข้อย่อยอย่าง r3_1 ฟอร์มสร้างขึ้นมาเอง
         // ตอนรันไทม์ (ตามจำนวนหัวชาร์จ/ช่องของสถานีนั้น) ไม่ได้อยู่ใน QUESTIONS
@@ -2297,6 +2302,7 @@ export default function StationPMReport() {
                     prePhotos={cmpPhotos.pre}
                     postPhotos={cmpPhotos.post}
                     apiBase={API_BASE}
+                    photoKeysOf={photoKeysOf}
                     summaryPost={summary}
                 />
             )}

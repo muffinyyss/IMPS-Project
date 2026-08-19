@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useRef, useState, useEffect } from "react";
+import React, { useMemo, useCallback, useRef, useState, useEffect } from "react";
 import {
     Button,
     Input,
@@ -2347,6 +2347,13 @@ export default function MDBPMForm() {
     // ── ตารางเทียบก่อน/หลัง PM (โหมดตรวจอนุมัติ) ──
     // ใช้ state ที่โหลดเอกสารมาแล้ว: rowsPre = คำตอบก่อน PM, rows = หลัง PM
     // คีย์ที่ไม่ได้อยู่ใน QUESTIONS (ข้อย่อยแบบ r5_1) เอามาต่อท้ายด้วย จะได้ไม่ตกหล่น
+    // คีย์รูปของ mdb: ข้อหลักแปลงเป็น g{n} ส่วนข้อย่อยเก็บด้วยคีย์คำตอบตรงๆ
+    // (normalizeGroup ปล่อย r{n}_{i} ผ่านโดยไม่เติม g)
+    const photoKeysOf = useCallback((row: { key: string }) => {
+        if (/^r\d+_\d+$/.test(row.key)) return [row.key, row.key.replace(/^r/, "g")];
+        return [`g${row.key.replace(/^r/, "")}`];
+    }, []);
+
     const compareRows = useMemo(() => {
         // ป้ายหัวข้อต้องตรงกับที่ช่างเห็นตอนกรอก — ข้อย่อยอย่าง r3_1 ฟอร์มสร้างขึ้นมาเอง
         // ตอนรันไทม์ (ตามจำนวนหัวชาร์จ/ช่องของสถานีนั้น) ไม่ได้อยู่ใน QUESTIONS
@@ -2658,6 +2665,7 @@ export default function MDBPMForm() {
                     prePhotos={cmpPhotos.pre}
                     postPhotos={cmpPhotos.post}
                     apiBase={API_BASE}
+                    photoKeysOf={photoKeysOf}
                     summaryPre={summaryPre}
                     summaryPost={summary}
                 />
