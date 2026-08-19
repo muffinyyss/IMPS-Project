@@ -231,6 +231,48 @@ def _coll_for_equip(item: dict, station_id: str):
     return getter(station_id) if getter and station_id else None
 
 
+async def wo_reports(wonum: str) -> list[dict]:
+    """
+    เอกสาร PM ทุกใบที่ผูกกับใบงาน Maximo ใบนี้
+
+    ใบงาน 1 ใบครอบได้หลายอุปกรณ์ = หลายเอกสาร คนละคอลเลกชันกันด้วย
+    ไล่ตาม selected_equipment ที่ planner เลือกไว้ ซึ่งเป็นตัวเดียวกับที่
+    wo_completion ใช้ตัดสินว่าปิดครบหรือยัง
+    """
+    from config import client
+
+    wonum = (wonum or "").strip()
+    if not wonum:
+        return []
+
+    wo = await client["iMPS"]["maximo_pm_open"].find_one({"wonum": wonum}) or {}
+    station_id = (wo.get("station_id") or "").strip()
+
+    out: list[dict] = []
+    for item in wo.get("selected_equipment") or []:
+        coll = _coll_for_equip(item, station_id)
+        if coll is None:
+            continue
+        try:
+            doc = await coll.find_one(
+                {"wonum": wonum},
+                {"_id": 1, "issue_id": 1, "status": 1, "maximo_sync": 1},
+            )
+        except Exception:
+            doc = None
+        if not doc:
+            continue
+        out.append({
+            "equipment": _equip_label(item),
+            "type": str(item.get("type") or ""),
+            "report_id": str(doc.get("_id")),
+            "issue_id": doc.get("issue_id") or "",
+            "status": doc.get("status") or "",
+            "maximo_sync": doc.get("maximo_sync") or {},
+        })
+    return out
+
+
 async def wo_completion(wonum: str) -> dict:
     """
     ใบงาน Maximo ใบนี้ปิดครบทุกอุปกรณ์ที่ planner เลือกไว้หรือยัง
