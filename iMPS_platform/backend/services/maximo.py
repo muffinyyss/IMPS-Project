@@ -71,6 +71,9 @@ MAXIMO_PERSON_OS = os.getenv("MAXIMO_PERSON_OS", "ZAPIPERSON")
 # (ไม่มี ZAPILABOR ให้ใช้ ต้องยิง MXLABOR ซึ่งเป็น OS มาตรฐานของ Maximo)
 MAXIMO_LABOR_OS = os.getenv("MAXIMO_LABOR_OS", "MXLABOR")
 MAXIMO_LABTRANS_OS = os.getenv("MAXIMO_LABTRANS_OS", "ZAPILABTRANS")
+# enterby ของ labtrans (IN09) = ผู้อนุมัติการลงเวลา — สเปค EGAT บังคับ ค่า default
+# คือบัญชี integration ของ Maximo (INFUSER) ต้องเป็นตัวพิมพ์ใหญ่ (ชนิด UPPER)
+MAXIMO_LABTRANS_ENTERBY = os.getenv("MAXIMO_LABTRANS_ENTERBY", "INFUSER").strip().upper()
 
 # worktype ของใบงาน CM ที่ iMPS เปิดเข้า Maximo
 MAXIMO_CM_WORKTYPE = os.getenv("MAXIMO_CM_WORKTYPE", "CM")
@@ -1013,11 +1016,18 @@ async def create_labtrans(
         regular_hours = round(max(delta.total_seconds(), 0) / 3600, 2)
 
     payload = _clean({
+        # _action บังคับตามสเปค EGAT — ค่า default คือ AddChange (แบบเดียวกับ IN02/IN03/IN05)
+        "_action": "AddChange",
         "refwo": wonum,
         "laborcode": labor_code,
         "siteid": MAXIMO_SITE_ID,
         "orgid": MAXIMO_ORG_ID,
         "transtype": "WORK",
+        # ผู้อนุมัติการลงเวลา — ตั้งค่าจริงได้ที่ env MAXIMO_LABTRANS_ENTERBY
+        "enterby": MAXIMO_LABTRANS_ENTERBY,
+        # วันที่ลงเวลาเข้าระบบ = ตอนที่ iMPS ยิงเข้ามา (คนละอย่างกับ startdate/finishdate
+        # ซึ่งเป็นเวลาที่ช่างทำงานจริง) — ยิงซ้ำหลังแก้ปัญหา ค่านี้จะเป็นเวลาที่ยิงรอบล่าสุด
+        "enterdate": _maximo_datetime(datetime.now(_TH_TZ)),
         # craft ต้องตรงกับ craft ที่ผูกกับ labor คนนั้น ไม่งั้นโดน BMXAA2634E craftmismatch
         # ไม่ระบุมา = ปล่อยให้ Maximo เติม craft หลักของ labor ให้เอง
         "craft": craft,

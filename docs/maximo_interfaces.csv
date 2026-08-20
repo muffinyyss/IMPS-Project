@@ -63,10 +63,13 @@ IN07,รายการ location,Maximo -> iMPS,GET,ZAPILOCATION,oslc.where loca
 IN08,รายชื่อช่าง,Maximo -> iMPS,GET,ZAPIPERSON,oslc.where zcostcenter=<MAXIMO_COST_CENTER>,-,-,กรองเฉพาะหน่วยงาน EV
 IN08,รายชื่อช่าง,Maximo -> iMPS,GET,ZAPIPERSON,(response) personid,-> laborcode ของ IN09,-,
 IN08,รายชื่อช่าง,Maximo -> iMPS,GET,ZAPIPERSON,(response) displayname status primaryemail zcostcenter,cache ลง MongoDB,-,
+IN09,ลงเวลาช่าง,iMPS -> Maximo,POST (CREATE),ZAPILABTRANS,_action,ค่าคงที่ AddChange,Y,Identifies action — สเปค EGAT บังคับ ส่งเหมือน IN02/IN03/IN05
 IN09,ลงเวลาช่าง,iMPS -> Maximo,POST (CREATE),ZAPILABTRANS,refwo,maximo_wonum,Y,
 IN09,ลงเวลาช่าง,iMPS -> Maximo,POST (CREATE),ZAPILABTRANS,laborcode,personid จาก IN08 (จับคู่กับ assignees),Y,
 IN09,ลงเวลาช่าง,iMPS -> Maximo,POST (CREATE),ZAPILABTRANS,siteid / orgid,env,Y,
 IN09,ลงเวลาช่าง,iMPS -> Maximo,POST (CREATE),ZAPILABTRANS,transtype,WORK (ค่าคงที่),Y,
+IN09,ลงเวลาช่าง,iMPS -> Maximo,POST (CREATE),ZAPILABTRANS,enterby,env MAXIMO_LABTRANS_ENTERBY (default INFUSER),Y,Approved By (Authorized Manager Signature) — ชนิด UPPER ส่งเป็นตัวพิมพ์ใหญ่เสมอ
+IN09,ลงเวลาช่าง,iMPS -> Maximo,POST (CREATE),ZAPILABTRANS,enterdate,เวลาปัจจุบัน (Asia/Bangkok),Y,Date Labor Was Reported = เวลาที่ยิงเข้า Maximo คนละอย่างกับ startdate/finishdate ที่เป็นเวลาทำงานจริง
 IN09,ลงเวลาช่าง,iMPS -> Maximo,POST (CREATE),ZAPILABTRANS,craft,ไม่ส่ง = Maximo เติม craft หลักของ labor ให้,N,ส่งผิดโดน BMXAA2634E craftmismatch
 IN09,ลงเวลาช่าง,iMPS -> Maximo,POST (CREATE),ZAPILABTRANS,location,maximo_location,N,
 IN09,ลงเวลาช่าง,iMPS -> Maximo,POST (CREATE),ZAPILABTRANS,startdate / startdatetime / starttime,start_repair_date + start_repair_time,Y,ไม่มี = MaximoError
