@@ -652,7 +652,7 @@ async def create_workorder(
         description: หัวเรื่องงาน (ตัดที่ 100 ตัวอักษรตามความยาว attribute ของ Maximo)
         location:    รหัส Maximo location เช่น "EGT0327-EV-BTL01GU201"
         severity:    Urgent/High/Medium/Low → map เป็น wopriority 1–4
-        imps_wonum:  เลขใบงานฝั่ง iMPS (issue_id) — เก็บที่ field zimpswonum
+        imps_wonum:  เลขที่ WO ฝั่ง iMPS (WO075 — cm_maximo.imps_wo_number) เก็บที่ zimpswonum
                      ของ Maximo เพื่ออ้างอิงกลับสองทาง
         failure_code: failure class ของ Maximo (DCCHARGER/ACCHARGER/STATION)
 
@@ -717,6 +717,8 @@ async def update_wo_status(
         raise MaximoError("status is required")
 
     payload = _clean({
+        # _action บังคับตามสเปค EGAT — ค่า default คือ AddChange (แบบเดียวกับ IN03/IN05)
+        "_action": "AddChange",
         "wonum": wonum,
         "siteid": MAXIMO_SITE_ID,
         "orgid": MAXIMO_ORG_ID,
