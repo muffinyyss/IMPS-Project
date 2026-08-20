@@ -1974,8 +1974,10 @@ export default function CMInProgressForm() {
                     status: (data.status ?? "In Progress") as Status,
                     remarks: data.remarks_open ?? "",
                     faulty_equipment: data.faulty_equipment ?? "",
-                    // รอบใหม่: ประทับวันที่ตอนกดเข้าฟอร์มมากรอกรอบนี้เลย (ไม่รอให้เริ่มพิมพ์)
-                    start_repair_date: waitingRoundArchived ? localTodayISO() : (data.start_repair_date || ""),
+                    // รอบใหม่: ล้างเวลาเริ่มให้ว่าง ช่างต้องกด "เริ่มแก้ไข" อีกครั้งถึงจะประทับเวลาใหม่
+                    // (repairStarted อิงฟิลด์นี้ — ประทับไว้ตั้งแต่โหลดจะข้ามด่านกดเริ่มไปเลย
+                    //  แล้วรอบนี้จะได้เวลาตอนเปิดหน้า ไม่ใช่เวลาที่ลงมือจริง IN09 ก็เพี้ยนตาม)
+                    start_repair_date: waitingRoundArchived ? "" : (data.start_repair_date || ""),
                     // ปัญหา/สาเหตุ: รอบใหม่ใช้ค่าของรอบก่อนเป็นค่าเริ่มต้น (มักเป็นอาการเดิมที่ยังแก้ไม่จบ)
                     problem_type: loadedProblemTypes,
                     problem_type_other: data.problem_type_other ?? "",
@@ -1987,7 +1989,7 @@ export default function CMInProgressForm() {
                     repair_result_remark: waitingRoundArchived ? "" : (data.repair_result_remark ?? ""),
                     resolved_date: data.resolved_date ? isoToDisplay(data.resolved_date) : "",
                     signature: data.signature ?? "",
-                    start_repair_time: waitingRoundArchived ? localNowHHMM() : (data.start_repair_time ?? ""),
+                    start_repair_time: waitingRoundArchived ? "" : (data.start_repair_time ?? ""),
                     resolved_time: data.resolved_time ?? "",
                     repaired_equipment: waitingRoundArchived ? [] : loadedCorrections,
                     preventive_action: Array.isArray(data.preventive_action) && data.preventive_action.length > 0 ? data.preventive_action : [""],
@@ -2994,6 +2996,14 @@ export default function CMInProgressForm() {
                             <h4 className="tw-text-sm tw-font-bold tw-text-blue-gray-700">
                                 {t("repairRound", lang)} {repairHistory.length + 1}
                             </h4>
+                            {/* รอบใหม่ยังไม่เริ่ม — บอกให้รู้ว่าที่เห็นด้านบนคือรอบก่อน ๆ ไม่ใช่ช่องที่ต้องกรอก */}
+                            {!repairStarted && (
+                                <p className="tw-mt-1 tw-text-xs tw-text-blue-gray-500">
+                                    {lang === "th"
+                                        ? 'กด "เริ่มแก้ไข" ด้านล่างเพื่อเริ่มรอบนี้ — ระบบจะบันทึกเวลาเริ่มใหม่ให้'
+                                        : 'Press "Start repair" below to begin this round — a new start time will be stamped'}
+                                </p>
+                            )}
                         </div>
                     )}
 
@@ -3638,7 +3648,11 @@ export default function CMInProgressForm() {
                                     onClick={startRepair}
                                     className="tw-bg-amber-500 hover:tw-bg-amber-600 tw-text-white tw-font-semibold tw-text-base tw-px-8 tw-py-3 tw-rounded-xl hover:tw-shadow-xl hover:tw-shadow-amber-500/30 tw-transition-all"
                                 >
-                                    {lang === "th" ? "เริ่มแก้ไข" : "Start repair"}
+                                    {repairHistory.length > 0
+                                        ? (lang === "th"
+                                            ? `เริ่มแก้ไขรอบที่ ${repairHistory.length + 1}`
+                                            : `Start repair round ${repairHistory.length + 1}`)
+                                        : (lang === "th" ? "เริ่มแก้ไข" : "Start repair")}
                                 </Button>
                             </>
                         ) : (
