@@ -2993,16 +2993,12 @@ export default function CMInProgressForm() {
                     {repairHistory.length > 0 && (
                         <div className="tw-mb-6">
                             {repairHistory.map((r, i) => <RepairRoundCard key={i} round={r} index={i} lang={lang} />)}
-                            <h4 className="tw-text-sm tw-font-bold tw-text-blue-gray-700">
-                                {t("repairRound", lang)} {repairHistory.length + 1}
-                            </h4>
-                            {/* รอบใหม่ยังไม่เริ่ม — บอกให้รู้ว่าที่เห็นด้านบนคือรอบก่อน ๆ ไม่ใช่ช่องที่ต้องกรอก */}
-                            {!repairStarted && (
-                                <p className="tw-mt-1 tw-text-xs tw-text-blue-gray-500">
-                                    {lang === "th"
-                                        ? 'กด "เริ่มแก้ไข" ด้านล่างเพื่อเริ่มรอบนี้ — ระบบจะบันทึกเวลาเริ่มใหม่ให้'
-                                        : 'Press "Start repair" below to begin this round — a new start time will be stamped'}
-                                </p>
+                            {/* หัวข้อรอบใหม่ขึ้นตอนกดเริ่มแก้ไขแล้วเท่านั้น — ก่อนกดยังไม่มีช่องกรอก
+                                อยู่ข้างล่าง หัวข้อจะลอยอยู่เฉย ๆ */}
+                            {repairStarted && (
+                                <h4 className="tw-text-sm tw-font-bold tw-text-blue-gray-700">
+                                    {t("repairRound", lang)} {repairHistory.length + 1}
+                                </h4>
                             )}
                         </div>
                     )}
@@ -3035,9 +3031,10 @@ export default function CMInProgressForm() {
                         </div>
 
                         <div className="tw-p-6 tw-space-y-5">
-                            {/* วันที่เริ่มแก้ไข + วันที่แก้ไขเสร็จ — readonly ทั้งคู่ (ช่องกรอกวันที่เสร็จจริงอยู่ใต้ผลหลังซ่อม เมื่อเลือกแก้ไขสำเร็จ/ไม่สำเร็จ) */}
-                            {!isClosedResult && (
-                                <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-5">
+                            {/* วันที่เริ่มแก้ไข + วันที่แก้ไขเสร็จ — readonly ทั้งคู่ (ช่องกรอกวันที่เสร็จจริงอยู่ใต้ผลหลังซ่อม เมื่อเลือกแก้ไขสำเร็จ/ไม่สำเร็จ)
+                                วันที่เริ่มแก้ไขต้องเห็นเสมอ รวมถึงด่านรออนุมัติที่ผลหลังซ่อมเป็น "แก้ไขสำเร็จ/ไม่สำเร็จ"
+                                ไม่งั้นผู้อนุมัติจะไม่เห็นว่าช่างเข้าหน้างานรอบนี้เมื่อไหร่ */}
+                            <div className={`tw-grid tw-grid-cols-1 tw-gap-5 ${isClosedResult ? "" : "md:tw-grid-cols-2"}`}>
                                     <div className="tw-space-y-2">
                                         <label className="tw-flex tw-items-center tw-gap-2 tw-text-sm tw-font-semibold tw-text-gray-700">
                                             <span className="tw-w-1.5 tw-h-1.5 tw-rounded-full tw-bg-amber-500"></span>
@@ -3045,9 +3042,11 @@ export default function CMInProgressForm() {
                                         </label>
                                         <Input
                                             type="text"
+                                            // ด่านตรวจ/อนุมัติไม่มีอะไรให้พรีวิว — ไม่มีค่าจริงก็ต้องเป็น "-"
+                                            // ไม่ใช่เวลาปัจจุบัน ไม่งั้นผู้อนุมัติจะอ่านเป็นเวลาที่ช่างเริ่มจริง
                                             value={job.start_repair_date
                                                 ? `${isoToDisplay(job.start_repair_date)}${job.start_repair_time ? ` ${job.start_repair_time}` : ""}`
-                                                : `${localTodayFormatted()} ${localNowHHMM()}`}
+                                                : (viewOnly ? "-" : `${localTodayFormatted()} ${localNowHHMM()}`)}
                                             readOnly
                                             crossOrigin=""
                                             className="!tw-w-full !tw-h-12 !tw-bg-gray-100 !tw-text-gray-700 !tw-opacity-100 !tw-border-gray-200 !tw-rounded-xl"
@@ -3055,6 +3054,7 @@ export default function CMInProgressForm() {
                                             containerProps={{ className: "!tw-min-w-0 !tw-h-12" }}
                                         />
                                     </div>
+                                    {!isClosedResult && (
                                     <div className="tw-space-y-2">
                                         <label className="tw-flex tw-items-center tw-gap-2 tw-text-sm tw-font-semibold tw-text-gray-700">
                                             <span className="tw-w-1.5 tw-h-1.5 tw-rounded-full tw-bg-green-500"></span>
@@ -3076,8 +3076,8 @@ export default function CMInProgressForm() {
                                             containerProps={{ className: "!tw-min-w-0 !tw-h-12" }}
                                         />
                                     </div>
-                                </div>
-                            )}
+                                    )}
+                            </div>
 
                             {/* ช่างที่จะลงเวลาเข้า Maximo — laborcode คนละชุดกับ username ใน iMPS
                                 จึงต้องให้เลือกเอง ไม่งั้น IN09 จะ unmapped ทั้งใบ */}

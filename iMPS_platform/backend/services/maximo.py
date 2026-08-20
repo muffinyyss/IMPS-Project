@@ -92,6 +92,24 @@ MAXIMO_URLTYPE = os.getenv("MAXIMO_URLTYPE", "URL")
 #     และ location ไม่จำเป็นต้องผูก failure class ไว้ก่อน
 MAXIMO_SEND_ZCRAFT = os.getenv("MAXIMO_SEND_ZCRAFT", "false").lower() == "true"
 MAXIMO_SEND_WO_FAILURECODE = os.getenv("MAXIMO_SEND_WO_FAILURECODE", "false").lower() == "true"
+# wopriority (IN01) : สเปคระบุว่าไม่บังคับ และ severity เป็นเกณฑ์ของ iMPS ไม่ใช่ของ Maximo
+#   ไม่ส่ง = Maximo ใช้ priority default ของระบบเอง เปิดกลับได้ที่ env นี้
+#   (ZAPISR ของ auto CM ยังส่ง priority ตามเดิม ไม่เกี่ยวกับ flag นี้)
+MAXIMO_SEND_WO_PRIORITY = os.getenv("MAXIMO_SEND_WO_PRIORITY", "false").lower() == "true"
+# reportdate (IN01) : ไม่บังคับเช่นกัน — ไม่ส่ง Maximo จะประทับเวลาที่รับใบเอง
+#   ซึ่งเป็นเวลาเดียวกับที่ iMPS ยิงอยู่แล้ว (ยิงทันทีตอน planner นัดวัน)
+MAXIMO_SEND_WO_REPORTDATE = os.getenv("MAXIMO_SEND_WO_REPORTDATE", "false").lower() == "true"
+# orgid / statusdate ของ IN02 : natural key ของ ZAPIWOSTATUS คือ wonum + siteid อยู่แล้ว
+#   ส่วน statusdate ไม่ส่ง Maximo จะประทับเวลาที่รับคำสั่งเอง
+#   ⚠️ สเปค EGAT ระบุ orgid เป็น Required — ถ้า Maximo ตีกลับ ให้เปิด env นี้กลับทันที
+MAXIMO_SEND_WOSTATUS_ORGID = os.getenv("MAXIMO_SEND_WOSTATUS_ORGID", "false").lower() == "true"
+MAXIMO_SEND_WOSTATUS_DATE = os.getenv("MAXIMO_SEND_WOSTATUS_DATE", "false").lower() == "true"
+# ฟิลด์ของ IN09 ที่ EGAT ให้ตัดออก — ทั้งหมดเป็น N ในสเปค
+#   location                              : labtrans ผูกกับ WO อยู่แล้ว location ซ้ำกับของ WO
+#   startdatetime / finishdatetime / regularhrs : Maximo ประกอบเองได้จาก
+#     startdate + starttime / finishdate + finishtime ที่ยังส่งอยู่
+MAXIMO_SEND_LABTRANS_LOCATION = os.getenv("MAXIMO_SEND_LABTRANS_LOCATION", "false").lower() == "true"
+MAXIMO_SEND_LABTRANS_DERIVED = os.getenv("MAXIMO_SEND_LABTRANS_DERIVED", "false").lower() == "true"
 # reasonforchange เป็นฟิลด์สั้น (BMXAA4049E maximumlength) — 0 = ไม่ส่งเลย
 MAXIMO_REASON_MAXLEN = int(os.getenv("MAXIMO_REASON_MAXLEN", "0"))
 # สถานะเริ่มต้นของ WO ที่เพิ่งสร้าง (ว่าง = ปล่อยให้ Maximo ใช้ค่า default ของระบบ)
@@ -675,7 +693,7 @@ async def create_workorder(
         "orgid": MAXIMO_ORG_ID,
         "worktype": worktype or MAXIMO_CM_WORKTYPE,
         "status": MAXIMO_CM_WO_STATUS,
-        "wopriority": SEVERITY_TO_PRIORITY.get(severity, 3),
+        "wopriority": SEVERITY_TO_PRIORITY.get(severity, 3) if MAXIMO_SEND_WO_PRIORITY else None,
         "zcostcenter": MAXIMO_COST_CENTER,
         "zcraft": MAXIMO_CRAFT if MAXIMO_SEND_ZCRAFT else None,
         "assetnum": asset_num,
@@ -687,7 +705,7 @@ async def create_workorder(
         "schedfinish": _maximo_datetime(sched_finish),
         "targstartdate": _maximo_datetime(target_start or sched_start),
         "targcompdate": _maximo_datetime(target_finish or sched_finish),
-        "reportdate": _maximo_datetime(datetime.now(_TH_TZ)),
+        "reportdate": _maximo_datetime(datetime.now(_TH_TZ)) if MAXIMO_SEND_WO_REPORTDATE else None,
         **(extra or {}),
     })
 
@@ -724,9 +742,10 @@ async def update_wo_status(
         "_action": "AddChange",
         "wonum": wonum,
         "siteid": MAXIMO_SITE_ID,
-        "orgid": MAXIMO_ORG_ID,
+        "orgid": MAXIMO_ORG_ID if MAXIMO_SEND_WOSTATUS_ORGID else None,
         "status": status,
-        "statusdate": _maximo_datetime(status_date or datetime.now(_TH_TZ)),
+        "statusdate": (_maximo_datetime(status_date or datetime.now(_TH_TZ))
+                       if MAXIMO_SEND_WOSTATUS_DATE else None),
         # ยาวเกินโดน BMXAA4049E — ตัดตามความยาวที่ตั้งไว้ (0 = ไม่ส่งเลย)
         "reasonforchange": (memo or "")[:MAXIMO_REASON_MAXLEN] or None,
         **(extra or {}),
@@ -1031,14 +1050,15 @@ async def create_labtrans(
         # craft ต้องตรงกับ craft ที่ผูกกับ labor คนนั้น ไม่งั้นโดน BMXAA2634E craftmismatch
         # ไม่ระบุมา = ปล่อยให้ Maximo เติม craft หลักของ labor ให้เอง
         "craft": craft,
-        "location": location,
+        "location": location if MAXIMO_SEND_LABTRANS_LOCATION else None,
         "startdate": start_date,
-        "startdatetime": start_dt,
+        "startdatetime": start_dt if MAXIMO_SEND_LABTRANS_DERIVED else None,
         "starttime": start_dt,
         "finishdate": finish_date,
-        "finishdatetime": finish_dt,
+        "finishdatetime": finish_dt if MAXIMO_SEND_LABTRANS_DERIVED else None,
         "finishtime": finish_dt,
-        "regularhrs": regular_hours,
+        # ไม่ส่ง = Maximo คิดชั่วโมงจาก start → finish เอง (ยังคำนวณไว้ให้ log อ่าน)
+        "regularhrs": regular_hours if MAXIMO_SEND_LABTRANS_DERIVED else None,
         "memo": (memo or "")[:250] or None,
     })
 
