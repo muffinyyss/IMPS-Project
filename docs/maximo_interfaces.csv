@@ -5,7 +5,7 @@ IN01,สร้าง Work Order,iMPS -> Maximo,POST (CREATE),ZAPIWO,siteid,env M
 IN01,สร้าง Work Order,iMPS -> Maximo,POST (CREATE),ZAPIWO,orgid,env MAXIMO_ORG_ID,Y,
 IN01,สร้าง Work Order,iMPS -> Maximo,POST (CREATE),ZAPIWO,worktype,env MAXIMO_CM_WORKTYPE (default CM),N,
 IN01,สร้าง Work Order,iMPS -> Maximo,POST (CREATE),ZAPIWO,status,env MAXIMO_CM_WO_STATUS,N,สถานะตั้งต้นของ WO
-IN01,สร้าง Work Order,iMPS -> Maximo,POST (CREATE),ZAPIWO,wopriority,severity -> 1 Urgent / 2 High / 3 Medium / 4 Low,N,
+IN01,สร้าง Work Order,iMPS -> Maximo,POST (CREATE),ZAPIWO,wopriority,severity -> 1 Urgent / 2 High / 3 Medium / 4 Low,N,ปิดไว้ (MAXIMO_SEND_WO_PRIORITY=false) — severity เป็นเกณฑ์ของ iMPS ไม่ส่งแล้ว Maximo ใช้ default ของระบบ
 IN01,สร้าง Work Order,iMPS -> Maximo,POST (CREATE),ZAPIWO,zcostcenter,env MAXIMO_COST_CENTER,N,
 IN01,สร้าง Work Order,iMPS -> Maximo,POST (CREATE),ZAPIWO,zcraft,env MAXIMO_CRAFT,N,ส่งต่อเมื่อ MAXIMO_SEND_ZCRAFT=true
 IN01,สร้าง Work Order,iMPS -> Maximo,POST (CREATE),ZAPIWO,assetnum,asset ของตู้ (ถ้ามี),N,
@@ -15,14 +15,14 @@ IN01,สร้าง Work Order,iMPS -> Maximo,POST (CREATE),ZAPIWO,supervisor,�
 IN01,สร้าง Work Order,iMPS -> Maximo,POST (CREATE),ZAPIWO,zimpswonum,เลขที่ WO ของ iMPS (CM-075 -> WO075),N,ตรงกับเลขที่ฟอร์ม CM แสดง (srNo/woNo) อ้างอิงกลับสองทาง
 IN01,สร้าง Work Order,iMPS -> Maximo,POST (CREATE),ZAPIWO,schedstart / schedfinish,sched_start / sched_finish จากด่านวางแผน,N,ยิง IN01 เฉพาะตอน planner เลือก WO - wait for scheduled (สถานะรออื่นฟอร์มไม่เปิดให้กรอกวัน และ ZAPIWO ไม่มีขาอัปเดต เปิด WO ไปก่อน = ไม่มีวันตลอดไป)
 IN01,สร้าง Work Order,iMPS -> Maximo,POST (CREATE),ZAPIWO,targstartdate / targcompdate,target_* (ไม่ส่งใช้ sched_* แทน),N,
-IN01,สร้าง Work Order,iMPS -> Maximo,POST (CREATE),ZAPIWO,reportdate,เวลาปัจจุบัน (Asia/Bangkok),N,
+IN01,สร้าง Work Order,iMPS -> Maximo,POST (CREATE),ZAPIWO,reportdate,เวลาปัจจุบัน (Asia/Bangkok),N,ปิดไว้ (MAXIMO_SEND_WO_REPORTDATE=false) — ไม่ส่งแล้ว Maximo ประทับเวลาที่รับใบเอง
 IN01,สร้าง Work Order,iMPS -> Maximo,POST (CREATE),ZAPIWO,(response) wonum,เก็บลง maximo_wonum,-,คืนกลับมาจาก Maximo
 IN02,เปลี่ยนสถานะ WO,iMPS -> Maximo,POST SYNC/MERGE,ZAPIWOSTATUS,_action,ค่าคงที่ AddChange,Y,Identifies action — สเปค EGAT บังคับ ส่งเหมือน IN03/IN05
 IN02,เปลี่ยนสถานะ WO,iMPS -> Maximo,POST SYNC/MERGE,ZAPIWOSTATUS,wonum,CM: maximo_wonum / PM: wonum,Y,natural key
 IN02,เปลี่ยนสถานะ WO,iMPS -> Maximo,POST SYNC/MERGE,ZAPIWOSTATUS,siteid,env MAXIMO_SITE_ID,Y,
-IN02,เปลี่ยนสถานะ WO,iMPS -> Maximo,POST SYNC/MERGE,ZAPIWOSTATUS,orgid,env MAXIMO_ORG_ID,Y,
+IN02,เปลี่ยนสถานะ WO,iMPS -> Maximo,POST SYNC/MERGE,ZAPIWOSTATUS,orgid,env MAXIMO_ORG_ID,Y,ปิดไว้ (MAXIMO_SEND_WOSTATUS_ORGID=false) — natural key ใช้ wonum + siteid พอ / สเปคระบุ Required ถ้าโดนตีกลับให้เปิดกลับ
 IN02,เปลี่ยนสถานะ WO,iMPS -> Maximo,POST SYNC/MERGE,ZAPIWOSTATUS,status,CM: STATUS_MAP ตามสถานะใบงาน / PM: COMP เสมอ,Y,CM ยิงแค่ 2 รอบต่อใบ: INPRG ตอน planner นัดวัน + CLOSED ตอนปิดงาน (ใบที่ถูกยกเลิกได้ CAN แทนรอบที่ 2) ระหว่างทางที่ช่างบันทึกงานไม่ยิงเลย
-IN02,เปลี่ยนสถานะ WO,iMPS -> Maximo,POST SYNC/MERGE,ZAPIWOSTATUS,statusdate,เวลาปัจจุบัน (Asia/Bangkok),N,
+IN02,เปลี่ยนสถานะ WO,iMPS -> Maximo,POST SYNC/MERGE,ZAPIWOSTATUS,statusdate,เวลาปัจจุบัน (Asia/Bangkok),N,ปิดไว้ (MAXIMO_SEND_WOSTATUS_DATE=false) — ไม่ส่งแล้ว Maximo ประทับเวลาที่รับคำสั่งเอง
 IN02,เปลี่ยนสถานะ WO,iMPS -> Maximo,POST SYNC/MERGE,ZAPIWOSTATUS,reasonforchange,memo เช่น closed by <user>,N,ตัดตาม MAXIMO_REASON_MAXLEN กัน BMXAA4049E
 IN03,แนบลิงก์เอกสาร,iMPS -> Maximo,POST SYNC/MERGE,ZAPIATTACHWO,wonum,CM: maximo_wonum / PM: wonum,Y,
 IN03,แนบลิงก์เอกสาร,iMPS -> Maximo,POST SYNC/MERGE,ZAPIATTACHWO,siteid / orgid,env,Y,
@@ -71,8 +71,8 @@ IN09,ลงเวลาช่าง,iMPS -> Maximo,POST (CREATE),ZAPILABTRANS,tr
 IN09,ลงเวลาช่าง,iMPS -> Maximo,POST (CREATE),ZAPILABTRANS,enterby,env MAXIMO_LABTRANS_ENTERBY (default INFUSER),Y,Approved By (Authorized Manager Signature) — ชนิด UPPER ส่งเป็นตัวพิมพ์ใหญ่เสมอ
 IN09,ลงเวลาช่าง,iMPS -> Maximo,POST (CREATE),ZAPILABTRANS,enterdate,เวลาปัจจุบัน (Asia/Bangkok),Y,Date Labor Was Reported = เวลาที่ยิงเข้า Maximo คนละอย่างกับ startdate/finishdate ที่เป็นเวลาทำงานจริง
 IN09,ลงเวลาช่าง,iMPS -> Maximo,POST (CREATE),ZAPILABTRANS,craft,ไม่ส่ง = Maximo เติม craft หลักของ labor ให้,N,ส่งผิดโดน BMXAA2634E craftmismatch
-IN09,ลงเวลาช่าง,iMPS -> Maximo,POST (CREATE),ZAPILABTRANS,location,maximo_location,N,
-IN09,ลงเวลาช่าง,iMPS -> Maximo,POST (CREATE),ZAPILABTRANS,startdate / startdatetime / starttime,start_repair_date + start_repair_time,Y,ไม่มี = MaximoError
-IN09,ลงเวลาช่าง,iMPS -> Maximo,POST (CREATE),ZAPILABTRANS,finishdate / finishdatetime / finishtime,resolved_date + resolved_time,N,
-IN09,ลงเวลาช่าง,iMPS -> Maximo,POST (CREATE),ZAPILABTRANS,regularhrs,คำนวณจาก start -> finish (ทศนิยม 2 ตำแหน่ง),N,ส่งมาเองก็ได้
+IN09,ลงเวลาช่าง,iMPS -> Maximo,POST (CREATE),ZAPILABTRANS,location,maximo_location,N,ปิดไว้ (MAXIMO_SEND_LABTRANS_LOCATION=false) — ซ้ำกับ location ของ WO ที่ refwo ชี้ไปอยู่แล้ว
+IN09,ลงเวลาช่าง,iMPS -> Maximo,POST (CREATE),ZAPILABTRANS,startdate / starttime,start_repair_date + start_repair_time,Y,ไม่มี = MaximoError / startdatetime ปิดไว้ (MAXIMO_SEND_LABTRANS_DERIVED=false)
+IN09,ลงเวลาช่าง,iMPS -> Maximo,POST (CREATE),ZAPILABTRANS,finishdate / finishtime,resolved_date + resolved_time,N,finishdatetime ปิดไว้ (MAXIMO_SEND_LABTRANS_DERIVED=false)
+IN09,ลงเวลาช่าง,iMPS -> Maximo,POST (CREATE),ZAPILABTRANS,regularhrs,คำนวณจาก start -> finish (ทศนิยม 2 ตำแหน่ง),N,ปิดไว้ (MAXIMO_SEND_LABTRANS_DERIVED=false) — Maximo คิดชั่วโมงเองจาก start/finish
 IN09,ลงเวลาช่าง,iMPS -> Maximo,POST (CREATE),ZAPILABTRANS,memo,หมายเหตุ (ตัด 250 ตัว),N,
