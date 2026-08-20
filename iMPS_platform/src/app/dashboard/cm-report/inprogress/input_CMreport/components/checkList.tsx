@@ -1565,6 +1565,9 @@ export default function CMInProgressForm() {
     // ใบที่ซ่อมจบแล้ว (รออนุมัติ หรือปิดเลย) → ต้องมีวันที่แก้ไขเสร็จเสมอ
     // (ครอบคลุมทั้ง แก้ไขสำเร็จ/ไม่สำเร็จ, ไม่พบปัญหา และ WO - wait for approve)
     const hasResolvedDate = targetStatus === "Wait for approve" || targetStatus === "Closed";
+    // "วันที่แก้ไขเสร็จ" แบบอ่านอย่างเดียวคู่กับ "วันที่เริ่มแก้ไข" ด้านบน — ซ่อนเฉพาะตอนที่
+    // ช่องกรอกจริง (date + time ใต้ผลหลังซ่อม) โผล่อยู่ ไม่งั้นหน้าเดียวจะมีวันที่เสร็จสองที่
+    const showCompletedAtTop = !isClosedResult || viewOnly;
 
     // ==================== HELPERS ====================
     const localTodayFormatted = () => { const d = new Date(); return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`; };
@@ -3034,7 +3037,7 @@ export default function CMInProgressForm() {
                             {/* วันที่เริ่มแก้ไข + วันที่แก้ไขเสร็จ — readonly ทั้งคู่ (ช่องกรอกวันที่เสร็จจริงอยู่ใต้ผลหลังซ่อม เมื่อเลือกแก้ไขสำเร็จ/ไม่สำเร็จ)
                                 วันที่เริ่มแก้ไขต้องเห็นเสมอ รวมถึงด่านรออนุมัติที่ผลหลังซ่อมเป็น "แก้ไขสำเร็จ/ไม่สำเร็จ"
                                 ไม่งั้นผู้อนุมัติจะไม่เห็นว่าช่างเข้าหน้างานรอบนี้เมื่อไหร่ */}
-                            <div className={`tw-grid tw-grid-cols-1 tw-gap-5 ${isClosedResult ? "" : "md:tw-grid-cols-2"}`}>
+                            <div className={`tw-grid tw-grid-cols-1 tw-gap-5 ${showCompletedAtTop ? "md:tw-grid-cols-2" : ""}`}>
                                     <div className="tw-space-y-2">
                                         <label className="tw-flex tw-items-center tw-gap-2 tw-text-sm tw-font-semibold tw-text-gray-700">
                                             <span className="tw-w-1.5 tw-h-1.5 tw-rounded-full tw-bg-amber-500"></span>
@@ -3054,7 +3057,7 @@ export default function CMInProgressForm() {
                                             containerProps={{ className: "!tw-min-w-0 !tw-h-12" }}
                                         />
                                     </div>
-                                    {!isClosedResult && (
+                                    {showCompletedAtTop && (
                                     <div className="tw-space-y-2">
                                         <label className="tw-flex tw-items-center tw-gap-2 tw-text-sm tw-font-semibold tw-text-gray-700">
                                             <span className="tw-w-1.5 tw-h-1.5 tw-rounded-full tw-bg-green-500"></span>
@@ -3062,9 +3065,10 @@ export default function CMInProgressForm() {
                                         </label>
                                         <Input
                                             type="text"
+                                            // ด่านตรวจ/อนุมัติ → ค่าจริงที่ช่างบันทึกไว้ ไม่มีก็ "-" (แบบเดียวกับวันที่เริ่มแก้ไข)
                                             // กำลังจะเข้าคิวรออนุมัติ → พรีวิววันเวลาที่จะถูกประทับตอนกดบันทึก
                                             // | ยังซ่อมไม่จบ → แสดงค่าเดิมถ้ามี ไม่มีก็ "-" (ไม่โชว์วันนี้ กันเข้าใจผิดว่าเสร็จแล้ว)
-                                            value={hasResolvedDate
+                                            value={(!viewOnly && hasResolvedDate)
                                                 ? `${localTodayFormatted()} ${localNowHHMM()}`
                                                 : job.resolved_date
                                                     ? `${job.resolved_date}${job.resolved_time ? ` ${job.resolved_time}` : ""}`
@@ -3197,7 +3201,9 @@ export default function CMInProgressForm() {
                                                 )}
                                             </div>
                                         </div>
-                                        {isClosedResult && (
+                                        {/* ช่องกรอกวันที่เสร็จจริง — เฉพาะตอนที่แก้ไขได้
+                                            ด่านตรวจ/อนุมัติอ่านค่าจากช่องอ่านอย่างเดียวด้านบนแทน (showCompletedAtTop) */}
+                                        {isClosedResult && !viewOnly && (
                                             <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-5">
                                                 <div className="tw-space-y-2">
                                                     <label className="tw-flex tw-items-center tw-gap-2 tw-text-sm tw-font-semibold tw-text-gray-700">
