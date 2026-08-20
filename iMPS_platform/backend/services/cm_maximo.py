@@ -19,6 +19,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -667,6 +668,22 @@ def _combine(date_str: Any, time_str: Any) -> str:
     return f"{d}T{t}" if t else d
 
 
+def imps_wo_number(issue_id: Any) -> str:
+    """
+    เลขที่ WO ฝั่ง iMPS ที่ส่งให้ Maximo (zimpswonum) — CM-075 → WO075
+
+    ฟอร์ม CM แสดงเลขใบงานเป็น SR<ลำดับ> ก่อนอนุมัติ แล้วเปลี่ยนเป็น WO<ลำดับ>
+    ตั้งแต่ด่านวางแผนขึ้นไป (ดู checkList.tsx: srNo / woNo) ต้องส่งเลขชุดเดียวกัน
+    ไป Maximo คนสองฝั่งถึงจะอ้างถึงใบเดียวกันได้ — ตอนเปิด WO ใบอยู่ด่านวางแผนแล้ว
+    จึงเป็นรูปแบบ WO เสมอ
+
+    issue_id ที่ไม่มีตัวเลข (ข้อมูลผิดรูป) ส่งค่าเดิมไปตรง ๆ ดีกว่าส่งค่าว่าง
+    """
+    text = str(issue_id or "").strip()
+    m = re.search(r"(\d+)", text)
+    return f"WO{m.group(1).zfill(3)}" if m else text
+
+
 # ══════════════════════════════════════════════════════════════════
 # IN01 — เปิด Work Order ตอน planner วางแผน
 # ══════════════════════════════════════════════════════════════════
@@ -709,7 +726,7 @@ async def ensure_work_order(coll, report_id, report: dict) -> dict:
             reported_by=resolve_person_id(report.get("reported_by") or ""),
             supervisor=resolve_person_id(report.get("inspector") or "") or None,
             failure_code=maximo_failure_class(report.get("faulty_equipment")),
-            imps_wonum=issue_id,
+            imps_wonum=imps_wo_number(issue_id),
             trace=trace,
         )
     except MaximoError as e:

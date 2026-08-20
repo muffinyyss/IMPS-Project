@@ -475,7 +475,9 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
           position: isoDay,
           office: fileUrl,
           reported_by: it.reported_by || it.technician || "",
-          location: failureCodeLabel(it.faulty_equipment) || "-",
+          // คอลัมน์ "ตำแหน่งที่พบ" โชว์ตู้ที่ใบงานอ้างถึง ("Charger 1 (SN)") — ใบระดับสถานี
+          // หรือใบเก่าที่ไม่ผูกตู้ ไม่มี label ให้ใช้ จึงถอยไปใช้ชื่อ failure class ของ Maximo
+          location: it.faulty_equipment_label || failureCodeLabel(it.faulty_equipment) || "-",
           charger_no: chargerField(it.charger_no),
           charger_sn: chargerField(it.charger_sn),
           problem_details: it.problem_details || "",
@@ -506,7 +508,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
           position: isoDay,
           office: resolveFileHref(raw, apiBase),
           reported_by: it.reported_by || it.technician || "",
-          location: failureCodeLabel(it.faulty_equipment) || "-",
+          location: it.faulty_equipment_label || failureCodeLabel(it.faulty_equipment) || "-",
           charger_no: chargerField(it.charger_no),
           charger_sn: chargerField(it.charger_sn),
           problem_details: it.problem_details || "",

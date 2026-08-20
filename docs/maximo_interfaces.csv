@@ -12,11 +12,12 @@ IN01,สร้าง Work Order,iMPS -> Maximo,POST (CREATE),ZAPIWO,assetnum,ass
 IN01,สร้าง Work Order,iMPS -> Maximo,POST (CREATE),ZAPIWO,failurecode,faulty_equipment -> DCCHARGER/ACCHARGER/STATION,N,ปิดได้ด้วย MAXIMO_SEND_WO_FAILURECODE=false (BMXAA4534E)
 IN01,สร้าง Work Order,iMPS -> Maximo,POST (CREATE),ZAPIWO,reportedby,reported_by,N,
 IN01,สร้าง Work Order,iMPS -> Maximo,POST (CREATE),ZAPIWO,supervisor,ผู้ควบคุมงาน,N,
-IN01,สร้าง Work Order,iMPS -> Maximo,POST (CREATE),ZAPIWO,zimpswonum,issue_id ของ iMPS,N,อ้างอิงกลับสองทาง
+IN01,สร้าง Work Order,iMPS -> Maximo,POST (CREATE),ZAPIWO,zimpswonum,เลขที่ WO ของ iMPS (CM-075 -> WO075),N,ตรงกับเลขที่ฟอร์ม CM แสดง (srNo/woNo) อ้างอิงกลับสองทาง
 IN01,สร้าง Work Order,iMPS -> Maximo,POST (CREATE),ZAPIWO,schedstart / schedfinish,sched_start / sched_finish จากด่านวางแผน,N,ยิง IN01 เฉพาะตอน planner เลือก WO - wait for scheduled (สถานะรออื่นฟอร์มไม่เปิดให้กรอกวัน และ ZAPIWO ไม่มีขาอัปเดต เปิด WO ไปก่อน = ไม่มีวันตลอดไป)
 IN01,สร้าง Work Order,iMPS -> Maximo,POST (CREATE),ZAPIWO,targstartdate / targcompdate,target_* (ไม่ส่งใช้ sched_* แทน),N,
 IN01,สร้าง Work Order,iMPS -> Maximo,POST (CREATE),ZAPIWO,reportdate,เวลาปัจจุบัน (Asia/Bangkok),N,
 IN01,สร้าง Work Order,iMPS -> Maximo,POST (CREATE),ZAPIWO,(response) wonum,เก็บลง maximo_wonum,-,คืนกลับมาจาก Maximo
+IN02,เปลี่ยนสถานะ WO,iMPS -> Maximo,POST SYNC/MERGE,ZAPIWOSTATUS,_action,ค่าคงที่ AddChange,Y,Identifies action — สเปค EGAT บังคับ ส่งเหมือน IN03/IN05
 IN02,เปลี่ยนสถานะ WO,iMPS -> Maximo,POST SYNC/MERGE,ZAPIWOSTATUS,wonum,CM: maximo_wonum / PM: wonum,Y,natural key
 IN02,เปลี่ยนสถานะ WO,iMPS -> Maximo,POST SYNC/MERGE,ZAPIWOSTATUS,siteid,env MAXIMO_SITE_ID,Y,
 IN02,เปลี่ยนสถานะ WO,iMPS -> Maximo,POST SYNC/MERGE,ZAPIWOSTATUS,orgid,env MAXIMO_ORG_ID,Y,

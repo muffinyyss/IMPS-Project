@@ -524,6 +524,12 @@ async def cmreport_list(
         "faulty_equipment": 1,
         "charger_no": 1,
         "charger_sn": 1,
+        # ตัวตนของตู้ — ตารางรายการโชว์ตู้ในคอลัมน์ "ตำแหน่งที่พบ" แทนชื่อ failure class
+        "chargeBoxID": 1,
+        "chargebox_id": 1,
+        "charger_name": 1,
+        "charger_model": 1,
+        "charger_brand": 1,
         "severity": 1,
         "problem_details": 1,
         "location": 1,
@@ -557,9 +563,29 @@ async def cmreport_list(
             if day and first_url and day not in url_by_day:
                 url_by_day[day] = first_url
 
+    # ตู้ของสถานีนี้ ใช้แปลง charger_no / charger_sn / faulty_equipment=charger_N
+    # ให้เป็นชื่อตู้ที่คนอ่านรู้เรื่อง ("Charger 1 (SN)") สำหรับคอลัมน์ "ตำแหน่งที่พบ"
+    charger_index = await _charger_index_for_station(station_id)
+
     items = []
     for it in items_raw:
         job = it.get("job", {})
+        faulty_equipment = it.get("faulty_equipment") or job.get("faulty_equipment") or ""
+        charger = _charger_identity(
+            charger_index,
+            faulty_equipment,
+            it.get("charger_sn") or job.get("charger_sn") or "",
+            it.get("charger_no") or job.get("charger_no") or "",
+            fallback={
+                "chargeBoxID": it.get("chargeBoxID") or it.get("chargebox_id") or job.get("chargeBoxID") or job.get("chargebox_id") or "",
+                "charger_name": it.get("charger_name") or job.get("charger_name") or "",
+                "charger_no": it.get("charger_no") or job.get("charger_no"),
+                "charger_sn": it.get("charger_sn") or job.get("charger_sn") or "",
+                "charger_model": it.get("charger_model") or job.get("charger_model") or "",
+                "charger_brand": it.get("charger_brand") or job.get("charger_brand") or "",
+                "label": it.get("charger_name") or job.get("charger_name") or "",
+            },
+        )
         items.append({
             "id": str(it["_id"]),
             "doc_name": it.get("doc_name") or "",
@@ -573,7 +599,10 @@ async def cmreport_list(
             "status": it.get("status") or job.get("status") or "",
             "stage": it.get("stage") or job.get("stage") or "",
             "reject_remark": it.get("reject_remark") or "",
-            "faulty_equipment": it.get("faulty_equipment") or job.get("faulty_equipment") or "",
+            "faulty_equipment": faulty_equipment,
+            "faulty_equipment_label": charger["charger_label"],
+            "chargeBoxID": charger["chargeBoxID"],
+            "charger_name": charger["charger_name"],
             "charger_no": it.get("charger_no") or job.get("charger_no") or "",
             "charger_sn": it.get("charger_sn") or job.get("charger_sn") or "",
             "problem_details": it.get("problem_details") or job.get("problem_details") or "",
