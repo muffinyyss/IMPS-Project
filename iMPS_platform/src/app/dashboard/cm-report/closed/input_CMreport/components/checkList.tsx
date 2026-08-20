@@ -30,6 +30,11 @@ const T = {
     initialCause: { th: "สาเหตุเบื้องต้น", en: "Initial Cause" },
     cause: { th: "สาเหตุ", en: "Cause" },
 
+    repairHistory: { th: "ประวัติการแก้ไข", en: "Repair history" },
+    rrLabor: { th: "ช่างที่ลงเวลากับ Maximo", en: "Technicians for Maximo time log" },
+    repairRound: { th: "รอบที่", en: "Repair round" },
+    lastRound: { th: "รอบล่าสุด", en: "latest" },
+
     correctiveAction: { th: "การแก้ไข (Corrective Action)", en: "Corrective Action" },
     delete: { th: "ลบ", en: "Delete" },
     uploadedPhotos: { th: "รูปที่อัปโหลดไว้แล้ว — ข้อที่", en: "Uploaded photos — item" },
@@ -168,6 +173,8 @@ type StationPublic = {
     status?: boolean;
 };
 
+import RepairRoundCard, { type RepairRound } from "@/app/dashboard/cm-report/components/RepairRoundCard";
+
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
 function absUrl(u?: string) {
@@ -209,6 +216,12 @@ export default function CMForm() {
     };
 
     const [job, setJob] = useState<Job>({ ...INITIAL_JOB });
+    // รอบซ่อมที่ปิดไปแล้ว (รออะไหล่/รอหน้างาน) — รอบสุดท้ายอยู่ใน flat fields ของฟอร์มนี้
+    const [repairHistory, setRepairHistory] = useState<RepairRound[]>([]);
+    // ช่างที่ลงเวลากับ Maximo ของรอบสุดท้าย — เก็บเป็น laborcode ระดับใบงาน ต้องแปลงเป็นชื่อเอง
+    const [lastRoundLabor, setLastRoundLabor] = useState<string[]>([]);
+    const [maximoContractor, setMaximoContractor] = useState("");
+    const [laborNames, setLaborNames] = useState<Record<string, { name: string; needs_name?: boolean }>>({});
     // ตัวตนของตู้ที่ backend resolve มาให้ — ชื่อ / เลขตู้ / S/N / บริษัทผู้ถือครอง
     const [chargerIdentity, setChargerIdentity] = useState<ChargerIdentityData | null>(null);
     const [summary, setSummary] = useState<string>("");
@@ -774,6 +787,26 @@ export default function CMForm() {
     //         }
     //     })();
     // }, [editId, stationId]);
+    // ตาราง laborcode -> ชื่อ ของ Maximo (IN08) — ใช้แปลงรหัสของรอบสุดท้ายให้เป็นชื่อคน
+    // รอบก่อน ๆ ไม่ต้องพึ่งตารางนี้ เพราะ snapshot ชื่อไว้ใน repair_history ตั้งแต่ตอนบันทึกแล้ว
+    useEffect(() => {
+        let alive = true;
+        (async () => {
+            try {
+                const res = await fetch(`${API_BASE}/cm-maximo/labor-codes`, { credentials: "include" });
+                if (!res.ok) return;
+                const data = await res.json();
+                if (!alive || !Array.isArray(data?.items)) return;
+                setLaborNames(Object.fromEntries(data.items.map((o: any) => [
+                    o.laborcode, { name: o.name || o.laborcode, needs_name: !!o.needs_name },
+                ])));
+            } catch {
+                // ดึงไม่ได้ = แสดงเป็น laborcode ไปก่อน ไม่ต้องบล็อกหน้าใบงาน
+            }
+        })();
+        return () => { alive = false; };
+    }, []);
+
     useEffect(() => {
         if (!editId || !stationId) return;
 
@@ -801,6 +834,10 @@ export default function CMForm() {
                     charger_brand: data.charger_brand ?? "",
                     auto_generated: !!data.auto_generated,
                 });
+
+                setRepairHistory(Array.isArray(data.repair_history) ? data.repair_history : []);
+                setLastRoundLabor(Array.isArray(data.maximo_labor) ? data.maximo_labor.filter(Boolean) : []);
+                setMaximoContractor(data.maximo_contractor ?? "");
 
                 // map ข้อมูลจาก backend (flat fields) → job state
                 const correctionList = Array.isArray(data.repaired_equipment) ? data.repaired_equipment : [];
@@ -1245,6 +1282,24 @@ export default function CMForm() {
                         </div>
 
 
+                        {/* ประวัติการแก้ไขรอบก่อน ๆ — อ่านอย่างเดียว
+                            ใบที่ช่างเข้าซ่อมหลายรอบ (รออะไหล่/รอหน้างาน) เก็บรอบที่ปิดไปแล้วไว้ที่
+                            repair_history ส่วนรอบสุดท้ายคือ flat fields ที่ฟอร์มด้านล่างแสดงอยู่
+                            ไม่แสดงส่วนนี้ = เห็นแค่รอบสุดท้าย ประวัติรอบก่อนหายไปทั้งหมด */}
+                        {repairHistory.length > 0 && (
+                            <div>
+                                <div className="tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-3">
+                                    {t("repairHistory", lang)}
+                                </div>
+                                {repairHistory.map((r, i) => (
+                                    <RepairRoundCard key={i} round={r} index={i} lang={lang} />
+                                ))}
+                                <div className="tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-3">
+                                    {t("repairRound", lang)} {repairHistory.length + 1} ({t("lastRound", lang)})
+                                </div>
+                            </div>
+                        )}
+
                         {/* การแก้ไข (Corrective Action) */}
                         <div>
                             <div className="tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-3">
@@ -1484,6 +1539,27 @@ export default function CMForm() {
                                         <Input value={`${(job.resolved_date || "").slice(0, 10) || "-"}${job.resolved_time ? " " + job.resolved_time + t("timeSuffix", lang) : ""}`} readOnly crossOrigin="" className="!tw-w-full !tw-bg-blue-gray-50" containerProps={{ className: "!tw-min-w-0" }} />
                                     </div>
                                 </div>
+                                {/* ช่างที่ลงเวลากับ Maximo ของรอบสุดท้าย — รอบก่อน ๆ อยู่ในการ์ดประวัติด้านบน */}
+                                {lastRoundLabor.length > 0 && (
+                                    <div>
+                                        <div className="tw-text-xs tw-text-blue-gray-500 tw-mb-1">{t("rrLabor", lang)}</div>
+                                        <div className="tw-flex tw-flex-wrap tw-gap-2">
+                                            {lastRoundLabor.map((code, i) => {
+                                                const opt = laborNames[code];
+                                                const label = (opt?.needs_name && maximoContractor.trim())
+                                                    ? maximoContractor.trim()
+                                                    : (opt?.name || code);
+                                                return (
+                                                    <span key={`${code}-${i}`}
+                                                        className="tw-inline-flex tw-items-center tw-gap-2 tw-rounded-full tw-border tw-border-blue-200 tw-bg-blue-50 tw-px-3 tw-py-1 tw-text-xs tw-text-blue-800">
+                                                        <span className="tw-font-medium">{label}</span>
+                                                        <span className="tw-font-mono tw-text-[11px] tw-text-blue-400">{code}</span>
+                                                    </span>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
                                 {job.signature && (
                                     <div>
                                         <div className="tw-text-xs tw-text-blue-gray-500 tw-mb-1">{t("signature", lang)}</div>

@@ -50,13 +50,13 @@ _DEFAULT_FAILURE_CLASS_MAP = {
 CM_CLOSE_STATUS = os.getenv("MAXIMO_CM_CLOSE_STATUS", "CLOSED").strip().upper()
 
 # สถานะใบงาน CM ฝั่ง iMPS → สถานะ WO ฝั่ง Maximo
-#   Wait for approve (ด่าน cs)   → WAPPR  รออนุมัติ
-#   Wait for schedule            → APPR   อนุมัติแล้ว รอจัดตาราง
-#   In Progress                  → INPRG  กำลังดำเนินการ
-#   Wait for approve (ด่านปิดงาน) → ไม่ยิง — ช่างส่งใบให้ planner เป็นขั้นตอนภายใน iMPS
-#                                  (ดู is_close_approval_wait)
+#
+# ⚠️ ตกลงกับ EGAT ว่า IN02 ยิงแค่ 2 รอบต่อใบ — ตอน planner นัดวันเข้าหน้างาน (INPRG)
+#    กับตอนใบงานจบ (CLOSED / CAN) ดู sync_report ระหว่างทางที่ช่างบันทึกงานไม่ยิงเลย
+#    ตารางนี้จึงถูกใช้แค่กับสองจังหวะนั้น (ที่เหลือเก็บไว้เผื่อ env override)
+#   In Progress                  → INPRG  planner นัดวันแล้ว งานเดินได้
 #   Closed / Complete            → CLOSED ปิดงาน
-#   Cancelled                    → CAN
+#   Cancelled                    → CAN    ยกเลิกใบงาน
 _DEFAULT_STATUS_MAP = {
     "wait for approve": "WAPPR",
     "wait for schedule": "APPR",
@@ -1132,21 +1132,14 @@ def is_planning_save(report: dict) -> bool:
     return bool(report.get("sched_start"))
 
 
-def is_close_approval_wait(report: dict) -> bool:
+def is_final_status(report: dict) -> bool:
     """
-    ช่างซ่อมเสร็จแล้วกดส่งใบให้ planner อนุมัติปิดหรือยัง
+    ใบงานจบแล้วหรือยัง — ปิดงาน (Complete/Closed) หรือถูกยกเลิก (Cancelled)
 
-    ด่านนี้เป็นขั้นตอนภายในของ iMPS — ฝั่ง Maximo งานยังเดินอยู่ (INPRG)
-    ยิง WAPPR ไปตอนนี้จะดึง WO ถอยกลับไปสถานะรออนุมัติ สถานะจริงค่อยส่งตอน
-    planner อนุมัติปิด (COMP) ทีเดียว
-
-    stage ที่ไม่ใช่ cs_approval = ด่านปิดงาน (ตรงกับที่ POST /approve ใช้คัดใบ
-    — ข้อมูลเก่าที่ไม่มี stage ก็นับเป็นด่านปิดงานเหมือนกัน)
+    เป็นจังหวะเดียวนอกจากด่านวางแผนที่ยิง IN02 ได้ ระหว่างทางที่ช่างบันทึกงาน
+    ฝั่ง Maximo ยังเป็น INPRG อยู่แล้ว ไม่มีอะไรต้องอัปเดต
     """
-    if str(report.get("status") or "").strip().lower() != "wait for approve":
-        return False
-    stage = report.get("stage") or (report.get("job") or {}).get("stage") or ""
-    return str(stage).strip().lower() != "cs_approval"
+    return str(report.get("status") or "").strip().lower() in _FINAL_STATUSES
 
 
 def _blocking_failures(results: dict) -> list[str]:
@@ -1169,13 +1162,16 @@ async def sync_report(coll, report_id, report: dict, *, memo: str = "") -> dict:
 
     ลำดับตาม sequencing ที่ตกลงกับ EGAT (Maximo x iMPS — CM):
       1. IN01 create wo      — planner นัดวันเข้าหน้างาน (wait for scheduled)
-      2. IN09 actual labor   — ลงเวลารอบที่ช่างเพิ่งปิด (ซ่อมหลายรอบ = ลงหลายครั้ง)
-      3. IN02 wo status      — เปลี่ยนสถานะระหว่างทาง (In Progress ฯลฯ)
-                               ยกเว้นตอนช่างส่งใบให้ planner อนุมัติ — ข้ามไป
+      2. IN02 wo status      — INPRG รอบเดียวพร้อม IN01
+      3. IN09 actual labor   — ลงเวลารอบที่ช่างเพิ่งปิด (ซ่อมหลายรอบ = ลงหลายครั้ง)
       4. IN03 attachment     ┐
       5. IN05 failure report ├ ตอนปิดใบงาน ยิงทีละเส้นเรียงกัน (ห้ามส่งพร้อมกัน)
       6. IN09 actual labor   ┘ (เฉพาะรอบสุดท้ายที่ยังไม่ได้ลง)
-      7. IN02 wo status      — ปิดงาน (CLOSED) ต้องเป็นเส้นสุดท้ายเสมอ
+      7. IN02 wo status      — ปิดงาน (CLOSED/CAN) ต้องเป็นเส้นสุดท้ายเสมอ
+
+    IN02 ยิงแค่ 2 รอบต่อใบ: ข้อ 2 (INPRG) กับข้อ 7 (ปิดงาน) ระหว่างทางที่ช่าง
+    กดบันทึกในหน้า In Progress ไม่ยิงเลย — ฝั่ง Maximo เป็น INPRG อยู่แล้ว
+    ไม่มีอะไรต้องอัปเดต และการยิงสถานะกลางทาง (WAPPR/WMATL) จะดึง WO ถอยหลัง
 
     ข้อ 6 สำคัญ: พอ WO ขึ้น COMP แล้ว Maximo ไม่ให้เพิ่ม failure report / labor
     เข้าไปอีก ยิงสถานะปิดก่อนขั้น 3–5 จะทำให้ 3 เส้นนั้นตกทั้งหมด
@@ -1184,8 +1180,9 @@ async def sync_report(coll, report_id, report: dict, *, memo: str = "") -> dict:
     if not CM_MAXIMO_ENABLED:
         return {"skipped": "CM_MAXIMO_ENABLED=false"}
 
-    # ── 1. IN01 — เปิด WO ตอน planner วางแผนเสร็จ ──
-    if is_planning_save(report):
+    # ── 1. IN01 — เปิด WO ตอน planner นัดวันเข้าหน้างาน ──
+    planning = is_planning_save(report)
+    if planning:
         out["IN01"] = await ensure_work_order(coll, report_id, report)
         wonum = out["IN01"].get("wonum")
         if wonum:
@@ -1194,7 +1191,7 @@ async def sync_report(coll, report_id, report: dict, *, memo: str = "") -> dict:
     is_closing = str(report.get("status") or "").strip().lower() in CLOSING_STATUSES
 
     if not is_closing:
-        # ── 2. IN09 — เวลาทำงานของรอบที่ช่างเพิ่งปิดไป ──
+        # ── 3. IN09 — เวลาทำงานของรอบที่ช่างเพิ่งปิดไป ──
         # ช่างซ่อมไม่จบในรอบเดียว (รออะไหล่/รอนัดใหม่) แล้วกลับมาซ่อมอีกรอบ
         # ต้องลงเวลาให้รอบนั้นตั้งแต่ตอนนี้ รอจนปิดใบไม่ได้ เพราะพอ WO ขึ้น COMP
         # แล้ว Maximo ไม่ให้เติม labor ย้อนหลัง (push_labor_time กันยิงซ้ำรายรอบเอง)
@@ -1203,16 +1200,16 @@ async def sync_report(coll, report_id, report: dict, *, memo: str = "") -> dict:
             if out["IN09"].get("sent"):
                 await _settle()
 
-        # ── 3. IN02 — สถานะระหว่างทาง ──
-        # IN09 ตกไม่บล็อกตรงนี้ — สถานะระหว่างทางไม่ใช่ COMP ยังเติมย้อนหลังได้
-        if is_close_approval_wait(report):
-            # ช่างส่งใบให้ planner = ขั้นตอนภายใน iMPS ยังไม่ต้องแตะสถานะ WO
-            out["IN02"] = _skip("ช่างส่งใบให้ planner อนุมัติ — ยังไม่เปลี่ยนสถานะ WO")
-        else:
+        # ── 2. IN02 — INPRG รอบเดียวตอนวางแผน (หรือ CAN ตอนใบถูกยกเลิก) ──
+        # ช่างกดบันทึกในหน้า In Progress ไม่ยิง — IN09 ตกไม่บล็อกตรงนี้เพราะยัง
+        # เติมย้อนหลังได้ตราบใดที่ WO ยังไม่ COMP
+        if planning or is_final_status(report):
             out["IN02"] = await push_status(coll, report_id, report, memo=memo)
+        else:
+            out["IN02"] = _skip("IN02 ยิงเฉพาะตอน planner นัดวัน (INPRG) และตอนใบงานจบ")
         return out
 
-    # ── 3. IN03 — แนบ PDF ใบงาน (ครั้งเดียวพอ) ──
+    # ── 4. IN03 — แนบ PDF ใบงาน (ครั้งเดียวพอ) ──
     # ยิงได้ก็ต่อเมื่อปิดงานแล้วเท่านั้น เพราะ PDF ถึงจะมีเนื้อหาครบ
     # (บล็อกนี้อยู่ใต้ is_closing อยู่แล้ว)
     if not (report.get("maximo_sync") or {}).get("IN03", {}).get("ok"):
@@ -1223,18 +1220,18 @@ async def sync_report(coll, report_id, report: dict, *, memo: str = "") -> dict:
             description=f"iMPS CM report {report.get('doc_name') or ''}".strip(),
         )
 
-    # ── 4. IN05 — ผลวิเคราะห์ปัญหา/สาเหตุ/การแก้ไข ──
+    # ── 5. IN05 — ผลวิเคราะห์ปัญหา/สาเหตุ/การแก้ไข ──
     await _settle()
     out["IN05"] = await push_failure_report(coll, report_id, report)
 
-    # ── 5. IN09 — เวลาทำงานจริงของช่าง (รอบที่ยังไม่ได้ลง) ──
+    # ── 6. IN09 — เวลาทำงานจริงของช่าง (รอบที่ยังไม่ได้ลง) ──
     # รอบก่อน ๆ ถูกลงไปแล้วตอนบันทึกระหว่างทาง เหลือแค่รอบสุดท้ายที่เพิ่งปิด
     # push_labor_time กันยิงซ้ำรายรอบเองที่ maximo_sync.IN09.rounds — เรียกได้เลย
     await _settle()
     out["IN09"] = await push_labor_time(coll, report_id, report)
 
-    # ── 6. IN02 — ปิดสถานะเป็นเส้นสุดท้าย ──
-    # ต้องยิง 3–5 ให้ครบก่อน มีเส้นไหนไม่ผ่านห้ามปิด WO เด็ดขาด
+    # ── 7. IN02 — ปิดสถานะเป็นเส้นสุดท้าย ──
+    # ต้องยิง 4–6 ให้ครบก่อน มีเส้นไหนไม่ผ่านห้ามปิด WO เด็ดขาด
     # (COMP แล้ว Maximo ไม่ให้เติม attachment / failure / labor ย้อนหลัง)
     failed = _blocking_failures(out)
     if failed:

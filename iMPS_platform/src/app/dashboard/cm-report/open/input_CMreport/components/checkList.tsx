@@ -196,8 +196,8 @@ const LOGO_SRC = "/img/logo_egat.png";
 const LIST_ROUTE = "/dashboard/cm-report";
 const MAX_PHOTOS = 10;
 
-// ใช้ตัวแปลง value → label ชุดเดียวกับฟอร์ม InProgress จะได้ไม่ต้องดูแลลิสต์ซ้ำสองที่
-import { problemLabelOf, causeLabelOf } from "@/app/dashboard/cm-report/inprogress/input_CMreport/components/checkList";
+// ใช้ตัวแปลง value → label ชุดเดียวกับฟอร์มอื่น จะได้ไม่ต้องดูแลลิสต์ซ้ำหลายที่
+import { problemLabelOf, causeLabelOf } from "@/app/dashboard/cm-report/lib/maximo";
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
 async function responseErrorMessage(res: Response, fallback: string): Promise<string> {
