@@ -21,7 +21,7 @@ IN02,เปลี่ยนสถานะ WO,iMPS -> Maximo,POST SYNC/MERGE,ZAPI
 IN02,เปลี่ยนสถานะ WO,iMPS -> Maximo,POST SYNC/MERGE,ZAPIWOSTATUS,wonum,CM: maximo_wonum / PM: wonum,Y,natural key
 IN02,เปลี่ยนสถานะ WO,iMPS -> Maximo,POST SYNC/MERGE,ZAPIWOSTATUS,siteid,env MAXIMO_SITE_ID,Y,
 IN02,เปลี่ยนสถานะ WO,iMPS -> Maximo,POST SYNC/MERGE,ZAPIWOSTATUS,orgid,env MAXIMO_ORG_ID,Y,
-IN02,เปลี่ยนสถานะ WO,iMPS -> Maximo,POST SYNC/MERGE,ZAPIWOSTATUS,status,CM: STATUS_MAP ตามสถานะใบงาน / PM: COMP เสมอ,Y,WAPPR APPR INPRG COMP CAN WMATL WSCH
+IN02,เปลี่ยนสถานะ WO,iMPS -> Maximo,POST SYNC/MERGE,ZAPIWOSTATUS,status,CM: STATUS_MAP ตามสถานะใบงาน / PM: COMP เสมอ,Y,CM ยิงแค่ 2 รอบต่อใบ: INPRG ตอน planner นัดวัน + CLOSED ตอนปิดงาน (ใบที่ถูกยกเลิกได้ CAN แทนรอบที่ 2) ระหว่างทางที่ช่างบันทึกงานไม่ยิงเลย
 IN02,เปลี่ยนสถานะ WO,iMPS -> Maximo,POST SYNC/MERGE,ZAPIWOSTATUS,statusdate,เวลาปัจจุบัน (Asia/Bangkok),N,
 IN02,เปลี่ยนสถานะ WO,iMPS -> Maximo,POST SYNC/MERGE,ZAPIWOSTATUS,reasonforchange,memo เช่น closed by <user>,N,ตัดตาม MAXIMO_REASON_MAXLEN กัน BMXAA4049E
 IN03,แนบลิงก์เอกสาร,iMPS -> Maximo,POST SYNC/MERGE,ZAPIATTACHWO,wonum,CM: maximo_wonum / PM: wonum,Y,

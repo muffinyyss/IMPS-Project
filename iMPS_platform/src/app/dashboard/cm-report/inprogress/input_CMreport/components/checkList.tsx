@@ -10,13 +10,14 @@ import CreatableSelect from "react-select/creatable";
 import { useDraft, type DraftData, type DraftImage, type DraftCorrectiveAction } from "../lib/draft";
 import { failureCodeLabel } from "@/app/dashboard/cm-report/lib/failureCode";
 import {
-    useMaximoFailureTree, maximoCodeLabel, isMaximoCode, failureClassRole, type SelectOption,
-    maximoProblemOptions, maximoCauseOptions, maximoRemedyOptions,
+    useMaximoFailureTree, isMaximoCode, failureClassRole, type SelectOption,
+    maximoProblemOptions, maximoCauseOptions, maximoRemedyOptions, NO_PROBLEM_OPTION,
 } from "@/app/dashboard/cm-report/lib/maximo";
 import { cmBackRoute } from "@/app/dashboard/cm-report/lib/origin";
 import ChargerIdentity, { type ChargerIdentityData } from "@/app/dashboard/cm-report/components/ChargerIdentity";
 import { repairResultLabel, normalizeRepairResult, REPAIR_RESULT_VALUES } from "@/app/dashboard/cm-report/lib/repairResult";
 import { ZoomableImg, AttachmentFileRow, isImageAttachment } from "@/app/dashboard/cm-report/components/photo-viewer";
+import RepairRoundCard, { type RepairRound } from "@/app/dashboard/cm-report/components/RepairRoundCard";
 
 // ==================== DEVICE NAME FORMATTER ====================
 function formatDeviceName(name: string): string {
@@ -214,26 +215,6 @@ type ValidationItem = { key: string; label: string; isValid: boolean; message: s
 // ตัวเลือกผลหลังซ่อมของช่าง — ไม่มี "wait for manpower" เพราะพอช่างมากรอกฟอร์มนี้ก็ไม่ได้รอช่างแล้ว
 // (manpower เป็นสถานะที่ planner ตั้งตอน assign ไม่ใช่ผลที่ช่างเลือกเอง)
 // ผลซ่อม 1 รอบ — ช่างบันทึกเป็นสถานะรอ (material/site) แล้วกลับมาซ่อมใหม่ รอบเดิมย้ายมาเก็บที่นี่
-type RepairRound = {
-    // วันที่/เวลาที่ช่างเริ่มลงมือแก้ไขรอบนั้น (ไม่ใช่เวลาที่กดบันทึก)
-    start_repair_date?: string;
-    start_repair_time?: string;
-    // วันที่/เวลาที่ปิดรอบนั้น = ตอนกดบันทึกเป็นสถานะรอ
-    finish_date?: string;
-    finish_time?: string;
-    // ชื่อฟิลด์เดิม (เก็บ "เวลาที่กดบันทึก") — ความหมายตรงกับ finish ไม่ใช่ start
-    saved_date?: string;
-    saved_time?: string;
-    repair_result?: string;
-    repair_result_remark?: string;
-    problem_type?: string[];
-    problem_type_other?: string;
-    cause?: string[];
-    repaired_equipment?: string[];
-    inprogress_remarks?: string;
-    corrective_actions?: { code?: string; text?: string; beforeImages?: { url?: string }[]; afterImages?: { url?: string }[] }[];
-};
-
 // ผลซ่อมที่แปลว่ายังซ่อมไม่จบ ต้องรอของ/รอหน้างาน → บันทึกแล้วปิดรอบ ขึ้นรอบใหม่เมื่อกลับมา
 const WAITING_REPAIR_RESULTS = [
     "WO - wait for material", "WO - wait for spare part",
@@ -296,7 +277,6 @@ const PHOTO_GROUP_ROUND_STRIDE = 100;
 
 // "ไม่พบปัญหา" เป็นตัวเลือกของ iMPS เอง ไม่มีใน Maximo — ช่างต้องปิดใบงานได้
 // แม้ตรวจแล้วไม่เจออะไรผิดปกติ
-const NO_PROBLEM_OPTION = { value: "NOPROBLM", th: "ไม่พบปัญหา", en: "No Problem Found" } as const;
 
 // ตัวเลือกของ dropdown ปัญหา/สาเหตุ/การแก้ไข มาจาก Maximo (IN04) อย่างเดียว
 // backend cache ตารางไว้ใน MongoDB ให้แล้ว ฟอร์มจึงไม่ได้ยิง Maximo เองทุกครั้ง
@@ -440,92 +420,6 @@ function RowSelect({ values, options, onChange, resolveLabel, accent, placeholde
 }
 
 // ==================== VALIDATION CARD ====================
-// แปลงรหัสที่เก็บใน DB (เช่น "POWMODUL") เป็นข้อความที่อ่านรู้เรื่อง
-// การ์ดประวัติไม่รู้ว่า failure code ตอนนั้นคืออะไร จึงค้นจากทั้งต้นไม้ของ Maximo
-// รหัสที่ไม่รู้จัก (ค่าที่ผู้ใช้พิมพ์เอง / ใบงานเก่า) จะคืนค่าเดิมกลับไป
-export const problemLabelOf = (v: string) =>
-    v === NO_PROBLEM_OPTION.value ? NO_PROBLEM_OPTION.th : maximoCodeLabel(v);
-export const causeLabelOf = (v: string) => maximoCodeLabel(v);
-
-function RepairRoundCard({ round, index, lang }: { round: RepairRound; index: number; lang: Lang }) {
-    const src = (u?: string) => (!u ? "" : u.startsWith("http") ? u : `${API_BASE}${u}`);
-    const problems = [...(round.problem_type ?? []).map(problemLabelOf), round.problem_type_other ?? ""].map(x => (x || "").trim()).filter(Boolean);
-    const causes = (round.cause ?? []).map(x => causeLabelOf((x || "").trim())).filter(Boolean);
-    const equipment = (round.repaired_equipment ?? []).map(x => (x || "").trim()).filter(Boolean);
-    const actions = (round.corrective_actions ?? []).filter(
-        a => (a.text || "").trim() || (a.beforeImages?.length ?? 0) > 0 || (a.afterImages?.length ?? 0) > 0
-    );
-    const startedAt = [round.start_repair_date, round.start_repair_time].filter(Boolean).join(" ");
-    // saved_* ของข้อมูลเก่าคือเวลาที่กดบันทึก = เวลาปิดรอบ จึง fallback มาที่นี่
-    const finishedAt = [round.finish_date || round.saved_date, round.finish_time || round.saved_time].filter(Boolean).join(" ");
-
-    const block = (label: string, body: React.ReactNode) => (
-        <div className="tw-mb-3 last:tw-mb-0">
-            <p className="tw-text-xs tw-font-semibold tw-text-blue-gray-500 tw-mb-1">{label}</p>
-            {body}
-        </div>
-    );
-    const line = (v?: string) => <p className="tw-text-sm tw-text-blue-gray-800 tw-break-words">{v?.trim() ? v : "-"}</p>;
-    const thumbs = (label: string, imgs: { url?: string }[]) =>
-        imgs.length ? (
-            <div className="tw-mt-2">
-                <p className="tw-text-[11px] tw-text-blue-gray-400 tw-mb-1">{label}</p>
-                <div className="tw-flex tw-flex-wrap tw-gap-2">
-                    {imgs.map((im, k) => (
-                        <a key={k} href={src(im.url)} target="_blank" rel="noreferrer"
-                            className="tw-block tw-w-20 tw-h-20 tw-rounded-lg tw-overflow-hidden tw-border tw-border-gray-200 tw-bg-gray-50">
-                            <ZoomableImg src={src(im.url)} alt={label} className="tw-w-full tw-h-full tw-object-cover" />
-                        </a>
-                    ))}
-                </div>
-            </div>
-        ) : null;
-
-    return (
-        <div className="tw-mb-4 tw-p-4 tw-rounded-xl tw-border tw-border-gray-200 tw-bg-white">
-            <h4 className="tw-text-sm tw-font-bold tw-text-blue-gray-700 tw-mb-3">{t("repairRound", lang)} {index + 1}</h4>
-            <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-3 tw-gap-3 tw-mb-3">
-                <div>
-                    <p className="tw-text-xs tw-font-semibold tw-text-blue-gray-500 tw-mb-1">{t("rrStartedAt", lang)}</p>
-                    {line(startedAt)}
-                </div>
-                <div>
-                    <p className="tw-text-xs tw-font-semibold tw-text-blue-gray-500 tw-mb-1">{t("rrFinishedAt", lang)}</p>
-                    {line(finishedAt)}
-                </div>
-                <div>
-                    <p className="tw-text-xs tw-font-semibold tw-text-blue-gray-500 tw-mb-1">{t("rrResult", lang)}</p>
-                    {line(repairResultLabel(round.repair_result, lang))}
-                </div>
-                <div>
-                    <p className="tw-text-xs tw-font-semibold tw-text-blue-gray-500 tw-mb-1">{t("rrRemarks", lang)}</p>
-                    {line(round.repair_result_remark)}
-                </div>
-                {/* อุปกรณ์ที่ซ่อม — ไม่มีก็ไม่ต้องแสดงช่องนี้ */}
-                {equipment.length > 0 && (
-                    <div>
-                        <p className="tw-text-xs tw-font-semibold tw-text-blue-gray-500 tw-mb-1">{t("rrEquipment", lang)}</p>
-                        {line(equipment.join(", "))}
-                    </div>
-                )}
-            </div>
-            {problems.length ? block(t("rrProblem", lang), line(problems.join(", "))) : null}
-            {causes.length ? block(t("rrCause", lang), line(causes.join(", "))) : null}
-            {actions.length ? block(t("rrAction", lang),
-                <div className="tw-space-y-3">
-                    {actions.map((a, i) => (
-                        <div key={i} className="tw-rounded-lg tw-bg-gray-50 tw-border tw-border-gray-200 tw-p-3">
-                            {(a.text || "").trim() && <p className="tw-text-sm tw-text-blue-gray-800 tw-break-words">{a.text}</p>}
-                            {thumbs(t("rrBefore", lang), a.beforeImages ?? [])}
-                            {thumbs(t("rrAfter", lang), a.afterImages ?? [])}
-                        </div>
-                    ))}
-                </div>) : null}
-            {(round.inprogress_remarks || "").trim() ? block(t("rrRemarks", lang), line(round.inprogress_remarks)) : null}
-        </div>
-    );
-}
-
 function CMValidationCard({ validations, lang }: { validations: ValidationItem[]; lang: Lang; }) {
     const [isExpanded, setIsExpanded] = useState(true);
     const requiredValidations = validations.filter(v => v.isRequired);
@@ -1569,6 +1463,15 @@ export default function CMInProgressForm() {
         })
     ), [extraGroups, lang, isNoProblem, isWaitingForSiteCondition, isClosedResult]);
 
+    // ติ๊กรหัสกลางของผู้รับเหมาไว้ = ต้องมีชื่อจริงกำกับ
+    const contractorPicked = laborOptions.some(
+        (o) => o.needs_name && maximoLabor.includes(o.laborcode)
+    );
+    const contractorMissing = contractorPicked && !maximoContractor.trim();
+    // รายชื่อช่างจาก Maximo (IN08) ดึงไม่ได้ = ไม่มีอะไรให้เลือก บังคับไม่ได้
+    // และด่านตรวจ/อนุมัติแก้ไม่ได้ ใบเก่าที่ช่างไม่ได้เลือกไว้จะกลายเป็นทางตันของ planner
+    const maximoLaborRequired = !viewOnly && laborOptions.length > 0;
+
     const validations = useMemo<ValidationItem[]>(() => [
         { key: "problemType", label: t("validProblemType", lang), isValid: validationGroupState.allProblemTypesFilled, message: t("notSelected", lang), isRequired: !isWaitingForSiteCondition, scrollId: "cm-problem-type" },
         { key: "problemTypeOther", label: lang === "th" ? "ระบุปัญหา (อื่นๆ)" : "Specify Problem (Other)", isValid: !!job.problem_type_other.trim(), message: t("notFilled", lang), isRequired: job.problem_type.includes("Other"), scrollId: "cm-problem-type" },
@@ -1584,8 +1487,12 @@ export default function CMInProgressForm() {
         { key: "inprogressRemarks", label: lang === "th" ? "หมายเหตุผลหลังซ่อม" : "Repair Result Remark", isValid: !!job.repair_result_remark.trim(), message: t("notFilled", lang), isRequired: needsRepairRemark, scrollId: "cm-repair-result" },
         { key: "noProblemPhoto", label: lang === "th" ? "รูปภาพ" : "Photo", isValid: (job.corrective_actions[0]?.afterImages.length ?? 0) > 0, message: t("notFilled", lang), isRequired: isNoProblem, scrollId: "cm-noproblem-photo" },
         { key: "noProblemRemarks", label: t("remarks", lang), isValid: !!job.inprogress_remarks.trim(), message: t("notFilled", lang), isRequired: isNoProblem, scrollId: "cm-remarks" },
+        // ไม่เลือกช่าง = IN09 ไม่มี laborcode ให้ส่ง เวลาทำงานจะหายไปจาก Maximo ทั้งใบ
+        // และเติมย้อนหลังไม่ได้หลัง WO ขึ้น COMP จึงต้องบังคับตั้งแต่ตอนบันทึกใบงาน
+        { key: "maximoLabor", label: t("maximoLabor", lang), isValid: maximoLabor.length > 0, message: t("notSelected", lang), isRequired: maximoLaborRequired, scrollId: "cm-maximo-labor" },
+        { key: "maximoContractor", label: t("contractorName", lang), isValid: !contractorMissing, message: t("notFilled", lang), isRequired: maximoLaborRequired && contractorPicked, scrollId: "cm-maximo-labor" },
         ...additionalGroupValidations,
-    ], [job, lang, isClosedResult, needsRepairRemark, isNoProblem, validationGroupState, isWaitingForMaterial, isWaitingForSiteCondition, additionalGroupValidations]);
+    ], [job, lang, isClosedResult, needsRepairRemark, isNoProblem, validationGroupState, isWaitingForMaterial, isWaitingForSiteCondition, additionalGroupValidations, maximoLabor, maximoLaborRequired, contractorPicked, contractorMissing]);
 
     // "แก้ไขสำเร็จ" ใน dropdown มี value = "WO - wait for approve" (label ต่างจาก value)
     // isClosedResult เทียบข้อความไทยซึ่งเป็นค่าของใบเก่า จึงต้องเช็คค่าใหม่เพิ่มเอง
@@ -1628,11 +1535,14 @@ export default function CMInProgressForm() {
 
     // การ์ดสรุปต้องสะท้อนสิ่งที่ "ปุ่มที่กดได้จริง" ต้องการ ไม่งั้นจะขึ้นแดงว่ายังไม่เลือก
     // ผลหลังซ่อม ทั้งที่สถานะนี้ไม่ต้องเลือก — canSave ยังใช้ validations ชุดเต็มเหมือนเดิม
+    // เงื่อนไขต้องตรงกับตอนที่ปุ่ม "บันทึกความคืบหน้า" ถูกเรนเดอร์ (ใช้ canSaveProgress)
+    // พอช่างเลือกผลหลังซ่อมแล้วปุ่มจะสลับเป็นปุ่มบันทึกใบงานที่ใช้ canSave — การ์ดต้อง
+    // กลับไปโชว์ชุดเต็มด้วย ไม่งั้นการ์ดขึ้นเขียวครบแต่ปุ่มยังกดไม่ได้
     const displayValidations = useMemo(
-        () => isWaitForSchedule && !plannerSelfCloseMode
+        () => isWaitForSchedule && !plannerSelfCloseMode && !hasChosenResult && !isNoProblem
             ? validations.map(v => PROGRESS_REQUIRED_KEYS.includes(v.key) ? v : { ...v, isRequired: false })
             : effectiveValidations,
-        [validations, effectiveValidations, isWaitForSchedule, plannerSelfCloseMode],
+        [validations, effectiveValidations, isWaitForSchedule, plannerSelfCloseMode, hasChosenResult, isNoProblem],
     );
 
     // ซ่อมเสร็จ ("แก้ไขสำเร็จ/ไม่สำเร็จ" หรือ "ไม่พบปัญหา") หรือเลือก "WO - wait for approve"
@@ -2365,12 +2275,6 @@ export default function CMInProgressForm() {
     const toggleMaximoLabor = (code: string) =>
         setMaximoLabor(prev => prev.includes(code) ? prev.filter(c => c !== code) : [...prev, code]);
 
-    // ติ๊กรหัสกลางของผู้รับเหมาไว้ = ต้องมีชื่อจริงกำกับ
-    const contractorPicked = laborOptions.some(
-        (o) => o.needs_name && maximoLabor.includes(o.laborcode)
-    );
-    const contractorMissing = contractorPicked && !maximoContractor.trim();
-
     // ==================== HANDLERS ====================
     // อนุมัติปิดใบงาน — ย้ายมาจากตาราง In Progress เพื่อให้ผู้อนุมัติเห็นรายละเอียดใบงานก่อนกด
     const onApprove = async () => {
@@ -2658,8 +2562,16 @@ export default function CMInProgressForm() {
             // บันทึกเป็นสถานะรอ = จบรอบนี้ เก็บเข้าประวัติ แล้วรอบหน้าจะเริ่มกรอกใหม่จากว่าง
             // (ผลที่ปิดงานได้ เช่น "แก้ไขสำเร็จ" ไม่ต้องเก็บ เพราะเป็นรอบสุดท้ายที่คงอยู่ใน flat fields)
             const closingRound = WAITING_REPAIR_RESULTS.includes(job.repair_result.trim());
+            // ช่างที่ลงเวลากับ Maximo ของรอบนี้ — เก็บชื่อคู่กับรหัสไว้เลย รายชื่อจาก IN08
+            // เปลี่ยนได้ ประวัติจะได้ยังอ่านออก (ผู้รับเหมาใช้ชื่อจริงที่ช่างกรอกแทนชื่อรหัสกลาง)
+            const roundLabor = maximoLabor.map(code => {
+                const opt = laborOptions.find(o => o.laborcode === code);
+                const contractorName = opt?.needs_name ? maximoContractor.trim() : "";
+                return { laborcode: code, name: contractorName || opt?.name || code };
+            });
             const nextRepairHistory: RepairRound[] = closingRound
                 ? [...repairHistory, {
+                    maximo_labor: roundLabor,
                     start_repair_date: job.start_repair_date || localTodayISO(),
                     start_repair_time: job.start_repair_time || localNowHHMM(),
                     // ปิดรอบ ณ ตอนกดบันทึก
@@ -3159,10 +3071,11 @@ export default function CMInProgressForm() {
 
                             {/* ช่างที่จะลงเวลาเข้า Maximo — laborcode คนละชุดกับ username ใน iMPS
                                 จึงต้องให้เลือกเอง ไม่งั้น IN09 จะ unmapped ทั้งใบ */}
-                            <div className="tw-space-y-2">
+                            <div id="cm-maximo-labor" className="tw-space-y-2">
                                 <label className="tw-flex tw-items-center tw-gap-2 tw-text-sm tw-font-semibold tw-text-gray-700">
                                     <span className="tw-w-1.5 tw-h-1.5 tw-rounded-full tw-bg-blue-500"></span>
                                     {t("maximoLabor", lang)}
+                                    {maximoLaborRequired && <span className="tw-text-red-500">*</span>}
                                 </label>
 
                                 {/* ด่านตรวจ/อนุมัติ — ผู้อนุมัติต้องเห็นว่าช่างเลือกใครไว้ แต่แก้ไม่ได้ */}

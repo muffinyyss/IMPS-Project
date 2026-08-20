@@ -263,6 +263,19 @@ export function maximoCodeLabel(code?: string | null): string {
   return labelIndex?.get(key) ?? key;
 }
 
+/** "ไม่พบปัญหา" — ตัวเลือกของ iMPS เอง ไม่ได้มาจากตาราง Maximo จึงต้องแปลชื่อเอง */
+export const NO_PROBLEM_OPTION = { value: "NOPROBLM", th: "ไม่พบปัญหา", en: "No Problem Found" } as const;
+
+/**
+ * รหัสอาการ/สาเหตุที่เก็บใน DB → ข้อความที่อ่านรู้เรื่อง
+ *
+ * การ์ดประวัติไม่รู้ว่า failure class ตอนนั้นคืออะไร จึงค้นจากทั้งต้นไม้
+ * รหัสที่ไม่รู้จัก (ค่าที่ผู้ใช้พิมพ์เอง / ใบงานเก่า) จะคืนค่าเดิมกลับไป
+ */
+export const problemLabelOf = (v: string) =>
+  v === NO_PROBLEM_OPTION.value ? NO_PROBLEM_OPTION.th : maximoCodeLabel(v);
+export const causeLabelOf = (v: string) => maximoCodeLabel(v);
+
 /**
  * ค่านี้เป็นรหัสที่มีอยู่จริงในตาราง Maximo หรือไม่
  *
