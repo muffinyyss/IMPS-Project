@@ -13,7 +13,7 @@ IN01,สร้าง Work Order,iMPS -> Maximo,POST (CREATE),ZAPIWO,failurecode,
 IN01,สร้าง Work Order,iMPS -> Maximo,POST (CREATE),ZAPIWO,reportedby,reported_by,N,
 IN01,สร้าง Work Order,iMPS -> Maximo,POST (CREATE),ZAPIWO,supervisor,ผู้ควบคุมงาน,N,
 IN01,สร้าง Work Order,iMPS -> Maximo,POST (CREATE),ZAPIWO,zimpswonum,issue_id ของ iMPS,N,อ้างอิงกลับสองทาง
-IN01,สร้าง Work Order,iMPS -> Maximo,POST (CREATE),ZAPIWO,schedstart / schedfinish,sched_start / sched_finish จากด่านวางแผน,N,
+IN01,สร้าง Work Order,iMPS -> Maximo,POST (CREATE),ZAPIWO,schedstart / schedfinish,sched_start / sched_finish จากด่านวางแผน,N,ยิง IN01 เฉพาะตอน planner เลือก WO - wait for scheduled (สถานะรออื่นฟอร์มไม่เปิดให้กรอกวัน และ ZAPIWO ไม่มีขาอัปเดต เปิด WO ไปก่อน = ไม่มีวันตลอดไป)
 IN01,สร้าง Work Order,iMPS -> Maximo,POST (CREATE),ZAPIWO,targstartdate / targcompdate,target_* (ไม่ส่งใช้ sched_* แทน),N,
 IN01,สร้าง Work Order,iMPS -> Maximo,POST (CREATE),ZAPIWO,reportdate,เวลาปัจจุบัน (Asia/Bangkok),N,
 IN01,สร้าง Work Order,iMPS -> Maximo,POST (CREATE),ZAPIWO,(response) wonum,เก็บลง maximo_wonum,-,คืนกลับมาจาก Maximo

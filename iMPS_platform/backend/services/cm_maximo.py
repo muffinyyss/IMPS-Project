@@ -674,8 +674,9 @@ async def ensure_work_order(coll, report_id, report: dict) -> dict:
     """
     สร้าง Maximo WO ให้ใบงานนี้ถ้ายังไม่มี (idempotent — เรียกซ้ำได้)
 
-    เรียกตอน planner วางแผนเสร็จ ไม่ว่าจะลงเอยเป็น wait for scheduled /
-    wait for material / wait for site condition ก็ตาม — ทั้งสามแบบคือ "รับงานแล้ว"
+    เรียกตอน planner นัดวันเข้าหน้างานแล้วเท่านั้น (wait for scheduled) เพราะ
+    ZAPIWO เป็น POST CREATE ไม่มีขาอัปเดต — เปิด WO ไปก่อนที่จะมีวัน = WO นั้น
+    จะไม่มี schedstart/targstartdate ตลอดไป ดู is_planning_save
     """
     if not CM_MAXIMO_ENABLED:
         return _skip("CM_MAXIMO_ENABLED=false")
@@ -1078,13 +1079,10 @@ async def push_labor_time(coll, report_id, report: dict) -> dict:
 # ══════════════════════════════════════════════════════════════════
 # Orchestrator — routers/cmreport.py เรียกตัวนี้ตัวเดียวหลังบันทึกใบงาน
 # ══════════════════════════════════════════════════════════════════
-# ผลซ่อมที่แปลว่า planner วางแผนเสร็จแล้ว (ทั้งสามแบบ = รับงานเข้าระบบแล้ว)
-PLANNED_RESULTS = {
-    "wo - wait for scheduled",
-    "wo - wait for material",
-    "wo - wait for spare part",
-    "wo - wait for site condition",
-}
+# ผลซ่อมเดียวที่แปลว่า planner นัดวันเข้าหน้างานแล้ว — ฟอร์มวางแผนเปิดช่อง
+# วันเริ่ม/วันเสร็จ กับรายชื่อช่างให้เฉพาะสถานะนี้ (needsSchedule ใน checkList.tsx)
+# สถานะรออื่น (รออะไหล่ / รอหน้างาน) กรอกวันไม่ได้เลย
+SCHEDULED_RESULT = "wo - wait for scheduled"
 
 # สถานะที่ถือว่างานจบ → ส่งผลวิเคราะห์ + เวลาช่างเข้า Maximo
 CLOSING_STATUSES = {"complete", "closed"}
@@ -1102,14 +1100,18 @@ async def _settle() -> None:
 
 def is_planning_save(report: dict) -> bool:
     """
-    ใบงานผ่านขั้นวางแผนของ planner แล้วหรือยัง
+    planner วางแผนถึงขั้นนัดวันเข้าหน้างานแล้วหรือยัง
 
-    วางแผนเสร็จ = เปิด WO ได้เลย ไม่ต้องรอว่ามอบหมายช่างแล้วหรือยัง
-    (ตามที่ตกลงกับ EGAT — ช่างเติมทีหลังได้ ผ่าน IN09 ตอนปิดงาน)
+    เปิด WO ได้ต่อเมื่อ planner เลือก "WO - wait for scheduled" เท่านั้น
+    สถานะรออื่น (รออะไหล่ / รอหน้างาน) ฟอร์มไม่เปิดให้กรอกวัน ถ้าเปิด WO ตั้งแต่
+    ตอนนั้นจะได้ WO ที่ไม่มี schedstart/targstartdate แล้วเติมย้อนหลังไม่ได้อีกเลย
+    เพราะ IN01 เป็น POST CREATE อย่างเดียว — พอ planner กลับมาวางแผนรอบใหม่
+    ensure_work_order เจอ maximo_wonum ก็ตัดจบทันที วันที่จึงไม่มีวันไปถึง Maximo
     """
-    if str(report.get("repair_result") or "").strip().lower() in PLANNED_RESULTS:
-        return True
-    # กำหนดวันเริ่มตามแผนแล้ว = วางแผนเสร็จ แม้ยังไม่ได้เลือกช่าง
+    if str(report.get("repair_result") or "").strip().lower() != SCHEDULED_RESULT:
+        return False
+    # นัดวันแล้ว = วางแผนเสร็จ ไม่ต้องรอว่ามอบหมายช่างครบหรือยัง
+    # (ตามที่ตกลงกับ EGAT — ช่างเติมทีหลังได้ ผ่าน IN09 ตอนปิดงาน)
     return bool(report.get("sched_start"))
 
 
@@ -1149,7 +1151,7 @@ async def sync_report(coll, report_id, report: dict, *, memo: str = "") -> dict:
     ยิงทุก interface ที่ถึงจังหวะของใบงานนี้ — เรียกได้ซ้ำ ๆ อย่างปลอดภัย
 
     ลำดับตาม sequencing ที่ตกลงกับ EGAT (Maximo x iMPS — CM):
-      1. IN01 create wo      — planner วางแผนเสร็จ
+      1. IN01 create wo      — planner นัดวันเข้าหน้างาน (wait for scheduled)
       2. IN09 actual labor   — ลงเวลารอบที่ช่างเพิ่งปิด (ซ่อมหลายรอบ = ลงหลายครั้ง)
       3. IN02 wo status      — เปลี่ยนสถานะระหว่างทาง (In Progress ฯลฯ)
                                ยกเว้นตอนช่างส่งใบให้ planner อนุมัติ — ข้ามไป
