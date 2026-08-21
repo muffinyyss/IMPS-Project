@@ -1097,7 +1097,7 @@ async def pm_wo_sync_status(
         log.warning(f"  ⚠️ เช็ค wonum {wonum} กับ Maximo ไม่สำเร็จ: {e}")
         exists, in_maximo = None, None
 
-    # IN03/IN09/IN02(COMP) จดไว้บนเอกสาร PM ไม่ใช่บนใบงาน — ใบงานมีแต่ IN02(INPRG)
+    # IN03/IN09/IN02(CLOSED) จดไว้บนเอกสาร PM ไม่ใช่บนใบงาน — ใบงานมีแต่ IN02(INPRG)
     # ถ้าอ่านแค่ใบงาน หน้านี้จะค้างอยู่ที่ INPRG ตลอดกาลทั้งที่ปิดงานไปแล้ว
     reports = await pm_flow.wo_reports(wonum)
 
@@ -1105,7 +1105,7 @@ async def pm_wo_sync_status(
     for rep in reports:
         rep["interfaces"] = _serialize_sync(rep)
         rep.pop("maximo_sync", None)
-        # เอกสารเป็นตัวยิงจริง ทับของใบงานได้เลยเมื่อชนกัน (IN02 COMP มาทีหลัง INPRG)
+        # เอกสารเป็นตัวยิงจริง ทับของใบงานได้เลยเมื่อชนกัน (IN02 CLOSED มาทีหลัง INPRG)
         merged.update(rep["interfaces"])
 
     return {
@@ -1136,7 +1136,7 @@ async def pm_sync_status(
     ดูว่าเอกสาร PM ใบนี้ยิงอะไรเข้า Maximo ไปแล้วบ้าง
 
     รวม 2 ที่ไว้ให้ในครั้งเดียว:
-      report    — IN03 / IN09 / IN02 (COMP) ที่จดไว้บนเอกสาร PM
+      report    — IN03 / IN09 / IN02 (CLOSED) ที่จดไว้บนเอกสาร PM
       workorder — IN02 (INPRG) ที่จดไว้บนใบงานใน maximo_pm_open ตอน planner assign
     """
     _, _, doc = await _load_pm_report(report_id, sn.strip())
@@ -1165,7 +1165,7 @@ async def pm_sync_retry(
     sn: str = Query(...),
     current: UserClaims = Depends(get_current_user),
 ):
-    """ยิงชุดปิดงาน (IN03 → IN09 → IN02 COMP) ใหม่ — ใช้เมื่อรอบก่อนล้ม"""
+    """ยิงชุดปิดงาน (IN03 → IN09 → IN02 CLOSED) ใหม่ — ใช้เมื่อรอบก่อนล้ม"""
     role = (current.role or "").strip().lower()
     if role not in PM_SYNC_ROLES and not getattr(current, "is_super_admin", False):
         raise HTTPException(status_code=403, detail="Only planner, owner or admin can re-sync")

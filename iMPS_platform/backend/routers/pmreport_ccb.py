@@ -794,7 +794,7 @@ async def ccbpmreport_approve(
     station_id: str = Query(...),
     current: UserClaims = Depends(get_current_user),
 ):
-    """planner/admin อนุมัติปิดใบงาน แล้วส่งต่อให้ Maximo (IN03 → IN09 → IN02 COMP)"""
+    """planner/admin อนุมัติปิดใบงาน แล้วส่งต่อให้ Maximo (IN03 → IN09 → IN02 CLOSED)"""
     station_id = station_id.strip()
     coll = get_ccbpmreport_collection_for(station_id)
     oid = pm_flow.to_oid(report_id)
