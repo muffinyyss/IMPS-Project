@@ -3,7 +3,7 @@ from fastapi import APIRouter, HTTPException, Depends, Query, Request, UploadFil
 from fastapi.responses import Response, JSONResponse
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, Field
-from datetime import datetime, timezone, date
+from datetime import datetime, timedelta, timezone, date
 from bson.objectid import ObjectId
 from pymongo import ReturnDocument
 from typing import List, Dict, Any, Optional, Literal
@@ -898,6 +898,8 @@ async def cmreport_save_draft(
         raise HTTPException(status_code=400, detail="Bad report_id")
 
     await _assert_can_edit_cm(coll, oid, station_id, current)
+    # ร่างเก็บที่ใบงาน ไม่ได้แยกรายคน — ปล่อยให้เขียนพร้อมกันคือทับร่างของอีกคนทิ้ง
+    await _assert_not_locked_by_other(coll, oid, station_id, current)
     now = datetime.now(timezone.utc)
     result = await coll.update_one(
         {"_id": oid, "station_id": station_id},
@@ -959,6 +961,151 @@ async def cmreport_delete_draft(
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Report not found")
     return {"ok": True}
+
+# ══════════════════════════════════════════════════════════════════
+# ล็อกใบงานกันกรอกชนกัน — ใครเปิดฟอร์มก่อนได้สิทธิ์กรอก คนที่เหลือดูอย่างเดียว
+# ══════════════════════════════════════════════════════════════════
+# ล็อกมีอายุ ไม่ใช่ล็อกถาวร: ฟอร์มต่ออายุให้ทุก 30 วิระหว่างเปิดอยู่ ปิดจอ/เน็ตหลุด
+# ก็หลุดล็อกเองใน 2 นาที — ไม่งั้นใบจะค้างล็อกถาวรเวลาเบราว์เซอร์ปิดโดยไม่ทันปล่อย
+CM_LOCK_TTL_SECONDS = 120
+
+
+def _lock_expires(doc: dict | None) -> datetime | None:
+    """
+    เวลาหมดอายุของล็อก แบบมี tzinfo เสมอ
+
+    Mongo คืน datetime แบบ naive ซึ่งเป็น UTC — ใช้ _ensure_utc_iso ตรงนี้ไม่ได้
+    เพราะตัวนั้นตีความ naive เป็นเวลาไทยแล้วแปลงเป็น UTC (เวลาจะเพี้ยนไป 7 ชม.)
+    """
+    expires = ((doc or {}).get("cm_lock") or {}).get("expires_at")
+    if not isinstance(expires, datetime):
+        return None
+    return expires.replace(tzinfo=timezone.utc) if expires.tzinfo is None else expires
+
+
+def _lock_holder(doc: dict | None, now: datetime) -> str:
+    """ชื่อคนที่ถือล็อกอยู่ ณ ตอนนี้ — ว่าง = ไม่มีใครถือ หรือล็อกหมดอายุไปแล้ว"""
+    by = str(((doc or {}).get("cm_lock") or {}).get("by") or "").strip()
+    if not by:
+        return ""
+    expires = _lock_expires(doc)
+    return "" if expires and expires <= now else by
+
+
+def _same_user(a: str, b: str) -> bool:
+    return a.strip().lower() == b.strip().lower()
+
+
+async def _assert_not_locked_by_other(coll, oid, station_id: str, current: UserClaims) -> None:
+    """
+    กันบันทึกทับ — ใบที่คนอื่นถือล็อกอยู่ ห้ามเขียนข้อมูลลงไป
+
+    ด่านนี้จำเป็นถึงแม้ฝั่งฟอร์มจะสลับเป็นโหมดดูอย่างเดียวให้แล้ว เพราะแท็บที่เปิดค้าง
+    ไว้ก่อนหน้ายังยิง API ได้อยู่ และผู้ใช้เรียก endpoint ตรง ๆ ได้เสมอ
+    """
+    doc = await coll.find_one({"_id": oid, "station_id": station_id}, {"cm_lock": 1})
+    holder = _lock_holder(doc, datetime.now(timezone.utc))
+    if holder and not _same_user(holder, current.username or ""):
+        raise HTTPException(
+            status_code=409,
+            detail=f"ใบงานนี้กำลังถูกแก้ไขโดย {holder} — รอให้ปิดฟอร์มก่อนถึงจะบันทึกได้",
+        )
+
+
+@router.post("/cmreport/{report_id}/lock")
+async def cmreport_acquire_lock(
+    report_id: str,
+    station_id: str = Query(...),
+    current: UserClaims = Depends(get_current_user),
+):
+    """
+    ขอ/ต่ออายุสิทธิ์กรอกใบงาน — ฟอร์มยิงตอนเปิดหน้า แล้วต่ออายุทุก 30 วิ
+
+    คนอื่นถืออยู่ = คืน held_by_me=false พร้อมชื่อคนถือ ด้วย HTTP 200 (ไม่ใช่ error
+    เพราะยังเปิดดูใบงานได้ปกติ) ฟอร์มเอาไปสลับเป็นโหมดดูอย่างเดียว แล้ววนขอใหม่เรื่อย ๆ
+    พอคนแรกออกจากหน้าก็ได้สิทธิ์ต่อเองโดยไม่ต้องรีเฟรช
+    """
+    station_id = station_id.strip()
+    assert_station_access(current, station_id)
+    coll = get_cmreport_collection_for(station_id)
+    try:
+        oid = ObjectId(report_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bad report_id")
+
+    me = (current.username or "").strip()
+    if not me:
+        raise HTTPException(status_code=400, detail="Missing username in token")
+
+    async def _try_take() -> dict | None:
+        now = datetime.now(timezone.utc)
+        expires = now + timedelta(seconds=CM_LOCK_TTL_SECONDS)
+        res = await coll.update_one(
+            {
+                "_id": oid, "station_id": station_id,
+                # ยังไม่มีใครถือ / เป็นของเราเอง / ของคนอื่นแต่หมดอายุแล้ว → ยึดได้
+                "$or": [
+                    {"cm_lock": {"$exists": False}},
+                    {"cm_lock": None},
+                    {"cm_lock.by": me},
+                    {"cm_lock.expires_at": {"$lte": now}},
+                ],
+            },
+            {"$set": {"cm_lock": {"by": me, "at": now, "expires_at": expires}}},
+        )
+        if not res.matched_count:
+            return None
+        return {"ok": True, "held_by_me": True, "locked_by": me,
+                "expires_at": expires.isoformat(), "ttl": CM_LOCK_TTL_SECONDS}
+
+    taken = await _try_take()
+    if taken:
+        return taken
+
+    doc = await coll.find_one({"_id": oid, "station_id": station_id}, {"cm_lock": 1})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Report not found")
+
+    now = datetime.now(timezone.utc)
+    holder = _lock_holder(doc, now)
+    if not holder:
+        # ล็อกเพิ่งหมดอายุ/ถูกปล่อยระหว่างสองคำสั่ง — ลองยึดอีกรอบเดียวพอ
+        taken = await _try_take()
+        if taken:
+            return taken
+        doc = await coll.find_one({"_id": oid, "station_id": station_id}, {"cm_lock": 1})
+        holder = _lock_holder(doc, datetime.now(timezone.utc))
+
+    expires = _lock_expires(doc)
+    return {
+        "ok": True, "held_by_me": _same_user(holder, me), "locked_by": holder,
+        "expires_at": expires.isoformat() if expires else "",
+        "ttl": CM_LOCK_TTL_SECONDS,
+    }
+
+
+@router.delete("/cmreport/{report_id}/lock")
+async def cmreport_release_lock(
+    report_id: str,
+    station_id: str = Query(...),
+    current: UserClaims = Depends(get_current_user),
+):
+    """ปล่อยสิทธิ์กรอก — ฟอร์มยิงตอนออกจากหน้า ไม่ยิงก็แค่รอหมดอายุเอง"""
+    station_id = station_id.strip()
+    assert_station_access(current, station_id)
+    coll = get_cmreport_collection_for(station_id)
+    try:
+        oid = ObjectId(report_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bad report_id")
+
+    # ปล่อยได้เฉพาะล็อกของตัวเอง — กันแท็บที่ค้างอยู่ไปปลดล็อกของคนอื่นตอนปิด
+    await coll.update_one(
+        {"_id": oid, "station_id": station_id, "cm_lock.by": (current.username or "").strip()},
+        {"$unset": {"cm_lock": ""}},
+    )
+    return {"ok": True}
+
 
 @router.post("/cmreport/{report_id}/photos")
 async def cmreport_upload_photos(
@@ -1675,6 +1822,10 @@ async def cmreport_update_status(
         oid = ObjectId(report_id)
     except Exception:
         raise HTTPException(status_code=400, detail="Bad report_id")
+
+    # ใบที่คนอื่นกำลังกรอกอยู่ ห้ามบันทึกทับ (ฟอร์มของคนที่สองเป็นโหมดดูอย่างเดียวอยู่แล้ว
+    # ด่านนี้กันแท็บที่เปิดค้างไว้ก่อนล็อกจะเกิด)
+    await _assert_not_locked_by_other(coll, oid, station_id, current)
 
     # cs เปิดใบงานเป็นหลัก — แก้ได้เฉพาะใบที่ตัวเองเปิดและยังอยู่ด่าน cs
     # (เคส planner ตีกลับมาให้แก้ ถ้าห้ามทั้งหมด ใบจะค้างไม่มีใครแก้ได้)

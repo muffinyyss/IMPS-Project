@@ -401,7 +401,6 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
           office: resolveFileHref(raw, apiBase),
           reported_by: it.reported_by || "",
           inspector: it.inspector || "",
-          repair_result: it.repair_result || "",
           assignees: Array.isArray(it.assignees)
             ? it.assignees
             : (Array.isArray(it.job?.assignees) ? it.job.assignees : []),

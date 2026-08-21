@@ -4,10 +4,11 @@ import React, { useMemo, useState, useEffect, useRef, useCallback } from "react"
 import { Button, Input, Textarea } from "@material-tailwind/react";
 import Image from "next/image";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
-import { ArrowLeftIcon, ArrowUturnLeftIcon, PhotoIcon, XMarkIcon, CheckCircleIcon, ExclamationTriangleIcon, PencilIcon } from "@heroicons/react/24/solid";
+import { ArrowLeftIcon, ArrowUturnLeftIcon, PhotoIcon, XMarkIcon, CheckCircleIcon, ExclamationTriangleIcon, PencilIcon, LockClosedIcon } from "@heroicons/react/24/solid";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
 import CreatableSelect from "react-select/creatable";
 import { useDraft, type DraftData, type DraftImage, type DraftCorrectiveAction } from "../lib/draft";
+import { useReportLock } from "../lib/lock";
 import { failureCodeLabel } from "@/app/dashboard/cm-report/lib/failureCode";
 import {
     useMaximoFailureTree, isMaximoCode, failureClassRole, type SelectOption,
@@ -983,7 +984,7 @@ export default function CMInProgressForm() {
     const isTechnicianWaitForApprove = isTechnician && isWaitForApprove;
     // ด่านรออนุมัติจาก CS เป็นหน้าตรวจอย่างเดียว
     // ส่วนด่านปิดงานเปิดให้ Planner แก้ข้อมูลของช่างแล้วบันทึก/อนุมัติได้
-    const viewOnly =
+    const viewOnlyByRole =
         isCs ||
         isClosedStatus ||
         isCancelledStatus ||
@@ -991,6 +992,11 @@ export default function CMInProgressForm() {
         (isWaitForApprove && !canEditTechnicianData) ||
         (isPlanner && !plannerSelfCloseMode && (!canEditTechnicianData || !plannerEditMode)) ||
         (!isPlanner && !isJobOwner);
+
+    // ล็อกกันกรอกชนกัน — คนที่เปิดฟอร์มในโหมดกรอกก่อนได้สิทธิ์ ที่เหลือดูได้อย่างเดียว
+    // (จองสิทธิ์เฉพาะคนที่กรอกได้จริง ไม่งั้นคนที่แค่เปิดดูจะไปกันคนอื่นกรอก)
+    const { lockedBy } = useReportLock(editId, stationId ?? "", !viewOnlyByRole);
+    const viewOnly = viewOnlyByRole || !!lockedBy;
 
     // ช่างเปิดใบงานครั้งแรก = อ่านข้อมูลจาก CS/Planner ก่อน แล้วค่อยกด "เริ่มแก้ไข" ถึงจะเห็นส่วนที่ต้องกรอก
     // ใบที่เคยเริ่มแก้ไขแล้ว (มีเวลาเริ่ม) เข้ามาก็กรอกต่อได้เลย — role อื่นไม่ต้องผ่านด่านนี้
@@ -2758,6 +2764,18 @@ export default function CMInProgressForm() {
     // ==================== RENDER ====================
     return (
         <section className="tw-pb-24">
+            {/* มีคนกำลังกรอกใบงานนี้อยู่ — เปิดดูได้ แต่กรอกไม่ได้จนกว่าเขาจะออกจากหน้า
+                (หน้านี้ขอสิทธิ์ใหม่ให้เองทุก 15 วิ พอเขาออกก็กรอกต่อได้โดยไม่ต้องรีเฟรช) */}
+            {lockedBy && (
+                <div className="tw-mb-4 tw-flex tw-items-start tw-gap-2 tw-rounded-xl tw-border tw-border-amber-200 tw-bg-amber-50 tw-px-4 tw-py-3 tw-text-sm tw-text-amber-800">
+                    <LockClosedIcon className="tw-mt-0.5 tw-h-5 tw-w-5 tw-shrink-0" />
+                    <span>
+                        {lang === "th"
+                            ? <>ใบงานนี้กำลังถูกกรอกโดย <b>{lockedBy}</b> — ตอนนี้ดูได้อย่างเดียว ระบบจะเปิดให้กรอกเองเมื่ออีกฝ่ายออกจากหน้านี้</>
+                            : <>This work order is being edited by <b>{lockedBy}</b> — view only for now. Editing unlocks automatically once they leave.</>}
+                    </span>
+                </div>
+            )}
             {/* Draft Prompt Dialog */}
             {/* Draft Status Indicator */}
             {!viewOnly && draftStatus && (
