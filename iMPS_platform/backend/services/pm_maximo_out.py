@@ -11,10 +11,10 @@ services/pm_maximo_out.py
   2. IN02  update_wo_status(INPRG)      planner assign → ใบงานเข้าสถานะ In Progress
   3. IN03  attach_wo_link(url)          ช่างกรอกเสร็จ แนบลิงก์เอกสาร
   4. IN09  create_labtrans()            เวลาทำงานจริงของช่าง
-  5. IN02  update_wo_status(COMP)       ปิดสถานะ ต้องเป็นเส้นสุดท้ายเสมอ
+  5. IN02  update_wo_status(CLOSED)     ปิดสถานะ ต้องเป็นเส้นสุดท้ายเสมอ
 
-ขั้น 3–5 ยิงทีละเส้นเรียงกัน (ห้ามส่งพร้อมกัน) และ IN02 COMP ต้องอยู่ท้ายสุด
-เพราะพอ WO ขึ้น COMP แล้ว Maximo ไม่ให้แนบเอกสาร/ลงเวลาเพิ่มอีก
+ขั้น 3–5 ยิงทีละเส้นเรียงกัน (ห้ามส่งพร้อมกัน) และ IN02 CLOSED ต้องอยู่ท้ายสุด
+เพราะพอ WO ปิดแล้ว Maximo ไม่ให้แนบเอกสาร/ลงเวลาเพิ่มอีก
 
 wonum มาจากฟิลด์ `wonum` บนเอกสาร PM ซึ่งผูกไว้ตอนช่างเปิดฟอร์มจากใบงานที่
 planner assign — ใบที่ไม่มี wonum (สร้างเองไม่ได้มาจาก Maximo) จะข้ามไปเงียบ ๆ
@@ -55,9 +55,9 @@ PDF_TEMPLATE_OF = {
     "station": "station",
 }
 
-# สถานะที่ยิงตอนปิดงาน — ใช้ COMP เหมือน CM ไม่ใช่ CLOSE
-# (CLOSE ใน Maximo ปิดตายแก้ไม่ได้อีก ปล่อยให้ EGAT เป็นคนกดเอง)
-PM_CLOSE_STATUS = os.getenv("MAXIMO_PM_CLOSE_STATUS", "COMP").strip().upper()
+# สถานะที่ยิงตอนปิดงาน — ใช้ CLOSED เหมือน CM (EGAT ให้ปิดถึง CLOSED เลย ไม่หยุดที่ COMP)
+# ⚠️ CLOSED ใน Maximo ปิดตาย แก้ไข/เติมข้อมูลย้อนหลังไม่ได้อีก IN03/IN09 จึงต้องผ่านครบก่อน
+PM_CLOSE_STATUS = os.getenv("MAXIMO_PM_CLOSE_STATUS", "CLOSED").strip().upper()
 
 # สถานะตอน planner assign งานให้ช่าง (ขั้น 2 ของ sequencing)
 PM_INPROGRESS_STATUS = os.getenv("MAXIMO_PM_INPRG_STATUS", "INPRG").strip().upper()
@@ -366,7 +366,7 @@ def _blocking_failures(results: dict) -> list[str]:
 
     แยกจาก skipped: skipped = ไม่มีอะไรให้ส่ง (เช่นยังไม่ตั้ง PUBLIC_BASE_URL,
     ใบงานไม่มีช่าง) ปล่อยผ่านได้ ส่วน failed = Maximo ปฏิเสธ ต้องแก้แล้วยิงซ้ำ
-    ก่อน ไม่งั้นพอ WO ขึ้น COMP แล้วจะเติมย้อนหลังไม่ได้อีกเลย
+    ก่อน ไม่งั้นพอ WO ปิดแล้วจะเติมย้อนหลังไม่ได้อีกเลย
     """
     return [
         name for name, r in results.items()
@@ -399,7 +399,7 @@ async def sync_closed(coll, report_id, report: dict, *, memo: str = "", kind: st
 
     # ── 5. IN02 ปิดสถานะเป็นเส้นสุดท้าย ──
     # ต้องยิง 3–4 ให้ครบก่อน มีเส้นไหนไม่ผ่านห้ามปิด WO
-    # (COMP แล้ว Maximo ไม่ให้แนบเอกสาร/ลงเวลาเพิ่มอีก)
+    # (ปิดแล้ว Maximo ไม่ให้แนบเอกสาร/ลงเวลาเพิ่มอีก)
     failed = _blocking_failures(out)
     if failed:
         log.warning(

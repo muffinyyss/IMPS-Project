@@ -859,7 +859,7 @@ async def pmreport_approve(
             detail="Report not found or not in 'Wait for approve' status",
         )
 
-    # ── ส่งต่อให้ Maximo (IN03 → IN09 → IN02 COMP) ──
+    # ── ส่งต่อให้ Maximo (IN03 → IN09 → IN02 CLOSED) ──
     # อ่านใบงานหลังบันทึกเพื่อให้ข้อมูลที่ส่งไปตรงกับที่เก็บจริง
     fresh = await coll.find_one({"_id": oid}) or {}
 
