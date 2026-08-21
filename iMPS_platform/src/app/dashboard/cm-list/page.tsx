@@ -119,6 +119,14 @@ export default function CMListPage() {
   }, [maximoFailureTree]);
 
   const displayFaultyEquipment = useCallback((row: CMRow) => {
+    // เลขตู้มาก่อนเสมอ — faulty_equipment_label ที่ backend ประกอบให้ใช้ charger_name
+    // ซึ่งบางสถานีตั้งเป็นรหัส Location ของ Maximo คอลัมน์นี้ต้องบอกว่า "ตู้ไหน"
+    const chargerNo = String(row.charger_no ?? "").trim();
+    if (chargerNo) {
+      const sn = (row.charger_sn || "").trim();
+      return sn ? `Charger ${chargerNo} (${sn})` : `Charger ${chargerNo}`;
+    }
+    // ใบที่ไม่ได้ผูกกับตู้ (CM ระดับสถานี/MDB) — คงป้ายเดิมไว้ ข้อมูลจะได้ไม่หาย
     if (row.faulty_equipment_label) return row.faulty_equipment_label;
     const code = (row.faulty_equipment || "").trim();
     if (!code) return "";
