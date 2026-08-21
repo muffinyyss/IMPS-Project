@@ -919,6 +919,30 @@ def _round_key(start: str, finish: str) -> str:
     return f"{start}|{finish}"
 
 
+def _round_labor(raw: Any) -> tuple[list[str], str]:
+    """
+    maximo_labor ของรอบซ่อม 1 รอบ → (laborcode ที่ต้องลงเวลา, ชื่อผู้รับเหมาของรอบนั้น)
+
+    รอบใน repair_history เก็บเป็น [{laborcode, name}] — ฟอร์มเขียนไว้ตอนปิดรอบ
+    (inprogress/checkList.tsx: roundLabor) เก็บชื่อคู่ไปด้วยเพราะรายชื่อจาก IN08
+    เปลี่ยนได้ ส่วน field ชื่อเดียวกันระดับใบงานเป็น list ของ laborcode ล้วน ๆ
+    """
+    codes, contractor = [], ""
+    for item in raw or []:
+        if isinstance(item, dict):
+            code = str(item.get("laborcode") or "").strip()
+            name = str(item.get("name") or "").strip()
+        else:
+            code, name = str(item or "").strip(), ""
+        if not code:
+            continue
+        codes.append(code)
+        # รหัสกลางผู้รับเหมา — ชื่อจริงอยู่ใน name (ช่างไม่กรอก ฟอร์มจะใส่ code แทน)
+        if code.upper() == CONTRACTOR_LABOR_CODE and name and name.upper() != code.upper():
+            contractor = name
+    return codes, contractor
+
+
 def repair_rounds(report: dict) -> list[dict]:
     """
     รอบเข้าซ่อมที่ "ปิดรอบแล้ว" ทั้งหมด เรียงตามลำดับที่เกิดจริง
@@ -927,6 +951,9 @@ def repair_rounds(report: dict) -> list[dict]:
     รอบที่ปิดไปแล้วย้ายไปเก็บใน repair_history ส่วนรอบล่าสุดยังอยู่ที่ flat field
     ระดับ root ของใบงาน — Maximo ต้องได้ labtrans แยกใบตามช่วงเวลาจริงของแต่ละรอบ
     ไม่ใช่ก้อนเดียวคลุมตั้งแต่รอบแรกถึงรอบสุดท้าย
+
+    ทีมช่างเปลี่ยนได้ระหว่างรอบ จึงหอบ labor ของรอบนั้น ๆ ติดมาด้วย ใช้ค่าเดียว
+    ทั้งใบไม่ได้ — คนของรอบหลังจะถูกยิงลงเวลาย้อนใส่รอบก่อนหน้าที่เขาไม่ได้มา
     """
     history = report.get("repair_history")
     if not history and isinstance(report.get("job"), dict):
@@ -934,26 +961,34 @@ def repair_rounds(report: dict) -> list[dict]:
         # ก็ fallback แบบเดียวกัน) ไม่เผื่อไว้ = ใบเก่าจะเห็นแค่รอบสุดท้ายรอบเดียว
         history = report["job"].get("repair_history")
 
-    raw: list[tuple[str, str]] = []
+    # labor เป็น None = รอบนั้นเป็นของใบเก่าที่ยังไม่มี field นี้ (ให้ผู้เรียก fallback ได้)
+    # ต่างจาก [] ที่แปลว่า "รอบนี้ช่างไม่ได้เลือกใครไว้" ซึ่งห้ามไปหยิบคนของรอบอื่นมาแทน
+    raw: list[tuple[str, str, list[str] | None, str]] = []
     for rnd in history or []:
         if not isinstance(rnd, dict):
             continue
+        stored = rnd.get("maximo_labor")
+        labor, contractor = _round_labor(stored)
         raw.append((
             _combine(rnd.get("start_repair_date"), rnd.get("start_repair_time")),
             # ใบเก่าเก็บเวลาปิดรอบไว้ที่ saved_* — ความหมายตรงกับ finish_* ไม่ใช่ start
             _combine(rnd.get("finish_date") or rnd.get("saved_date"),
                      rnd.get("finish_time") or rnd.get("saved_time")),
+            labor if stored is not None else None, contractor,
         ))
 
     # รอบล่าสุด — นับว่าปิดรอบก็ต่อเมื่อมี resolved_* แล้ว
     # (ยังซ่อมค้างอยู่ = ยังไม่รู้ชั่วโมง ส่งไปก็ได้ labtrans ที่ไม่มีเวลาจบ)
+    # รอบนี้ยังไม่ถูก archive ช่างที่เลือกไว้จึงอยู่ที่ field ระดับใบงาน
+    latest_labor, _ = _round_labor(report.get("maximo_labor"))
     raw.append((
         _combine(report.get("start_repair_date"), report.get("start_repair_time")),
         _combine(report.get("resolved_date"), report.get("resolved_time")),
+        latest_labor, str(report.get("maximo_contractor") or "").strip(),
     ))
 
     seen, rounds = set(), []
-    for start, finish in raw:
+    for start, finish, labor, contractor in raw:
         if not start or not finish:
             continue
         key = _round_key(start, finish)
@@ -961,7 +996,8 @@ def repair_rounds(report: dict) -> list[dict]:
         if key in seen:
             continue
         seen.add(key)
-        rounds.append({"key": key, "start": start, "finish": finish})
+        rounds.append({"key": key, "start": start, "finish": finish,
+                       "labor": labor, "contractor": contractor})
     return rounds
 
 
@@ -974,10 +1010,15 @@ def _is_future(dt_str: str) -> bool:
     return dt_str > limit.strftime("%Y-%m-%dT%H:%M")
 
 
-def _labor_targets(report: dict) -> tuple[list[str], list[str], str]:
-    """laborcode ที่ต้องลงเวลา, รายชื่อที่ผูกรหัสไม่ได้, ที่มาของรหัส"""
+def _labor_targets(report: dict, picked: list[str] | None = None) -> tuple[list[str], list[str], str]:
+    """
+    laborcode ที่ต้องลงเวลา, รายชื่อที่ผูกรหัสไม่ได้, ที่มาของรหัส
+
+    picked = รหัสที่รอบซ่อมนั้นเลือกไว้ (ส่งมาจาก push_labor_time ทีละรอบ)
+    ไม่ส่งมา = ใช้ค่าระดับใบงาน ซึ่งคือ "รอบล่าสุด" เท่านั้น
+    """
     # ช่างเลือก laborcode เองในฟอร์ม = ใช้ตรง ๆ ไม่ต้องพึ่ง users.maximo_laborcode
-    picked = _as_list(report.get("maximo_labor"))
+    picked = list(picked) if picked is not None else _as_list(report.get("maximo_labor"))
     if picked:
         valid = [c for c in picked if not LABOR_CODES_KNOWN or c in LABOR_CODES_KNOWN]
         return valid, [c for c in picked if c not in valid], "form"
@@ -1001,6 +1042,10 @@ async def push_labor_time(coll, report_id, report: dict) -> dict:
     เพราะ labtrans เป็น POST create — ยิงซ้ำ = ได้เรคคอร์ดใหม่ทุกครั้ง ชั่วโมงทำงาน
     จะถูกนับซ้ำ (ต่างจาก IN03/IN05 ที่เป็น AddChange/MERGE) จึงจดคู่ (รอบ, laborcode)
     ที่ส่งผ่านแล้วไว้ที่ maximo_sync.IN09.rounds
+
+    ช่างของแต่ละรอบมาจากรอบนั้นเอง (repair_rounds หอบ labor ติดมาให้) รอบไหนเลือกใคร
+    ลงเวลาให้เฉพาะคนนั้น — ถ้าใช้รายชื่อชุดเดียวทั้งใบ พอรอบหลังเปลี่ยนทีมช่าง สมุด
+    รายรอบจะเห็นว่ารอบก่อน "ยังไม่ได้ส่งให้คนใหม่" แล้วยิงลงเวลาย้อนใส่รอบที่เขาไม่ได้มา
     """
     if not CM_MAXIMO_ENABLED:
         return _skip("CM_MAXIMO_ENABLED=false")
@@ -1013,8 +1058,22 @@ async def push_labor_time(coll, report_id, report: dict) -> dict:
     if not rounds:
         return _skip("ยังไม่มีรอบซ่อมที่ปิดรอบแล้ว")
 
-    labor, unmapped, source = _labor_targets(report)
-    if not labor:
+    # ช่างของแต่ละรอบ — ใบเก่าที่รอบไม่ได้เก็บรายชื่อไว้ ค่อย fallback มาที่ค่าระดับใบงาน
+    fallback_labor = _as_list(report.get("maximo_labor"))
+    fallback_contractor = str(report.get("maximo_contractor") or "").strip()
+    unmapped: list[str] = []
+    sources: list[str] = []
+    for rnd in rounds:
+        picked = rnd["labor"] if rnd["labor"] is not None else fallback_labor
+        rnd["labor"], miss, src = _labor_targets(report, picked)
+        rnd["contractor"] = rnd["contractor"] or fallback_contractor
+        unmapped += [m for m in miss if m not in unmapped]
+        if src not in sources:
+            sources.append(src)
+
+    source = "+".join(sources) if sources else "form"
+    no_labor = [r["key"] for r in rounds if not r["labor"]]
+    if len(no_labor) == len(rounds):
         if not unmapped:
             return _skip("ใบงานยังไม่มีช่างที่รับผิดชอบ")
         # มีช่างแต่ผูกรหัสไม่ได้เลย = ต้องแก้ก่อน ห้ามปล่อยผ่านไปปิด WO
@@ -1027,19 +1086,21 @@ async def push_labor_time(coll, report_id, report: dict) -> dict:
     if not ledger and prev.get("ok"):
         # ใบที่ซิงก์ด้วยโค้ดชุดเก่า (กันซ้ำด้วย flag เดียวทั้งใบ ยังไม่มีสมุดรายรอบ)
         # ถือว่าทุกรอบที่มีอยู่ตอนนี้ลงเวลาไปแล้ว — ยิงใหม่ = ชั่วโมงถูกนับซ้ำ
-        ledger = {r["key"]: {"ok": True, "sent_labor": list(labor), "legacy": True}
+        ledger = {r["key"]: {"ok": True, "sent_labor": list(r["labor"]), "legacy": True}
                   for r in rounds}
 
     location = report.get("maximo_location") or resolve_location(
         report.get("station_id") or "", report.get("faulty_equipment") or ""
     )
-    contractor = str(report.get("maximo_contractor") or "").strip()
 
     sent, errors, future = 0, [], []
     trace: dict = {}
     for rnd in rounds:
+        # รอบที่ไม่มีช่างของตัวเอง = ข้ามไป ห้ามเอาคนของรอบอื่นมาลงเวลาแทน
+        if not rnd["labor"]:
+            continue
         done_labor = list((ledger.get(rnd["key"]) or {}).get("sent_labor") or [])
-        pending = [c for c in labor if c not in done_labor]
+        pending = [c for c in rnd["labor"] if c not in done_labor]
         if not pending:
             continue
         # Maximo ไม่รับเวลาที่ยังมาไม่ถึง — ข้ามเฉพาะรอบนั้น อย่าให้ทั้งใบตก
@@ -1052,9 +1113,9 @@ async def push_labor_time(coll, report_id, report: dict) -> dict:
         round_errors = []
         for code in pending:
             memo = f"iMPS CM {report.get('issue_id') or ''}"
-            # EVCONTRACTOR เป็นรหัสกลาง — ต่อชื่อผู้รับเหมาจริงเข้าไปใน memo
-            if code.upper() == CONTRACTOR_LABOR_CODE and contractor:
-                memo = f"{memo} — {contractor}"
+            # EVCONTRACTOR เป็นรหัสกลาง — ต่อชื่อผู้รับเหมาจริงของรอบนั้นเข้าไปใน memo
+            if code.upper() == CONTRACTOR_LABOR_CODE and rnd["contractor"]:
+                memo = f"{memo} — {rnd['contractor']}"
             try:
                 await maximo.create_labtrans(
                     wonum, code, start=rnd["start"], finish=rnd["finish"],
@@ -1086,7 +1147,7 @@ async def push_labor_time(coll, report_id, report: dict) -> dict:
     await _record(coll, report_id, "IN09", ok, wonum=wonum, sent=sent,
                   rounds=ledger, total_rounds=len(rounds), source=source,
                   errors=errors or None, unmapped=unmapped or None,
-                  future=future or None, **_trace(trace))
+                  future=future or None, no_labor=no_labor or None, **_trace(trace))
     if ok:
         return _ok(wonum=wonum, sent=sent, rounds=len(rounds))
     return {"ok": False, "wonum": wonum, "sent": sent, "rounds": len(rounds),

@@ -76,6 +76,14 @@ function workNumberOf(issueId: string | undefined, prefix: "SR" | "WO"): string 
   return match ? `${prefix}${match[1].padStart(3, "0")}` : "";
 }
 
+// เลข WO มีได้เฉพาะใบที่ผ่านด่าน CS แล้ว — bucket "new"/"wait_cs_approve" ยังเป็นแค่ SR
+// ที่รอ head CS อนุมัติ (กติกาเดียวกับ KPI "WO ทั้งหมด" ของ CM Dashboard = ทั้งหมด − new
+// − wait_cs_approve และฟอร์ม CM ที่สลับเลขจาก SR เป็น WO ตอน status "Wait for schedule")
+function isWorkOrder(r: CMRow): boolean {
+  const ws = workStatusOf(r);
+  return ws !== "new" && ws !== "wait_cs_approve";
+}
+
 export default function CMListPage() {
   const [rows, setRows] = useState<CMRow[]>([]);
   const [totalInDB, setTotalInDB] = useState(0);
@@ -256,7 +264,8 @@ export default function CMListPage() {
       }
       case "brand": return brandOf(r).toLowerCase();
       case "sr": return workNumberOf(r.issue_id, "SR");
-      case "wo": return workNumberOf(r.issue_id, "WO");
+      // ใบที่ยังเป็น SR ไม่มีเลข WO — คืนค่าว่างเพื่อให้ตกไปอยู่ล่างสุดเสมอเวลาจัดเรียง
+      case "wo": return isWorkOrder(r) ? workNumberOf(r.issue_id, "WO") : "";
       case "reported_by": return (r.reported_by || "").toLowerCase();
       case "equipment": return (displayFaultyEquipment(r) || "").toLowerCase();
       case "problem": return (r.problem_details || "").toLowerCase();
@@ -686,7 +695,7 @@ export default function CMListPage() {
                       </button>
                     </td>
                     <td className="tw-px-4 tw-py-3 tw-text-gray-600">{workNumberOf(r.issue_id, "SR") || "-"}</td>
-                    <td className="tw-px-4 tw-py-3 tw-text-gray-600">{workNumberOf(r.issue_id, "WO") || "-"}</td>
+                    <td className="tw-px-4 tw-py-3 tw-text-gray-600">{(isWorkOrder(r) && workNumberOf(r.issue_id, "WO")) || "-"}</td>
                     <td className="tw-px-4 tw-py-3 tw-text-gray-600">
                       <span className="tw-inline-flex tw-items-center tw-gap-1.5">
                         {r.reported_by || "-"}
