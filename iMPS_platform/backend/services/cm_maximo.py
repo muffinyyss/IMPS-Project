@@ -981,11 +981,14 @@ def repair_rounds(report: dict) -> list[dict]:
     # (ยังซ่อมค้างอยู่ = ยังไม่รู้ชั่วโมง ส่งไปก็ได้ labtrans ที่ไม่มีเวลาจบ)
     # รอบนี้ยังไม่ถูก archive ช่างที่เลือกไว้จึงอยู่ที่ field ระดับใบงาน
     latest_labor, _ = _round_labor(report.get("maximo_labor"))
+    latest_start = _combine(report.get("start_repair_date"), report.get("start_repair_time"))
+    latest_finish = _combine(report.get("resolved_date"), report.get("resolved_time"))
     raw.append((
-        _combine(report.get("start_repair_date"), report.get("start_repair_time")),
-        _combine(report.get("resolved_date"), report.get("resolved_time")),
+        latest_start, latest_finish,
         latest_labor, str(report.get("maximo_contractor") or "").strip(),
     ))
+    # รอบที่ยังอยู่ flat field = รอบที่ช่างเพิ่งปิด ยังไม่ผ่านการอนุมัติของ planner
+    current_key = _round_key(latest_start, latest_finish) if latest_start and latest_finish else ""
 
     seen, rounds = set(), []
     for start, finish, labor, contractor in raw:
@@ -997,7 +1000,8 @@ def repair_rounds(report: dict) -> list[dict]:
             continue
         seen.add(key)
         rounds.append({"key": key, "start": start, "finish": finish,
-                       "labor": labor, "contractor": contractor})
+                       "labor": labor, "contractor": contractor,
+                       "current": key == current_key})
     return rounds
 
 
@@ -1034,7 +1038,7 @@ def _labor_targets(report: dict, picked: list[str] | None = None) -> tuple[list[
     return labor, unmapped, "assignees"
 
 
-async def push_labor_time(coll, report_id, report: dict) -> dict:
+async def push_labor_time(coll, report_id, report: dict, *, skip_current: bool = False) -> dict:
     """
     ลงเวลาช่างแยกตามรอบเข้าซ่อม — 1 รอบ × ช่าง 1 คน = labtrans 1 ใบ
 
@@ -1046,6 +1050,10 @@ async def push_labor_time(coll, report_id, report: dict) -> dict:
     ช่างของแต่ละรอบมาจากรอบนั้นเอง (repair_rounds หอบ labor ติดมาให้) รอบไหนเลือกใคร
     ลงเวลาให้เฉพาะคนนั้น — ถ้าใช้รายชื่อชุดเดียวทั้งใบ พอรอบหลังเปลี่ยนทีมช่าง สมุด
     รายรอบจะเห็นว่ารอบก่อน "ยังไม่ได้ส่งให้คนใหม่" แล้วยิงลงเวลาย้อนใส่รอบที่เขาไม่ได้มา
+
+    skip_current=True — ยกรอบที่ช่างเพิ่งปิด (ยังอยู่ที่ flat field) ไว้ก่อน ใช้ตอน
+    ช่างกดบันทึกผลซ่อมแล้วใบยังรอ planner อนุมัติ ตัวเลขชั่วโมงยังถูกตีกลับ/แก้ได้อยู่
+    ส่งไปก่อนแล้ว Maximo ลบ labtrans ให้ไม่ได้ — รอบที่ archive แล้วยังส่งตามปกติ
     """
     if not CM_MAXIMO_ENABLED:
         return _skip("CM_MAXIMO_ENABLED=false")
@@ -1054,8 +1062,8 @@ async def push_labor_time(coll, report_id, report: dict) -> dict:
     if not wonum:
         return _skip("ใบงานนี้ยังไม่มี Maximo WO")
 
-    rounds = repair_rounds(report)
-    if not rounds:
+    all_rounds = repair_rounds(report)
+    if not all_rounds:
         return _skip("ยังไม่มีรอบซ่อมที่ปิดรอบแล้ว")
 
     # ช่างของแต่ละรอบ — ใบเก่าที่รอบไม่ได้เก็บรายชื่อไว้ ค่อย fallback มาที่ค่าระดับใบงาน
@@ -1063,7 +1071,7 @@ async def push_labor_time(coll, report_id, report: dict) -> dict:
     fallback_contractor = str(report.get("maximo_contractor") or "").strip()
     unmapped: list[str] = []
     sources: list[str] = []
-    for rnd in rounds:
+    for rnd in all_rounds:
         picked = rnd["labor"] if rnd["labor"] is not None else fallback_labor
         rnd["labor"], miss, src = _labor_targets(report, picked)
         rnd["contractor"] = rnd["contractor"] or fallback_contractor
@@ -1072,8 +1080,8 @@ async def push_labor_time(coll, report_id, report: dict) -> dict:
             sources.append(src)
 
     source = "+".join(sources) if sources else "form"
-    no_labor = [r["key"] for r in rounds if not r["labor"]]
-    if len(no_labor) == len(rounds):
+    no_labor = [r["key"] for r in all_rounds if not r["labor"]]
+    if len(no_labor) == len(all_rounds):
         if not unmapped:
             return _skip("ใบงานยังไม่มีช่างที่รับผิดชอบ")
         # มีช่างแต่ผูกรหัสไม่ได้เลย = ต้องแก้ก่อน ห้ามปล่อยผ่านไปปิด WO
@@ -1081,13 +1089,20 @@ async def push_labor_time(coll, report_id, report: dict) -> dict:
                       unmapped=unmapped, source=source)
         return {"ok": False, "wonum": wonum, "sent": 0, "unmapped": unmapped}
 
+    # รอบที่ยังรออนุมัติ ยกไว้ก่อน — รอบที่ archive แล้วยังส่ง/ยิงซ้ำได้ตามปกติ
+    deferred = [r["key"] for r in all_rounds if skip_current and r["current"]]
+    rounds = [r for r in all_rounds if r["key"] not in deferred]
+    if not rounds:
+        return _skip("รอบล่าสุดรอ planner อนุมัติปิดงานก่อน ถึงจะลงเวลาเข้า Maximo")
+
     prev = (report.get("maximo_sync") or {}).get("IN09") or {}
     ledger = {k: dict(v) for k, v in (prev.get("rounds") or {}).items() if isinstance(v, dict)}
     if not ledger and prev.get("ok"):
         # ใบที่ซิงก์ด้วยโค้ดชุดเก่า (กันซ้ำด้วย flag เดียวทั้งใบ ยังไม่มีสมุดรายรอบ)
         # ถือว่าทุกรอบที่มีอยู่ตอนนี้ลงเวลาไปแล้ว — ยิงใหม่ = ชั่วโมงถูกนับซ้ำ
+        # (รวมรอบที่ยกไว้ด้วย ไม่งั้นตอนอนุมัติจะส่งซ้ำรอบที่โค้ดชุดเก่าส่งไปแล้ว)
         ledger = {r["key"]: {"ok": True, "sent_labor": list(r["labor"]), "legacy": True}
-                  for r in rounds}
+                  for r in all_rounds}
 
     location = report.get("maximo_location") or resolve_location(
         report.get("station_id") or "", report.get("faulty_equipment") or ""
@@ -1143,11 +1158,13 @@ async def push_labor_time(coll, report_id, report: dict) -> dict:
             entry["errors"] = round_errors
         ledger[rnd["key"]] = entry
 
+    # deferred ไม่นับเป็นไม่ผ่าน — ตั้งใจยกไว้ให้ยิงตอน planner อนุมัติ
     ok = not errors and not unmapped and not future
     await _record(coll, report_id, "IN09", ok, wonum=wonum, sent=sent,
-                  rounds=ledger, total_rounds=len(rounds), source=source,
+                  rounds=ledger, total_rounds=len(all_rounds), source=source,
                   errors=errors or None, unmapped=unmapped or None,
-                  future=future or None, no_labor=no_labor or None, **_trace(trace))
+                  future=future or None, no_labor=no_labor or None,
+                  deferred=deferred or None, **_trace(trace))
     if ok:
         return _ok(wonum=wonum, sent=sent, rounds=len(rounds))
     return {"ok": False, "wonum": wonum, "sent": sent, "rounds": len(rounds),
@@ -1224,10 +1241,11 @@ async def sync_report(coll, report_id, report: dict, *, memo: str = "") -> dict:
     ลำดับตาม sequencing ที่ตกลงกับ EGAT (Maximo x iMPS — CM):
       1. IN01 create wo      — planner นัดวันเข้าหน้างาน (wait for scheduled)
       2. IN02 wo status      — INPRG รอบเดียวพร้อม IN01
-      3. IN09 actual labor   — ลงเวลารอบที่ช่างเพิ่งปิด (ซ่อมหลายรอบ = ลงหลายครั้ง)
+      3. IN09 actual labor   — ลงเวลารอบที่ปิดแล้วและ archive แล้ว (ซ่อมหลายรอบ =
+                               ลงหลายครั้ง) ไม่รวมรอบที่ยังรอ planner อนุมัติ
       4. IN03 attachment     ┐
       5. IN05 failure report ├ ตอนปิดใบงาน ยิงทีละเส้นเรียงกัน (ห้ามส่งพร้อมกัน)
-      6. IN09 actual labor   ┘ (เฉพาะรอบสุดท้ายที่ยังไม่ได้ลง)
+      6. IN09 actual labor   ┘ (รอบสุดท้ายที่ยกไว้ + รอบไหนที่ยังตกค้าง)
       7. IN02 wo status      — ปิดงาน (CLOSED/CAN) ต้องเป็นเส้นสุดท้ายเสมอ
 
     IN02 ยิงแค่ 2 รอบต่อใบ: ข้อ 2 (INPRG) กับข้อ 7 (ปิดงาน) ระหว่างทางที่ช่าง
@@ -1252,12 +1270,16 @@ async def sync_report(coll, report_id, report: dict, *, memo: str = "") -> dict:
     is_closing = str(report.get("status") or "").strip().lower() in CLOSING_STATUSES
 
     if not is_closing:
-        # ── 3. IN09 — เวลาทำงานของรอบที่ช่างเพิ่งปิดไป ──
+        # ── 3. IN09 — เวลาทำงานของรอบที่ "ปิดรอบแล้วและ archive แล้ว" ──
         # ช่างซ่อมไม่จบในรอบเดียว (รออะไหล่/รอนัดใหม่) แล้วกลับมาซ่อมอีกรอบ
         # ต้องลงเวลาให้รอบนั้นตั้งแต่ตอนนี้ รอจนปิดใบไม่ได้ เพราะพอ WO ขึ้น COMP
         # แล้ว Maximo ไม่ให้เติม labor ย้อนหลัง (push_labor_time กันยิงซ้ำรายรอบเอง)
+        #
+        # ยกเว้นรอบที่ช่างเพิ่งกดผลซ่อมจบ (เช่น "แก้ไขสำเร็จ") — ใบยังรอ planner
+        # อนุมัติ ผลอาจถูกตีกลับให้แก้เวลา/ช่างได้อีก ส่งไปก่อนแล้ว Maximo ลบ labtrans
+        # ให้ไม่ได้ จึงยกไปยิงพร้อมชุดปิดงานที่ข้อ 6 ตอน planner กด approve
         if report.get("maximo_wonum"):
-            out["IN09"] = await push_labor_time(coll, report_id, report)
+            out["IN09"] = await push_labor_time(coll, report_id, report, skip_current=True)
             if out["IN09"].get("sent"):
                 await _settle()
 

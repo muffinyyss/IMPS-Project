@@ -20,6 +20,7 @@ export type ChargerForm = {
     chargerNo: number;
     brand: string;
     manufacturer: string;
+    vendor: string;
     model: string;
     SN: string;
     WO: string;
@@ -90,7 +91,7 @@ const generateId = (): string => {
 };
 
 const createEmptyCharger = (chargerNo: number): ChargerForm => ({
-    id: generateId(), chargerNo, brand: "", manufacturer: "", model: "", SN: "", WO: "", power: "",
+    id: generateId(), chargerNo, brand: "", manufacturer: "", vendor: "", model: "", SN: "", WO: "", power: "",
     PLCFirmware: "", PIFirmware: "", RTFirmware: "", chargeBoxID: "", ocppUrl: "",
     commissioningDate: getTodayDate(), warrantyYears: 1, numberOfCables: 1, is_active: true,
     maximo_location: "", maximo_desc: "", chargerType: "DC", chargerImages: [], deviceImages: [],
@@ -319,7 +320,7 @@ export default function AddStationModal({
                 chargers: "ตู้ชาร์จ", addCharger: "เพิ่มตู้ชาร์จ", chargerNo: "ตู้ชาร์จ #",
                 chargerBoxId: "Charge Box ID", ocppUrl: "OCPP URL", ocppSection: "OCPP",
                 chargerType: "ประเภท", chargerNoAuto: "ลำดับ (อัตโนมัติ)", auto: "อัตโนมัติ",
-                brand: "ยี่ห้อ", manufacturer: "ผู้ผลิตตู้ Charger", model: "รุ่น", serialNumber: "S/N",
+                brand: "ยี่ห้อ", manufacturer: "ผู้ผลิตตู้ Charger", vendor: "ผู้จำหน่าย (Vendor)", model: "รุ่น", serialNumber: "S/N",
                 workOrder: "WO", power: "กำลังไฟ (kW)", plcFirmware: "PLC Firmware",
                 piFirmware: "Pi Firmware", routerFirmware: "Router Firmware",
                 commissioningDate: "วันเริ่มใช้งาน", warrantyYears: "รับประกัน (ปี)",
@@ -356,7 +357,7 @@ export default function AddStationModal({
                 chargers: "Chargers", addCharger: "Add Charger", chargerNo: "Charger #",
                 chargerBoxId: "Charge Box ID", ocppUrl: "OCPP URL", ocppSection: "OCPP",
                 chargerType: "Type", chargerNoAuto: "No. (Auto)", auto: "Auto",
-                brand: "Brand", manufacturer: "Charger Manufacturer", model: "Model", serialNumber: "S/N",
+                brand: "Brand", manufacturer: "Charger Manufacturer", vendor: "Vendor", model: "Model", serialNumber: "S/N",
                 workOrder: "WO", power: "Power (kW)", plcFirmware: "PLC Firmware",
                 piFirmware: "Pi Firmware", routerFirmware: "Router Firmware",
                 commissioningDate: "Commissioning Date", warrantyYears: "Warranty (Yrs)",
@@ -700,7 +701,7 @@ export default function AddStationModal({
                 maximo_location: station.maximo_location.trim(), maximo_desc: station.maximo_desc.trim(),
             },
             chargers: chargers.map((c) => ({
-                chargerNo: c.chargerNo, brand: c.brand.trim(), manufacturer: c.manufacturer.trim(), model: c.model.trim(),
+                chargerNo: c.chargerNo, brand: c.brand.trim(), manufacturer: c.manufacturer.trim(), vendor: c.vendor.trim(), model: c.model.trim(),
                 SN: c.SN.trim(), WO: c.WO.trim(), power: c.power.trim(),
                 PLCFirmware: c.PLCFirmware.trim(), PIFirmware: c.PIFirmware.trim(),
                 RTFirmware: c.RTFirmware.trim(), chargeBoxID: c.chargeBoxID.trim(),
@@ -993,6 +994,7 @@ export default function AddStationModal({
                                             </Select>
                                              <Input label={t.brand} required value={charger.brand} onChange={(e) => onChargerChange(charger.id, "brand", e.target.value)} crossOrigin={undefined} />
                                              <Input label={t.manufacturer} value={charger.manufacturer} onChange={(e) => onChargerChange(charger.id, "manufacturer", e.target.value)} crossOrigin={undefined} />
+                                             <Input label={t.vendor} value={charger.vendor} onChange={(e) => onChargerChange(charger.id, "vendor", e.target.value)} crossOrigin={undefined} />
                                              <Input label={t.model} required value={charger.model} onChange={(e) => onChargerChange(charger.id, "model", e.target.value)} crossOrigin={undefined} />
                                             <Input label={t.serialNumber} required value={charger.SN} onChange={(e) => onChargerChange(charger.id, "SN", e.target.value)} crossOrigin={undefined} />
                                             <Input label={t.power} required value={charger.power} onChange={(e) => onChargerChange(charger.id, "power", e.target.value)} crossOrigin={undefined} />

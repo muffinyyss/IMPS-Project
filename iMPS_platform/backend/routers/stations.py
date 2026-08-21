@@ -277,6 +277,7 @@ class ChargerCreate(BaseModel):
     chargerNo: Optional[int] = None
     brand: str
     manufacturer: Optional[str] = ""
+    vendor: Optional[str] = ""
     model: str
     SN: str
     WO: Optional[str] = ""
@@ -298,6 +299,7 @@ class ChargerUpdate(BaseModel):
     chargerNo: Optional[int] = None
     brand: Optional[str] = None
     manufacturer: Optional[str] = None
+    vendor: Optional[str] = None
     model: Optional[str] = None
     SN: Optional[str] = None
     WO: Optional[str] = None
@@ -323,6 +325,7 @@ class ChargerOut(BaseModel):
     charger_name: Optional[str] = ""
     brand: str
     manufacturer: Optional[str] = ""
+    vendor: Optional[str] = ""
     model: str
     SN: str
     WO: Optional[str] = ""
@@ -522,6 +525,7 @@ def format_charger(doc: dict, include_status: bool = True) -> ChargerOut:
         charger_name=doc.get("charger_name", ""),
         brand=doc.get("brand", ""),
         manufacturer=doc.get("manufacturer", ""),
+        vendor=doc.get("vendor", ""),
         model=doc.get("model", ""),
         SN=doc.get("SN", ""),
         WO=doc.get("WO", ""),
@@ -807,6 +811,7 @@ def create_station_with_chargers(
             "charger_name": maximo_charger_name(charger.maximo_location),
             "brand": charger.brand.strip(),
             "manufacturer": charger.manufacturer.strip() if charger.manufacturer else "",
+            "vendor": charger.vendor.strip() if charger.vendor else "",
             "model": charger.model.strip(),
             "SN": charger.SN.strip(),
             "WO": charger.WO.strip() if charger.WO else "",
@@ -942,6 +947,7 @@ def add_charger_to_station(
         "chargerNo": charger_no,
         "brand": body.brand.strip(),
         "manufacturer": body.manufacturer.strip() if body.manufacturer else "",
+        "vendor": body.vendor.strip() if body.vendor else "",
         "model": body.model.strip(),
         "SN": body.SN.strip(),
         "WO": body.WO.strip() if body.WO else "",
@@ -1021,7 +1027,7 @@ def update_charger(
     )
 
     update_data = {}
-    for field in ["chargeBoxID", "brand", "manufacturer", "model", "SN", "WO", "power", "PLCFirmware",
+    for field in ["chargeBoxID", "brand", "manufacturer", "vendor", "model", "SN", "WO", "power", "PLCFirmware",
                   "PIFirmware", "RTFirmware", "commissioningDate", "maximo_location",
                   "maximo_desc", "ocppUrl", "chargerType"]:
         value = getattr(body, field, None)
@@ -1305,6 +1311,7 @@ def get_charger_info(
             "WO":                doc.get("WO", "-"),
             "brand":             doc.get("brand", "-"),
             "manufacturer":      doc.get("manufacturer", "-"),
+            "vendor":            doc.get("vendor", "-"),
             "model":             doc.get("model", "-"),
             "power":             doc.get("power", "-"),
             "chargeBoxID":       doc.get("chargeBoxID", "-"),
