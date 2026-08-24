@@ -12,10 +12,12 @@ import { putPhoto, getPhotosByDraftKey, delPhoto, delPhotosByDraftKey, createPre
 import { apiFetch } from "@/utils/api";
 import { useMaximoFailureTree, failureClassOptions, failureClassRole } from "@/app/dashboard/cm-report/lib/maximo";
 import { failureCodeLabel } from "@/app/dashboard/cm-report/lib/failureCode";
+import { useReportLock } from "@/app/dashboard/cm-report/lib/lock";
 import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
 import { cmBackRoute } from "@/app/dashboard/cm-report/lib/origin";
 import { brandScopeOf, canOpenCmAtStation } from "@/utils/brandScope";
 import ChargerIdentity, { type ChargerIdentityData } from "@/app/dashboard/cm-report/components/ChargerIdentity";
+import LockBanner from "@/app/dashboard/cm-report/components/LockBanner";
 import { ZoomableImg, AttachmentFileRow, isImageAttachment, isVideoAttachment, isAllowedCmAttachment, CM_ACCEPT_ATTACH } from "@/app/dashboard/cm-report/components/photo-viewer";
 
 // ==================== TRANSLATIONS ====================
@@ -630,6 +632,8 @@ export default function CMOpenForm() {
     // (planner แก้ได้เฉพาะส่วนการวางแผน ซึ่งอยู่นอก fieldsLocked) — กันเคส impersonate ที่ isOwner เพี้ยนด้วย
     const isPlanner = userRole.trim().toLowerCase() === "planner";
     const isCs = userRole.trim().toLowerCase() === "cs";
+    // ช่างเปิดใบงานเองได้ และไม่ต้องผ่านด่านอนุมัติ/วางแผน — เข้าไปกรอกผลต่อได้ทันที
+    const isTechnician = userRole.trim().toLowerCase() === "technician";
     const isCancelled = status.trim().toLowerCase() === "cancelled";
 
     // ── ด่านของใบงาน (ใช้คุมสิทธิ์แก้ไข/วางแผน + ปุ่มตีกลับ) ──
@@ -680,13 +684,22 @@ export default function CMOpenForm() {
     // คนเปิดใบงานแก้ข้อมูลได้ระหว่างใบยังอยู่ด่าน cs — รวม cs ที่ถูก planner ตีกลับมาให้แก้
     // (planner แก้ได้เฉพาะส่วนวางแผน ซึ่งอยู่นอก fieldsLocked)
     const canEditFields = isOwner && !isPlanner && (!isCs || isCsStage);
-    const fieldsLocked = isEdit && (!canEditFields || isCancelled);
 
     // ขั้นวางแผน: planner วางแผนตาม flow, admin/owner คุมภาพรวม — cs เปิดใบงานอย่างเดียว วางแผนไม่ได้
     // เห็นทั้งตอนเปิดใบใหม่และตอนเปิดใบเดิม (เปิดงาน + วางแผน รวดเดียวได้)
     // ใบที่ตีกลับให้ cs แก้ = ยังวางแผน/Assign ไม่ได้ จนกว่า cs จะแก้แล้วบันทึกกลับเข้าคิว
     // ติ๊กปิดใบงานบนใบใหม่ = ไม่ต้องวางแผนคนเข้า จึงซ่อนส่วนวางแผนทั้งบล็อก
-    const canPlan = !isCancelled && !isReturnedToCs && !(selfCloseNew && !isEdit) && ["admin", "owner", "planner"].includes(roleLower);
+    const canPlanByRole = !isCancelled && !isReturnedToCs && !(selfCloseNew && !isEdit) && ["admin", "owner", "planner"].includes(roleLower);
+
+    // ล็อกกันกรอกชนกัน — ล็อกตัวเดียวกับฟอร์ม In Progress (ใบเดียวกัน = คิวเดียวกัน)
+    // จองสิทธิ์เฉพาะคนที่กรอก/วางแผนได้จริงบนใบที่มีอยู่แล้ว ใบเปิดใหม่ยังไม่มี id ให้ล็อก
+    const { lockedBy } = useReportLock(
+        editId, stationId ?? "", isEdit && !isCancelled && (canEditFields || canPlanByRole),
+    );
+    const fieldsLocked = isEdit && (!canEditFields || isCancelled || !!lockedBy);
+    // คนที่ถูกล็อกยังเห็นส่วนวางแผนได้ตามปกติ (ช่องกรอกถูกปิดด้วย fieldset ในบล็อกนั้น)
+    // — ซ่อนทั้งบล็อกจะกลายเป็น "ดูก็ไม่ได้" ซึ่งไม่ใช่สิ่งที่ต้องการ
+    const canPlan = canPlanByRole;
     // แสดง Waiting On ครบทุกตัวเลือกเสมอ แม้สถานะนั้นจะเคยถูกเลือกในรอบก่อนแล้ว
     const waitStateOptions = WAIT_STATES;
 
@@ -870,7 +883,11 @@ export default function CMOpenForm() {
         { key: "problemFound", label: t("validProblemFound", lang), isValid: !!problemDetails.trim(), message: t("notFilled", lang), isRequired: true, scrollId: "cm-problem-found" },
         { key: "photos", label: t("validPhotos", lang), isValid: photos_open.length > 0, message: t("notAttached", lang), isRequired: true, scrollId: "cm-photos" },
     ], [faultyEquipment, severity, problemDetails, photos_open, lang]);
-    const canSave = useMemo(() => validations.filter(v => v.isRequired).every(v => v.isValid), [validations]);
+    // มีคนถือสิทธิ์กรอกอยู่ = กดบันทึกไม่ได้ (backend ตอบ 409 อยู่แล้ว ปิดปุ่มไว้ก่อนจะได้ไม่เสียเที่ยว)
+    const canSave = useMemo(
+        () => !lockedBy && validations.filter(v => v.isRequired).every(v => v.isValid),
+        [validations, lockedBy],
+    );
 
     // ==================== HELPERS ====================
     const localTodayFormatted = () => { const d = new Date(); return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`; };
@@ -1507,11 +1524,29 @@ ${in01.error ?? ""}`);
                     // /cmreport/submit เปิดใบเป็น "Wait for approve" (cs_approval) และไม่รับฟิลด์แผน — ถ้ากรอกแผนมาด้วยต้อง PATCH ต่อ
                     if (selfClose) {
                         // ข้ามด่านอนุมัติ/วางแผน — ดันใบไปที่ Wait for schedule เพื่อให้ planner กรอกผลและปิดเองได้
+                        const selfCloseJob: Record<string, any> = { stage: "" };
+                        if (isTechnician) {
+                            // ช่างเปิดใบเอง = ไม่มีขั้นวางแผน จึงต้องเติมสิ่งที่ปกติ planner กรอกให้เองตรงนี้
+                            //   • assignees = ตัวเอง — ไม่งั้นเปิดฟอร์ม In Progress มาเจอโหมดดูอย่างเดียว
+                            //   • repair_result + วันนัด — เงื่อนไขที่ IN01 ใช้ตัดสินว่าจะเปิด WO ฝั่ง Maximo ไหม
+                            //     (services/cm_maximo.is_planning_save) ไม่มีค่าพวกนี้ = ไม่มี WO แล้ว
+                            //     IN02/IN03/IN05/IN09 จะยิงไม่ได้เลยทั้งใบตอนปิดงาน
+                            const startedAt = `${localTodayISO()}T${localNowHHMM()}`;
+                            const tomorrow = new Date();
+                            tomorrow.setDate(tomorrow.getDate() + 1);
+                            const tomorrowISO = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, "0")}-${String(tomorrow.getDate()).padStart(2, "0")}`;
+                            selfCloseJob.assignees = [currentUsername.trim()].filter(Boolean);
+                            selfCloseJob.repair_result = DEFAULT_WAIT_STATE;
+                            selfCloseJob.sched_start = startedAt;
+                            selfCloseJob.sched_finish = `${tomorrowISO}T${localNowHHMM()}`;
+                            selfCloseJob.planned_date = localTodayISO();
+                            selfCloseJob.planned_time = localNowHHMM();
+                        }
                         const selfCloseRes = await apiFetch(`${API_BASE}/cmreport/${encodeURIComponent(report_id)}/status`, {
                             method: "PATCH",
                             headers: { "Content-Type": "application/json" },
                             credentials: "include",
-                            body: JSON.stringify({ station_id: stationId, status: nextStatus, job: { stage: "" } }),
+                            body: JSON.stringify({ station_id: stationId, status: nextStatus, job: selfCloseJob }),
                         });
                         if (!selfCloseRes.ok) throw new Error((await selfCloseRes.json()).detail || `HTTP ${selfCloseRes.status}`);
                         reportMaximoResult((await selfCloseRes.json().catch(() => ({})))?.maximo);
@@ -1560,7 +1595,14 @@ ${in01.error ?? ""}`);
                     const params = new URLSearchParams(searchParams.toString());
                     params.set("view", "form");
                     params.set("edit_id", createdReportIds[0]);
-                    params.set("self_close", "1");
+                    if (isTechnician) {
+                        // ใบของช่างอยู่แท็บ In Progress แล้วจริง ๆ — ไปที่แท็บนั้นเลย กดย้อนกลับจะได้ตรงที่
+                        // (self_close เป็นสวิตช์ของ planner ที่ทำให้แท็บ Open เรนเดอร์ฟอร์ม In Progress)
+                        params.set("tab", "in-progress");
+                        params.delete("self_close");
+                    } else {
+                        params.set("self_close", "1");
+                    }
                     router.replace(`${pathname}?${params.toString()}`, { scroll: false });
                     return;
                 }
@@ -1753,6 +1795,9 @@ ${in01.error ?? ""}`);
                             )}
                         </div>
                     )}
+
+                    {/* ═══ มีคนกำลังกรอก/วางแผนใบงานนี้อยู่ → ดูได้อย่างเดียวจนกว่าเขาจะออกจากหน้า ═══ */}
+                    <LockBanner lockedBy={lockedBy} lang={lang} />
 
                     {/* ═══ สถานีนี้ไม่ใช่ยี่ห้อที่บริษัทตัวเองดูแล → เปิดใบงานไม่ได้ ═══ */}
                     {!isEdit && brandBlocked && (
@@ -1972,8 +2017,10 @@ ${in01.error ?? ""}`);
                         </div>
                     )}
 
+                    {/* คนอื่นถือสิทธิ์กรอกอยู่ = ยังเห็นแผนได้ แต่แก้ไม่ได้ — fieldset ปิดทั้งบล็อกทีเดียว ไม่ต้องไล่ปิดทีละช่อง */}
                     {/* Planning Section — เห็นเฉพาะ role ที่วางแผนได้ (admin/owner/planner) ข้อมูลด้านบนเป็น read-only สำหรับคนกลุ่มนี้อยู่แล้ว */}
                     {canPlan && (
+                        <fieldset disabled={!!lockedBy} className="tw-m-0 tw-min-w-0 tw-border-0 tw-p-0">
                         <div className="tw-mb-6 tw-p-5 tw-rounded-xl tw-border tw-border-blue-gray-100 tw-bg-blue-gray-50/40">
                             <h3 className="tw-text-base tw-font-bold tw-text-blue-gray-800 tw-mb-4">{t("planningSection", lang)}</h3>
                             {/* แผนรอบก่อนหน้า — อ่านอย่างเดียว */}
@@ -2058,6 +2105,7 @@ ${in01.error ?? ""}`);
                                 </>)}
                             </div>
                         </div>
+                        </fieldset>
                     )}
 
                     {/* Validation Card */}
@@ -2094,9 +2142,17 @@ ${in01.error ?? ""}`);
                                     {saving ? t("saving", lang) : t("save", lang)}
                                 </Button>
                             )}
+                            {/* ช่างเปิดใบงานเอง — ไม่ผ่านด่านอนุมัติ/วางแผน บันทึกแล้วเข้าหน้ากรอกผลต่อทันที */}
+                            {!isEdit && isTechnician && (
+                                <Button onClick={() => onFinalSave("In Progress", { selfClose: true })}
+                                    disabled={saving || showSuccessBanner || !canSave || brandBlocked}
+                                    className="tw-bg-green-600 hover:tw-bg-green-700 tw-text-white hover:tw-shadow-lg hover:tw-shadow-green-500/30 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed disabled:tw-shadow-none">
+                                    {saving ? t("saving", lang) : (lang === "th" ? "บันทึกและกรอกผล" : "Save and enter results")}
+                                </Button>
+                            )}
                             {/* เปิดใบงานใหม่ — server ตั้งสถานะเป็น Wait for approve (cs_approval) */}
                             {/* role ที่วางแผนได้ใช้ปุ่มหลักปุ่มเดียวด้านล่างแทน (บันทึก/Assign) จะได้ไม่มีปุ่มบันทึกซ้ำสองปุ่ม */}
-                            {!isEdit && !canPlan && !selfCloseNew && (
+                            {!isEdit && !canPlan && !selfCloseNew && !isTechnician && (
                                 <Button onClick={() => onFinalSave("Wait for approve")} disabled={saving || showSuccessBanner || !canSave || brandBlocked} className="tw-bg-gray-800 hover:!tw-bg-blue-600 tw-text-white hover:tw-shadow-lg hover:!tw-shadow-blue-500/30 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed disabled:tw-shadow-none">
                                     {saving ? t("saving", lang) : t("save", lang)}
                                 </Button>
@@ -2112,7 +2168,7 @@ ${in01.error ?? ""}`);
                                 </Button>
                             )}
                             {canPlan && (
-                                <Button onClick={() => openCommentModal("assign")} disabled={saving || showSuccessBanner || !canSubmitPlan || (!isEdit && (!canSave || brandBlocked))}
+                                <Button onClick={() => openCommentModal("assign")} disabled={saving || showSuccessBanner || !!lockedBy || !canSubmitPlan || (!isEdit && (!canSave || brandBlocked))}
                                     className="tw-bg-amber-500 hover:tw-bg-amber-600 tw-text-white hover:tw-shadow-lg hover:tw-shadow-amber-500/30 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed disabled:tw-shadow-none">
                                     {saving ? t("saving", lang) : (needsSchedule ? t("assign", lang) : t("save", lang))}
                                 </Button>

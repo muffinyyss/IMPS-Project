@@ -209,7 +209,7 @@ def _status_or_conditions(status: str) -> list[dict]:
 
 def _assignee_scope(current: UserClaims) -> dict:
     """
-    ช่างเห็นได้เฉพาะใบที่ถูก assign ให้ตัวเองตอน planner วางแผน — ใบของคนอื่นไม่มีสิทธิ์เห็น
+    ช่างเห็นได้เฉพาะใบที่ถูก assign ให้ตัวเอง หรือใบที่ตัวเองเป็นคนเปิด — ใบของคนอื่นไม่มีสิทธิ์เห็น
     role อื่นเห็นตามปกติ. คืน filter เปล่าถ้าไม่ต้องจำกัด
     """
     if (current.role or "").lower() != "technician":
@@ -224,6 +224,10 @@ def _assignee_scope(current: UserClaims) -> dict:
             {"job.assignees": username},
             {"assignee": username},
             {"job.assignee": username},
+            # ใบที่ช่างเปิดเอง — ยังไม่มีใครถูก assign จนกว่า planner จะวางแผน
+            # ไม่เผื่อไว้ = กดเปิดใบเสร็จปุ๊บใบหายจากตารางของตัวเองทันที แก้ต่อก็ไม่ได้
+            {"reported_by": username},
+            {"job.reported_by": username},
         ]
     }
 
