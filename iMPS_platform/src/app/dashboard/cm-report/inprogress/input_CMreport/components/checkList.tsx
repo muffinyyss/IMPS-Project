@@ -4,11 +4,11 @@ import React, { useMemo, useState, useEffect, useRef, useCallback } from "react"
 import { Button, Input, Textarea } from "@material-tailwind/react";
 import Image from "next/image";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
-import { ArrowLeftIcon, ArrowUturnLeftIcon, PhotoIcon, XMarkIcon, CheckCircleIcon, ExclamationTriangleIcon, PencilIcon, LockClosedIcon } from "@heroicons/react/24/solid";
+import { ArrowLeftIcon, ArrowUturnLeftIcon, PhotoIcon, XMarkIcon, CheckCircleIcon, ExclamationTriangleIcon, PencilIcon } from "@heroicons/react/24/solid";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
 import CreatableSelect from "react-select/creatable";
 import { useDraft, type DraftData, type DraftImage, type DraftCorrectiveAction } from "../lib/draft";
-import { useReportLock } from "../lib/lock";
+import { useReportLock } from "@/app/dashboard/cm-report/lib/lock";
 import { failureCodeLabel } from "@/app/dashboard/cm-report/lib/failureCode";
 import {
     useMaximoFailureTree, isMaximoCode, failureClassRole, type SelectOption,
@@ -19,6 +19,7 @@ import ChargerIdentity, { type ChargerIdentityData } from "@/app/dashboard/cm-re
 import { repairResultLabel, normalizeRepairResult, REPAIR_RESULT_VALUES } from "@/app/dashboard/cm-report/lib/repairResult";
 import { ZoomableImg, AttachmentFileRow, isImageAttachment } from "@/app/dashboard/cm-report/components/photo-viewer";
 import RepairRoundCard, { type RepairRound } from "@/app/dashboard/cm-report/components/RepairRoundCard";
+import LockBanner from "@/app/dashboard/cm-report/components/LockBanner";
 
 // ==================== DEVICE NAME FORMATTER ====================
 function formatDeviceName(name: string): string {
@@ -2766,16 +2767,7 @@ export default function CMInProgressForm() {
         <section className="tw-pb-24">
             {/* มีคนกำลังกรอกใบงานนี้อยู่ — เปิดดูได้ แต่กรอกไม่ได้จนกว่าเขาจะออกจากหน้า
                 (หน้านี้ขอสิทธิ์ใหม่ให้เองทุก 15 วิ พอเขาออกก็กรอกต่อได้โดยไม่ต้องรีเฟรช) */}
-            {lockedBy && (
-                <div className="tw-mb-4 tw-flex tw-items-start tw-gap-2 tw-rounded-xl tw-border tw-border-amber-200 tw-bg-amber-50 tw-px-4 tw-py-3 tw-text-sm tw-text-amber-800">
-                    <LockClosedIcon className="tw-mt-0.5 tw-h-5 tw-w-5 tw-shrink-0" />
-                    <span>
-                        {lang === "th"
-                            ? <>ใบงานนี้กำลังถูกกรอกโดย <b>{lockedBy}</b> — ตอนนี้ดูได้อย่างเดียว ระบบจะเปิดให้กรอกเองเมื่ออีกฝ่ายออกจากหน้านี้</>
-                            : <>This work order is being edited by <b>{lockedBy}</b> — view only for now. Editing unlocks automatically once they leave.</>}
-                    </span>
-                </div>
-            )}
+            <LockBanner lockedBy={lockedBy} lang={lang} />
             {/* Draft Prompt Dialog */}
             {/* Draft Status Indicator */}
             {!viewOnly && draftStatus && (
