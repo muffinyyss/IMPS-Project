@@ -411,16 +411,17 @@ export function applyFilters(
 export function applySearch(rows: CMRow[], q: string): CMRow[] {
   if (!q.trim()) return rows;
   const lq = q.trim().toLowerCase();
+  const hit = (v: string | undefined | null) => (v || "").toLowerCase().includes(lq);
+  // เทียบทีละ field แบบลัดวงจร แทนการรวมทุกค่าเป็น array ก่อนแล้วค่อย .some()
+  // — แบบเดิมต้องกาง causeLabelsOf/remedyCodesOf ของทุกแถวเสมอ ถึงจะเจอคำค้นตั้งแต่ field แรกก็ตาม
   return rows.filter((r) =>
-    [
-      r.station_name, r.station_id, r.issue_id, r.faulty_equipment,
-      r.problem_details, r.severity, r.inspector, r.reported_by, r.status,
-      // charger_no เป็นตัวเลขได้ (backend resolve มาจาก charger index) ต้องแปลงก่อน
-      r.charger_name, r.charger_sn, r.charger_brand,
-      r.charger_no === null || r.charger_no === undefined ? "" : String(r.charger_no),
-      ...causeLabelsOf(r),
-      ...remedyCodesOf(r).map(remedyLabel),
-    ].some((v) => (v || "").toLowerCase().includes(lq))
+    hit(r.station_name) || hit(r.station_id) || hit(r.issue_id) || hit(r.faulty_equipment) ||
+    hit(r.problem_details) || hit(r.severity) || hit(r.inspector) || hit(r.reported_by) ||
+    hit(r.status) || hit(r.charger_name) || hit(r.charger_sn) || hit(r.charger_brand) ||
+    // charger_no เป็นตัวเลขได้ (backend resolve มาจาก charger index) ต้องแปลงก่อน
+    hit(r.charger_no === null || r.charger_no === undefined ? "" : String(r.charger_no)) ||
+    causeLabelsOf(r).some(hit) ||
+    remedyCodesOf(r).some((c) => hit(remedyLabel(c)))
   );
 }
 

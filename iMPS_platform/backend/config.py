@@ -114,6 +114,8 @@ stationPMReportDB = client["stationPMReport"]
 stationPMUrlDB = client["stationPMReportURL"]
 CMReportDB = client["CMReport"]
 CMUrlDB = client["CMReportURL"]
+# handle แบบ sync ของ CMReport — ใช้สร้าง index จากโค้ดที่ไม่ใช่ async (cmreport.py)
+CMReportDB_sync = client1["CMReport"]
 
 outputModule1 = client["OutputModule1"]
 outputModule2 = client["OutputModule2"]
@@ -149,6 +151,7 @@ stations_coll_async = imps_db_async["stations"]
 users_coll_async = imps_db_async["users"]
 email_log_coll = imps_db_async["errorEmailLog"]
 charger_coll_async = imps_db_async["charger"]
+companies_coll_async = imps_db_async["companies"]  # รายชื่อบริษัท (เมนู Company: owner/vendor)
 
 MDB_collection = MDB_DB["Klongluang3"]
 
