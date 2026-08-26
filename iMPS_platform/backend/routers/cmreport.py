@@ -11,7 +11,7 @@ import re, json, uuid, pathlib, secrets, os, shutil
 
 from config import (
     normalize_pm_date, _ensure_utc_iso,
-    CMReportDB, CMUrlDB, DCTestReportDB, DCUrlDB,
+    CMReportDB, CMReportDB_sync, CMUrlDB, DCTestReportDB, DCUrlDB,
     station_collection, users_collection, charger_coll_async, users_coll_async,
     _validate_station_id_th, th_tz,
 )
@@ -56,6 +56,31 @@ def get_cmreport_collection_for(station_id: str):
     _validate_station_id_th(station_id)
     coll = CMReportDB.get_collection(str(station_id))
     return coll
+
+
+def ensure_cm_indexes() -> int:
+    """
+    สร้าง index (createdAt desc, _id desc) ให้ทุก collection ของ CMReport — เรียกตอน startup
+
+    ทุกหน้าที่ list ใบงานเรียงด้วยคีย์นี้ ถ้าไม่มี index มองโกต้อง sort ทั้ง collection
+    ใน memory ทุก request ซึ่งเป็นคอขวดของสถานีที่ใบงานสะสมเยอะ (และพังเมื่อเกิน 32MB)
+    """
+    created = 0
+    try:
+        names = CMReportDB_sync.list_collection_names()
+    except Exception:
+        return 0
+    for name in names:
+        if name.startswith("_") or name.startswith("system."):
+            continue
+        try:
+            CMReportDB_sync.get_collection(name).create_index(
+                [("createdAt", -1), ("_id", -1)], name="createdAt_-1__id_-1", background=True
+            )
+            created += 1
+        except Exception:
+            pass  # index เป็นแค่ตัวเร่ง — สร้างไม่ได้ก็ต้องให้แอปขึ้นได้ตามปกติ
+    return created
 
 def get_cmurl_coll_upload(station_id: str):
     _validate_station_id_th(station_id)
@@ -261,26 +286,44 @@ def _charger_keys(doc: dict) -> set[str]:
 
 _EMPTY_CHARGER_INDEX: dict = {"by_key": {}, "station_brand": "", "brands": []}
 
+# projection รวมของตาราง charger — พอสำหรับทั้ง charger index และ brand clause
+# เพื่อให้ list-all ดึงตู้ทุกสถานีด้วย query เดียวแล้วส่งต่อให้สองฟังก์ชันนั้นใช้ร่วมกัน
+_CHARGER_PROJECTION = {
+    "station_id": 1, "chargerNo": 1, "charger_no": 1, "charger_id": 1, "chargeBoxID": 1,
+    "charger_name": 1, "SN": 1, "sn": 1, "brand": 1, "model": 1,
+}
 
-async def _charger_index_for_station(station_id: str) -> dict:
+
+def _charger_no_sort_key(doc: dict):
+    # เลียนแบบลำดับ sort ของ Mongo (null < number < string) ตอน sort ใน Python
+    v = doc.get("chargerNo")
+    if v is None:
+        return (0, 0, "")
+    if isinstance(v, (int, float)) and not isinstance(v, bool):
+        return (1, v, "")
+    return (2, 0, str(v))
+
+
+async def _charger_index_for_station(station_id: str, charger_docs: list[dict] | None = None) -> dict:
     """
     ดัชนีตู้ของสถานี — คืน {"by_key": {...}, "station_brand": str, "brands": [...]}
 
     by_key มีทั้งคีย์ "charger_<เลข/ไอดี>" และ "sn:<serial ตัวพิมพ์เล็ก>"
     station_brand = ยี่ห้อของทั้งสถานี ใช้กับใบที่ไม่ระบุตู้ (failure class ระดับสถานี)
     และมีค่าเฉพาะตอนทุกตู้เป็นยี่ห้อเดียวกัน — เกณฑ์เดียวกับ _brand_clause_for_station
+
+    charger_docs: ข้อมูลตู้ที่ caller ดึงไว้แล้ว (เช่น list-all ดึงทุกสถานีทีเดียว) — ส่งมาเพื่อไม่ query ซ้ำ
     """
-    try:
-        charger_docs = await charger_coll_async.find(
-            {"station_id": station_id},
-            {
-                "chargerNo": 1, "charger_no": 1, "charger_id": 1, "chargeBoxID": 1, "charger_name": 1,
-                "SN": 1, "sn": 1, "brand": 1, "model": 1,
-            },
-        ).sort("chargerNo", 1).to_list(length=1_000)
-    except Exception:
-        # ข้อมูลตู้เป็นส่วนเสริม — อ่านไม่ได้ก็ยังต้องคืนใบงานได้ตามปกติ
-        return dict(_EMPTY_CHARGER_INDEX)
+    if charger_docs is not None:
+        charger_docs = sorted(charger_docs, key=_charger_no_sort_key)
+    else:
+        try:
+            charger_docs = await charger_coll_async.find(
+                {"station_id": station_id}, _CHARGER_PROJECTION,
+            ).sort("chargerNo", 1).to_list(length=1_000)
+        except Exception:
+            # ข้อมูลตู้เป็นส่วนเสริม — อ่านไม่ได้ก็ยังต้องคืนใบงานได้ตามปกติ
+            return dict(_EMPTY_CHARGER_INDEX)
 
     by_key: dict[str, dict] = {}
     brands: list[str] = []
@@ -379,13 +422,17 @@ async def _charger_clause_for_sn(station_id: str, sn: str) -> dict | None:
     return {"$or": clauses}
 
 
-async def _brand_clause_for_station(station_id: str, current: UserClaims) -> dict | None:
+async def _brand_clause_for_station(
+    station_id: str, current: UserClaims, charger_docs: list[dict] | None = None
+) -> dict | None:
     """
     เงื่อนไขกรองใบงานของสถานีนี้ตามยี่ห้อตู้ — None = ไม่ต้องกรอง
 
     • ใบที่ระบุตู้ (faulty_equipment = charger_N) → ดูยี่ห้อของตู้นั้นตรง ๆ
     • ใบที่ไม่ระบุตู้ (failure code ระดับสถานี เช่น DCCHARGER) → เห็นเฉพาะสถานี
       ที่ตู้ทุกตู้เป็นยี่ห้อนั้น เพราะพิสูจน์ไม่ได้ว่าใบนี้เป็นของตู้ไหน
+
+    charger_docs: ข้อมูลตู้ที่ caller ดึงไว้แล้ว — ส่งมาเพื่อไม่ query ซ้ำ
     """
     # CM rule: EDS เห็นเฉพาะ FlexxFast ทุก role ยกเว้น super_admin
     # ใช้ lower-case เทียบทั้งสองฝั่งเพื่อไม่ผูกกับรูปแบบตัวพิมพ์ใน user/charger data
@@ -407,10 +454,12 @@ async def _brand_clause_for_station(station_id: str, current: UserClaims) -> dic
         {"job.charger_brand": {"$regex": f"^{re.escape(brand)}$", "$options": "i"}},
     ]
 
-    chargers = await charger_coll_async.find(
-        {"station_id": station_id},
-        {"brand": 1, "chargerNo": 1, "charger_id": 1, "charger_no": 1, "SN": 1, "sn": 1},
-    ).to_list(length=1000)
+    chargers = charger_docs
+    if chargers is None:
+        chargers = await charger_coll_async.find(
+            {"station_id": station_id},
+            {"brand": 1, "chargerNo": 1, "charger_id": 1, "charger_no": 1, "SN": 1, "sn": 1},
+        ).to_list(length=1000)
     if not chargers:
         return {"$or": direct_brand_clauses}
         return _MATCH_NOTHING  # ไม่มีข้อมูลตู้ = พิสูจน์ยี่ห้อไม่ได้
@@ -634,9 +683,23 @@ async def cmreport_list(
 async def _cm_items_for_station(station_id: str, station_name: str, status: str | None,
                                 station_company: str = "",
                                 scope: dict | None = None,
-                                current: UserClaims | None = None) -> list[dict]:
-    """ดึง CM report ของสถานีเดียว (merge กับ CMUrl ด้วย cm_date) + ใส่ station info"""
+                                current: UserClaims | None = None,
+                                charger_docs: list[dict] | None = None) -> list[dict]:
+    """ดึง CM report ของสถานีเดียว + ใส่ station info
+
+    charger_docs: ข้อมูลตู้ของสถานีนี้ที่ caller ดึงไว้แล้ว (list-all ดึงทุกสถานีด้วย
+    query เดียว) — ถ้าไม่ส่งมา จะ query เองครั้งเดียวแล้วใช้ร่วมกันทั้ง brand clause
+    และ charger index
+    """
     coll = get_cmreport_collection_for(station_id)
+
+    if charger_docs is None:
+        try:
+            charger_docs = await charger_coll_async.find(
+                {"station_id": station_id}, _CHARGER_PROJECTION,
+            ).to_list(length=1_000)
+        except Exception:
+            charger_docs = None  # อ่านตู้ไม่ได้ — ปล่อยให้สองฟังก์ชันล่างจัดการ fallback เอง
 
     mongo_filter: dict = {}
     if status and (conds := _status_or_conditions(status)):
@@ -644,7 +707,7 @@ async def _cm_items_for_station(station_id: str, station_name: str, status: str 
     if scope:
         _merge_clause(mongo_filter, scope)
     if current is not None:
-        _merge_clause(mongo_filter, await _brand_clause_for_station(station_id, current))
+        _merge_clause(mongo_filter, await _brand_clause_for_station(station_id, current, charger_docs))
 
     cursor = coll.find(mongo_filter, {
         "_id": 1, "doc_name": 1, "issue_id": 1, "cm_date": 1, "found_date": 1, "status": 1,
@@ -665,19 +728,7 @@ async def _cm_items_for_station(station_id: str, station_name: str, status: str 
 
     # ใบงานรุ่นเก่าเก็บ faulty_equipment เป็น charger_1 / charger_<id>
     # จึงแนบ label + ชื่อ/เลข/ยี่ห้อของตู้ไว้ให้ dashboard แสดงผล โดยไม่เปลี่ยนค่า raw เดิม
-    charger_index = await _charger_index_for_station(station_id)
-
-    # map ไฟล์จาก CMUrl ด้วย cm_date
-    cm_dates = [it.get("cm_date") for it in items_raw if it.get("cm_date")]
-    url_by_day: dict[str, str] = {}
-    if cm_dates:
-        urls_coll = get_cmurl_coll_upload(station_id)
-        ucur = urls_coll.find({"cm_date": {"$in": cm_dates}}, {"cm_date": 1, "urls": 1})
-        for u in await ucur.to_list(length=10_000):
-            day = u.get("cm_date")
-            first_url = (u.get("urls") or [None])[0]
-            if day and first_url and day not in url_by_day:
-                url_by_day[day] = first_url
+    charger_index = await _charger_index_for_station(station_id, charger_docs)
 
     def resolve_cm_date(it: dict, job: dict) -> str | None:
         # เอกสารจาก /cmreport/submit เก็บวันที่ใน found_date (ไม่มี cm_date) —
@@ -764,7 +815,9 @@ async def _cm_items_for_station(station_id: str, station_name: str, status: str 
             "maximo_ticket_id": it.get("maximo_ticket_id") or "",
             "maximo_wonum": it.get("maximo_wonum") or "",
             "createdAt": _ensure_utc_iso(it.get("createdAt")),
-            "file_url": url_by_day.get(it.get("cm_date") or "", ""),
+            # CM Dashboard/CM List ไม่ได้ใช้ไฟล์แนบ (ลิงก์ PDF สร้างจาก id เอง) — เลิก query
+            # CMUrl ต่อสถานี แต่คงคีย์ไว้เป็นค่าว่างกันฝั่งที่อ่าน field นี้อยู่พัง
+            "file_url": "",
         })
     return out
 
@@ -821,9 +874,25 @@ async def cmreport_list_all(
             or company_by_name.get(str(station.get("username") or "").strip().lower(), "")
         )
 
+    # ดึงข้อมูลตู้ของทุกสถานีด้วย query เดียว แทนที่จะให้แต่ละสถานียิงเอง 2 ครั้ง
+    # (brand clause + charger index) — เปิดหน้า CM List/Dashboard ทีหนึ่งประหยัดไป 2N queries
+    station_ids = [s["station_id"] for s in stations if s.get("station_id")]
+    chargers_by_station: dict[str, list[dict]] | None = {sid: [] for sid in station_ids}
+    try:
+        all_chargers = await charger_coll_async.find(
+            {"station_id": {"$in": station_ids}}, _CHARGER_PROJECTION,
+        ).to_list(length=50_000)
+        for c in all_chargers:
+            chargers_by_station.setdefault(str(c.get("station_id")), []).append(c)
+    except Exception:
+        chargers_by_station = None  # อ่านรวมไม่ได้ — ให้แต่ละสถานี query เองแบบเดิม
+
     scope = _assignee_scope(current)
     tasks = [
-        _cm_items_for_station(s["station_id"], s.get("station_name", "-"), status, s.get("company", ""), scope, current)
+        _cm_items_for_station(
+            s["station_id"], s.get("station_name", "-"), status, s.get("company", ""), scope, current,
+            charger_docs=None if chargers_by_station is None else chargers_by_station.get(s["station_id"], []),
+        )
         for s in stations
         if s.get("station_id")
     ]

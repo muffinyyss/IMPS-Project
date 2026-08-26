@@ -83,9 +83,19 @@ async def _refresh_maximo_master_data() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     import asyncio
+    import logging
+
+    from routers.cmreport import ensure_cm_indexes
 
     app.state.errorDB = errorDB
     app.state.mongo_client = client
+
+    # index ของ CMReport ทุกสถานี — ทำใน thread เพื่อไม่หน่วง startup (pymongo เป็น sync)
+    try:
+        n = await asyncio.to_thread(ensure_cm_indexes)
+        logging.getLogger("startup").info(f"  ✓ CM indexes ensured on {n} collections")
+    except Exception as e:
+        logging.getLogger("startup").warning(f"  ⚠️ ensure CM indexes failed: {e}")
 
     start_watcher()
     await _warm_maximo_master_data()
@@ -310,6 +320,7 @@ from routers.pm_all_stations import router as pm_all_stations_router
 from routers.pm_maximo import router as pm_maximo_router
 from routers.cm_maximo import router as cm_maximo_router
 from routers.ai_agent import router as ai_agent_router
+from routers.company import router as company_router
 
 app.include_router(users_router)
 app.include_router(stations_router)
@@ -331,3 +342,4 @@ app.include_router(pm_all_stations_router)
 app.include_router(pm_maximo_router)
 app.include_router(cm_maximo_router)
 app.include_router(ai_agent_router)
+app.include_router(company_router)

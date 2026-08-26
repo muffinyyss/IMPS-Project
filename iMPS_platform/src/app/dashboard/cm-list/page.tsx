@@ -203,6 +203,19 @@ export default function CMListPage() {
     setPage(0);
   }, []);
 
+  // ปุ่มแถวสถานะเลือกได้ทีละอัน ถึงจะตั้งกันคนละ dimension (4 ปุ่มหลังตั้ง status ส่วน
+  // "รอเปิดใบงาน" ตั้ง workStatus) — ต้องล้างอีก dimension ทิ้งด้วย ไม่งั้นกด "รอเปิดใบงาน"
+  // ทับตัวกรองเริ่มต้น "รอดำเนินการ" จะกลายเป็นเอาสองเงื่อนไขมา AND กันแล้วได้ตารางว่าง
+  const selectStatusButton = useCallback((dim: "status" | "workStatus", value: string) => {
+    setFilters((prev) => ({
+      ...prev,
+      status: null,
+      workStatus: null,
+      [dim]: prev[dim] === value ? null : value,
+    } as ActiveFilters));
+    setPage(0);
+  }, []);
+
   const clearAll = () => {
     setFilters(EMPTY_FILTERS);
     setSearch("");
@@ -235,13 +248,33 @@ export default function CMListPage() {
   const allFiltered = useMemo(() => applyFilters(periodRows, filters), [periodRows, filters]);
   const searchFiltered = useMemo(() => applySearch(allFiltered, search), [allFiltered, search]);
 
-  // compteurs des boutons de statut — indépendants du filtre statut courant
+  // ฐานสำหรับนับตัวเลขบนแถวปุ่มสถานะ — ตัดตัวกรองที่ "ปุ่มแถวนี้เป็นคนตั้ง" ออกทั้งคู่
+  // (status ของ 4 ปุ่มหลัง + workStatus ของปุ่ม "รอเปิดใบงาน") ปุ่มทั้งแถวคือตัวควบคุมเดียวกัน
+  // ตัวเลขจึงต้องไม่ขยับเวลากดสลับปุ่มกันเอง — ถ้ากันแค่ status ปุ่มแรกจะโชว์ 0 ตลอดเวลาที่
+  // ตัวกรองเริ่มต้น "รอดำเนินการ" ทำงานอยู่ ทั้งที่มีใบรอเปิดค้างอยู่จริง
+  const statusButtonBase = useMemo(
+    () => applySearch(applyFilters(periodRows, { ...filters, status: null, workStatus: null }), search),
+    [periodRows, filters, search]
+  );
+
   const statusCounts = useMemo(() => {
-    const base = applySearch(applyFilters(periodRows, filters, "status"), search);
     const counts = { open: 0, in_progress: 0, completed: 0, cancelled: 0 };
-    for (const r of base) counts[normalizeStatus(r.status, r.stage, r.repair_result)]++;
+    for (const r of statusButtonBase) counts[normalizeStatus(r.status, r.stage, r.repair_result)]++;
     return counts;
-  }, [periodRows, filters, search]);
+  }, [statusButtonBase]);
+
+  // สองด่านอนุมัติใช้ status "Wait for approve" ชื่อเดียวกัน แยกกันที่ stage เท่านั้น จึงต้องนับ
+  // ผ่าน workStatusOf() ไม่ใช่ status ดิบ — cs_approval = SR รอ head CS เปิดเป็นใบงาน (ยังไม่มีเลข WO)
+  // ส่วน close_approval = WO ที่ช่างซ่อมเสร็จแล้วรออนุมัติปิดงาน
+  const approvalCounts = useMemo(() => {
+    const counts = { wait_cs_approve: 0, wait_approve: 0 };
+    for (const r of statusButtonBase) {
+      const ws = workStatusOf(r);
+      if (ws === "wait_cs_approve") counts.wait_cs_approve++;
+      else if (ws === "wait_approve") counts.wait_approve++;
+    }
+    return counts;
+  }, [statusButtonBase]);
 
   const companies = COMPANY_FILTER_OPTIONS;
   const brandRows = useMemo(
@@ -348,6 +381,8 @@ export default function CMListPage() {
       noResults: (q?: string) => q ? `ไม่พบรายการที่ตรงกับ "${q}"` : "ไม่พบรายงาน",
       volumeWarning: (total: number, limit: number) => `ฐานข้อมูลมี ${total.toLocaleString()} รายการ — แสดงผล ${limit.toLocaleString()} รายการล่าสุด`,
       openReportTitle: "เปิดใบงาน CM",
+      quickWaitCsApprove: "รอเปิดใบงาน",
+      quickWaitApprove: "รออนุมัติ",
       quickOpen: "รอจัดซื้อ", quickInProgress: "รอดำเนินการ", quickComplete: "เสร็จสิ้น", quickCancelled: "ยกเลิก",
       sortAsc: "เรียงน้อย→มาก", sortDesc: "เรียงมาก→น้อย",
       headers: {
@@ -387,6 +422,8 @@ export default function CMListPage() {
       noResults: (q?: string) => q ? `No records matching "${q}"` : "No reports found",
       volumeWarning: (total: number, limit: number) => `Database has ${total.toLocaleString()} records — showing latest ${limit.toLocaleString()}.`,
       openReportTitle: "Open CM work order",
+      quickWaitCsApprove: "SR wait for approve",
+      quickWaitApprove: "WO wait for approve",
       quickOpen: "Open", quickInProgress: "In Progress", quickComplete: "Complete", quickCancelled: "Cancelled",
       sortAsc: "Sort ascending", sortDesc: "Sort descending",
       headers: {
@@ -419,6 +456,21 @@ export default function CMListPage() {
     { key: "severity", label: t.headers.severity },
     { key: "date", label: t.headers.date },
     { key: "status", label: t.headers.status },
+  ];
+
+  // ปุ่มกรองแถวสถานะ — สองด่านอนุมัติ ("รอเปิดใบงาน"/"รออนุมัติ") กรองด้วยมิติ workStatus
+  // เพราะ status ดิบของทั้งคู่คือ "Wait for approve" เหมือนกัน แยกไม่ได้ด้วย status 4 กลุ่ม
+  // ที่เหลือกรองด้วย status ตามเดิม จึงเก็บ dim ไว้กับปุ่มแทนที่จะ hardcode ตอน render
+  // สีของสองปุ่มนั้นใช้ชุดเดียวกับป้าย wait_cs_approve / wait_approve ในตาราง ให้สื่อถึงถังเดียวกัน
+  const statusButtons: {
+    dim: "status" | "workStatus"; value: string; label: string; color: string; bg: string; count: number;
+  }[] = [
+    { dim: "workStatus", value: "wait_cs_approve", label: t.quickWaitCsApprove, color: "#c2410c", bg: "#ffedd5", count: approvalCounts.wait_cs_approve },
+    { dim: "status", value: STATUS_LABELS.open, label: t.quickOpen, color: "#dc2626", bg: "#fee2e2", count: statusCounts.open },
+    { dim: "status", value: STATUS_LABELS.in_progress, label: t.quickInProgress, color: "#ea580c", bg: "#fff7ed", count: statusCounts.in_progress },
+    { dim: "workStatus", value: "wait_approve", label: t.quickWaitApprove, color: "#4338ca", bg: "#e0e7ff", count: approvalCounts.wait_approve },
+    { dim: "status", value: STATUS_LABELS.completed, label: t.quickComplete, color: "#15803d", bg: "#dcfce7", count: statusCounts.completed },
+    { dim: "status", value: STATUS_LABELS.cancelled, label: t.quickCancelled, color: "#475569", bg: "#f1f5f9", count: statusCounts.cancelled },
   ];
 
   const totalPages = Math.ceil(sortedRows.length / pageSize);
@@ -582,18 +634,13 @@ export default function CMListPage() {
         </div>
 
         <div className="tw-flex tw-items-center tw-gap-1.5" role="group" aria-label={t.statusFilterLabel}>
-          {([
-            { key: "open", label: t.quickOpen, color: "#dc2626", bg: "#fee2e2", count: statusCounts.open },
-            { key: "in_progress", label: t.quickInProgress, color: "#ea580c", bg: "#fff7ed", count: statusCounts.in_progress },
-            { key: "completed", label: t.quickComplete, color: "#15803d", bg: "#dcfce7", count: statusCounts.completed },
-            { key: "cancelled", label: t.quickCancelled, color: "#475569", bg: "#f1f5f9", count: statusCounts.cancelled },
-          ] as const).map(({ key, label, color, bg, count }) => {
-            const isActive = filters.status === STATUS_LABELS[key];
+          {statusButtons.map(({ dim, value, label, color, bg, count }) => {
+            const isActive = filters[dim] === value;
             return (
               <button
-                key={key}
+                key={`${dim}:${value}`}
                 type="button"
-                onClick={() => toggleFilter("status", STATUS_LABELS[key])}
+                onClick={() => selectStatusButton(dim, value)}
                 aria-pressed={isActive}
                 className={`tw-rounded-full tw-px-3 tw-py-1 tw-text-xs tw-font-semibold tw-transition-all ${isActive ? "tw-shadow-sm" : "hover:tw-brightness-95"}`}
                 style={isActive ? { background: color, color: "#fff" } : { background: bg, color }}
