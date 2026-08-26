@@ -31,6 +31,10 @@ const MAX_PAGE_SIZE = 500;
 const FETCH_LIMIT = 10000;
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
+// Company เริ่มต้นของหน้านี้ — ผู้ใช้ EGAT/super admin เปิดมาเห็นใบของ EGAT ก่อน
+// แล้วค่อยสลับเป็น EDS หรือ "ทุกบริษัท" เองได้จากดรอปดาวน์
+const DEFAULT_COMPANY_FILTER = "EGAT";
+
 const PLANNING_ROLES = ["admin", "owner", "planner"];
 const WAITING_ON_REPLAN_RESULTS = [
   "WO - wait for material",
@@ -94,7 +98,13 @@ export default function CMListPage() {
   const [weekSel, setWeekSel] = useState<DateSel>("all");
   const [stationFilter, setStationFilter] = useState<string>("All");
   // Filtre par défaut = In Progress : la page sert à suivre le travail en cours
-  const [filters, setFilters] = useState<ActiveFilters>({ ...EMPTY_FILTERS, status: STATUS_LABELS.in_progress });
+  // origin = user : หน้านี้คือคิวงานของคน ใบที่ระบบเปิดเองจาก fault/alarm ให้กดดูเพิ่มเอง
+  // (Company เริ่มต้นตั้งทีหลังใน effect ของ /me เพราะต้องรู้ก่อนว่าผู้ใช้เห็นดรอปดาวน์นั้นไหม)
+  const [filters, setFilters] = useState<ActiveFilters>({
+    ...EMPTY_FILTERS,
+    status: STATUS_LABELS.in_progress,
+    origin: "user",
+  });
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
@@ -147,9 +157,17 @@ export default function CMListPage() {
         if (!res.ok) return;
         const user = await res.json();
         if (alive) {
+          const company = String(user?.company ?? "");
+          const superAdmin = !!user?.is_super_admin;
           setUserRole(user?.role ?? "");
-          setUserCompany(user?.company ?? "");
-          setIsSuperAdmin(!!user?.is_super_admin);
+          setUserCompany(company);
+          setIsSuperAdmin(superAdmin);
+          // ใส่ค่าเริ่มต้นให้เฉพาะคนที่เห็นดรอปดาวน์ Company (super admin / พนักงาน EGAT)
+          // คนบริษัทอื่นดรอปดาวน์ถูกซ่อน ถ้าใส่ให้ด้วยจะโดนล็อกอยู่ที่ EGAT แล้วแก้กลับไม่ได้
+          if (superAdmin || company.trim().toLowerCase() === "egat") {
+            // เช็ค prev.company กันเคสผู้ใช้กดเลือกบริษัทเองก่อน /me ตอบกลับ
+            setFilters((prev) => (prev.company ? prev : { ...prev, company: DEFAULT_COMPANY_FILTER }));
+          }
         }
       } catch (err) {
         console.error("fetch /me error:", err);
@@ -383,7 +401,7 @@ export default function CMListPage() {
       openReportTitle: "เปิดใบงาน CM",
       quickWaitCsApprove: "รอเปิดใบงาน",
       quickWaitApprove: "รออนุมัติ",
-      quickOpen: "รอจัดซื้อ", quickInProgress: "รอดำเนินการ", quickComplete: "เสร็จสิ้น", quickCancelled: "ยกเลิก",
+      quickInProgress: "รอดำเนินการ", quickComplete: "เสร็จสิ้น", quickCancelled: "ยกเลิก",
       sortAsc: "เรียงน้อย→มาก", sortDesc: "เรียงมาก→น้อย",
       headers: {
         station: "สถานี", charger: "ตู้ชาร์จ", brand: "บริษัท", sr: "เลขที่ SR", wo: "เลขที่ WO",
@@ -424,7 +442,7 @@ export default function CMListPage() {
       openReportTitle: "Open CM work order",
       quickWaitCsApprove: "SR wait for approve",
       quickWaitApprove: "WO wait for approve",
-      quickOpen: "Open", quickInProgress: "In Progress", quickComplete: "Complete", quickCancelled: "Cancelled",
+      quickInProgress: "In Progress", quickComplete: "Complete", quickCancelled: "Cancelled",
       sortAsc: "Sort ascending", sortDesc: "Sort descending",
       headers: {
         station: "Station", charger: "Charger", brand: "Company", sr: "SR No.", wo: "WO No.",
@@ -466,7 +484,6 @@ export default function CMListPage() {
     dim: "status" | "workStatus"; value: string; label: string; color: string; bg: string; count: number;
   }[] = [
     { dim: "workStatus", value: "wait_cs_approve", label: t.quickWaitCsApprove, color: "#c2410c", bg: "#ffedd5", count: approvalCounts.wait_cs_approve },
-    { dim: "status", value: STATUS_LABELS.open, label: t.quickOpen, color: "#dc2626", bg: "#fee2e2", count: statusCounts.open },
     { dim: "status", value: STATUS_LABELS.in_progress, label: t.quickInProgress, color: "#ea580c", bg: "#fff7ed", count: statusCounts.in_progress },
     { dim: "workStatus", value: "wait_approve", label: t.quickWaitApprove, color: "#4338ca", bg: "#e0e7ff", count: approvalCounts.wait_approve },
     { dim: "status", value: STATUS_LABELS.completed, label: t.quickComplete, color: "#15803d", bg: "#dcfce7", count: statusCounts.completed },
