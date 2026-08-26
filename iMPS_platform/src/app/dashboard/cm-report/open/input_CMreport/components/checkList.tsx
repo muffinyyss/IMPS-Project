@@ -108,6 +108,10 @@ const T = {
     alertNoStationId: { th: "ไม่พบ station_id", en: "Station ID not found" },
     alertSaveFailed: { th: "บันทึกไม่สำเร็จ:", en: "Save failed:" },
     photos: { th: "รูปภาพ / ไฟล์แนบ", en: "Photos / Files" },
+    photosTooltip: {
+        th: "รูปที่ควรแนบ\n1. หน้าสถานะ OCPP\n2. รูปหน้าจอเครื่องชาร์จ\n3. รูป Power Meter ค่าแรงดันไฟฟ้า (ที่ MDB)\n4. รูป MDB (ให้เห็นเบรกเกอร์ หลอดไฟสถานะ)",
+        en: "Photos to attach\n1. OCPP status screen\n2. Charger display screen\n3. Power Meter voltage reading (at MDB)\n4. MDB (showing breakers and status lights)",
+    },
     attachPhoto: { th: "แนบรูป / ไฟล์", en: "Attach Photo / File" },
     noPhotos: { th: "ยังไม่มีไฟล์แนบ", en: "No files attached" },
     photoHint: { th: "รองรับไฟล์ JPG, PNG, PDF, CSV", en: "Supports JPG, PNG, PDF, CSV" },
@@ -2050,7 +2054,23 @@ ${in01.error ?? ""}`);
 
                             {/* Photos */}
                             <div id="cm-photos">
-                                <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-2">{t("photos", lang)} <span className="tw-text-red-500">*</span></label>
+                                <div className="tw-flex tw-items-center tw-gap-1.5 tw-mb-2">
+                                    <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800">{t("photos", lang)} <span className="tw-text-red-500">*</span></label>
+                                    <Tooltip
+                                        content={
+                                            <div className="tw-w-72 tw-whitespace-normal tw-text-left tw-text-xs tw-leading-5">
+                                                {t("photosTooltip", lang).split("\n").map((line, index) => (
+                                                    <div key={index}>{line}</div>
+                                                ))}
+                                            </div>
+                                        }
+                                        placement="top"
+                                    >
+                                        <span tabIndex={0} aria-label={t("photosTooltip", lang)} className="tw-inline-flex tw-cursor-help tw-text-blue-gray-500 hover:tw-text-blue-600 focus:tw-text-blue-600">
+                                            <InformationCircleIcon className="tw-h-4 tw-w-4" />
+                                        </span>
+                                    </Tooltip>
+                                </div>
                                 <PhotoUpload photos_open={photos_open} onAdd={handleAddPhotos} onRemove={handleRemovePhoto} max={MAX_PHOTOS} disabled={fieldsLocked} lang={lang} />
                             </div>
                         </div>
