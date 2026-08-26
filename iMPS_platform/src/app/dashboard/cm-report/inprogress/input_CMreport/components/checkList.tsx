@@ -226,7 +226,24 @@ const WAITING_REPAIR_RESULTS = [
 // ป้ายชื่อทั้งชุดอยู่ใน lib/repairResult — ตาราง In Progress ใช้ตัวเดียวกัน ชื่อจะได้ไม่หลุดกัน
 // value ที่บันทึกยังเป็นภาษาอังกฤษเสมอ (Maximo/backend อ้างค่านี้) แปลแค่ตอนแสดง
 const REPAIR_OPTIONS = REPAIR_RESULT_VALUES;
-const DEFAULT_REPAIR_RESULT = "WO - wait for scheduled";
+// marker ที่ planner ตั้งตอน assign — ไม่ใช่ผลที่ช่างเลือก (ดู hasChosenResult)
+const PLANNER_REPAIR_MARKER = "WO - wait for scheduled";
+// ผลหลังซ่อมเริ่มต้นตอนช่างเปิดฟอร์ม = "แก้ไขสำเร็จ" (ค่าที่เลือกบ่อยที่สุด)
+const DEFAULT_REPAIR_RESULT = "WO - wait for approve";
+
+/**
+ * ผลหลังซ่อมที่ควรโชว์ตอนเปิดฟอร์ม — ค่าที่ช่างเคยเลือกไว้มาก่อนเสมอ
+ *
+ * ใบที่ยังอยู่สถานะ "Wait for schedule" ต้องคง marker ของ planner ไว้ ห้ามใส่ค่าเริ่มต้นให้
+ * เพราะปุ่ม "บันทึกความคืบหน้า" ขึ้นเฉพาะตอนที่ยังไม่เลือกผล (hasChosenResult = false)
+ * ถ้าเติมค่าให้ ปุ่มนั้นจะหายไปทั้งใบ = ช่างบันทึกงานที่ยังทำไม่จบไม่ได้
+ */
+const initialRepairResult = (saved: string, status: unknown): string => {
+    if (saved && saved !== PLANNER_REPAIR_MARKER) return saved;
+    return String(status ?? "").trim().toLowerCase() === "wait for schedule"
+        ? PLANNER_REPAIR_MARKER
+        : DEFAULT_REPAIR_RESULT;
+};
 
 function asStringArray(value: unknown): string[] {
     if (Array.isArray(value)) return value.map(v => String(v ?? "").trim()).filter(Boolean);
@@ -271,7 +288,7 @@ const NO_PROBLEM_REPAIR_RESULT = "ไม่พบปัญหา";
 const PROGRESS_REQUIRED_KEYS = ["problemType", "problemTypeOther", "cause"];
 
 // เลือก "แก้ไขสำเร็จ" = ปิดงาน ต้องมีหลักฐานครบ
-const COMPLETED_REQUIRED_KEYS = ["problemType", "cause", "correction", "correctiveAction", "beforePhoto", "afterPhoto", "repairResult"];
+const COMPLETED_REQUIRED_KEYS = ["problemType", "cause", "correction", "correctiveAction", "afterPhoto", "repairResult"];
 
 // รูปของแต่ละรอบซ่อมต้องไม่ไปกองรวมกลุ่มเดียวกัน — index ของ corrective action
 // รีเซ็ตทุกรอบ จึงบวก offset ตามจำนวนรอบที่เก็บเข้าประวัติแล้ว (คงรูปแบบ before_<เลข> ไว้)
@@ -813,7 +830,7 @@ function ProblemGroupBlock({ faultyEquipment, value, onChange, onRemove, onAddGr
                                             {/* Before Images */}
                                             <div className="tw-border tw-border-red-200 tw-rounded-xl tw-p-4 tw-bg-red-50/30">
                                                 <div className="tw-flex tw-items-center tw-justify-between tw-mb-3">
-                                                    <span className="tw-text-sm tw-font-semibold tw-text-red-700 tw-flex tw-items-center tw-gap-2"><span className="tw-w-2 tw-h-2 tw-rounded-full tw-bg-red-500"></span>{t("beforePhoto", lang)} <span className="tw-text-red-500">*</span></span>
+                                                    <span className="tw-text-sm tw-font-semibold tw-text-red-700 tw-flex tw-items-center tw-gap-2"><span className="tw-w-2 tw-h-2 tw-rounded-full tw-bg-red-500"></span>{t("beforePhoto", lang)}</span>
                                                     {!disabled && (
                                                         <label className="tw-inline-flex tw-items-center tw-gap-1.5 tw-px-3 tw-py-1.5 tw-rounded-lg tw-bg-white tw-border tw-border-red-300 tw-text-red-600 tw-font-medium tw-text-xs tw-cursor-pointer hover:tw-bg-red-50 tw-shadow-sm tw-transition-all">
                                                             <input type="file" accept="image/*" multiple className="tw-hidden" onChange={(e) => addImgs(i, "beforeImages", e.target.files)} />
@@ -837,7 +854,7 @@ function ProblemGroupBlock({ faultyEquipment, value, onChange, onRemove, onAddGr
                                                         ))}
                                                     </div>
                                                 ) : (
-                                                    <div className="tw-text-center tw-py-6 tw-text-red-500 tw-text-sm tw-font-medium">{th ? "⚠️ กรุณาแนบรูปก่อนแก้ไข" : "⚠️ Please attach before image"}</div>
+                                                    <div className="tw-text-center tw-py-6 tw-text-blue-gray-400 tw-text-sm tw-font-medium">{th ? "ยังไม่มีรูปก่อนแก้ไข" : "No before image yet"}</div>
                                                 )}
                                             </div>
                                             {/* After Images */}
@@ -1488,7 +1505,7 @@ export default function CMInProgressForm() {
         // แต่มันเทียบกับ label ("แก้ไขสำเร็จ") ไม่ใช่ value จึงไม่เคยทำงาน
         { key: "correction", label: t("repairedEquipment", lang), isValid: validationGroupState.allCorrectionsFilled, message: t("notSelected", lang), isRequired: isClosedResult && !isNoProblem, scrollId: "cm-correction" },
         { key: "correctiveAction", label: t("validCorrectiveAction", lang), isValid: validationGroupState.allActionTextsFilled, message: t("notFilled", lang), isRequired: !isNoProblem && !isWaitingForMaterial && !isWaitingForSiteCondition, scrollId: "cm-corrective" },
-        { key: "beforePhoto", label: t("validBeforePhoto", lang), isValid: validationGroupState.allBeforePhotosFilled, message: t("notFilled", lang), isRequired: !isNoProblem && !isWaitingForMaterial && !isWaitingForSiteCondition, scrollId: "cm-corrective" },
+        { key: "beforePhoto", label: t("validBeforePhoto", lang), isValid: validationGroupState.allBeforePhotosFilled, message: t("notFilled", lang), isRequired: false, scrollId: "cm-corrective" },
         { key: "afterPhoto", label: t("validAfterPhoto", lang), isValid: validationGroupState.allAfterPhotosFilled, message: t("notFilled", lang), isRequired: isClosedResult && !isNoProblem, scrollId: "cm-corrective" },
         { key: "repairResult", label: t("validRepairResult", lang), isValid: !!job.repair_result, message: t("notSelected", lang), isRequired: !isNoProblem, scrollId: "cm-repair-result" },
         // { key: "preventiveAction", label: t("preventiveAction", lang), isValid: job.preventive_action.some((p: string) => p.trim() !== ""), message: t("notFilled", lang), isRequired: isClosedResult && !isNoProblem, scrollId: "cm-preventive" },
@@ -1998,7 +2015,9 @@ export default function CMInProgressForm() {
                     cause: loadedCauses,
                     // ล้างให้ว่างเพื่อบังคับให้ช่างเลือกผลใหม่ — แต่ต้องจำค่าเดิมไว้ (originalRepairResultRef)
                     // ไม่งั้นพอกดบันทึกจะส่งค่าว่างไปทับ ทำให้ marker ที่ planner ตั้งไว้หายจาก DB
-                    repair_result: waitingRoundArchived ? DEFAULT_REPAIR_RESULT : (normalizeRepairResult(data.repair_result ?? "") || DEFAULT_REPAIR_RESULT),
+                    repair_result: waitingRoundArchived
+                        ? initialRepairResult("", data.status)
+                        : initialRepairResult(normalizeRepairResult(data.repair_result ?? ""), data.status),
                     inprogress_remarks: waitingRoundArchived ? "" : (data.inprogress_remarks ?? ""),
                     repair_result_remark: waitingRoundArchived ? "" : (data.repair_result_remark ?? ""),
                     resolved_date: data.resolved_date ? isoToDisplay(data.resolved_date) : "",
@@ -3417,7 +3436,7 @@ export default function CMInProgressForm() {
                                                             <div className="tw-flex tw-items-center tw-justify-between tw-mb-3">
                                                                 <span className="tw-text-sm tw-font-semibold tw-text-red-700 tw-flex tw-items-center tw-gap-2">
                                                                     <span className="tw-w-2 tw-h-2 tw-rounded-full tw-bg-red-500"></span>
-                                                                    {t("beforePhoto", lang)} <span className="tw-text-red-500">*</span>
+                                                                    {t("beforePhoto", lang)}
                                                                 </span>
                                                                 {/* label ไม่ใช่ form control — fieldset[disabled] block ไม่ได้ และ attribute hidden ก็ถูก tw-inline-flex ทับ จึงต้องไม่ render เลย */}
                                                                 {!viewOnly && (
@@ -3449,8 +3468,8 @@ export default function CMInProgressForm() {
                                                                     ))}
                                                                 </div>
                                                             ) : (
-                                                                <div className="tw-text-center tw-py-6 tw-text-red-500 tw-text-sm tw-font-medium">
-                                                                    {lang === "th" ? "⚠️ กรุณาแนบรูปก่อนแก้ไข" : "⚠️ Please attach before image"}
+                                                                <div className="tw-text-center tw-py-6 tw-text-blue-gray-400 tw-text-sm tw-font-medium">
+                                                                    {lang === "th" ? "ยังไม่มีรูปก่อนแก้ไข" : "No before image yet"}
                                                                 </div>
                                                             )}
                                                         </div>
