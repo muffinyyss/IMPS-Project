@@ -151,6 +151,16 @@ const t = (key: keyof typeof T, lang: Lang): string => T[key][lang];
 // ==================== TYPES ====================
 // อาการชำรุดที่ผู้แจ้งเลือกได้ (เลือกได้หลายข้อ) — value เป็นรหัสคงที่ ไม่ใช่ข้อความไทย
 // เพื่อให้แก้คำเรียก/เพิ่มภาษาได้ภายหลังโดยข้อมูลเก่าใน DB ไม่เพี้ยน
+// ค่าเริ่มต้นของแผนงาน: เริ่มวันนี้ ไปจบอีก 7 วัน — planner แก้เองได้ทั้งสองช่อง
+// คืนรูปแบบของ <input type="datetime-local"> คือ YYYY-MM-DDTHH:mm ตามเวลาเครื่อง
+const PLAN_DEFAULT_SPAN_DAYS = 7;
+const planDateTimeDefault = (offsetDays = 0): string => {
+    const d = new Date();
+    d.setDate(d.getDate() + offsetDays);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
+
 const DAMAGE_SYMPTOM_OTHER = "other";
 const DAMAGE_SYMPTOM_OPTIONS: { value: string; th: string; en: string }[] = [
     { value: "charger", th: "เครื่องชาร์จมีปัญหา", en: "Charger problem" },
@@ -636,12 +646,13 @@ export default function CMOpenForm() {
     // วันที่/เวลาที่วางแผน — ประทับตอนเปิดฟอร์มเข้ามาวางแผน (แสดงอย่างเดียว)
     const [plannedDate, setPlannedDate] = useState("");
     const [plannedTime, setPlannedTime] = useState("");
-    const [schedStart, setSchedStart] = useState("");
-    const [schedFinish, setSchedFinish] = useState("");
+    const [schedStart, setSchedStart] = useState(() => planDateTimeDefault());
+    const [schedFinish, setSchedFinish] = useState(() => planDateTimeDefault(PLAN_DEFAULT_SPAN_DAYS));
     const [assignees, setAssignees] = useState<string[]>([]);   // username ของช่างที่ติ๊กเลือกไว้
     const [waitState, setWaitState] = useState<string>(DEFAULT_WAIT_STATE);
     const [waitRemark, setWaitRemark] = useState<string>(""); // หมายเหตุ สำหรับ material/site condition
     const [technicians, setTechnicians] = useState<TechnicianOption[]>([]);
+    const [isSuperAdmin, setIsSuperAdmin] = useState(false);
     // planner เปิดเคสเอง แล้วติ๊ก "ปิดใบงาน" — ข้ามการวางแผน แล้วเด้งไปฟอร์ม In Progress หลังบันทึก
     const [selfCloseNew, setSelfCloseNew] = useState(false);
 
@@ -1167,7 +1178,7 @@ export default function CMOpenForm() {
 
     useEffect(() => {
         let alive = true;
-        (async () => { try { const res = await apiFetch(`${API_BASE}/me`, { credentials: "include" }); if (res.ok) { const data = await res.json(); if (alive) { setCurrentUsername(data.username || ""); setUserRole(data.role || ""); setCurrentCompany(data.company || ""); if (!isEdit && !reported_by) setReportedBy(data.username || ""); } } } catch { } })();
+        (async () => { try { const res = await apiFetch(`${API_BASE}/me`, { credentials: "include" }); if (res.ok) { const data = await res.json(); if (alive) { setCurrentUsername(data.username || ""); setUserRole(data.role || ""); setCurrentCompany(data.company || ""); setIsSuperAdmin(!!data.is_super_admin); if (!isEdit && !reported_by) setReportedBy(data.username || ""); } } } catch { } })();
         return () => { alive = false; };
     }, [isEdit]);
 
@@ -1182,18 +1193,21 @@ export default function CMOpenForm() {
                     const data = await res.json();
                     if (alive) {
                         const users: TechnicianOption[] = Array.isArray(data.users) ? data.users : [];
-                        const plannerCompany = currentCompany.trim().toLowerCase();
+                        // มอบหมายได้เฉพาะช่างบริษัทเดียวกับคนที่ล็อกอิน — ใช้กับทุก role ที่วางแผนได้
+                        // (admin/owner/planner) ยกเว้น super_admin ที่ดูแลข้ามบริษัทตามปกติของระบบ
+                        // บริษัทว่าง = ระบุขอบเขตไม่ได้ จึงไม่ให้เลือกใคร ปลอดภัยกว่าปล่อยเห็นทั้งหมด
+                        const myCompany = currentCompany.trim().toLowerCase();
                         setTechnicians(
-                            userRole.trim().toLowerCase() === "planner"
-                                ? users.filter((user) => plannerCompany && (user.company || "").trim().toLowerCase() === plannerCompany)
-                                : users,
+                            isSuperAdmin
+                                ? users
+                                : users.filter((user) => myCompany && (user.company || "").trim().toLowerCase() === myCompany),
                         );
                     }
                 }
             } catch { if (alive) setTechnicians([]); }
         })();
         return () => { alive = false; };
-    }, [canPlan, currentCompany, userRole]);
+    }, [canPlan, currentCompany, userRole, isSuperAdmin]);
 
     useEffect(() => {
         if (isEdit || !stationId) return; let alive = true;
@@ -1323,16 +1337,16 @@ export default function CMOpenForm() {
                     // เวลาของรอบใหม่ = ตอนที่เปิดฟอร์มเข้ามา
                     setPlannedDate(localTodayISO());
                     setPlannedTime(localNowHHMM());
-                    setSchedStart("");
-                    setSchedFinish("");
+                    setSchedStart(planDateTimeDefault());
+                    setSchedFinish(planDateTimeDefault(PLAN_DEFAULT_SPAN_DAYS));
                 } else {
                     setPlanHistory(prevHistory);
                     // ยังไม่เคยวางแผน → ประทับเวลา "ตอนที่เปิดฟอร์มเข้ามา" ไม่ใช่ตอนกดบันทึก
                     // มีค่าเดิมแล้วไม่ทับ เพื่อให้เป็นเวลาที่วางแผนรอบนี้จริง ๆ
                     setPlannedDate(data.planned_date || localTodayISO());
                     setPlannedTime(data.planned_time || localNowHHMM());
-                    setSchedStart((data.sched_start ?? "").slice(0, 16));
-                    setSchedFinish((data.sched_finish ?? "").slice(0, 16));
+                    setSchedStart((data.sched_start ?? "").slice(0, 16) || planDateTimeDefault());
+                    setSchedFinish((data.sched_finish ?? "").slice(0, 16) || planDateTimeDefault(PLAN_DEFAULT_SPAN_DAYS));
                 }
                 // วางแผนรอบใหม่ = เริ่มติ๊กใหม่ทั้งหมด (ช่างของรอบก่อนอยู่ในการ์ดประวัติแล้ว)
                 const loadedAssignees = Array.isArray(data.assignees) ? data.assignees.filter(Boolean) : [];
@@ -1782,8 +1796,8 @@ ${in01.error ?? ""}`);
         setPlanHistory([]);
         setPlannedDate("");
         setPlannedTime("");
-        setSchedStart("");
-        setSchedFinish("");
+        setSchedStart(planDateTimeDefault());
+        setSchedFinish(planDateTimeDefault(PLAN_DEFAULT_SPAN_DAYS));
         setAssignees([]);
         setWaitState(DEFAULT_WAIT_STATE);
         setWaitRemark("");
