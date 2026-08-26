@@ -500,12 +500,24 @@ async def _assert_can_open_cm(
     current: UserClaims,
     charger_no: str | None = None,
     charger_sn: str = "",
+    detail: str = "เปิดใบงานได้เฉพาะตู้ยี่ห้อที่บริษัทของคุณดูแล (สถานีนี้ไม่ใช่)",
 ) -> None:
     """
     เปิดใบงานได้เฉพาะตู้ยี่ห้อที่บริษัทตัวเองดูแล
 
     ใช้เกณฑ์เดียวกับการมองเห็น — ไม่งั้นจะเปิดใบที่ตัวเองมองไม่เห็นทันทีหลังกดบันทึก
+
+    ตั้งแต่ย้าย dropdown "ตำแหน่งจุดที่มีความผิดปกติ" ไปให้ช่างเลือกตอน In Progress
+    ใบที่ CS เปิดจากระดับสถานีจะไม่มีทั้ง failure class และเลขตู้/SN มาเลย เคสนั้นยัง
+    พิสูจน์ยี่ห้อไม่ได้ จึงปล่อยผ่านแล้วไปเช็คตอนที่ช่างเลือกอุปกรณ์แทน (PATCH /status)
     """
+    if (
+        not (faulty_equipment or "").strip()
+        and charger_no in (None, "")
+        and not (charger_sn or "").strip()
+    ):
+        return
+
     clause = await _brand_clause_for_station(station_id, current)
     if clause is None:
         return  # ไม่ถูกจำกัด หรือทั้งสถานีเป็นยี่ห้อที่ดูแลอยู่
@@ -528,10 +540,7 @@ async def _assert_can_open_cm(
         or str(charger_sn or "").strip().lower() in allowed_sns
     ):
         return
-    raise HTTPException(
-        status_code=403,
-        detail="เปิดใบงานได้เฉพาะตู้ยี่ห้อที่บริษัทของคุณดูแล (สถานีนี้ไม่ใช่)",
-    )
+    raise HTTPException(status_code=403, detail=detail)
 
 
 def _merge_clause(mongo_filter: dict, clause: dict | None) -> dict:
@@ -1539,6 +1548,9 @@ class CMSubmitIn(BaseModel):
     found_date: Optional[str] = None
     found_time: str = ""  # เวลาแจ้ง (HH:MM)
     faulty_equipment: str = ""
+    # อาการชำรุดที่ผู้แจ้งเลือก (เลือกได้หลายข้อ) + ข้อความอิสระเมื่อเลือก "อื่น ๆ"
+    damage_symptoms: List[str] = []
+    damage_symptom_other: str = ""
     severity: str = ""
     problem_details: str = ""
     remarks_open: str = ""
@@ -1586,6 +1598,8 @@ async def cmreport_submit(body: CMSubmitIn, current: UserClaims = Depends(get_cu
         "reported_by": body.reported_by or current.username,
         # flat fields
         "faulty_equipment": body.faulty_equipment,
+        "damage_symptoms": [str(x).strip() for x in (body.damage_symptoms or []) if str(x or "").strip()],
+        "damage_symptom_other": (body.damage_symptom_other or "").strip(),
         "charger_no": body.charger_no,
         "charger_sn": (body.charger_sn or "").strip(),
         "severity": body.severity,
@@ -1792,6 +1806,8 @@ async def cmreport_detail_path(
         
         # flat fields จาก Open
         "faulty_equipment": doc.get("faulty_equipment") or "",
+        "damage_symptoms": doc.get("damage_symptoms") or nested_job.get("damage_symptoms") or [],
+        "damage_symptom_other": doc.get("damage_symptom_other") or nested_job.get("damage_symptom_other") or "",
         "charger_no": doc.get("charger_no") or nested_job.get("charger_no") or "",
         "charger_sn": doc.get("charger_sn") or nested_job.get("charger_sn") or "",
         "severity": doc.get("severity") or "",
@@ -1927,6 +1943,7 @@ async def cmreport_update_status(
             "resolved_date", "repair_result", "preventive_action", 
             "remarks", "remarks_open",
             "faulty_equipment",
+            "damage_symptoms", "damage_symptom_other",
             "charger_no", "charger_sn",
             "repaired_equipment",
             "inprogress_remarks",
@@ -1942,6 +1959,19 @@ async def cmreport_update_status(
             if js not in ALLOWED_STATUS:
                 raise HTTPException(status_code=400, detail="Invalid job.status")
             updates["status"] = js
+
+        # ช่างเป็นคนเลือก "ตำแหน่งจุดที่มีความผิดปกติ" ในหน้า In Progress แล้ว — จุดนี้คือครั้งแรก
+        # ที่ใบงานรู้ว่าเป็นตู้ไหน จึงเป็นที่ที่ต้องเช็คสิทธิ์ยี่ห้อ (ตอนเปิดใบยังไม่มีข้อมูลให้เช็ค)
+        new_faulty = str(body.job.get("faulty_equipment") or "").strip()
+        if new_faulty:
+            await _assert_can_open_cm(
+                station_id,
+                new_faulty,
+                current,
+                body.job.get("charger_no"),
+                str(body.job.get("charger_sn") or ""),
+                detail="เลือกได้เฉพาะอุปกรณ์ของตู้ยี่ห้อที่บริษัทของคุณดูแล",
+            )
 
         for k, v in body.job.items():
             if k in allowed_job_keys:

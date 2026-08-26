@@ -54,9 +54,9 @@ const T = {
     inspector: { th: "ผู้ตรวจสอบ", en: "Inspector" },
     repairer: { th: "ผู้เข้าแก้ไข", en: "Repairer" },
     inspectorEntered: { th: "ผู้ตรวจสอบ", en: "Inspector" },
-    faultyEquipment: { th: "อุปกรณ์ที่พัง", en: "Faulty Equipment" },
+    faultyEquipment: { th: "ตำแหน่งจุดที่มีความผิดปกติ", en: "FAILURECODE DESCRIPTION" },
     repairedEquipment: { th: "การแก้ไข", en: "Correction" },
-    selectEquipmentPlaceholder: { th: "เลือกอุปกรณ์...", en: "Select equipment..." },
+    selectEquipmentPlaceholder: { th: "เลือกตำแหน่ง...", en: "Select location..." },
     chargersGroup: { th: "Chargers", en: "Chargers" },
     devicesGroup: { th: "อุปกรณ์ในตู้", en: "Cabinet Devices" },
     otherEquipmentGroup: { th: "อุปกรณ์อื่นๆ", en: "Other Equipment" },
@@ -1480,6 +1480,7 @@ export default function CMInProgressForm() {
     const maximoLaborRequired = !viewOnly && laborOptions.length > 0;
 
     const validations = useMemo<ValidationItem[]>(() => [
+        { key: "equipment", label: t("faultyEquipment", lang), isValid: !!job.faulty_equipment, message: t("notSelected", lang), isRequired: !isWaitingForSiteCondition, scrollId: "cm-equipment" },
         { key: "problemType", label: t("validProblemType", lang), isValid: validationGroupState.allProblemTypesFilled, message: t("notSelected", lang), isRequired: !isWaitingForSiteCondition, scrollId: "cm-problem-type" },
         { key: "problemTypeOther", label: lang === "th" ? "ระบุปัญหา (อื่นๆ)" : "Specify Problem (Other)", isValid: !!job.problem_type_other.trim(), message: t("notFilled", lang), isRequired: job.problem_type.includes("Other"), scrollId: "cm-problem-type" },
         { key: "cause", label: t("validCause", lang), isValid: validationGroupState.allCausesFilled, message: t("notFilled", lang), isRequired: !isNoProblem && !isWaitingForSiteCondition, scrollId: "cm-cause" },
@@ -1876,7 +1877,10 @@ export default function CMInProgressForm() {
         //                    ทำให้ repaired_equipment ที่โหลดมาถูกล้างทิ้งทุกครั้งที่เปิดใบ (และหายจาก DB ถ้าบันทึกซ้ำ)
         if (prev === null || prev === "") return;
         if (prev !== job.faulty_equipment) {
-            setJob(p => ({ ...p, repaired_equipment: [] }));
+            // ปัญหา/สาเหตุ/การแก้ไข cascade มาจาก failure class — เปลี่ยนอุปกรณ์แล้วค่าเดิม
+            // จะไม่อยู่ในตัวเลือกชุดใหม่ ปล่อยไว้จะบันทึกรหัสที่ไม่เข้าคู่กันลง Maximo
+            setJob(p => ({ ...p, repaired_equipment: [], problem_type: [], problem_type_other: "", cause: [] }));
+            setExtraGroups([]);
         }
     }, [job.faulty_equipment]);
 
@@ -2611,6 +2615,7 @@ export default function CMInProgressForm() {
                     status: keepStatus ? job.status : targetStatus,
                     inspector,
                     job: {
+                        faulty_equipment: job.faulty_equipment,
                         problem_type: mergedProblemType,
                         problem_type_other: job.problem_type_other,
                         cause: mergedCause,
@@ -2919,53 +2924,12 @@ export default function CMInProgressForm() {
                         </div>
 
                         <div className="tw-p-4 tw-space-y-4">
-                            {/* Faulty Equipment & Severity */}
-                            <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-4">
-                                <div>
-                                    <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-2">{t("faultyEquipment", lang)}</label>
-                                    <select
-                                        value={job.faulty_equipment}
-                                        disabled
-                                        className="tw-w-full tw-h-10 tw-border tw-border-blue-gray-200 tw-rounded-lg tw-px-4 tw-text-sm tw-font-medium tw-bg-gray-100 tw-text-blue-gray-700 tw-cursor-not-allowed tw-opacity-100"
-                                        style={{ backgroundColor: '#f3f4f6', color: '#455a64' }}
-                                    >
-                                        <option value="">{t("selectEquipmentPlaceholder", lang)}</option>
-                                        <optgroup label={lang === "th" ? "รหัสความเสียหาย" : "Failure Code"}>
-                                            {maximoTree.classes.map(c => (
-                                                <option key={c.code} value={c.code}>{c.description || c.code}</option>
-                                            ))}
-                                            {/* ใบงานเก่าที่เก็บรหัสชุดเดิม — ต้องมี option ให้ค่าที่เลือกไว้ ไม่งั้น select โชว์ว่าง */}
-                                            {job.faulty_equipment
-                                                && !maximoTree.classes.some(c => c.code === job.faulty_equipment)
-                                                && !job.faulty_equipment.startsWith("charger_") && (
-                                                <option value={job.faulty_equipment}>
-                                                    {failureCodeLabel(job.faulty_equipment)}
-                                                </option>
-                                            )}
-                                        </optgroup>
-                                        {/* กลุ่มเดิม — ให้รายงานเก่าที่บันทึกเป็น charger_x / mdb / ccb ฯลฯ ยังแสดงผลได้ */}
-                                        {chargers.length > 0 && (
-                                            <optgroup label={t("chargersGroup", lang)}>
-                                                {chargers.map((c, i) => {
-                                                    const id = c.chargerNo ?? c.charger_id ?? i + 1;
-                                                    const sn = c.SN ?? c.sn ?? "";
-                                                    const label = c.charger_name || `Charger ${c.chargerNo ?? i + 1}`;
-                                                    return <option key={id} value={`charger_${id}`}>{sn ? `${label} (${sn})` : label}</option>;
-                                                })}
-                                            </optgroup>
-                                        )}
-                                        <optgroup label={t("otherEquipmentGroup", lang)}>
-                                            {FIXED_EQUIPMENT.map(eq => <option key={eq} value={eq.toLowerCase()}>{eq}</option>)}
-                                        </optgroup>
-                                    </select>
-                                    {loadingChargers && <p className="tw-text-xs tw-text-blue-gray-400 tw-mt-2">{t("loadingChargers", lang)}</p>}
-                                </div>
-                                <div>
-                                    <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-2">{t("severity", lang)}</label>
-                                    <div className="tw-flex tw-items-center tw-gap-2 tw-h-10 tw-px-3 tw-border tw-border-blue-gray-200 tw-rounded-lg tw-bg-gray-100">
-                                        <span className={`tw-w-2.5 tw-h-2.5 tw-rounded-full ${severityColor.dot}`}></span>
-                                        <span className={`tw-text-sm tw-font-medium ${severityColor.text}`}>{job.severity || "-"}</span>
-                                    </div>
+                            {/* Severity — ตำแหน่งจุดที่มีความผิดปกติ ย้ายไปอยู่กับ dropdown ปัญหา เพราะช่างเป็นคนเลือกเองแล้ว */}
+                            <div>
+                                <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-2">{t("severity", lang)}</label>
+                                <div className="tw-flex tw-items-center tw-gap-2 tw-h-10 tw-px-3 tw-border tw-border-blue-gray-200 tw-rounded-lg tw-bg-gray-100">
+                                    <span className={`tw-w-2.5 tw-h-2.5 tw-rounded-full ${severityColor.dot}`}></span>
+                                    <span className={`tw-text-sm tw-font-medium ${severityColor.text}`}>{job.severity || "-"}</span>
                                 </div>
                             </div>
 
@@ -3240,6 +3204,54 @@ export default function CMInProgressForm() {
                                     </div>
                                 </div>
                             )}
+
+                            {/* Faulty Equipment — ช่างเลือกตำแหน่งจุดที่มีความผิดปกติตรงนี้
+                                ต้องมาก่อน "ปัญหา" เพราะตัวเลือกปัญหา/สาเหตุ/การแก้ไข cascade มาจากค่านี้ */}
+                            <div id="cm-equipment" className="tw-space-y-2">
+                                <label className="tw-flex tw-items-center tw-gap-2 tw-text-sm tw-font-semibold tw-text-gray-700">
+                                    <span className="tw-w-1.5 tw-h-1.5 tw-rounded-full tw-bg-blue-500"></span>
+                                    {t("faultyEquipment", lang)} <span className="tw-text-red-500">*</span>
+                                </label>
+                                <div className="tw-flex-1 tw-min-w-0 md:tw-flex-none md:tw-w-96">
+                                    <select
+                                        value={job.faulty_equipment}
+                                        disabled={viewOnly}
+                                        onChange={e => setJob(prev => ({ ...prev, faulty_equipment: e.target.value }))}
+                                        className={`tw-w-full tw-h-12 tw-border tw-border-gray-200 tw-rounded-xl tw-px-4 tw-text-sm tw-font-medium tw-transition-all focus:tw-outline-none focus:tw-ring-3 focus:tw-ring-blue-500/20 focus:tw-border-blue-500 ${viewOnly ? "tw-bg-gray-100 tw-text-blue-gray-700 tw-cursor-not-allowed tw-opacity-100" : "tw-bg-white tw-text-gray-700 hover:tw-border-blue-400 tw-cursor-pointer"}`}
+                                        style={viewOnly ? { backgroundColor: "#f3f4f6", color: "#455a64" } : {}}
+                                    >
+                                        <option value="">{t("selectEquipmentPlaceholder", lang)}</option>
+                                        <optgroup label={lang === "th" ? "รหัสความเสียหาย" : "Failure Code"}>
+                                            {maximoTree.classes.map(c => (
+                                                <option key={c.code} value={c.code}>{c.description || c.code}</option>
+                                            ))}
+                                            {/* ใบงานเก่าที่เก็บรหัสชุดเดิม — ต้องมี option ให้ค่าที่เลือกไว้ ไม่งั้น select โชว์ว่าง */}
+                                            {job.faulty_equipment
+                                                && !maximoTree.classes.some(c => c.code === job.faulty_equipment)
+                                                && !job.faulty_equipment.startsWith("charger_") && (
+                                                <option value={job.faulty_equipment}>
+                                                    {failureCodeLabel(job.faulty_equipment)}
+                                                </option>
+                                            )}
+                                        </optgroup>
+                                        {/* กลุ่มเดิม — ให้รายงานเก่าที่บันทึกเป็น charger_x / mdb / ccb ฯลฯ ยังแสดงผลได้ */}
+                                        {chargers.length > 0 && (
+                                            <optgroup label={t("chargersGroup", lang)}>
+                                                {chargers.map((c, i) => {
+                                                    const id = c.chargerNo ?? c.charger_id ?? i + 1;
+                                                    const sn = c.SN ?? c.sn ?? "";
+                                                    const label = c.charger_name || `Charger ${c.chargerNo ?? i + 1}`;
+                                                    return <option key={id} value={`charger_${id}`}>{sn ? `${label} (${sn})` : label}</option>;
+                                                })}
+                                            </optgroup>
+                                        )}
+                                        <optgroup label={t("otherEquipmentGroup", lang)}>
+                                            {FIXED_EQUIPMENT.map(eq => <option key={eq} value={eq.toLowerCase()}>{eq}</option>)}
+                                        </optgroup>
+                                    </select>
+                                    {loadingChargers && <p className="tw-text-xs tw-text-blue-gray-400 tw-mt-2">{t("loadingChargers", lang)}</p>}
+                                </div>
+                            </div>
 
                             {/* Problem Type */}
                             {!isWaitingForSiteCondition && (
