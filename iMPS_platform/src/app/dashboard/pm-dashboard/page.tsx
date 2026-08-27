@@ -563,7 +563,7 @@ export default function PMDashboardPage() {
       {error && (
         <div className="tw-mb-4 tw-flex tw-items-center tw-gap-3 tw-rounded-xl tw-border tw-border-red-200 tw-bg-red-50 tw-px-4 tw-py-3 tw-text-sm tw-text-red-700">
           <span className="tw-text-base">⚠️</span>
-          <span>{t.errorPrefix}: <strong>{error}</strong></span>
+          <span>{`${t.errorPrefix}: `}<strong>{error}</strong></span>
         </div>
       )}
 

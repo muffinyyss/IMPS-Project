@@ -932,7 +932,7 @@ export default function CMDashboardPage() {
       {error && (
         <div className="tw-mb-4 tw-flex tw-items-center tw-gap-3 tw-rounded-xl tw-border tw-border-red-200 tw-bg-red-50 tw-px-4 tw-py-3 tw-text-sm tw-text-red-700">
           <span className="tw-text-base">⚠️</span>
-          <span>{t.errorPrefix}: <strong>{error}</strong></span>
+          <span>{`${t.errorPrefix}: `}<strong>{error}</strong></span>
         </div>
       )}
 
@@ -1036,7 +1036,7 @@ export default function CMDashboardPage() {
                     className="tw-h-2 tw-w-2 tw-rounded-full"
                     style={{ background: isActive ? "#fff" : color }}
                   />
-                  {label} ({brandCounts.get(b) ?? 0})
+                  {`${label} (${brandCounts.get(b) ?? 0})`}
                 </button>
               );
             })}
@@ -1064,7 +1064,7 @@ export default function CMDashboardPage() {
                       : "tw-bg-gray-100 tw-text-gray-600 hover:tw-bg-gray-200"
                   }`}
                 >
-                  {label}{key === null ? "" : ` (${count})`}
+                  {key === null ? label : `${label} (${count})`}
                 </button>
               );
             })}
@@ -1155,7 +1155,7 @@ export default function CMDashboardPage() {
                       >
                         <span className="tw-h-2 tw-w-2 tw-shrink-0 tw-rounded-full" style={{ background: dot }} />
                         <span className="tw-min-w-0 tw-flex-1 tw-truncate tw-text-[11px] tw-leading-tight tw-text-gray-500">{label}</span>
-                        <span className="tw-shrink-0 tw-text-[11px] tw-font-bold tw-text-gray-700">{pct}%</span>
+                        <span className="tw-shrink-0 tw-text-[11px] tw-font-bold tw-text-gray-700">{`${pct}%`}</span>
                       </button>
                     );
                   })}
