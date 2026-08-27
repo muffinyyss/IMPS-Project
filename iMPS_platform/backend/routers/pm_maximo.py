@@ -22,11 +22,14 @@ import re
 from datetime import datetime, timezone
 from typing import Any, Literal, Optional
 
+from bson.objectid import ObjectId
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from config import client, station_collection, charger_collection
 from deps import get_current_user, UserClaims
+from services import maximo as maximo_svc
+from routers import pm_flow
 from services.maximo import query_workorders
 
 log = logging.getLogger("pm_maximo")
@@ -145,8 +148,24 @@ def _location_variants(location: str) -> list[str]:
     loc = (location or "").strip()
     if not loc:
         return []
-    root = loc[:-3] if loc.upper().endswith("-EV") else loc
-    return list(dict.fromkeys([loc, root, f"{root}-EV"]))
+
+    out = [loc]
+
+    # location ระดับตู้ที่ Maximo ส่งมา เช่น "HMP0002-EV-BTL01GU001" หรือ
+    # "ZOO0001-ES-WAC21GU001" — ตัดหางให้เหลือระดับสถานี ("HMP0002-EV")
+    # ไม่งั้น reverse lookup ไม่เจอสถานี แล้วใบงานจะไม่โผล่ในหน้า PM report
+    m = re.match(r"^(?P<station>.+?-(?:EV|ES))-.+$", loc, re.IGNORECASE)
+    if m:
+        out.append(m.group("station"))
+
+    # ระดับสถานีลองทั้งแบบมีและไม่มี -EV ต่อท้าย (iMPS กับ Maximo เขียนคนละแบบได้)
+    # ไม่ขยายให้ location ระดับตู้ เพราะ "…-BTL01GU001-EV" ไม่มีทางตรงกับอะไร
+    station_level = [x for x in out if x.upper().endswith("-EV")] or [loc]
+    for base in station_level:
+        root = base[:-3] if base.upper().endswith("-EV") else base
+        out.extend([root, f"{root}-EV"])
+
+    return list(dict.fromkeys(x for x in out if x))
 
 
 def _resolve_owner(location: str) -> dict:
@@ -157,15 +176,18 @@ def _resolve_owner(location: str) -> dict:
     if not variants:
         return {}
 
-    charger = charger_collection.find_one(
-        {"maximo_location": {"$in": variants}}, {"SN": 1, "station_id": 1}
-    )
+    # เทียบแบบไม่สนตัวพิมพ์เล็ก/ใหญ่ และเผื่อช่องว่างหัวท้ายที่ติดมาจากการพิมพ์
+    # (เคสจริง: ตั้ง maximo_location เป็น "hmp0002-ev " แล้วหาไม่เจอทั้งที่ตั้งถูก)
+    cond = {"$or": [
+        {"maximo_location": {"$regex": rf"^\s*{re.escape(v)}\s*$", "$options": "i"}}
+        for v in variants
+    ]}
+
+    charger = charger_collection.find_one(cond, {"SN": 1, "station_id": 1})
     if charger:
         return {"station_id": charger.get("station_id"), "sn": charger.get("SN")}
 
-    st = station_collection.find_one(
-        {"maximo_location": {"$in": variants}}, {"station_id": 1}
-    )
+    st = station_collection.find_one(cond, {"station_id": 1})
     if st:
         return {"station_id": st.get("station_id"), "sn": None}
 
@@ -464,6 +486,7 @@ def _open_coll():
 
 # ประเภทอุปกรณ์ที่เลือก PM ได้ในสถานีหนึ่ง ๆ (ตรงกับ tab ใน PM report)
 EQUIP_TYPES = {"charger", "mdb", "ccb", "cbbox", "station"}
+PM_PLANNING_ROLES = {"admin", "owner", "planner"}
 # alias ที่ frontend/Maximo อาจส่งมา → normalize เป็น key มาตรฐาน
 EQUIP_ALIASES = {"cb_box": "cbbox", "cbbox": "cbbox", "cb-box": "cbbox"}
 
@@ -610,7 +633,7 @@ def _open_dedup_key(doc: dict) -> dict:
     return {"location": doc["location"], "pm_date": doc.get("pm_date")}
 
 
-async def _upsert_open(items: list[dict]) -> dict:
+async def _upsert_open(items: list[dict], inbound: dict | None = None) -> dict:
     coll = _open_coll()
     try:
         await coll.create_index("wonum", sparse=True)
@@ -625,10 +648,16 @@ async def _upsert_open(items: list[dict]) -> dict:
         if not doc:
             skipped += 1
             continue
+        # เก็บของดิบที่ Maximo ยิงมา + สิ่งที่เราตอบกลับ ไว้ดูย้อนหลังได้
+        # (ที่ผ่านมามีแต่ log ฝั่ง server ซึ่งหมุนทิ้งแล้วตามไม่ได้)
+        set_doc = dict(doc)
+        if inbound is not None:
+            set_doc["maximo_inbound"] = {**inbound, "item": raw}
+
         res = await coll.update_one(
             _open_dedup_key(doc),
             {
-                "$set": doc,
+                "$set": set_doc,
                 # selected_equipment เป็นค่าที่ผู้ใช้เลือกฝั่ง iMPS — ตั้งค่าเริ่มต้น
                 # เฉพาะตอน insert เท่านั้น เพื่อไม่ให้ Maximo ยิงซ้ำมาล้างของที่เลือกไว้
                 "$setOnInsert": {
@@ -761,7 +790,19 @@ async def maximo_pm_open(
     if warnings:
         log.warning("  ⚠️  IN06 field ไม่ครบ: %s", "; ".join(warnings))
 
-    stats = await _upsert_open(items)
+    response_body = {"status": "OK"}
+    inbound = {
+        "at": datetime.now(timezone.utc),
+        "content_type": ctype,
+        "token_headers": seen_headers or None,
+        # body ดิบทั้งก้อน (ตัดที่ 4000 ตัว) — เห็นว่าเขาส่งมาจริง ๆ หน้าตาแบบไหน
+        "raw_body": (body_bytes[:4000].decode("utf-8", "replace") or None),
+        "received": len(items),
+        "warnings": warnings or None,
+        "response": response_body,
+    }
+
+    stats = await _upsert_open(items, inbound=inbound)
     log.info(f"  ✅ IN06 stored: {stats} ({len(items)} received)")
 
     # สเปก IN06 กำหนด response ไว้แค่ {"status": "OK"} — ตอบเกินไปกว่านี้ไม่ได้
@@ -822,6 +863,12 @@ def _serialize_open(doc: dict) -> dict:
             doc["selected_at"].isoformat() if isinstance(doc.get("selected_at"), datetime) else None
         ),
         "selected_by": doc.get("selected_by"),
+        "assignees": doc.get("assignees") or [],
+        "planned_at": doc.get("planned_at"),
+        "planned_by": doc.get("planned_by"),
+        "sched_start": doc.get("sched_start"),
+        "sched_finish": doc.get("sched_finish"),
+        "planning_status": doc.get("planning_status") or "pending",
         "receivedAt": (
             doc["receivedAt"].isoformat() if isinstance(doc.get("receivedAt"), datetime) else None
         ),
@@ -837,7 +884,9 @@ async def list_maximo_pm_open(
     location: Optional[str] = Query(None, description="กรองตาม Maximo location"),
     station_id: Optional[str] = Query(None, description="กรองตาม station_id ของ iMPS"),
     only_open: bool = Query(True, description="เอาเฉพาะใบงานที่ยังเปิดอยู่"),
-    limit: int = Query(50, ge=1, le=200),
+    verify: bool = Query(True, description="เช็คกับ Maximo ว่า wonum มีอยู่จริงไหม"),
+    # หน้า PM List ดึงรวมทุกสถานีในครั้งเดียว จึงต้องเพดานสูงกว่าหน้า tab เดี่ยว
+    limit: int = Query(50, ge=1, le=1000),
     current: UserClaims = Depends(get_current_user),
 ):
     """
@@ -881,7 +930,64 @@ async def list_maximo_pm_open(
 
     cursor = _open_coll().find(q).sort([("pm_date", -1), ("_id", -1)]).limit(limit)
     docs = await cursor.to_list(length=limit)
-    return {"items": [_serialize_open(d) for d in docs], "total": len(docs)}
+
+    # ── กรองตามอุปกรณ์ที่ planner เลือกไว้ ──
+    # ใบงาน Maximo เป็นระดับสถานี ถ้าไม่กรอง ใบเดียวจะโผล่ครบทุก tab และทุกตู้
+    # ในสถานี ทั้งที่ planner เลือก PM แค่บางตัว
+    #   ยังไม่ได้วางแผน (selected_equipment ว่าง) → โชว์ทุก tab ให้ planner หาเจอ
+    #   วางแผนแล้ว → โชว์เฉพาะ tab/ตู้ ที่ถูกเลือก
+    if source:
+        want = _norm_equip_type(source)
+        ident = (identifier or "").strip()
+
+        def _picked(d: dict) -> bool:
+            items = d.get("selected_equipment") or []
+            if not items:
+                return True
+            for e in items:
+                if _norm_equip_type(e.get("type")) != want:
+                    continue
+                if want != "charger":
+                    return True
+                # charger เจาะจงถึงตู้ — ไม่ระบุ identifier ก็ถือว่าเอาหมด
+                if not ident or str(e.get("sn") or "").strip() == ident:
+                    return True
+            return False
+
+        docs = [d for d in docs if _picked(d)]
+
+    # ใบที่รับเข้ามาตอนสถานียังไม่ได้ตั้ง maximo_location จะมี station_id ว่างค้างอยู่
+    # ลองหาใหม่ตอนอ่าน แล้วเขียนกลับให้ถาวร (ไม่ต้องรอ Maximo ยิงซ้ำ)
+    for d in docs:
+        if not (d.get("station_id") or "").strip():
+            sid = _station_id_of_wo(d)
+            if sid:
+                d["station_id"] = sid
+                try:
+                    await _open_coll().update_one({"_id": d["_id"]}, {"$set": {"station_id": sid}})
+                except Exception as e:
+                    log.warning(f"  ⚠️ backfill station_id ของ {d.get('wonum')} ไม่สำเร็จ: {e}")
+
+    items = [_serialize_open(d) for d in docs]
+
+    # เช็คว่าใบไหนมีอยู่จริงใน Maximo — ถามทีเดียวทั้งชุด
+    # ล้มก็ปล่อยผ่าน (คืน exists_in_maximo = None = ยังไม่รู้) ไม่บล็อกการแสดงผล
+    if verify:
+        try:
+            found = await maximo_svc.workorders_exist([i.get("wonum") for i in items])
+            for i in items:
+                wn = str(i.get("wonum") or "").strip()
+                hit = found.get(wn)
+                i["exists_in_maximo"] = bool(hit) if wn else None
+                if hit:
+                    i["maximo_status"] = hit.get("status")
+                    i["maximo_worktype"] = hit.get("worktype")
+        except Exception as e:
+            log.warning(f"  ⚠️ เช็ค wonum กับ Maximo ไม่สำเร็จ: {e}")
+            for i in items:
+                i["exists_in_maximo"] = None
+
+    return {"items": items, "total": len(items)}
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -902,11 +1008,176 @@ class EquipmentItem(BaseModel):
 
 
 class SelectEquipmentIn(BaseModel):
-    equipment: list[EquipmentItem] = Field(default_factory=list)
+    # None = ไม่แตะรายการอุปกรณ์เดิม (หน้าวางแผน PM ไม่ได้ให้เลือกอุปกรณ์แล้ว)
+    # []   = ล้างรายการทิ้ง
+    equipment: Optional[list[EquipmentItem]] = None
+    planned_at: Optional[str] = None
+    sched_start: Optional[str] = None
+    sched_finish: Optional[str] = None
+    assignees: list[str] = Field(default_factory=list)
 
 
 async def _find_open_wo(wonum: str) -> dict | None:
     return await _open_coll().find_one({"wonum": wonum})
+
+
+def _station_id_of_wo(wo: dict) -> str:
+    """
+    station_id ของใบงาน — ถ้าตอนรับเข้า reverse lookup ไม่ติด (สถานี/ตู้ยังไม่ได้ตั้ง
+    maximo_location ตอนนั้น) ให้ลองหาจาก location ซ้ำอีกรอบ ไม่งั้นรายการอุปกรณ์
+    จะว่างเปล่าทั้งที่สถานีมีตู้อยู่
+    """
+    sid = (wo.get("station_id") or "").strip()
+    if sid:
+        return sid
+    return (_resolve_owner(wo.get("location") or "") or {}).get("station_id") or ""
+
+
+# ══════════════════════════════════════════════════════════════════
+# สถานะการ sync ของเอกสาร PM + ยิงซ้ำ (คู่กับ /cm-maximo/{id}/sync ของฝั่ง CM)
+# ══════════════════════════════════════════════════════════════════
+PM_SYNC_ROLES: set[str] = {"admin", "owner", "planner"}
+
+
+def _serialize_sync(doc: dict) -> dict:
+    """maximo_sync ของเอกสาร → JSON (datetime → ISO)"""
+    out: dict[str, Any] = {}
+    for key, entry in (doc.get("maximo_sync") or {}).items():
+        if not isinstance(entry, dict):
+            continue
+        at = entry.get("at")
+        out[key] = {
+            **{k: v for k, v in entry.items() if k != "at"},
+            "at": at.isoformat() if isinstance(at, datetime) else None,
+        }
+    return out
+
+
+async def _load_pm_report(report_id: str, sn: str):
+    """เอกสาร PM ของ charger + collection ของ SN นั้น"""
+    from routers.pm_helpers import get_pmreport_collection_for
+
+    coll = get_pmreport_collection_for(sn)
+    try:
+        oid = ObjectId(report_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bad report_id")
+    doc = await coll.find_one({"_id": oid})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Report not found")
+    return coll, oid, doc
+
+
+@router.get("/pm-maximo/wo/{wonum}/sync")
+async def pm_wo_sync_status(
+    wonum: str,
+    current: UserClaims = Depends(get_current_user),
+):
+    """
+    ใบงาน PM 1 ใบ: Maximo ส่งอะไรเข้ามา (IN06) และเรายิงอะไรกลับไปแล้วบ้าง
+
+    ใช้ได้ตั้งแต่ยังไม่มีเอกสาร PM (ด่านวางแผนของ planner) ต่างจาก
+    /pm-maximo/{report_id}/sync ที่ต้องมีเอกสารก่อน
+    """
+    wonum = (wonum or "").strip()
+    wo = await _find_open_wo(wonum)
+    if not wo:
+        raise HTTPException(status_code=404, detail=f"ไม่พบใบงาน wonum={wonum}")
+
+    inbound = dict(wo.get("maximo_inbound") or {})
+    if isinstance(inbound.get("at"), datetime):
+        inbound["at"] = inbound["at"].isoformat()
+
+    # None = เช็คกับ Maximo ไม่ได้ (ไม่ใช่ "ไม่มี")
+    try:
+        found = await maximo_svc.workorders_exist([wonum])
+        exists = wonum in found
+        in_maximo = found.get(wonum) or None
+    except Exception as e:
+        log.warning(f"  ⚠️ เช็ค wonum {wonum} กับ Maximo ไม่สำเร็จ: {e}")
+        exists, in_maximo = None, None
+
+    # IN03/IN09/IN02(CLOSED) จดไว้บนเอกสาร PM ไม่ใช่บนใบงาน — ใบงานมีแต่ IN02(INPRG)
+    # ถ้าอ่านแค่ใบงาน หน้านี้จะค้างอยู่ที่ INPRG ตลอดกาลทั้งที่ปิดงานไปแล้ว
+    reports = await pm_flow.wo_reports(wonum)
+
+    merged = _serialize_sync(wo)
+    for rep in reports:
+        rep["interfaces"] = _serialize_sync(rep)
+        rep.pop("maximo_sync", None)
+        # เอกสารเป็นตัวยิงจริง ทับของใบงานได้เลยเมื่อชนกัน (IN02 CLOSED มาทีหลัง INPRG)
+        merged.update(rep["interfaces"])
+
+    return {
+        "wonum": wonum,
+        "exists_in_maximo": exists,
+        "maximo_workorder": in_maximo,
+        "location": wo.get("location") or "",
+        "station_id": _station_id_of_wo(wo),
+        "planning_status": wo.get("planning_status") or "pending",
+        "assignees": wo.get("assignees") or [],
+        # ขาเข้า: IN06 ที่ Maximo ยิงมา + response ที่เราตอบกลับ
+        "inbound": inbound or None,
+        # ขาออก: รวมของใบงาน (IN02 INPRG ตอน assign) กับของเอกสารทุกใบในใบงานนี้
+        "interfaces": merged,
+        # แยกรายเอกสารไว้ด้วย ใบงานเดียวมีได้หลายอุปกรณ์
+        "reports": reports,
+        "progress": await pm_flow.wo_completion(wonum),
+    }
+
+
+@router.get("/pm-maximo/{report_id}/sync")
+async def pm_sync_status(
+    report_id: str,
+    sn: str = Query(..., description="SN ของตู้ (เอกสาร PM charger เก็บแยกตาม SN)"),
+    current: UserClaims = Depends(get_current_user),
+):
+    """
+    ดูว่าเอกสาร PM ใบนี้ยิงอะไรเข้า Maximo ไปแล้วบ้าง
+
+    รวม 2 ที่ไว้ให้ในครั้งเดียว:
+      report    — IN03 / IN09 / IN02 (CLOSED) ที่จดไว้บนเอกสาร PM
+      workorder — IN02 (INPRG) ที่จดไว้บนใบงานใน maximo_pm_open ตอน planner assign
+    """
+    _, _, doc = await _load_pm_report(report_id, sn.strip())
+    wonum = (doc.get("wonum") or "").strip()
+
+    wo_sync: dict = {}
+    if wonum:
+        wo = await _open_coll().find_one({"wonum": wonum}) or {}
+        wo_sync = _serialize_sync(wo)
+
+    return {
+        "issue_id": doc.get("issue_id") or "",
+        "doc_name": doc.get("doc_name") or "",
+        "status": doc.get("status") or "",
+        "wonum": wonum,
+        "sn": sn,
+        "station_id": doc.get("station_id") or "",
+        "interfaces": _serialize_sync(doc),
+        "workorder_interfaces": wo_sync,
+    }
+
+
+@router.post("/pm-maximo/{report_id}/sync")
+async def pm_sync_retry(
+    report_id: str,
+    sn: str = Query(...),
+    current: UserClaims = Depends(get_current_user),
+):
+    """ยิงชุดปิดงาน (IN03 → IN09 → IN02 CLOSED) ใหม่ — ใช้เมื่อรอบก่อนล้ม"""
+    role = (current.role or "").strip().lower()
+    if role not in PM_SYNC_ROLES and not getattr(current, "is_super_admin", False):
+        raise HTTPException(status_code=403, detail="Only planner, owner or admin can re-sync")
+
+    coll, oid, doc = await _load_pm_report(report_id, sn.strip())
+
+    from services import pm_maximo_out
+    result = await pm_maximo_out.safe_sync_closed(
+        coll, oid, doc, memo=f"manual re-sync by {current.username}"
+    )
+    fresh = await coll.find_one({"_id": oid}) or {}
+    return {"ok": True, "result": result, "interfaces": _serialize_sync(fresh)}
 
 
 @router.get("/maximo/pm/{wonum}/equipment-choices")
@@ -924,18 +1195,26 @@ async def pm_equipment_choices(
     if not doc:
         raise HTTPException(status_code=404, detail=f"ไม่พบใบงาน wonum={wonum}")
 
-    station_id = doc.get("station_id")
+    station_id = _station_id_of_wo(doc)
     chargers: list[dict] = []
     if station_id:
         # charger_collection เป็น pymongo (sync) — วนตรง ๆ ได้
-        for c in charger_collection.find(
+        cursor = charger_collection.find(
             {"station_id": station_id},
-            {"_id": 0, "SN": 1, "chargeBoxID": 1, "name": 1, "maximo_location": 1},
-        ):
+            {"_id": 0, "SN": 1, "chargeBoxID": 1, "name": 1, "charger_name": 1,
+             "maximo_location": 1, "chargerNo": 1},
+        ).sort([("chargerNo", 1), ("SN", 1)])
+        for idx, c in enumerate(cursor, start=1):
+            # ตู้ที่ไม่มี SN เลือกไปก็บันทึกไม่ผ่าน (type charger บังคับ sn) — ไม่ต้องเสนอ
+            if not str(c.get("SN") or "").strip() or c.get("SN") == "-":
+                continue
+            # ป้ายชื่อใช้หมายเลขตู้ ("Charger 1", "Charger 2") ไม่ใช่ location ของ Maximo
+            # ซึ่งเป็นรหัสที่ผู้ใช้อ่านแล้วไม่รู้ว่าเป็นตู้ไหน — ไม่มี chargerNo ก็ไล่ตามลำดับ
+            charger_no = c.get("chargerNo") or idx
             chargers.append({
                 "type": "charger",
                 "sn": c.get("SN"),
-                "label": c.get("name") or c.get("chargeBoxID") or c.get("SN"),
+                "label": f"Charger {charger_no}",
                 "location": c.get("maximo_location"),
             })
 
@@ -965,8 +1244,45 @@ async def set_pm_equipment(
     if not wonum:
         raise HTTPException(status_code=400, detail="wonum is required")
 
+    role = (current.role or "").strip().lower()
+    if role not in PM_PLANNING_ROLES:
+        raise HTTPException(
+            status_code=403,
+            detail="Only planner, owner or admin can plan PM equipment",
+        )
+
+    wo = await _find_open_wo(wonum)
+    if not wo:
+        raise HTTPException(status_code=404, detail=f"PM work order not found: {wonum}")
+
+    # ใบที่เลขไม่มีอยู่จริงใน Maximo วางแผนไปก็ยิงสถานะกลับไม่ได้ (BMXAA1496E)
+    # เตือนตั้งแต่ตอนกด Assign ดีกว่าไปพังตอนปิดงาน
+    # เช็คกับ Maximo ไม่ได้ (ล่ม/เน็ตมีปัญหา) = ปล่อยผ่าน ไม่บล็อกงาน
+    try:
+        found = await maximo_svc.workorders_exist([wonum])
+    except Exception as e:
+        log.warning(f"  ⚠️ เช็ค wonum {wonum} กับ Maximo ไม่สำเร็จ ปล่อยผ่าน: {e}")
+        found = {wonum: {}}
+    if wonum not in found:
+        raise HTTPException(
+            status_code=409,
+            detail=f"ใบงาน {wonum} ไม่มีอยู่จริงใน Maximo — วางแผนแล้วส่งสถานะกลับไม่ได้ "
+                   f"(อาจเป็น payload ทดสอบที่ยิงเข้ามา) กรุณาตรวจกับฝั่ง Maximo ก่อน",
+        )
+
+    # ไม่รู้ว่าเป็นสถานีไหนใน iMPS = สร้างเอกสาร PM ไม่ได้ (ทุกชนิด key ด้วย station_id
+    # หรือ SN ของตู้ในสถานี) วางแผนไปก็ทำงานต่อไม่ได้ — กันตั้งแต่ตรงนี้
+    if not _station_id_of_wo(wo):
+        raise HTTPException(
+            status_code=409,
+            detail=f"location {wo.get('location') or '-'} ไม่ตรงกับสถานีไหนใน iMPS — "
+                   f"ถ้าเป็นสถานีที่เราดูแล ให้ตั้ง maximo_location ที่หน้า EV Stations ก่อน "
+                   f"ถ้าไม่ใช่ ให้ข้ามใบงานนี้ไป",
+        )
+
     items: list[dict] = []
-    for e in body.equipment:
+    seen: set[str] = set()
+    for e in (body.equipment or []):
         etype = _norm_equip_type(e.type)
         if etype not in EQUIP_TYPES:
             raise HTTPException(
@@ -977,26 +1293,86 @@ async def set_pm_equipment(
             raise HTTPException(
                 status_code=400, detail="charger ต้องระบุ sn ของตู้ที่จะ PM"
             )
+        key = f"charger:{(e.sn or '').strip()}" if etype == "charger" else etype
+        if key in seen:
+            raise HTTPException(status_code=400, detail="Duplicate equipment in PM plan")
+        seen.add(key)
+
         item = {"type": etype}
-        if e.sn:
-            item["sn"] = e.sn.strip()
-        if e.location:
-            item["location"] = e.location.strip()
-        if e.label:
-            item["label"] = e.label
+        if etype == "charger":
+            station_id = _station_id_of_wo(wo)
+            if not station_id:
+                raise HTTPException(
+                    status_code=409,
+                    detail="This PM work order is not mapped to an iMPS station",
+                )
+            sn = (e.sn or "").strip()
+            charger = charger_collection.find_one(
+                {"station_id": station_id, "SN": sn},
+                {"SN": 1, "chargeBoxID": 1, "name": 1, "charger_name": 1, "maximo_location": 1},
+            )
+            if not charger:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Charger SN={sn} is not in this work order station",
+                )
+            item["sn"] = sn
+            item["location"] = (charger.get("maximo_location") or "").strip() or None
+            item["label"] = (
+                charger.get("name")
+                or charger.get("charger_name")
+                or charger.get("chargeBoxID")
+                or sn
+            )
+        else:
+            if e.location:
+                item["location"] = e.location.strip()
+            if e.label:
+                item["label"] = e.label
         items.append(item)
 
-    res = await _open_coll().update_one(
-        {"wonum": wonum},
-        {"$set": {
-            "selected_equipment": items,
-            "selected_at": datetime.now(timezone.utc),
-            "selected_by": current.username or current.sub,
-        }},
-    )
+    now = datetime.now(timezone.utc)
+    planned_at_value = (body.planned_at or now.isoformat()).strip()
+    sched_start_value = (body.sched_start or "").strip()
+    sched_finish_value = (body.sched_finish or "").strip()
+    assignees = [str(x).strip() for x in body.assignees if str(x or "").strip()]
+
+    # ไม่ส่ง equipment มา = คงรายการเดิมไว้ (ผู้เรียกที่ยังมี picker ส่ง list มาเหมือนเดิม)
+    keep_equipment = body.equipment is None
+    effective_items = (wo.get("selected_equipment") or []) if keep_equipment else items
+
+    # วางแผนเสร็จเมื่อเลือกอุปกรณ์แล้ว "หรือ" มีกำหนดการ + ช่างครบ
+    # (หน้าวางแผน PM มอบหมายด้วยกำหนดการ+ช่างอย่างเดียว ไม่ได้เลือกอุปกรณ์)
+    schedule_complete = bool(sched_start_value and sched_finish_value and assignees)
+    planning_status = "planned" if (effective_items or schedule_complete) else "pending"
+
+    update: dict = {
+        "selected_at": now,
+        "selected_by": current.username or current.sub,
+        "planning_status": planning_status,
+        "planned_at": planned_at_value,
+        "planned_by": current.username or current.sub,
+        "sched_start": sched_start_value,
+        "sched_finish": sched_finish_value,
+        "assignees": assignees,
+    }
+    if not keep_equipment:
+        update["selected_equipment"] = items
+
+    res = await _open_coll().update_one({"wonum": wonum}, {"$set": update})
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail=f"ไม่พบใบงาน wonum={wonum}")
 
     doc = await _find_open_wo(wonum)
-    log.info(f"  ✅ PM equipment selected for {wonum}: {len(items)} item(s)")
-    return {"ok": True, "wonum": wonum, "item": _serialize_open(doc)}
+    log.info(f"  ✅ PM plan saved for {wonum}: {len(effective_items)} equipment item(s), status={planning_status}")
+
+    # ── ขั้น 2 ของ sequencing: assign เสร็จ = ใบงานเข้าสถานะ In Progress ──
+    # ยิงเฉพาะตอนวางแผนครบจริง ไม่ใช่ทุกครั้งที่กดบันทึก
+    maximo_result = None
+    if planning_status == "planned":
+        from services import pm_maximo_out
+        maximo_result = await pm_maximo_out.safe_sync_in_progress(
+            wonum, memo=f"assigned by {current.username or current.sub}"
+        )
+
+    return {"ok": True, "wonum": wonum, "item": _serialize_open(doc), "maximo": maximo_result}

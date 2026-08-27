@@ -67,22 +67,49 @@ MAXIMO_ATTACHWO_OS = os.getenv("MAXIMO_ATTACHWO_OS", "ZAPIATTACHWO")
 MAXIMO_FAILURELIST_OS = os.getenv("MAXIMO_FAILURELIST_OS", "ZAPIFAILURELIST")
 MAXIMO_FAILUREREPORT_OS = os.getenv("MAXIMO_FAILUREREPORT_OS", "ZAPIFAILUREREPORT")
 MAXIMO_PERSON_OS = os.getenv("MAXIMO_PERSON_OS", "ZAPIPERSON")
+# LABOR เป็นคนละ object กับ PERSON — คนที่ลงเวลาได้ต้องมีเรคคอร์ดที่นี่
+# (ไม่มี ZAPILABOR ให้ใช้ ต้องยิง MXLABOR ซึ่งเป็น OS มาตรฐานของ Maximo)
+MAXIMO_LABOR_OS = os.getenv("MAXIMO_LABOR_OS", "MXLABOR")
 MAXIMO_LABTRANS_OS = os.getenv("MAXIMO_LABTRANS_OS", "ZAPILABTRANS")
+# enterby ของ labtrans (IN09) = ผู้อนุมัติการลงเวลา — สเปค EGAT บังคับ ค่า default
+# คือบัญชี integration ของ Maximo (INFUSER) ต้องเป็นตัวพิมพ์ใหญ่ (ชนิด UPPER)
+MAXIMO_LABTRANS_ENTERBY = os.getenv("MAXIMO_LABTRANS_ENTERBY", "INFUSER").strip().upper()
 
 # worktype ของใบงาน CM ที่ iMPS เปิดเข้า Maximo
 MAXIMO_CM_WORKTYPE = os.getenv("MAXIMO_CM_WORKTYPE", "CM")
 # doctype ของ attachment (IN03) — ต้องเป็นค่าที่มีอยู่ใน DOCTYPES ของ Maximo
 MAXIMO_DOCTYPE = os.getenv("MAXIMO_DOCTYPE", "Attachments")
-# urltype ของ link attachment — ตอนนี้ domain URLTYPE บน DEV มีแต่ "FILE"
-# ต้องให้ EGAT เพิ่ม "WEB" ก่อน IN03 ถึงจะแนบลิงก์ได้ (ดู BMXAA4024E)
-MAXIMO_URLTYPE = os.getenv("MAXIMO_URLTYPE", "WEB")
+# urltype ของ link attachment — สเปค EGAT ระบุว่าใช้ "URL"
+# (เคยลอง "WEB" → BMXAA4024E ไม่มีใน domain, "FILE" → iface#nodocinfo)
+MAXIMO_URLTYPE = os.getenv("MAXIMO_URLTYPE", "URL")
 
 # ── ฟิลด์ที่ Maximo DEV ปฏิเสธ ณ ตอนทดสอบ (2026-08-06) — ปิดไว้ก่อน ──
 # zcraft   : BMXAA4191E ค่าไม่อยู่ใน domain (ไม่มี WO ใบไหนในระบบตั้งค่านี้เลย)
-# failurecode ระดับ WO : BMXAA4534E ใช้ไม่ได้จนกว่า location จะผูก failure class
-# เปิดคืนได้ทันทีเมื่อ EGAT ตั้งค่าฝั่ง Maximo เสร็จ โดยไม่ต้องแก้โค้ด
+# failurecode ระดับ WO ตอนสร้าง (IN01) : เคยโดน BMXAA4534E เลยปิดไว้
+#   — flag นี้คุมเฉพาะ IN01 เท่านั้น ส่วน IN05 สเปคระบุว่า failurecode เป็น
+#     Required จึงส่งเสมอ ไม่ผ่าน flag (ไม่ส่งจะโดน BMXAA0030E)
+#   — ยืนยัน 2026-08-18: IN05 ตั้ง failurecode ให้ WO เองได้ ไม่ต้องพึ่ง IN01
+#     และ location ไม่จำเป็นต้องผูก failure class ไว้ก่อน
 MAXIMO_SEND_ZCRAFT = os.getenv("MAXIMO_SEND_ZCRAFT", "false").lower() == "true"
 MAXIMO_SEND_WO_FAILURECODE = os.getenv("MAXIMO_SEND_WO_FAILURECODE", "false").lower() == "true"
+# wopriority (IN01) : สเปคระบุว่าไม่บังคับ และ severity เป็นเกณฑ์ของ iMPS ไม่ใช่ของ Maximo
+#   ไม่ส่ง = Maximo ใช้ priority default ของระบบเอง เปิดกลับได้ที่ env นี้
+#   (ZAPISR ของ auto CM ยังส่ง priority ตามเดิม ไม่เกี่ยวกับ flag นี้)
+MAXIMO_SEND_WO_PRIORITY = os.getenv("MAXIMO_SEND_WO_PRIORITY", "false").lower() == "true"
+# reportdate (IN01) : ไม่บังคับเช่นกัน — ไม่ส่ง Maximo จะประทับเวลาที่รับใบเอง
+#   ซึ่งเป็นเวลาเดียวกับที่ iMPS ยิงอยู่แล้ว (ยิงทันทีตอน planner นัดวัน)
+MAXIMO_SEND_WO_REPORTDATE = os.getenv("MAXIMO_SEND_WO_REPORTDATE", "false").lower() == "true"
+# orgid / statusdate ของ IN02 : natural key ของ ZAPIWOSTATUS คือ wonum + siteid อยู่แล้ว
+#   ส่วน statusdate ไม่ส่ง Maximo จะประทับเวลาที่รับคำสั่งเอง
+#   ⚠️ สเปค EGAT ระบุ orgid เป็น Required — ถ้า Maximo ตีกลับ ให้เปิด env นี้กลับทันที
+MAXIMO_SEND_WOSTATUS_ORGID = os.getenv("MAXIMO_SEND_WOSTATUS_ORGID", "false").lower() == "true"
+MAXIMO_SEND_WOSTATUS_DATE = os.getenv("MAXIMO_SEND_WOSTATUS_DATE", "false").lower() == "true"
+# ฟิลด์ของ IN09 ที่ EGAT ให้ตัดออก — ทั้งหมดเป็น N ในสเปค
+#   location                              : labtrans ผูกกับ WO อยู่แล้ว location ซ้ำกับของ WO
+#   startdatetime / finishdatetime / regularhrs : Maximo ประกอบเองได้จาก
+#     startdate + starttime / finishdate + finishtime ที่ยังส่งอยู่
+MAXIMO_SEND_LABTRANS_LOCATION = os.getenv("MAXIMO_SEND_LABTRANS_LOCATION", "false").lower() == "true"
+MAXIMO_SEND_LABTRANS_DERIVED = os.getenv("MAXIMO_SEND_LABTRANS_DERIVED", "false").lower() == "true"
 # reasonforchange เป็นฟิลด์สั้น (BMXAA4049E maximumlength) — 0 = ไม่ส่งเลย
 MAXIMO_REASON_MAXLEN = int(os.getenv("MAXIMO_REASON_MAXLEN", "0"))
 # สถานะเริ่มต้นของ WO ที่เพิ่งสร้าง (ว่าง = ปล่อยให้ Maximo ใช้ค่า default ของระบบ)
@@ -160,6 +187,7 @@ async def _post(
     patchtype: str | None = None,
     properties: str | None = None,
     timeout: int = 30,
+    trace: dict | None = None,
 ) -> dict:
     """
     POST เข้า Object Structure
@@ -180,18 +208,32 @@ async def _post(
         "patchtype": patchtype or "",
         "properties": properties or "",
     })
+    # เก็บสิ่งที่ยิงไปไว้ให้ผู้เรียกจดลงใบงาน — ไล่ปัญหาได้โดยไม่ต้องเปิด log server
+    if trace is not None:
+        trace["os"] = os_name
+        trace["method_override"] = method_override or "POST"
+        trace["request"] = payload
     try:
         async with httpx.AsyncClient(verify=_ssl_ctx, timeout=timeout) as client:
             resp = await client.post(url, params={"lean": 1}, headers=headers, json=payload)
     except Exception as e:
         raise MaximoError(f"{os_name}: {type(e).__name__}: {e}") from e
 
+    if trace is not None:
+        trace["http"] = resp.status_code
+
     if resp.status_code not in (200, 201, 204):
+        if trace is not None:
+            trace["response"] = resp.text[:1000]
         raise MaximoError(
             f"{os_name} failed: HTTP {resp.status_code}",
             status=resp.status_code,
             body=resp.text,
         )
+
+    if trace is not None:
+        # 204 = สำเร็จแบบไม่มี body (IN05 ตอบแบบนี้)
+        trace["response"] = resp.text[:1000] if resp.content else f"HTTP {resp.status_code} (no content)"
 
     if not resp.content:
         return {}
@@ -622,6 +664,7 @@ async def create_workorder(
     imps_wonum: str | None = None,
     asset_num: str | None = None,
     extra: dict | None = None,
+    trace: dict | None = None,
 ) -> dict:
     """
     เปิดใบสั่งงาน (Work Order) ใน Maximo จากใบงาน CM ของ iMPS
@@ -630,7 +673,7 @@ async def create_workorder(
         description: หัวเรื่องงาน (ตัดที่ 100 ตัวอักษรตามความยาว attribute ของ Maximo)
         location:    รหัส Maximo location เช่น "EGT0327-EV-BTL01GU201"
         severity:    Urgent/High/Medium/Low → map เป็น wopriority 1–4
-        imps_wonum:  เลขใบงานฝั่ง iMPS (issue_id) — เก็บที่ field zimpswonum
+        imps_wonum:  เลขที่ WO ฝั่ง iMPS (WO075 — cm_maximo.imps_wo_number) เก็บที่ zimpswonum
                      ของ Maximo เพื่ออ้างอิงกลับสองทาง
         failure_code: failure class ของ Maximo (DCCHARGER/ACCHARGER/STATION)
 
@@ -650,7 +693,7 @@ async def create_workorder(
         "orgid": MAXIMO_ORG_ID,
         "worktype": worktype or MAXIMO_CM_WORKTYPE,
         "status": MAXIMO_CM_WO_STATUS,
-        "wopriority": SEVERITY_TO_PRIORITY.get(severity, 3),
+        "wopriority": SEVERITY_TO_PRIORITY.get(severity, 3) if MAXIMO_SEND_WO_PRIORITY else None,
         "zcostcenter": MAXIMO_COST_CENTER,
         "zcraft": MAXIMO_CRAFT if MAXIMO_SEND_ZCRAFT else None,
         "assetnum": asset_num,
@@ -662,11 +705,11 @@ async def create_workorder(
         "schedfinish": _maximo_datetime(sched_finish),
         "targstartdate": _maximo_datetime(target_start or sched_start),
         "targcompdate": _maximo_datetime(target_finish or sched_finish),
-        "reportdate": _maximo_datetime(datetime.now(_TH_TZ)),
+        "reportdate": _maximo_datetime(datetime.now(_TH_TZ)) if MAXIMO_SEND_WO_REPORTDATE else None,
         **(extra or {}),
     })
 
-    data = await _post(MAXIMO_WO_OS, payload, properties="wonum,status,description")
+    data = await _post(MAXIMO_WO_OS, payload, properties="wonum,status,description", trace=trace)
     log.info(f"  🧾 Maximo WO created: {data.get('wonum')} (location={location}, imps={imps_wonum})")
     return data
 
@@ -681,6 +724,7 @@ async def update_wo_status(
     memo: str | None = None,
     status_date: Any = None,
     extra: dict | None = None,
+    trace: dict | None = None,
 ) -> dict:
     """
     เปลี่ยนสถานะใบสั่งงานใน Maximo (APPR / INPRG / COMP / CLOSE / CAN …)
@@ -694,11 +738,14 @@ async def update_wo_status(
         raise MaximoError("status is required")
 
     payload = _clean({
+        # _action บังคับตามสเปค EGAT — ค่า default คือ AddChange (แบบเดียวกับ IN03/IN05)
+        "_action": "AddChange",
         "wonum": wonum,
         "siteid": MAXIMO_SITE_ID,
-        "orgid": MAXIMO_ORG_ID,
+        "orgid": MAXIMO_ORG_ID if MAXIMO_SEND_WOSTATUS_ORGID else None,
         "status": status,
-        "statusdate": _maximo_datetime(status_date or datetime.now(_TH_TZ)),
+        "statusdate": (_maximo_datetime(status_date or datetime.now(_TH_TZ))
+                       if MAXIMO_SEND_WOSTATUS_DATE else None),
         # ยาวเกินโดน BMXAA4049E — ตัดตามความยาวที่ตั้งไว้ (0 = ไม่ส่งเลย)
         "reasonforchange": (memo or "")[:MAXIMO_REASON_MAXLEN] or None,
         **(extra or {}),
@@ -707,7 +754,7 @@ async def update_wo_status(
     data = await _post(
         MAXIMO_WOSTATUS_OS, payload,
         method_override="SYNC", patchtype="MERGE",
-        properties="wonum,status",
+        properties="wonum,status", trace=trace,
     )
     log.info(f"  🔁 Maximo WO {wonum} → status {status}")
     return data
@@ -716,6 +763,28 @@ async def update_wo_status(
 # ══════════════════════════════════════════════════════════════════
 # IN03 — แนบ Link Attachment ให้ Work Order  (POST ZAPIATTACHWO)
 # ══════════════════════════════════════════════════════════════════
+def maximo_safe_url(url: str) -> str:
+    """
+    ตัดลิงก์ให้เหลือ query param ตัวเดียวก่อนส่งเข้า Maximo (IN03)
+
+    EGAT ยืนยัน 2026-08-19: ลิงก์ที่มี & ต่อท้าย (…?station_id=X&lang=th&dl=true)
+    กดจาก Maximo แล้วเปิดไม่ได้ (401/404) พอเหลือ param เดียวก็เปิดได้ทันที
+    ทั้งที่ DOCINFO ฝั่ง Maximo เก็บ urlname ไว้ครบทุกตัวอักษร (ตรวจด้วย MXAPIDOCINFO)
+    ⇒ ตัวที่ทำพังอยู่ระหว่างทางฝั่งเขา ไม่ใช่ payload ที่เราส่ง
+
+    ตัดเฉพาะตอนยิงออกเท่านั้น ลิงก์ฝั่ง iMPS ยังเต็มเหมือนเดิม — param ตัวแรกคือ
+    ตัวที่ route /pdf ต้องใช้หาเอกสาร (sn/station_id) ที่เหลือเป็นของแต่ง
+    (lang/dl) ซึ่ง route มี default ให้อยู่แล้ว
+    """
+    base, sep, query = (url or "").partition("?")
+    if not sep or "&" not in query:
+        return url
+    first = query.split("&", 1)[0]
+    dropped = query.split("&", 1)[1]
+    log.info(f"  ✂️ ตัด query ออกจากลิงก์ก่อนส่งเข้า Maximo: {dropped}")
+    return f"{base}?{first}" if first else base
+
+
 async def attach_wo_link(
     wonum: str,
     url: str,
@@ -723,11 +792,30 @@ async def attach_wo_link(
     name: str | None = None,
     description: str | None = None,
     doctype: str | None = None,
+    trace: dict | None = None,
 ) -> dict:
     """
     แนบลิงก์เอกสาร (URL) เข้ากับใบสั่งงาน — ส่งแค่ลิงก์ ไม่ได้อัปโหลดไฟล์เข้า Maximo
 
-    ใช้แนบไฟล์ PDF ใบงาน CM / รูปหน้างาน ที่ host อยู่ฝั่ง iMPS
+    payload ตามสเปค EGAT (POST ZAPIATTACHWO, x-method-override: BULK):
+        [{
+          "_action": "AddChange",
+          "siteid": "IESB", "orgid": "EGAT",
+          "wonum": "WO26100014",
+          "doclinks": [{
+            "addinfo": "1",              ← ให้ Maximo สร้าง DOCINFO ให้เอง
+            "description": "ชื่อไฟล์",
+            "doctype": "Attachments",
+            "document": "ID ของไฟล์",
+            "upload": "0",               ← ไม่ได้อัปไฟล์ขึ้น network
+            "urlname": "<URL>",          ← ตัว URL อยู่ที่ field นี้ ไม่ใช่ weburl
+            "urltype": "URL"
+          }]
+        }]
+
+    ⚠️ addinfo ขาดไม่ได้ — ไม่ส่งจะโดน "iface#nodocinfo"
+    ⚠️ urltype ต้องเป็น "URL" (ค่า WEB ไม่มีใน domain URLTYPE → BMXAA4024E)
+    ตอบกลับสำเร็จเป็น 204 No Content
     """
     wonum = (wonum or "").strip()
     if not wonum:
@@ -735,26 +823,25 @@ async def attach_wo_link(
     if not url:
         raise MaximoError("url is required")
 
+    url = maximo_safe_url(url)
     doc_name = (name or url.rsplit("/", 1)[-1] or "attachment")[:100]
-    payload = _clean({
-        "wonum": wonum,
+    payload = [_clean({
+        "_action": "AddChange",
         "siteid": MAXIMO_SITE_ID,
         "orgid": MAXIMO_ORG_ID,
+        "wonum": wonum,
         "doclinks": [_clean({
-            "document": doc_name,
+            "addinfo": "1",
             "description": (description or doc_name)[:250],
-            "urltype": MAXIMO_URLTYPE,  # ลิงก์ภายนอก ไม่ใช่ไฟล์ที่อัปโหลดเข้า Maximo
-            "weburl": url,
-            "urlname": url,
             "doctype": doctype or MAXIMO_DOCTYPE,
+            "document": doc_name,
+            "upload": "0",
+            "urlname": url,
+            "urltype": MAXIMO_URLTYPE,
         })],
-    })
+    })]
 
-    data = await _post(
-        MAXIMO_ATTACHWO_OS, payload,
-        method_override="SYNC", patchtype="MERGE",
-        properties="wonum",
-    )
+    data = await _post(MAXIMO_ATTACHWO_OS, payload, method_override="BULK", trace=trace)
     log.info(f"  📎 Maximo WO {wonum} ← attachment {doc_name}")
     return data
 
@@ -789,12 +876,27 @@ async def report_wo_failure(
     remedy_code: str | None = None,
     remarks: str | None = None,
     fail_date: Any = None,
+    trace: dict | None = None,
 ) -> dict:
     """
     รายงานผลวิเคราะห์ความเสียหายของใบสั่งงาน (problem → cause → remedy)
 
-    1 ใบงานมีได้หลายชุด — เรียกซ้ำได้ (MERGE จะเพิ่มแถวใหม่เข้า failurereport เดิม
-    ไม่ล้างของเก่าทิ้ง)
+    payload ตามสเปค EGAT (POST ZAPIFAILUREREPORT, x-method-override: BULK):
+        [{
+          "_action": "AddChange",
+          "siteid": "IESB", "orgid": "EGAT",
+          "wonum": "WO26100014",
+          "failurecode": "DCCHARGER",          ← failure class ระดับ WO (Required)
+          "failurereport": [
+            {"failurecode": "UN2STCHG", "type": "PROBLEM"},
+            {"failurecode": "EMERBUTP", "type": "CAUSE"},
+            {"failurecode": "RECHECK",  "type": "REMEDY"}
+          ]
+        }]
+
+    ⚠️ failurecode ระดับ WO ขาดไม่ได้ — ไม่ส่งจะโดน BMXAA0030E
+       "A failure class is required to report a failure"
+    ตอบกลับสำเร็จเป็น 204 No Content
     """
     wonum = (wonum or "").strip()
     if not wonum:
@@ -802,32 +904,32 @@ async def report_wo_failure(
     if not failure_code:
         raise MaximoError("failure_code is required")
 
-    row = _clean({
-        "failurecode": failure_code,
-        "problemcode": problem_code,
-        "cause": cause_code,
-        "remedy": remedy_code,
-        "remarks": (remarks or "")[:250] or None,
-        "orgid": MAXIMO_ORG_ID,
-        "siteid": MAXIMO_SITE_ID,
-        "faildate": _maximo_datetime(fail_date or datetime.now(_TH_TZ)),
-    })
+    # 1 แถวต่อ 1 ชั้น — สเปคแยก type ชัดเจน ไม่ได้ยัดรวมเป็นแถวเดียว
+    rows = [
+        {"failurecode": code.strip().upper(), "type": kind}
+        for code, kind in (
+            (problem_code or "", "PROBLEM"),
+            (cause_code or "", "CAUSE"),
+            (remedy_code or "", "REMEDY"),
+        )
+        if str(code or "").strip()
+    ]
+    if not rows:
+        raise MaximoError("ต้องมี problem/cause/remedy อย่างน้อย 1 อย่าง")
 
-    payload = _clean({
+    payload = [_clean({
+        "_action": "AddChange",
+        "siteid": MAXIMO_SITE_ID,
+        "orgid": MAXIMO_ORG_ID,
         "wonum": wonum,
-        "siteid": MAXIMO_SITE_ID,
-        "orgid": MAXIMO_ORG_ID,
-        # failurecode ระดับใบงานตั้งได้ต่อเมื่อ location ผูก failure class ไว้แล้ว
-        # (ไม่ได้ตั้งแล้วยังส่ง จะโดน BMXAA4534E) — ระดับ child ต้องมีเสมอ
-        "failurecode": failure_code if MAXIMO_SEND_WO_FAILURECODE else None,
-        "failurereport": [row],
-    })
+        "failurecode": failure_code.strip().upper(),
+        "failurereport": rows,
+        # สเปคไม่ได้ระบุ 2 ฟิลด์นี้ไว้ แต่ Maximo รับได้และมีประโยชน์ตอนสอบย้อนหลัง
+        "remarks": (remarks or "")[:250] or None,
+        "faildate": _maximo_datetime(fail_date) if fail_date else None,
+    })]
 
-    data = await _post(
-        MAXIMO_FAILUREREPORT_OS, payload,
-        method_override="SYNC", patchtype="MERGE",
-        properties="wonum,failurecode",
-    )
+    data = await _post(MAXIMO_FAILUREREPORT_OS, payload, method_override="BULK", trace=trace)
     log.info(
         f"  🩺 Maximo WO {wonum} ← failure {failure_code}/"
         f"{problem_code}/{cause_code}/{remedy_code}"
@@ -854,6 +956,45 @@ async def query_labor(cost_center: str | None = None) -> list[dict]:
     return members
 
 
+async def workorders_exist(wonums: list[str]) -> dict[str, dict]:
+    """
+    เช็คว่า wonum ไหนมีอยู่จริงใน Maximo — ถามทีเดียวทั้งชุด
+
+    ใบงานที่ยิงเข้ามาทาง IN06 อาจเป็นเลขที่ไม่เคยถูกสร้างจริง (เช่น payload
+    ตัวอย่างจากเอกสารสเปค) พอไปยิง IN02 กลับจะโดน BMXAA1496E
+    "The WORKORDER record does not exist" — เช็คก่อนจะได้รู้ตั้งแต่ต้น
+
+    Returns: {wonum: {status, worktype, location, description}} เฉพาะใบที่มีจริง
+    """
+    codes = [str(w).strip() for w in wonums if str(w or "").strip()]
+    if not codes:
+        return {}
+
+    where = "wonum in [" + ",".join(f'"{c}"' for c in codes) + "]"
+    members = await _get_all(
+        MAXIMO_WO_OS,
+        {"oslc.select": "wonum,status,worktype,location,description", "oslc.where": where},
+    )
+    return {str(m.get("wonum") or "").strip(): m for m in members if m.get("wonum")}
+
+
+async def query_labor_records(active_only: bool = True) -> list[dict]:
+    """
+    เรคคอร์ด LABOR จริงใน Maximo — คนที่ลงเวลา (IN09) ได้ต้องอยู่ในลิสต์นี้
+
+    ต่างจาก query_labor() ที่ยิง ZAPIPERSON: PERSON มีทุกคนในองค์กร แต่ LABOR
+    มีเฉพาะคนที่ตั้งค่าให้ลงเวลาได้ ส่งรหัสที่ไม่มีใน LABOR จะโดน BMXAA2627E
+
+    Returns: [{"laborcode": "597082", "personid": "597082", "status": "ACTIVE"}, …]
+    """
+    params = {"oslc.select": "laborcode,personid,status,orgid"}
+    if active_only:
+        params["oslc.where"] = 'status="ACTIVE"'
+    members = await _get_all(MAXIMO_LABOR_OS, params)
+    log.info(f"  🧰 Maximo labor records: {len(members)}")
+    return members
+
+
 # ══════════════════════════════════════════════════════════════════
 # IN09 — บันทึก Actual Labor / Time Confirm  (POST ZAPILABTRANS)
 # ══════════════════════════════════════════════════════════════════
@@ -867,6 +1008,7 @@ async def create_labtrans(
     craft: str | None = None,
     location: str | None = None,
     memo: str | None = None,
+    trace: dict | None = None,
 ) -> dict:
     """
     ลงเวลาทำงานจริงของช่าง 1 คน กับใบสั่งงาน 1 ใบ
@@ -893,25 +1035,33 @@ async def create_labtrans(
         regular_hours = round(max(delta.total_seconds(), 0) / 3600, 2)
 
     payload = _clean({
+        # _action บังคับตามสเปค EGAT — ค่า default คือ AddChange (แบบเดียวกับ IN02/IN03/IN05)
+        "_action": "AddChange",
         "refwo": wonum,
         "laborcode": labor_code,
         "siteid": MAXIMO_SITE_ID,
         "orgid": MAXIMO_ORG_ID,
         "transtype": "WORK",
+        # ผู้อนุมัติการลงเวลา — ตั้งค่าจริงได้ที่ env MAXIMO_LABTRANS_ENTERBY
+        "enterby": MAXIMO_LABTRANS_ENTERBY,
+        # วันที่ลงเวลาเข้าระบบ = ตอนที่ iMPS ยิงเข้ามา (คนละอย่างกับ startdate/finishdate
+        # ซึ่งเป็นเวลาที่ช่างทำงานจริง) — ยิงซ้ำหลังแก้ปัญหา ค่านี้จะเป็นเวลาที่ยิงรอบล่าสุด
+        "enterdate": _maximo_datetime(datetime.now(_TH_TZ)),
         # craft ต้องตรงกับ craft ที่ผูกกับ labor คนนั้น ไม่งั้นโดน BMXAA2634E craftmismatch
         # ไม่ระบุมา = ปล่อยให้ Maximo เติม craft หลักของ labor ให้เอง
         "craft": craft,
-        "location": location,
+        "location": location if MAXIMO_SEND_LABTRANS_LOCATION else None,
         "startdate": start_date,
-        "startdatetime": start_dt,
+        "startdatetime": start_dt if MAXIMO_SEND_LABTRANS_DERIVED else None,
         "starttime": start_dt,
         "finishdate": finish_date,
-        "finishdatetime": finish_dt,
+        "finishdatetime": finish_dt if MAXIMO_SEND_LABTRANS_DERIVED else None,
         "finishtime": finish_dt,
-        "regularhrs": regular_hours,
+        # ไม่ส่ง = Maximo คิดชั่วโมงจาก start → finish เอง (ยังคำนวณไว้ให้ log อ่าน)
+        "regularhrs": regular_hours if MAXIMO_SEND_LABTRANS_DERIVED else None,
         "memo": (memo or "")[:250] or None,
     })
 
-    data = await _post(MAXIMO_LABTRANS_OS, payload, properties="labtransid,refwo,laborcode")
+    data = await _post(MAXIMO_LABTRANS_OS, payload, properties="labtransid,refwo,laborcode", trace=trace)
     log.info(f"  ⏱️  Maximo labtrans: WO {wonum} / {labor_code} / {regular_hours}h")
     return data

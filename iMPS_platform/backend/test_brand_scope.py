@@ -2,6 +2,7 @@
 ทดสอบขอบเขตการเห็นข้อมูลตามยี่ห้อตู้ (brand scope)
 
 EDS ดูแลเฉพาะตู้ FlexxFast → cs/planner/technician ของ EDS ต้องเห็นเฉพาะตู้ยี่ห้อนี้
+ส่วน technician ของบริษัทอื่นต้องเห็นทุกสถานีและทุกยี่ห้อ
 สถานีที่ปนยี่ห้อยังเห็นได้ แต่รายการตู้ต้องเหลือเฉพาะ FlexxFast
 
 เป็น integration test — ต้องมี MongoDB รันอยู่ ไม่ได้ mock
@@ -100,6 +101,8 @@ def main_test() -> int:
     setup()
     eds = cookies("cs", "EDS")
     eds_eng = cookies("planner", "EDS")
+    eds_tech = cookies("technician", "EDS")
+    egat_tech = cookies("technician", "EGAT")
     egat = cookies("cs", "EGAT")
     admin = cookies("admin", "EDS")
 
@@ -108,6 +111,10 @@ def main_test() -> int:
     check("EDS cs เห็นเฉพาะตู้ FlexxFast", sns_of(r.json()), [SN_FF])
     r = client.get(f"/chargers/{MIXED}", cookies=eds_eng)
     check("EDS planner เห็นเฉพาะตู้ FlexxFast", sns_of(r.json()), [SN_FF])
+    r = client.get(f"/chargers/{MIXED}", cookies=eds_tech)
+    check("EDS technician เห็นเฉพาะตู้ FlexxFast", sns_of(r.json()), [SN_FF])
+    r = client.get(f"/chargers/{MIXED}", cookies=egat_tech)
+    check("technician บริษัทอื่นเห็นทุกตู้", sns_of(r.json()), sorted([SN_FF, SN_SINIO]))
     r = client.get(f"/chargers/{MIXED}", cookies=egat)
     check("EGAT cs เห็นทุกตู้", sns_of(r.json()), sorted([SN_FF, SN_SINIO]))
     r = client.get(f"/chargers/{MIXED}", cookies=admin)
@@ -123,6 +130,10 @@ def main_test() -> int:
           client.get(f"/charger/info?sn={SN_SINIO}", cookies=eds).status_code, 403)
     check("EGAT ยิง SN ตู้ SINIO",
           client.get(f"/charger/info?sn={SN_SINIO}", cookies=egat).status_code, 200)
+    check("EDS technician ยิง SN ยี่ห้ออื่นไม่ได้",
+          client.get(f"/charger/info?sn={SN_SINIO}", cookies=eds_tech).status_code, 403)
+    check("technician บริษัทอื่นยิง SN ได้ทุกยี่ห้อ",
+          client.get(f"/charger/info?sn={SN_SINIO}", cookies=egat_tech).status_code, 200)
     # ค้นด้วย station_id ต้องคัดตั้งแต่ query ไม่ใช่สุ่มได้ตู้ยี่ห้ออื่นแล้ว 403
     r = client.get(f"/charger/info?station_id={MIXED}", cookies=eds)
     check("EDS ค้นด้วย station_id ได้ตู้ที่ตัวเองดูแล", r.status_code, 200)
@@ -133,6 +144,11 @@ def main_test() -> int:
     check("EDS ไม่เห็นสถานีที่ไม่มีตู้ FlexxFast", OTHER in seen, False)
     seen = {s["station_id"] for s in client.get("/my-stations/detail", cookies=egat).json()["stations"]}
     check("EGAT เห็นทั้งสองสถานี", {MIXED, OTHER} <= seen, True)
+    seen = {s["station_id"] for s in client.get("/my-stations/detail", cookies=eds_tech).json()["stations"]}
+    check("EDS technician เห็นสถานีที่มี FlexxFast", MIXED in seen, True)
+    check("EDS technician ไม่เห็นสถานีที่ไม่มี FlexxFast", OTHER in seen, False)
+    seen = {s["station_id"] for s in client.get("/my-stations/detail", cookies=egat_tech).json()["stations"]}
+    check("technician บริษัทอื่นเห็นทั้งสองสถานี", {MIXED, OTHER} <= seen, True)
 
     print("--- /all-stations/: หน้า EV Station ---")
     body = client.get("/all-stations/", cookies=eds).json()["stations"]
@@ -145,6 +161,14 @@ def main_test() -> int:
     by_id = {s["station_id"]: s for s in body}
     check("EGAT เห็นตู้ครบทั้งสองตัว",
           sorted(c["SN"] for c in by_id[MIXED]["chargers"]), sorted([SN_FF, SN_SINIO]))
+    body = client.get("/all-stations/", cookies=eds_tech).json()["stations"]
+    by_id = {s["station_id"]: s for s in body}
+    check("EDS technician ไม่เห็นสถานีที่ไม่มี FlexxFast", OTHER in by_id, False)
+    check("EDS technician เห็นเฉพาะตู้ FlexxFast",
+          sorted(c["SN"] for c in by_id[MIXED]["chargers"]), [SN_FF])
+    body = client.get("/all-stations/", cookies=egat_tech).json()["stations"]
+    by_id = {s["station_id"]: s for s in body}
+    check("technician บริษัทอื่นเห็นทุกสถานี", {MIXED, OTHER} <= set(by_id), True)
 
     print("--- /uploads: ไฟล์ของตู้ยี่ห้ออื่นในสถานีที่เข้าถึงได้ ---")
     check("EDS โหลดไฟล์ของตู้ FlexxFast ได้",
@@ -153,6 +177,10 @@ def main_test() -> int:
           client.get(f"/uploads/pm/{SN_SINIO}/r1/pre/g1/x.jpg", cookies=eds).status_code, 403)
     check("EGAT โหลดไฟล์ของตู้ SINIO ได้",
           client.get(f"/uploads/pm/{SN_SINIO}/r1/pre/g1/x.jpg", cookies=egat).status_code, 200)
+    check("EDS technician โหลดไฟล์ของตู้ SINIO ไม่ได้",
+          client.get(f"/uploads/pm/{SN_SINIO}/r1/pre/g1/x.jpg", cookies=eds_tech).status_code, 403)
+    check("technician บริษัทอื่นโหลดไฟล์ของตู้ SINIO ได้",
+          client.get(f"/uploads/pm/{SN_SINIO}/r1/pre/g1/x.jpg", cookies=egat_tech).status_code, 200)
 
     passed = sum(_results)
     print(f"\n{passed}/{len(_results)} passed")

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useRef, useState, useEffect } from "react";
+import React, { useMemo, useCallback, useRef, useState, useEffect } from "react";
 import {
     Button,
     Input,
@@ -11,6 +11,8 @@ import {
 import Image from "next/image";
 import { draftKey, saveDraftLocal, loadDraftLocal, clearDraftLocal } from "../lib/draft";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
+import PmApprovalBar from "@/app/dashboard/pm-report/components/PmApprovalBar";
+import PmCompareTable from "@/app/dashboard/pm-report/components/PmCompareTable";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 import { Tabs, TabsHeader, Tab } from "@material-tailwind/react";
 import { putPhoto, getPhotoByDbKey, delPhoto, type PhotoRef } from "../lib/draftPhotos";
@@ -19,6 +21,7 @@ import { collectPending, unrecoverablePhotos, expectedCountByGroup, findShortfal
 import { useLanguage, type Lang } from "@/utils/useLanguage";
 import { apiFetch } from "@/utils/api";
 import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
+import { pmBackRoute } from "@/app/dashboard/pm-report/lib/origin";
 
 // ==================== GPS + ADDRESS CACHE ====================
 let _cachedLocation: { text: string; timestamp: number } | null = null;
@@ -265,6 +268,28 @@ const T = {
     logoAlt: { th: "โลโก้บริษัท", en: "Company logo" },
     photoPreviewAlt: { th: "ตัวอย่างรูป", en: "Photo preview" },
     uploadFailedItem: { th: "ข้อ", en: "Item" },
+    workTime: { th: "เวลาทำงานจริง", en: "Actual work time" },
+    workStart: { th: "เวลาเริ่มงาน", en: "Start time" },
+    workFinish: { th: "เวลาเสร็จงาน", en: "Finish time" },
+    workTimeHint: { th: "ใช้ส่งเวลาทำงานของช่างเข้า Maximo", en: "Sent to Maximo as actual labor time" },
+    alertWorkTime: { th: "กรุณากรอกเวลาเริ่มงานและเวลาเสร็จงาน", en: "Please fill in the start and finish time" },
+    alertWorkTimeOrder: { th: "เวลาเสร็จงานต้องไม่ก่อนเวลาเริ่มงาน", en: "Finish time must not be before the start time" },
+    alertWorkTimeFuture: { th: "เวลาทำงานต้องไม่เป็นเวลาในอนาคต — Maximo ไม่รับเวลาที่ยังมาไม่ถึง", en: "Work time cannot be in the future — Maximo rejects labor times that have not happened yet" },
+    startPm: { th: "เริ่ม PM", en: "Start PM" },
+    startPmHint: {
+        th: "ตรวจข้อมูลใบงานด้านบนให้เรียบร้อย แล้วกด “เริ่ม PM” เพื่อเปิดแบบฟอร์มกรอก",
+        en: "Review the work order above, then press “Start PM” to open the checklist",
+    },
+    maximoLabor: { th: "ช่างที่ลงเวลากับ Maximo", en: "Technicians for Maximo time log" },
+    maximoLaborHint: {
+        th: "เลือกคนที่จะลงเวลาทำงานเข้า Maximo (IN09) — ไม่เลือกจะใช้ช่างที่ผู้วางแผนมอบหมายแทน",
+        en: "Who gets an actual-labor record in Maximo (IN09) — leave empty to fall back to the assigned technicians",
+    },
+    maximoLaborEmpty: { th: "ยังไม่มีรหัสช่างจาก Maximo", en: "No Maximo labor codes available" },
+    maximoLaborNone: { th: "ช่างไม่ได้เลือกใครไว้", en: "No technician selected" },
+    contractorName: { th: "ชื่อผู้รับเหมา", en: "Contractor name" },
+    contractorPlaceholder: { th: "ระบุชื่อผู้รับเหมาที่มาทำงานจริง", en: "Name of the contractor who did the work" },
+    contractorRequired: { th: "เลือกผู้รับเหมาแล้วต้องระบุชื่อด้วย", en: "Enter the contractor name" },
 };
 
 const t = (key: keyof typeof T, lang: Lang): string => T[key][lang];
@@ -875,7 +900,7 @@ async function compressImage(
                         <div key={p.id} className="tw-border tw-rounded-lg tw-overflow-hidden tw-bg-gray-100 tw-shadow-xs tw-flex tw-flex-col">
                             <div className="tw-relative tw-aspect-[4/3] tw-bg-gray-100">
                                 {p.preview && <img src={p.preview} alt={t("photoPreviewAlt", lang)} className="tw-w-full tw-h-full tw-object-contain" />}
-                                <button onClick={() => { void handleRemove(p.id); }} className="tw-absolute tw-top-2 tw-right-2 tw-bg-red-500 tw-text-white tw-w-6 tw-h-6 tw-rounded-full tw-flex tw-items-center tw-justify-center tw-shadow-md hover:tw-bg-red-600 tw-transition-colors">×</button>
+                                <button data-photo-remove onClick={() => { void handleRemove(p.id); }} className="tw-absolute tw-top-2 tw-right-2 tw-bg-red-500 tw-text-white tw-w-6 tw-h-6 tw-rounded-full tw-flex tw-items-center tw-justify-center tw-shadow-md hover:tw-bg-red-600 tw-transition-colors">×</button>
                             </div>
                         </div>
                     ))}
@@ -976,6 +1001,15 @@ export default function MDBPMForm() {
 
     const pathname = usePathname();
     const searchParams = useSearchParams();
+
+    // ปุ่มย้อนกลับ: เปิดมาจากหน้า PM List ให้กลับไปหน้านั้นตรงๆ
+    // router.back() ใช้ไม่ได้ เพราะสลับ pmtab ในฟอร์มก็ดันประวัติเพิ่มทุกครั้ง
+    // กดกลับเลยแค่ถอยการสลับแท็บ ไม่ได้ออกจากใบงาน
+    const goBackToList = useCallback(() => {
+        const back = pmBackRoute(searchParams);
+        if (back) router.push(back);
+        else router.back();
+    }, [router, searchParams]);
     const editId = searchParams.get("edit_id") ?? "";
     const action = searchParams.get("action");
     const isPostMode = action === "post";
@@ -1002,6 +1036,67 @@ export default function MDBPMForm() {
     }, []);
 
     const [summaryCheck, setSummaryCheck] = useState<PF>("");
+
+    // เวลาทำงานจริงของช่าง (datetime-local) — ส่งเข้า Maximo ทาง IN09 ตอนปิดใบงาน
+
+    // ช่างต้องกด "เริ่ม PM" ก่อนถึงจะกรอกได้ — ใบที่เริ่มไปแล้ว (มีเวลาเริ่มงาน
+
+    // หรือเปิดจาก edit_id) ถือว่าเริ่มแล้ว ไม่ต้องกดซ้ำทุกครั้งที่เข้ามา
+
+    const [pmStartedManually, setPmStartedManually] = useState(false);
+
+
+    const [workStart, setWorkStart] = useState<string>("");
+
+    const [workFinish, setWorkFinish] = useState<string>("");
+
+    // planner เปิดเอกสารที่ช่างส่งมาเพื่อตรวจก่อนอนุมัติ (?approve=1)
+
+    const approveMode = searchParams.get("approve") === "1";
+    // ช่างเปิดดูใบที่ตัวเองส่งไปแล้ว (?review=1) — เห็นหน้าเดียวกับ planner
+    // แต่แก้อะไรไม่ได้ และไม่มีปุ่ม Reject/Approve
+    const reviewMode = approveMode || searchParams.get("review") === "1";
+
+
+    const pmStarted = pmStartedManually || !!editId || !!workStart
+        || searchParams.get("started") === "1";
+
+    // laborcode ฝั่ง Maximo ที่ช่างเลือกเอง — username ใน iMPS ใช้แทนกันไม่ได้
+    const [laborOptions, setLaborOptions] = useState<{ laborcode: string; name: string; needs_name?: boolean }[]>([]);
+    const [maximoLabor, setMaximoLabor] = useState<string[]>([]);
+    const [maximoContractor, setMaximoContractor] = useState<string>("");
+
+    useEffect(() => {
+        let alive = true;
+        (async () => {
+            try {
+                const res = await apiFetch(`${API_BASE}/cm-maximo/labor-codes`);
+                if (!res.ok) return;
+                const data = await res.json();
+                if (alive && Array.isArray(data?.items)) setLaborOptions(data.items);
+            } catch {
+                // ดึงไม่ได้ = ไม่โชว์ตัวเลือก ไม่ต้องบล็อกการกรอกใบงาน
+            }
+        })();
+        return () => { alive = false; };
+    }, []);
+
+    const toggleMaximoLabor = (code: string) =>
+        setMaximoLabor(prev => prev.includes(code) ? prev.filter(c => c !== code) : [...prev, code]);
+
+    // ติ๊กรหัสกลางของผู้รับเหมาไว้ = ต้องมีชื่อจริงกำกับ
+
+    // รหัสที่ช่างเลือกไว้ต้องโชว์ได้เสมอ ถึงรายชื่อจาก Maximo จะโหลดไม่ขึ้น
+    // (เน็ตหลุด / สิทธิ์ไม่ถึง) ไม่งั้นหน้าอนุมัติจะกลายเป็นว่าไม่ได้เลือกใครเลย
+    const laborList = useMemo(() => {
+        const have = new Set(laborOptions.map((o) => o.laborcode));
+        const missing = maximoLabor.filter((c) => !have.has(c)).map((c) => ({ laborcode: c, name: c }));
+        const all = missing.length ? [...laborOptions, ...missing] : laborOptions;
+        // โหมดตรวจไม่ต้องเห็นรายชื่อทั้งกรม เอาเฉพาะคนที่ช่างเลือกลงใบงานนี้
+        return reviewMode ? all.filter((o) => maximoLabor.includes(o.laborcode)) : all;
+    }, [laborOptions, maximoLabor, reviewMode]);
+    const contractorPicked = laborOptions.some((o) => o.needs_name && maximoLabor.includes(o.laborcode));
+    const contractorMissing = contractorPicked && !maximoContractor.trim();
     const [inspector, setInspector] = useState<string>("");
     const [dustFilterChanged, setDustFilterChanged] = useState<boolean>(false);
     const [job, setJob] = useState({ issue_id: "", station_name: "", date: "" });
@@ -1009,6 +1104,10 @@ export default function MDBPMForm() {
     useEffect(() => { void prefetchLocation(); }, []);
 
     const [rowsPre, setRowsPre] = useState<Record<string, { pf: PF; remark: string }>>({});
+
+    // รูปทั้งสองฝั่งจากเอกสาร (ใช้ในตารางเทียบตอนตรวจอนุมัติ)
+    // state รูปปกติของฟอร์มมีเฉพาะฝั่งที่กำลังกรอกอยู่ จึงต้องเก็บของ document ไว้ต่างหาก
+    const [cmpPhotos, setCmpPhotos] = useState<{ pre: any; post: any }>({ pre: {}, post: {} });
     const [rows, setRows] = useState<Record<string, { pf: PF; remark: string }>>(() => {
         const initial: Record<string, { pf: PF; remark: string }> = {};
         QUESTIONS.forEach(q => { if (q.kind === "simple" || q.kind === "measure") initial[q.key] = { pf: "", remark: "" }; else if (q.kind === "group" && q.items) q.items.forEach(it => { initial[it.key] = { pf: "", remark: "" }; }); });
@@ -1100,6 +1199,20 @@ export default function MDBPMForm() {
                 if (data?.measures_pre?.m7) setM7Pre(data.measures_pre.m7);
                 if (data.doc_name) setDocName(data.doc_name);
                 if (data.inspector) setInspector(data.inspector);
+                setCmpPhotos({ pre: data.photos_pre ?? {}, post: data.photos ?? {} });
+                // สรุปผล/หมายเหตุเดิมอ่านจาก draft ในเครื่องอย่างเดียว คนที่ไม่ได้เป็นคนกรอก
+                // (ผู้อนุมัติ) จึงเปิดมาเจอช่องว่าง ต้องดึงจากตัวเอกสารด้วย
+                if (reviewMode) {
+                    // เวลาทำงาน/laborcode ก็เก็บอยู่ใน draft ของเครื่องช่างเหมือนกัน
+                    // ผู้อนุมัติต้องอ่านจากตัวเอกสาร ไม่งั้นเห็นเป็นช่องว่าง
+                    if (typeof data.work_start === "string") setWorkStart(data.work_start);
+                    if (typeof data.work_finish === "string") setWorkFinish(data.work_finish);
+                    if (Array.isArray(data.maximo_labor)) setMaximoLabor(data.maximo_labor);
+                    if (typeof data.maximo_contractor === "string") setMaximoContractor(data.maximo_contractor);
+                    if (typeof data.summary_pre === "string") setSummaryPre(data.summary_pre);
+                    if (typeof data.summary === "string") setSummary(data.summary);
+                    if (data.summaryCheck) setSummaryCheck(data.summaryCheck as PF);
+                }
                 if (data.rows_pre) setRowsPre(data.rows_pre);
                 if (data.rows) setRows(prev => { const n = { ...prev }; Object.entries(data.rows).forEach(([k, v]) => { n[k] = v as { pf: PF; remark: string }; }); return n; });
                 setPostApiLoaded(true);
@@ -1692,7 +1805,7 @@ export default function MDBPMForm() {
                     measures: { m4: m4State, m5: m5State, m6: m6State, m7: m7State },
                     summary, ...(summaryCheck ? { summaryCheck } : {}),
                     dust_filter: dustFilterChanged ? { changed: true } : null,
-                    side: "post" as TabId, report_id: editId
+                    work_start: workStart, work_finish: workFinish, maximo_labor: maximoLabor, maximo_contractor: contractorPicked ? maximoContractor.trim() : "", wonum: searchParams.get("wonum") ?? "", side: "post" as TabId, report_id: editId
                 };
                 const res = await apiFetch(`${API_BASE}/${PM_PREFIX}/submit`, {
                     method: "POST", headers: { "Content-Type": "application/json" },
@@ -1815,6 +1928,15 @@ export default function MDBPMForm() {
                     return;
                 }
             }
+
+            if (!workStart || !workFinish) { alert(t("alertWorkTime", lang)); setSubmitting(false); return; }
+            if (contractorMissing) { alert(t("contractorRequired", lang)); setSubmitting(false); return; }
+            if (workFinish < workStart) { alert(t("alertWorkTimeOrder", lang)); setSubmitting(false); return; }
+            // Maximo ตีกลับ IN09 ด้วย BMXAA2641E ถ้าเวลาทำงานยังมาไม่ถึง
+            // ปล่อยผ่านตรงนี้ = ปิดใบงานได้แต่ปิด WO ในระบบเขาไม่ได้ ต้องมาแก้ย้อนหลัง
+            const nowLocal = new Date(Date.now() - new Date().getTimezoneOffset() * 60000)
+                .toISOString().slice(0, 16);
+            if (workStart > nowLocal || workFinish > nowLocal) { alert(t("alertWorkTimeFuture", lang)); setSubmitting(false); return; }
 
             const finalizeRes = await apiFetch(`${API_BASE}/${PM_PREFIX}/${report_id}/finalize`, {
                 method: "POST", credentials: "include",
@@ -2240,6 +2362,123 @@ export default function MDBPMForm() {
     };
 
     // ==================== RENDER ====================
+
+    // ── ตารางเทียบก่อน/หลัง PM (โหมดตรวจอนุมัติ) ──
+    // ใช้ state ที่โหลดเอกสารมาแล้ว: rowsPre = คำตอบก่อน PM, rows = หลัง PM
+    // คีย์ที่ไม่ได้อยู่ใน QUESTIONS (ข้อย่อยแบบ r5_1) เอามาต่อท้ายด้วย จะได้ไม่ตกหล่น
+    // คีย์รูปของ mdb: ข้อหลักแปลงเป็น g{n} ส่วนข้อย่อยเก็บด้วยคีย์คำตอบตรงๆ
+    // (normalizeGroup ปล่อย r{n}_{i} ผ่านโดยไม่เติม g)
+    const photoKeysOf = useCallback((row: { key: string }) => {
+        if (/^r\d+_\d+$/.test(row.key)) return [row.key, row.key.replace(/^r/, "g")];
+        return [`g${row.key.replace(/^r/, "")}`];
+    }, []);
+
+    const compareRows = useMemo(() => {
+        // ป้ายหัวข้อต้องตรงกับที่ช่างเห็นตอนกรอก — ข้อย่อยอย่าง r3_1 ฟอร์มสร้างขึ้นมาเอง
+        // ตอนรันไทม์ (ตามจำนวนหัวชาร์จ/ช่องของสถานีนั้น) ไม่ได้อยู่ใน QUESTIONS
+        // ถ้าไม่ไล่เก็บจากแหล่งเดียวกับที่ฟอร์มใช้ ตารางจะโชว์เป็นคีย์ดิบ
+        const textOf = (l: any): string =>
+            typeof l === "string" ? l
+                : l && typeof l === "object" ? (l[lang] ?? l.th ?? l.en ?? "") : "";
+        const labels = new Map<string, string>();
+        const put = (k: any, v: any) => {
+            const text = textOf(v);
+            if (typeof k === "string" && text.trim() && !labels.has(k)) labels.set(k, text.trim());
+        };
+        const labelOfItem = (it: any) =>
+            it?.label !== undefined ? it.label : it?.labelKey ? (t as any)(it.labelKey, lang) : "";
+        (QUESTIONS as any[]).forEach((q: any) => {
+            put(q?.key, labelOfItem(q));
+            (q?.items ?? []).forEach((it: any) => put(it?.key, labelOfItem(it)));
+        });
+        ([q4Items, q5Items, q6Items, q7Items, q8Items, q9Items, q10Items, q11Items] as any[]).forEach((arr: any) =>
+            (arr ?? []).forEach((it: any) => put(it?.key, labelOfItem(it))));
+        const labelOf = (key: string) => labels.get(key) ?? key;
+        // เรียงตามลำดับข้อในฟอร์มกรอก ข้อย่อยที่ช่างเพิ่มเอง (r5_1, r5_2)
+        // ต้องต่อท้ายข้อแม่ของมัน ไม่ใช่ไปกองรวมกันท้ายตาราง
+        const answered = Array.from(new Set([...Object.keys(rowsPre ?? {}), ...Object.keys(rows ?? {})]));
+        const subNo = (k: string) => Number(k.split("_")[1] ?? 0) || 0;
+        const mk = (k: string, section: string, label: string, qNo?: number) => ({
+            key: k,
+            section,
+            qNo,
+            label,
+            prePf: (rowsPre as any)?.[k]?.pf,
+            preRemark: (rowsPre as any)?.[k]?.remark,
+            postPf: (rows as any)?.[k]?.pf,
+            postRemark: (rows as any)?.[k]?.remark,
+        });
+        // วางโครงเดียวกับฟอร์มกรอก: หัวข้อใหญ่เป็นแถบคั่น แล้วข้อย่อยเรียงอยู่ใต้มัน
+        // ข้อธรรมดาที่ไม่มีข้อย่อย ตัวมันเองคือเนื้อในของแถบ ช่องหัวข้อจึงเว้นว่าง
+        const out: ReturnType<typeof mk>[] = [];
+        (QUESTIONS as any[]).forEach((q: any) => {
+            if (!q?.key) return;
+            const section = labelOf(q.key);
+            // เลขข้อ — ใช้รวมรูปของทั้งข้อในตารางเทียบ แบบเดียวกับที่ PDF ทำ
+            const qNo: number | undefined = typeof q?.no === "number" ? q.no
+                : Number(String(q?.key ?? "").replace(/^r/, "")) || undefined;
+            out.push(mk(q.key, section, "", qNo));
+            answered
+                .filter((k) => k !== q.key && k.split("_")[0] === q.key)
+                .sort((a, b) => subNo(a) - subNo(b))
+                .forEach((k) => out.push(mk(k, section, labelOf(k), qNo)));
+        });
+        answered.forEach((k) => {
+            if (out.some((r) => r.key === k)) return;
+            out.push(mk(k, "", labelOf(k), Number(k.replace(/^r/, "").split("_")[0]) || undefined));
+        });
+        return out;
+    }, [rowsPre, rows, lang, q4Items, q5Items, q6Items, q7Items, q8Items, q9Items, q10Items, q11Items]);
+
+
+    // กล่องหมายเหตุ + สรุปผลการตรวจสอบ — ประกาศครั้งเดียว วางได้สองที่
+    // ตอนกรอกอยู่ในฟอร์มตามเดิม ตอนตรวจย้ายลงไปล่างสุดใต้ตารางเทียบ
+    const summaryBlock = (
+                        <div id="mdb-pm-summary-section" className="tw-mt-6 sm:tw-mt-8 tw-space-y-3 tw-transition-all tw-duration-300">
+                            <Typography variant="h6" className="tw-mb-1 tw-text-sm sm:tw-text-base">{t("comment", lang)}</Typography>
+
+                            {displayTab === "pre" ? (
+                                // Pre-PM: ใช้ summaryPre
+                                <Textarea
+                                    label={t("comment", lang)}
+                                    value={summaryPre}
+                                    onChange={e => setSummaryPre(e.target.value)}
+                                    rows={3}
+                                    autoComplete="off"
+                                    containerProps={{ className: "!tw-min-w-0" }}
+                                    className="!tw-w-full !tw-text-sm resize-none"
+                                />
+                            ) : (
+                                // Post-PM: ใช้ summary
+                                <>
+                                    <Textarea
+                                        label={t("comment", lang)}
+                                        value={summary}
+                                        onChange={e => setSummary(e.target.value)}
+                                        rows={3}
+                                        required={isPostMode}
+                                        autoComplete="off"
+                                        containerProps={{ className: "!tw-min-w-0" }}
+                                        className="!tw-w-full !tw-text-sm resize-none"
+                                    />
+                                    <div className="tw-pt-3 sm:tw-pt-4 tw-border-t tw-border-gray-200">
+                                        <PassFailRow
+                                            label={t("summaryResult", lang)}
+                                            value={summaryCheck}
+                                            onChange={v => setSummaryCheck(v)}
+                                            lang={lang}
+                                            labels={{
+                                                PASS: t("summaryPassLabel", lang),
+                                                FAIL: t("summaryFailLabel", lang),
+                                                NA: t("summaryNALabel", lang)
+                                            }}
+                                        />
+                                    </div>
+                                </>
+                            )}
+                        </div>
+    );
+
     return (
         <section className="tw-pb-24">
             <LoadingOverlay show={pageLoading} text={t("loading", lang)} />
@@ -2250,31 +2489,36 @@ export default function MDBPMForm() {
                     : `Uploading ${isPostMode ? "Post-PM" : "Pre-PM"} photos... ${preUploadState.completed}/${preUploadState.total}`}
             />
             <div className="tw-mx-auto tw-max-w-6xl tw-flex tw-items-center tw-justify-between tw-mb-4">
-                <Button variant="outlined" size="sm" onClick={() => router.back()} title={t("backToList", lang)}>
+                <Button variant="outlined" size="sm" onClick={goBackToList} title={t("backToList", lang)}>
                     <ArrowLeftIcon className="tw-w-4 tw-h-4 tw-stroke-blue-gray-900 tw-stroke-2" />
                 </Button>
-                <Tabs value={displayTab} key={displayTab}>
-                    <TabsHeader className="tw-bg-blue-gray-50 tw-rounded-lg">
-                        {TABS.map(tb => {
-                            const isPreDisabled = isPostMode && tb.id === "pre";
-                            const isLockedAfter = tb.id === "post" && !canGoAfter;
-                            return (
-                                <Tab key={tb.id} value={tb.id} disabled={isPreDisabled || isLockedAfter}
-                                    onClick={() => {
-                                        if (isPreDisabled) return;
-                                        if (isLockedAfter) { alert(t("alertFillPreFirst", lang)); return; }
-                                        go(tb.id);
-                                    }}
-                                    className={`tw-px-4 tw-py-2 tw-font-medium ${isPreDisabled || isLockedAfter ? "tw-opacity-50 tw-cursor-not-allowed" : ""}`}>
-                                    {tb.label}
-                                </Tab>
-                            );
-                        })}
-                    </TabsHeader>
-                </Tabs>
+                {!reviewMode && (
+                    <Tabs value={displayTab} key={displayTab}>
+                        <TabsHeader className="tw-bg-blue-gray-50 tw-rounded-lg">
+                            {TABS.map(tb => {
+                                const isPreDisabled = isPostMode && tb.id === "pre";
+                                const isLockedAfter = tb.id === "post" && !canGoAfter;
+                                return (
+                                    <Tab key={tb.id} value={tb.id} disabled={isPreDisabled || isLockedAfter}
+                                        onClick={() => {
+                                            if (isPreDisabled) return;
+                                            if (isLockedAfter) { alert(t("alertFillPreFirst", lang)); return; }
+                                            go(tb.id);
+                                        }}
+                                        className={`tw-px-4 tw-py-2 tw-font-medium ${isPreDisabled || isLockedAfter ? "tw-opacity-50 tw-cursor-not-allowed" : ""}`}>
+                                        {tb.label}
+                                    </Tab>
+                                );
+                            })}
+                        </TabsHeader>
+                    </Tabs>
+                )}
             </div>
 
+            
             <form action="#" noValidate onSubmit={e => { e.preventDefault(); return false; }} onKeyDown={e => { if (e.key === "Enter") e.preventDefault(); }}>
+                {/* ดูอย่างเดียว: fieldset ปิดทั้งช่องกรอกและปุ่มบันทึกในทีเดียว */}
+                <fieldset disabled={reviewMode} className="pm-readonly tw-m-0 tw-min-w-0 tw-border-0 tw-p-0">
                 <div className="tw-mx-auto tw-max-w-6xl tw-bg-white tw-border tw-border-blue-gray-100 tw-rounded-xl tw-shadow-sm tw-p-6 md:tw-p-8 tw-print:tw-shadow-none tw-print:tw-border-0">
                     <div className="tw-flex tw-flex-col tw-gap-4 md:tw-flex-row md:tw-items-start md:tw-justify-between md:tw-gap-6">
                         <div className="tw-flex tw-items-start tw-gap-3 md:tw-gap-4">
@@ -2304,82 +2548,167 @@ export default function MDBPMForm() {
                     </div>
 
                     <div className="tw-mt-6 sm:tw-mt-8 tw-space-y-4 sm:tw-space-y-6">
-                        {QUESTIONS.filter(q => !(displayTab === "pre" && q.no === 13)).map(q => renderQuestionBlock(q, displayTab))}
+                        {/* โหมดตรวจ: ตัดเฉพาะรายการข้อที่ช่างกรอก ดูจากตารางเทียบก่อน/หลังด้านล่างแทน
+                            ส่วนหัวเอกสารกับข้อมูลสถานีคงไว้ ผู้อนุมัติต้องรู้ว่ากำลังดูใบไหน */}
+                        {!reviewMode && (QUESTIONS.filter(q => !(displayTab === "pre" && q.no === 13)).map(q => renderQuestionBlock(q, displayTab)))}
                     </div>
 
-                    <div id="mdb-pm-summary-section" className="tw-mt-6 sm:tw-mt-8 tw-space-y-3 tw-transition-all tw-duration-300">
-                        <Typography variant="h6" className="tw-mb-1 tw-text-sm sm:tw-text-base">{t("comment", lang)}</Typography>
-
-                        {displayTab === "pre" ? (
-                            // Pre-PM: ใช้ summaryPre
-                            <Textarea
-                                label={t("comment", lang)}
-                                value={summaryPre}
-                                onChange={e => setSummaryPre(e.target.value)}
-                                rows={3}
-                                autoComplete="off"
-                                containerProps={{ className: "!tw-min-w-0" }}
-                                className="!tw-w-full !tw-text-sm resize-none"
-                            />
-                        ) : (
-                            // Post-PM: ใช้ summary
-                            <>
-                                <Textarea
-                                    label={t("comment", lang)}
-                                    value={summary}
-                                    onChange={e => setSummary(e.target.value)}
-                                    rows={3}
-                                    required={isPostMode}
-                                    autoComplete="off"
-                                    containerProps={{ className: "!tw-min-w-0" }}
-                                    className="!tw-w-full !tw-text-sm resize-none"
-                                />
-                                <div className="tw-pt-3 sm:tw-pt-4 tw-border-t tw-border-gray-200">
-                                    <PassFailRow
-                                        label={t("summaryResult", lang)}
-                                        value={summaryCheck}
-                                        onChange={v => setSummaryCheck(v)}
-                                        lang={lang}
-                                        labels={{
-                                            PASS: t("summaryPassLabel", lang),
-                                            FAIL: t("summaryFailLabel", lang),
-                                            NA: t("summaryNALabel", lang)
-                                        }}
-                                    />
-                                </div>
-                            </>
-                        )}
-                    </div>
+                    {/* โหมดตรวจ: ย้ายไปไว้ล่างสุด ให้อ่านหลังดูตารางเทียบเสร็จ */}
+                    {!reviewMode && summaryBlock}
 
                     <div className="tw-mt-6 sm:tw-mt-8 tw-flex tw-flex-col tw-gap-3">
-                        <PMValidationCard
-                            lang={lang} displayTab={displayTab} isPostMode={isPostMode}
-                            allPhotosAttached={allPhotosAttached} missingPhotoItems={missingPhotoItems}
-                            allRequiredInputsFilled={allRequiredInputsFilled} missingInputsDetailed={missingInputsDetailed}
-                            allRemarksFilledPre={allRemarksFilledPre} missingRemarksPre={missingRemarksPre}
-                            allPFAnsweredPost={allPFAnsweredPost} missingPFItemsPost={missingPFItemsPost}
-                            allRemarksFilledPost={allRemarksFilledPost} missingRemarksPost={missingRemarksPost}
-                            isSummaryFilled={isSummaryFilled} isSummaryCheckFilled={isSummaryCheckFilled}
-                        />
-                        <div className="tw-flex tw-flex-col sm:tw-flex-row tw-justify-end tw-gap-2 sm:tw-gap-3">
-                            {displayTab === "pre" ? (
-                                <Button type="button" onClick={onPreSave} disabled={!canGoAfter || submitting}
-                                    className="tw-text-sm tw-py-2.5 tw-bg-gray-800 hover:tw-bg-gray-900"
-                                    title={!allPhotosAttachedPre ? t("photoNotComplete", lang) : !allRequiredInputsFilled ? t("inputNotComplete", lang) : !allRemarksFilledPre ? `${t("alertFillRemark", lang)} ${missingRemarksPre.join(", ")}` : undefined}>
-                                    {submitting ? t("saving", lang) : t("save", lang)}
-                                </Button>
+                    {/* ด่านก่อนเริ่มกรอก — ช่างอ่านข้อมูลใบงานก่อน แล้วค่อยกดเริ่ม (เหมือนหน้า CM)
+                        ใบที่เคยเริ่มกรอกไปแล้วเข้ามาก็ทำต่อได้เลย ไม่ต้องกดซ้ำ */}
+                    {!pmStarted && (
+                        <div className="tw-mx-auto tw-max-w-6xl tw-mb-6 tw-rounded-xl tw-border tw-border-amber-200 tw-bg-amber-50 tw-px-5 tw-py-6 tw-text-center">
+                            <p className="tw-mb-4 tw-text-sm tw-text-amber-800">{t("startPmHint", lang)}</p>
+                            <Button
+                                type="button"
+                                onClick={() => setPmStartedManually(true)}
+                                className="tw-bg-amber-500 hover:tw-bg-amber-600 tw-text-white tw-font-semibold tw-text-base tw-px-8 tw-py-3 tw-rounded-xl hover:tw-shadow-xl hover:tw-shadow-amber-500/30 tw-transition-all"
+                            >
+                                {t("startPm", lang)}
+                            </Button>
+                        </div>
+                    )}
+
+                    {/* เวลาทำงานจริงของช่าง — ต้องกรอกก่อนส่งปิดใบงาน (ส่งเข้า Maximo IN09) */}
+                    {isPostMode && (
+                        <div className="tw-mt-6 tw-pt-4 tw-border-t tw-border-gray-200">
+                            <div className="tw-mb-2">
+                                <Typography variant="h6" className="tw-text-sm sm:tw-text-base">
+                                    {t("workTime", lang)} <span className="tw-text-red-500">*</span>
+                                </Typography>
+                                <Typography variant="small" className="tw-text-xs tw-font-normal tw-text-blue-gray-400">
+                                    {t("workTimeHint", lang)}
+                                </Typography>
+                            </div>
+                            <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 tw-gap-3">
+                                <div>
+                                    <label className="tw-mb-1.5 tw-block tw-text-xs tw-font-semibold tw-text-blue-gray-700">{t("workStart", lang)}</label>
+                                    <input type="datetime-local" value={workStart} onChange={(e) => setWorkStart(e.target.value)}
+                                        className="tw-w-full tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-px-3 tw-py-2.5 tw-text-sm tw-text-blue-gray-800 focus:tw-outline-none focus:tw-border-blue-500" />
+                                </div>
+                                <div>
+                                    <label className="tw-mb-1.5 tw-block tw-text-xs tw-font-semibold tw-text-blue-gray-700">{t("workFinish", lang)}</label>
+                                    {/* min กัน picker เลือกย้อนหลัง — ยังต้อง validate เพราะพิมพ์มือเลี่ยงได้ */}
+                                    <input type="datetime-local" value={workFinish} min={workStart || undefined} onChange={(e) => setWorkFinish(e.target.value)}
+                                        className={`tw-w-full tw-rounded-lg tw-border tw-bg-white tw-px-3 tw-py-2.5 tw-text-sm tw-text-blue-gray-800 focus:tw-outline-none ${workStart && workFinish && workFinish < workStart ? "tw-border-red-400 focus:tw-border-red-500" : "tw-border-blue-gray-200 focus:tw-border-blue-500"}`} />
+                                    {workStart && workFinish && workFinish < workStart && (
+                                        <p className="tw-mt-1.5 tw-text-xs tw-text-red-600">{t("alertWorkTimeOrder", lang)}</p>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ช่างที่จะลงเวลาเข้า Maximo — laborcode คนละชุดกับ username ใน iMPS
+                        จึงต้องให้เลือกเอง ไม่งั้น IN09 จะ unmapped ทั้งใบ (อยู่ล่างสุดของฟอร์ม) */}
+                    {isPostMode && (
+                        <div className="tw-mt-6 tw-pt-4 tw-border-t tw-border-gray-200">
+                            <div className="tw-mb-2">
+                                <Typography variant="h6" className="tw-text-sm sm:tw-text-base">{t("maximoLabor", lang)}</Typography>
+                                <Typography variant="small" className="tw-text-xs tw-font-normal tw-text-blue-gray-400">
+                                    {t("maximoLaborHint", lang)}
+                                </Typography>
+                            </div>
+                            {laborList.length === 0 ? (
+                                <p className="tw-text-xs tw-text-orange-600">
+                                                {reviewMode ? t("maximoLaborNone", lang) : t("maximoLaborEmpty", lang)}
+                                            </p>
                             ) : (
-                                <Button type="button" onClick={onFinalSave} disabled={!canFinalSave || submitting}
-                                    className="tw-text-sm tw-py-2.5 tw-bg-gray-800 hover:tw-bg-gray-900"
-                                    title={!canFinalSave ? t("allNotComplete", lang) : undefined}>
-                                    {submitting ? t("saving", lang) : t("save", lang)}
-                                </Button>
+                                <div className="tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-divide-y tw-divide-blue-gray-50 tw-max-h-56 tw-overflow-y-auto">
+                                    {laborList.map((o) => (
+                                        <label key={o.laborcode} className="tw-flex tw-items-center tw-gap-2.5 tw-px-3 tw-py-2.5 tw-cursor-pointer hover:tw-bg-blue-gray-50/60 tw-transition-colors">
+                                            {!reviewMode && (<input type="checkbox" checked={maximoLabor.includes(o.laborcode)}
+                                                onChange={() => toggleMaximoLabor(o.laborcode)}
+                                                className="tw-h-4 tw-w-4 tw-shrink-0 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500 tw-cursor-pointer" />)}
+                                            <span className="tw-min-w-0 tw-truncate tw-text-sm tw-text-blue-gray-800">{o.name}</span>
+                                            <span className="tw-ml-auto tw-font-mono tw-text-xs tw-text-blue-gray-400">{o.laborcode}</span>
+                                        </label>
+                                    ))}
+                                </div>
+                            )}
+                            {(contractorPicked || (reviewMode && !!maximoContractor.trim())) && (
+                                <div className="tw-mt-3 tw-space-y-1.5">
+                                    <label className="tw-block tw-text-xs tw-font-semibold tw-text-blue-gray-700">
+                                        {t("contractorName", lang)} <span className="tw-text-red-500">*</span>
+                                    </label>
+                                    <input type="text" value={maximoContractor} onChange={(e) => setMaximoContractor(e.target.value)}
+                                        placeholder={t("contractorPlaceholder", lang)}
+                                        className={`tw-w-full tw-rounded-lg tw-border tw-px-3 tw-py-2.5 tw-text-sm tw-text-blue-gray-800 focus:tw-outline-none ${contractorMissing ? "tw-border-red-400 focus:tw-border-red-500" : "tw-border-blue-gray-200 focus:tw-border-blue-500"}`} />
+                                    {contractorMissing && <p className="tw-text-xs tw-text-red-600">{t("contractorRequired", lang)}</p>}
+                                </div>
                             )}
                         </div>
+                    )}
+
+                        {/* โหมดตรวจไม่ต้องมี ฟอร์มฝั่งช่างดักความครบถ้วนไว้ตั้งแต่ตอนกรอกแล้ว */}
+                        {!reviewMode && (
+                            <PMValidationCard
+                                lang={lang} displayTab={displayTab} isPostMode={isPostMode}
+                                allPhotosAttached={allPhotosAttached} missingPhotoItems={missingPhotoItems}
+                                allRequiredInputsFilled={allRequiredInputsFilled} missingInputsDetailed={missingInputsDetailed}
+                                allRemarksFilledPre={allRemarksFilledPre} missingRemarksPre={missingRemarksPre}
+                                allPFAnsweredPost={allPFAnsweredPost} missingPFItemsPost={missingPFItemsPost}
+                                allRemarksFilledPost={allRemarksFilledPost} missingRemarksPost={missingRemarksPost}
+                                isSummaryFilled={isSummaryFilled} isSummaryCheckFilled={isSummaryCheckFilled}
+                            />
+                        )}
+                        {/* ดูอย่างเดียว: ตรวจได้ แต่ไม่มีปุ่มบันทึกให้กด */}
+                        {!reviewMode && (
+                            <div className="tw-flex tw-flex-col sm:tw-flex-row tw-justify-end tw-gap-2 sm:tw-gap-3">
+                                {displayTab === "pre" ? (
+                                    <Button type="button" onClick={onPreSave} disabled={!canGoAfter || submitting}
+                                        className="tw-text-sm tw-py-2.5 tw-bg-gray-800 hover:tw-bg-gray-900"
+                                        title={!allPhotosAttachedPre ? t("photoNotComplete", lang) : !allRequiredInputsFilled ? t("inputNotComplete", lang) : !allRemarksFilledPre ? `${t("alertFillRemark", lang)} ${missingRemarksPre.join(", ")}` : undefined}>
+                                        {submitting ? t("saving", lang) : t("save", lang)}
+                                    </Button>
+                                ) : (
+                                    <Button type="button" onClick={onFinalSave} disabled={!canFinalSave || submitting}
+                                        className="tw-text-sm tw-py-2.5 tw-bg-gray-800 hover:tw-bg-gray-900"
+                                        title={!canFinalSave ? t("allNotComplete", lang) : undefined}>
+                                        {submitting ? t("saving", lang) : t("save", lang)}
+                                    </Button>
+                                )}
+                            </div>
+                        )}
                     </div>
                 </div>
+                </fieldset>
             </form>
             <BackgroundUploadBanner lang={lang} />
+            {/* เทียบผลก่อน/หลังของหัวข้อเดียวกันในบรรทัดเดียว */}
+            {reviewMode && editId && (
+                <PmCompareTable
+                    rows={compareRows}
+                    lang={lang}
+                    prePhotos={cmpPhotos.pre}
+                    postPhotos={cmpPhotos.post}
+                    apiBase={API_BASE}
+                    photoKeysOf={photoKeysOf}
+                    summaryPre={summaryPre}
+                    summaryPost={summary}
+                />
+            )}
+            {reviewMode && editId && (
+                <div className="tw-mx-auto tw-max-w-6xl tw-mt-6 tw-rounded-xl tw-border tw-border-blue-gray-100 tw-bg-white tw-p-5 tw-shadow-sm sm:tw-p-6">
+                    <fieldset disabled className="pm-readonly tw-m-0 tw-min-w-0 tw-border-0 tw-p-0">
+                        {summaryBlock}
+                    </fieldset>
+                </div>
+            )}
+            {/* ตรวจเสร็จแล้วกดต่อได้เลย ไม่ต้องเลื่อนกลับขึ้นไปข้างบน */}
+            {approveMode && editId && (
+                <div id="pm-approve-bottom" className="tw-mx-auto tw-max-w-6xl tw-mt-6 tw-flex tw-items-center tw-justify-end tw-gap-2 tw-border-t tw-border-blue-gray-100 tw-pt-5">
+                    <PmApprovalBar
+                        prefix="mdbpmreport" reportId={editId}
+                        scope={{ station_id: stationId }}
+                        apiBase={API_BASE}
+                        onDone={(msg) => { alert(msg); goBackToList(); }}
+                    />
+                </div>
+            )}
         </section>
     );
 }

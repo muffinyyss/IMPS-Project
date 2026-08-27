@@ -156,8 +156,9 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
   const [deleting, setDeleting] = useState(false);
   // planner (หรือ admin) ยกเลิกใบงานที่ยังไม่ปิด → Cancelled
   // หน้า In Progress list ไม่มีปุ่มยกเลิกด้านนอกแล้ว (จัดการยกเลิก/ตีกลับตั้งแต่ด่าน SR/วางแผน)
-  // technician ยกเลิก WO ของตัวเองจากหน้า In Progress ได้
-  const canCancel = currentRole.trim().toLowerCase() === "technician";
+  // planner/admin และ technician ที่ได้รับมอบหมาย ยกเลิก WO จากหน้า In Progress ได้
+  // Cancellation is handled from the In Progress form; the list has no Cancel column.
+  const canCancel = false;
 
   const todayStr = useMemo(() => {
     const d = new Date();
@@ -194,7 +195,7 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
   }, [searchParams]);
 
   // หน้า WO แสดงทั้งงานที่กำลังซ่อมและงานที่รออนุมัติ (backend รองรับหลายค่า คั่นด้วย ,)
-  const statusFromTab = "in progress,wait for approve";
+  const statusFromTab = "in progress,wait for approve,wo - wait for approve";
 
   const router = useRouter();
   const pathname = usePathname();
@@ -318,10 +319,15 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
       // แท็บ In Progress = กำลังซ่อม + รออนุมัติปิดงาน
       // "wait for approve" ต้องเป็นด่านปิดงาน (stage != cs_approval) เท่านั้น — ด่าน cs ไปอยู่แท็บ Open
       const filterByStatus = (it: any) => {
-        const s = String(it?.status ?? it?.job?.status ?? "").trim().toLowerCase();
+        const rawStatuses = [it?.status, it?.job?.status]
+          .filter((value) => value != null)
+          .map((value) => String(value).trim().toLowerCase());
+        const s = rawStatuses[0] || "";
         const stage = String(it?.stage ?? "").trim().toLowerCase();
-        if (s === "in progress") return true;
-        if (s === "wait for approve") return stage !== "cs_approval";
+        const repairResult = String(it?.repair_result ?? it?.job?.repair_result ?? "").trim().toLowerCase();
+        if (rawStatuses.includes("wo - wait for approve") || repairResult === "wo - wait for approve") return true;
+        if (rawStatuses.includes("in progress")) return true;
+        if (rawStatuses.includes("wait for approve")) return stage !== "cs_approval";
         return false;
       };
 
@@ -366,7 +372,9 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
           assignees: Array.isArray(it.assignees)
             ? it.assignees
             : (Array.isArray(it.job?.assignees) ? it.job.assignees : []),
-          location: failureCodeLabel(it.faulty_equipment) || "-",
+          // คอลัมน์ "ตำแหน่งที่พบ" โชว์ตู้ที่ใบงานอ้างถึง ("Charger 1 (SN)") — ใบระดับสถานี
+          // หรือใบเก่าที่ไม่ผูกตู้ ไม่มี label ให้ใช้ จึงถอยไปใช้ชื่อ failure class ของ Maximo
+          location: it.faulty_equipment_label || failureCodeLabel(it.faulty_equipment) || "-",
           charger_no: chargerField(it.charger_no),
           charger_sn: chargerField(it.charger_sn),
           problem_details: it.problem_details || "",
@@ -393,15 +401,15 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
           office: resolveFileHref(raw, apiBase),
           reported_by: it.reported_by || "",
           inspector: it.inspector || "",
-          repair_result: it.repair_result || "",
           assignees: Array.isArray(it.assignees)
             ? it.assignees
             : (Array.isArray(it.job?.assignees) ? it.job.assignees : []),
-          location: failureCodeLabel(it.faulty_equipment) || "-",
+          location: it.faulty_equipment_label || failureCodeLabel(it.faulty_equipment) || "-",
           charger_no: chargerField(it.charger_no),
           charger_sn: chargerField(it.charger_sn),
           problem_details: it.problem_details || "",
           status: getStatusText(it) || "-",
+          repair_result: it.repair_result || it.job?.repair_result || "",
           source: "url" as const,
         };
       });

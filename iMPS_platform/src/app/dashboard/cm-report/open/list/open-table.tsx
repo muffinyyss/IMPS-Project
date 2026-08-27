@@ -1,6 +1,7 @@
 "use client";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import CMOpenForm from "@/app/dashboard/cm-report/open/input_CMreport/components/checkList";
+import CMInProgressForm from "@/app/dashboard/cm-report/inprogress/input_CMreport/components/checkList";
 import {
   getCoreRowModel,
   getPaginationRowModel,
@@ -162,7 +163,6 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
   const { lang } = useLanguage();
   const [userRole, setUserRole] = useState<string>("");
   const isTechnician = userRole.toLowerCase() === "technician";
-  const isPlanner = userRole.trim().toLowerCase() === "planner";
   const [loading, setLoading] = useState(false);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [data, setData] = useState<TData[]>([]);
@@ -392,7 +392,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
     try {
       // แท็บ Open รวม: ใบเปิดใหม่รอ head cs อนุมัติ (Wait for approve/cs_approval),
       // ใบเก่า/auto ที่เป็น Open, และใบที่รอ planner วางแผน (Wait for schedule)
-      const requestStatus = "open,wait for approve,wait for schedule";
+      const requestStatus = "open,wait for approve,wait for schedule,wo - wait for approve";
       const makeURL = (path: string) => {
         const u = new URL(`${apiBase}${path}`);
         u.searchParams.set("station_id", stationId);
@@ -424,13 +424,18 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
       // แท็บ Open = ด่านก่อนเริ่มซ่อม: รอ head cs อนุมัติ + รอ planner วางแผน
       // "wait for approve" ต้องเป็น stage cs_approval เท่านั้น (ด่านปิดงานไปอยู่แท็บ In Progress)
       const isOpen = (it: any) => {
-        const hasStatus = it?.status != null || it?.job?.status != null;
+        const rawStatuses = [it?.status, it?.job?.status]
+          .filter((value) => value != null)
+          .map((value) => String(value).trim().toLowerCase());
+        const hasStatus = rawStatuses.length > 0 || it?.repair_result != null || it?.job?.repair_result != null;
         if (!hasStatus) return true;
-        const s = String(it?.status ?? it?.job?.status ?? "").trim().toLowerCase();
+        const s = rawStatuses[0] || "";
         const stage = String(it?.stage ?? "").trim().toLowerCase();
-        if (s === "open") return true;
-        if (s === "wait for schedule") return true;
-        if (s === "wait for approve") return stage === "cs_approval";
+        const repairResult = String(it?.repair_result ?? it?.job?.repair_result ?? "").trim().toLowerCase();
+        if (rawStatuses.includes("wo - wait for approve") || repairResult === "wo - wait for approve") return false;
+        if (rawStatuses.includes("wait for approve")) return stage === "cs_approval";
+        if (rawStatuses.includes("open") || s === "open") return true;
+        if (rawStatuses.includes("wait for schedule")) return true;
         return false;
       };
 
@@ -470,7 +475,9 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
           position: isoDay,
           office: fileUrl,
           reported_by: it.reported_by || it.technician || "",
-          location: failureCodeLabel(it.faulty_equipment) || "-",
+          // คอลัมน์ "ตำแหน่งที่พบ" โชว์ตู้ที่ใบงานอ้างถึง ("Charger 1 (SN)") — ใบระดับสถานี
+          // หรือใบเก่าที่ไม่ผูกตู้ ไม่มี label ให้ใช้ จึงถอยไปใช้ชื่อ failure class ของ Maximo
+          location: it.faulty_equipment_label || failureCodeLabel(it.faulty_equipment) || "-",
           charger_no: chargerField(it.charger_no),
           charger_sn: chargerField(it.charger_sn),
           problem_details: it.problem_details || "",
@@ -501,11 +508,13 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
           position: isoDay,
           office: resolveFileHref(raw, apiBase),
           reported_by: it.reported_by || it.technician || "",
-          location: failureCodeLabel(it.faulty_equipment) || "-",
+          location: it.faulty_equipment_label || failureCodeLabel(it.faulty_equipment) || "-",
           charger_no: chargerField(it.charger_no),
           charger_sn: chargerField(it.charger_sn),
           problem_details: it.problem_details || "",
           status: getStatusText(it) || "-",
+          stage: it.stage || "",
+          repair_result: it.repair_result || it.job?.repair_result || "",
         };
       });
 
@@ -765,13 +774,8 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
   const visibleData = useMemo(() => {
     // planner เป็นผู้อนุมัติ SR → เห็นทั้ง Wait for approve (รออนุมัติ) และ Wait for schedule (วางแผน)
     // ซ่อนเฉพาะใบที่ตีกลับไปหา CS แล้ว (Wait for approve + reject_remark) — ยังไม่ใช่คิว จนกว่า CS จะแก้แล้วบันทึกกลับ
-    if (isPlanner) {
-      return data.filter(
-        (r) => !(String(r.status || "").trim().toLowerCase() === "wait for approve" && (r.reject_remark || "").trim())
-      );
-    }
     return data;
-  }, [data, isPlanner]);
+  }, [data]);
 
   const table = useReactTable({
     data: visibleData,
@@ -897,6 +901,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
     const params = new URLSearchParams(searchParams.toString());
     params.delete("view");
     params.delete("edit_id");
+    params.delete("self_close");
     router.push(`${pathname}?${params.toString()}`, { scroll: false });
   };
 
@@ -905,6 +910,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
     const params = new URLSearchParams(searchParams.toString());
     params.set("view", "form");
     params.set("edit_id", row.id);
+    params.delete("self_close");
     // WO - wait for scheduled มีแผน/ช่างแล้ว ให้เปิดฟอร์มกรอกผลซ่อมเหมือน technician
     // แม้ข้อมูลเก่าจะยังค้างอยู่ใน status Wait for schedule
     if (
@@ -926,9 +932,10 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
   };
 
   if (mode === "form") {
+    const plannerSelfClose = searchParams.get("self_close") === "1";
     return (
       <div className="tw-mt-4 sm:tw-mt-6 lg:tw-mt-8">
-        <CMOpenForm />
+        {plannerSelfClose ? <CMInProgressForm /> : <CMOpenForm />}
       </div>
     );
   }

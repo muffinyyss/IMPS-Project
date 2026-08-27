@@ -3,15 +3,15 @@ from fastapi import APIRouter, HTTPException, Depends, Query, Request, UploadFil
 from fastapi.responses import Response, JSONResponse
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, Field
-from datetime import datetime, timezone, date
+from datetime import datetime, timedelta, timezone, date
 from bson.objectid import ObjectId
 from pymongo import ReturnDocument
 from typing import List, Dict, Any, Optional, Literal
-import re, json, uuid, pathlib, secrets, os
+import re, json, uuid, pathlib, secrets, os, shutil
 
 from config import (
     normalize_pm_date, _ensure_utc_iso,
-    CMReportDB, CMUrlDB, DCTestReportDB, DCUrlDB,
+    CMReportDB, CMReportDB_sync, CMUrlDB, DCTestReportDB, DCUrlDB,
     station_collection, users_collection, charger_coll_async, users_coll_async,
     _validate_station_id_th, th_tz,
 )
@@ -27,6 +27,7 @@ ALLOWED_EXTS = {
     "mp4", "mov", "mkv", "avi", "webm", "wmv",
 }
 MAX_FILE_MB = 20
+MAX_CM_PHOTOS_PER_GROUP = 10
 from deps import UserClaims, get_current_user
 from brand_scope import brand_scope_of
 from uploads_access import assert_station_access, assert_sn_access
@@ -36,11 +37,10 @@ router = APIRouter()
 # ---------------------------------------------------------------------
 def grant_station_to_assignees(usernames: list[str], station_id: str) -> int:
     """
-    ช่างที่ถูก assign งาน CM ต้องเห็นสถานีนั้นในหน้า EV Station
+    จดความสัมพันธ์ระหว่างช่างกับสถานีเมื่อถูก assign งาน CM
 
-    technician เห็นเฉพาะสถานีใน station_id ของตัวเอง — ตอน assign จึงต้องเติมสถานีเข้าไปให้
-    $addToSet = เพิ่มอย่างเดียว ไม่ซ้ำ และไม่ถอนคืนตอนงานปิด (สิทธิ์สะสม)
-    จำกัดที่ role technician เท่านั้น — role อื่นเห็นสถานีตามกติกาของตัวเองอยู่แล้ว ไม่ต้องยุ่ง
+    สิทธิ์สถานีของ technician อิง role/company/brand; station_id จึงเป็น metadata สำหรับแสดง
+    ประวัติการมอบหมาย ไม่ใช่เงื่อนไขสิทธิ์อีกต่อไป และ $addToSet ช่วยไม่ให้ข้อมูลซ้ำ
     """
     names = [u for u in (usernames or []) if isinstance(u, str) and u.strip()]
     if not names or not station_id:
@@ -56,6 +56,31 @@ def get_cmreport_collection_for(station_id: str):
     _validate_station_id_th(station_id)
     coll = CMReportDB.get_collection(str(station_id))
     return coll
+
+
+def ensure_cm_indexes() -> int:
+    """
+    สร้าง index (createdAt desc, _id desc) ให้ทุก collection ของ CMReport — เรียกตอน startup
+
+    ทุกหน้าที่ list ใบงานเรียงด้วยคีย์นี้ ถ้าไม่มี index มองโกต้อง sort ทั้ง collection
+    ใน memory ทุก request ซึ่งเป็นคอขวดของสถานีที่ใบงานสะสมเยอะ (และพังเมื่อเกิน 32MB)
+    """
+    created = 0
+    try:
+        names = CMReportDB_sync.list_collection_names()
+    except Exception:
+        return 0
+    for name in names:
+        if name.startswith("_") or name.startswith("system."):
+            continue
+        try:
+            CMReportDB_sync.get_collection(name).create_index(
+                [("createdAt", -1), ("_id", -1)], name="createdAt_-1__id_-1", background=True
+            )
+            created += 1
+        except Exception:
+            pass  # index เป็นแค่ตัวเร่ง — สร้างไม่ได้ก็ต้องให้แอปขึ้นได้ตามปกติ
+    return created
 
 def get_cmurl_coll_upload(station_id: str):
     _validate_station_id_th(station_id)
@@ -200,12 +225,16 @@ def _status_or_conditions(status: str) -> list[dict]:
         rx = {"$regex": f"^{re.escape(w)}$", "$options": "i"}
         conds.append({"status": rx})
         conds.append({"job.status": rx})
+        if w.lower() in {"wait for approve", "wo - wait for approve"}:
+            wo_rx = {"$regex": r"^WO\s*-\s*wait\s+for\s+approve$", "$options": "i"}
+            conds.append({"repair_result": wo_rx})
+            conds.append({"job.repair_result": wo_rx})
     return conds
 
 
 def _assignee_scope(current: UserClaims) -> dict:
     """
-    ช่างเห็นได้เฉพาะใบที่ถูก assign ให้ตัวเองตอน planner วางแผน — ใบของคนอื่นไม่มีสิทธิ์เห็น
+    ช่างเห็นได้เฉพาะใบที่ถูก assign ให้ตัวเอง หรือใบที่ตัวเองเป็นคนเปิด — ใบของคนอื่นไม่มีสิทธิ์เห็น
     role อื่นเห็นตามปกติ. คืน filter เปล่าถ้าไม่ต้องจำกัด
     """
     if (current.role or "").lower() != "technician":
@@ -220,6 +249,10 @@ def _assignee_scope(current: UserClaims) -> dict:
             {"job.assignees": username},
             {"assignee": username},
             {"job.assignee": username},
+            # ใบที่ช่างเปิดเอง — ยังไม่มีใครถูก assign จนกว่า planner จะวางแผน
+            # ไม่เผื่อไว้ = กดเปิดใบเสร็จปุ๊บใบหายจากตารางของตัวเองทันที แก้ต่อก็ไม่ได้
+            {"reported_by": username},
+            {"job.reported_by": username},
         ]
     }
 
@@ -253,26 +286,44 @@ def _charger_keys(doc: dict) -> set[str]:
 
 _EMPTY_CHARGER_INDEX: dict = {"by_key": {}, "station_brand": "", "brands": []}
 
+# projection รวมของตาราง charger — พอสำหรับทั้ง charger index และ brand clause
+# เพื่อให้ list-all ดึงตู้ทุกสถานีด้วย query เดียวแล้วส่งต่อให้สองฟังก์ชันนั้นใช้ร่วมกัน
+_CHARGER_PROJECTION = {
+    "station_id": 1, "chargerNo": 1, "charger_no": 1, "charger_id": 1, "chargeBoxID": 1,
+    "charger_name": 1, "SN": 1, "sn": 1, "brand": 1, "model": 1,
+}
 
-async def _charger_index_for_station(station_id: str) -> dict:
+
+def _charger_no_sort_key(doc: dict):
+    # เลียนแบบลำดับ sort ของ Mongo (null < number < string) ตอน sort ใน Python
+    v = doc.get("chargerNo")
+    if v is None:
+        return (0, 0, "")
+    if isinstance(v, (int, float)) and not isinstance(v, bool):
+        return (1, v, "")
+    return (2, 0, str(v))
+
+
+async def _charger_index_for_station(station_id: str, charger_docs: list[dict] | None = None) -> dict:
     """
     ดัชนีตู้ของสถานี — คืน {"by_key": {...}, "station_brand": str, "brands": [...]}
 
     by_key มีทั้งคีย์ "charger_<เลข/ไอดี>" และ "sn:<serial ตัวพิมพ์เล็ก>"
     station_brand = ยี่ห้อของทั้งสถานี ใช้กับใบที่ไม่ระบุตู้ (failure class ระดับสถานี)
     และมีค่าเฉพาะตอนทุกตู้เป็นยี่ห้อเดียวกัน — เกณฑ์เดียวกับ _brand_clause_for_station
+
+    charger_docs: ข้อมูลตู้ที่ caller ดึงไว้แล้ว (เช่น list-all ดึงทุกสถานีทีเดียว) — ส่งมาเพื่อไม่ query ซ้ำ
     """
-    try:
-        charger_docs = await charger_coll_async.find(
-            {"station_id": station_id},
-            {
-                "chargerNo": 1, "charger_no": 1, "charger_id": 1, "chargeBoxID": 1, "charger_name": 1,
-                "SN": 1, "sn": 1, "brand": 1, "model": 1,
-            },
-        ).sort("chargerNo", 1).to_list(length=1_000)
-    except Exception:
-        # ข้อมูลตู้เป็นส่วนเสริม — อ่านไม่ได้ก็ยังต้องคืนใบงานได้ตามปกติ
-        return dict(_EMPTY_CHARGER_INDEX)
+    if charger_docs is not None:
+        charger_docs = sorted(charger_docs, key=_charger_no_sort_key)
+    else:
+        try:
+            charger_docs = await charger_coll_async.find(
+                {"station_id": station_id}, _CHARGER_PROJECTION,
+            ).sort("chargerNo", 1).to_list(length=1_000)
+        except Exception:
+            # ข้อมูลตู้เป็นส่วนเสริม — อ่านไม่ได้ก็ยังต้องคืนใบงานได้ตามปกติ
+            return dict(_EMPTY_CHARGER_INDEX)
 
     by_key: dict[str, dict] = {}
     brands: list[str] = []
@@ -306,7 +357,13 @@ async def _charger_index_for_station(station_id: str) -> dict:
     }
 
 
-def _charger_identity(index: dict, faulty_equipment: str, charger_sn: str, charger_no=None) -> dict:
+def _charger_identity(
+    index: dict,
+    faulty_equipment: str,
+    charger_sn: str,
+    charger_no=None,
+    fallback: dict | None = None,
+) -> dict:
     """ชื่อ/เลข/ยี่ห้อของตู้บนใบงานหนึ่งใบ — คีย์ SN มาก่อนเพราะแม่นกว่าเลขตู้"""
     by_key = index.get("by_key") or {}
     sn = (charger_sn or "").strip()
@@ -314,6 +371,7 @@ def _charger_identity(index: dict, faulty_equipment: str, charger_sn: str, charg
     info = (by_key.get(f"sn:{sn.lower()}") if sn else None) \
         or (by_key.get(f"charger_{no.lower()}") if no else None) \
         or by_key.get(str(faulty_equipment or "").strip().lower()) \
+        or (fallback or {}) \
         or {}
     return {
         "chargeBoxID": info.get("chargeBoxID", ""),
@@ -364,27 +422,51 @@ async def _charger_clause_for_sn(station_id: str, sn: str) -> dict | None:
     return {"$or": clauses}
 
 
-async def _brand_clause_for_station(station_id: str, current: UserClaims) -> dict | None:
+async def _brand_clause_for_station(
+    station_id: str, current: UserClaims, charger_docs: list[dict] | None = None
+) -> dict | None:
     """
     เงื่อนไขกรองใบงานของสถานีนี้ตามยี่ห้อตู้ — None = ไม่ต้องกรอง
 
     • ใบที่ระบุตู้ (faulty_equipment = charger_N) → ดูยี่ห้อของตู้นั้นตรง ๆ
     • ใบที่ไม่ระบุตู้ (failure code ระดับสถานี เช่น DCCHARGER) → เห็นเฉพาะสถานี
       ที่ตู้ทุกตู้เป็นยี่ห้อนั้น เพราะพิสูจน์ไม่ได้ว่าใบนี้เป็นของตู้ไหน
+
+    charger_docs: ข้อมูลตู้ที่ caller ดึงไว้แล้ว — ส่งมาเพื่อไม่ query ซ้ำ
     """
-    brand = brand_scope_of(current)
+    # CM rule: EDS เห็นเฉพาะ FlexxFast ทุก role ยกเว้น super_admin
+    # ใช้ lower-case เทียบทั้งสองฝั่งเพื่อไม่ผูกกับรูปแบบตัวพิมพ์ใน user/charger data
+    if getattr(current, "is_super_admin", False):
+        brand = None
+    elif (current.company or "").strip().lower() == "eds":
+        brand = "flexxfast"
+    elif (current.company or "").strip().lower() == "egat":
+        # EGAT can load every brand; the selected Company/Brand filters are
+        # applied afterward by the CM Dashboard and CM List.
+        brand = None
+    else:
+        brand = brand_scope_of(current)
     if not brand:
         return None
 
-    chargers = await charger_coll_async.find(
-        {"station_id": station_id},
-        {"brand": 1, "chargerNo": 1, "charger_id": 1, "charger_no": 1, "SN": 1, "sn": 1},
-    ).to_list(length=1000)
+    direct_brand_clauses = [
+        {"charger_brand": {"$regex": f"^{re.escape(brand)}$", "$options": "i"}},
+        {"job.charger_brand": {"$regex": f"^{re.escape(brand)}$", "$options": "i"}},
+    ]
+
+    chargers = charger_docs
+    if chargers is None:
+        chargers = await charger_coll_async.find(
+            {"station_id": station_id},
+            {"brand": 1, "chargerNo": 1, "charger_id": 1, "charger_no": 1, "SN": 1, "sn": 1},
+        ).to_list(length=1000)
     if not chargers:
+        return {"$or": direct_brand_clauses}
         return _MATCH_NOTHING  # ไม่มีข้อมูลตู้ = พิสูจน์ยี่ห้อไม่ได้
 
     in_brand = [c for c in chargers if str(c.get("brand") or "").strip().lower() == brand]
     if not in_brand:
+        return {"$or": direct_brand_clauses}
         return _MATCH_NOTHING
     if len(in_brand) == len(chargers):
         return None  # ทั้งสถานีเป็นยี่ห้อนี้ → เห็นได้ทุกใบ
@@ -396,7 +478,7 @@ async def _brand_clause_for_station(station_id: str, current: UserClaims) -> dic
         return _MATCH_NOTHING
     # รองรับทั้งใบเก่าที่ใช้ faulty_equipment=charger_N และใบใหม่ที่เก็บ
     # failure class เดิมไว้ พร้อม charger_no/charger_sn เพื่อแยกใบตามตู้
-    clauses = []
+    clauses = list(direct_brand_clauses)
     if keys:
         clauses.extend([
             {"faulty_equipment": {"$in": keys}},
@@ -418,12 +500,24 @@ async def _assert_can_open_cm(
     current: UserClaims,
     charger_no: str | None = None,
     charger_sn: str = "",
+    detail: str = "เปิดใบงานได้เฉพาะตู้ยี่ห้อที่บริษัทของคุณดูแล (สถานีนี้ไม่ใช่)",
 ) -> None:
     """
     เปิดใบงานได้เฉพาะตู้ยี่ห้อที่บริษัทตัวเองดูแล
 
     ใช้เกณฑ์เดียวกับการมองเห็น — ไม่งั้นจะเปิดใบที่ตัวเองมองไม่เห็นทันทีหลังกดบันทึก
+
+    ตั้งแต่ย้าย dropdown "ตำแหน่งจุดที่มีความผิดปกติ" ไปให้ช่างเลือกตอน In Progress
+    ใบที่ CS เปิดจากระดับสถานีจะไม่มีทั้ง failure class และเลขตู้/SN มาเลย เคสนั้นยัง
+    พิสูจน์ยี่ห้อไม่ได้ จึงปล่อยผ่านแล้วไปเช็คตอนที่ช่างเลือกอุปกรณ์แทน (PATCH /status)
     """
+    if (
+        not (faulty_equipment or "").strip()
+        and charger_no in (None, "")
+        and not (charger_sn or "").strip()
+    ):
+        return
+
     clause = await _brand_clause_for_station(station_id, current)
     if clause is None:
         return  # ไม่ถูกจำกัด หรือทั้งสถานีเป็นยี่ห้อที่ดูแลอยู่
@@ -446,10 +540,7 @@ async def _assert_can_open_cm(
         or str(charger_sn or "").strip().lower() in allowed_sns
     ):
         return
-    raise HTTPException(
-        status_code=403,
-        detail="เปิดใบงานได้เฉพาะตู้ยี่ห้อที่บริษัทของคุณดูแล (สถานีนี้ไม่ใช่)",
-    )
+    raise HTTPException(status_code=403, detail=detail)
 
 
 def _merge_clause(mongo_filter: dict, clause: dict | None) -> dict:
@@ -495,6 +586,12 @@ async def cmreport_list(
         "faulty_equipment": 1,
         "charger_no": 1,
         "charger_sn": 1,
+        # ตัวตนของตู้ — ตารางรายการโชว์ตู้ในคอลัมน์ "ตำแหน่งที่พบ" แทนชื่อ failure class
+        "chargeBoxID": 1,
+        "chargebox_id": 1,
+        "charger_name": 1,
+        "charger_model": 1,
+        "charger_brand": 1,
         "severity": 1,
         "problem_details": 1,
         "location": 1,
@@ -528,9 +625,29 @@ async def cmreport_list(
             if day and first_url and day not in url_by_day:
                 url_by_day[day] = first_url
 
+    # ตู้ของสถานีนี้ ใช้แปลง charger_no / charger_sn / faulty_equipment=charger_N
+    # ให้เป็นชื่อตู้ที่คนอ่านรู้เรื่อง ("Charger 1 (SN)") สำหรับคอลัมน์ "ตำแหน่งที่พบ"
+    charger_index = await _charger_index_for_station(station_id)
+
     items = []
     for it in items_raw:
         job = it.get("job", {})
+        faulty_equipment = it.get("faulty_equipment") or job.get("faulty_equipment") or ""
+        charger = _charger_identity(
+            charger_index,
+            faulty_equipment,
+            it.get("charger_sn") or job.get("charger_sn") or "",
+            it.get("charger_no") or job.get("charger_no") or "",
+            fallback={
+                "chargeBoxID": it.get("chargeBoxID") or it.get("chargebox_id") or job.get("chargeBoxID") or job.get("chargebox_id") or "",
+                "charger_name": it.get("charger_name") or job.get("charger_name") or "",
+                "charger_no": it.get("charger_no") or job.get("charger_no"),
+                "charger_sn": it.get("charger_sn") or job.get("charger_sn") or "",
+                "charger_model": it.get("charger_model") or job.get("charger_model") or "",
+                "charger_brand": it.get("charger_brand") or job.get("charger_brand") or "",
+                "label": it.get("charger_name") or job.get("charger_name") or "",
+            },
+        )
         items.append({
             "id": str(it["_id"]),
             "doc_name": it.get("doc_name") or "",
@@ -542,9 +659,12 @@ async def cmreport_list(
             "inspector": it.get("inspector") or job.get("inspector") or "",
             "approved_by": it.get("approved_by") or "",
             "status": it.get("status") or job.get("status") or "",
-            "stage": it.get("stage") or "",
+            "stage": it.get("stage") or job.get("stage") or "",
             "reject_remark": it.get("reject_remark") or "",
-            "faulty_equipment": it.get("faulty_equipment") or job.get("faulty_equipment") or "",
+            "faulty_equipment": faulty_equipment,
+            "faulty_equipment_label": charger["charger_label"],
+            "chargeBoxID": charger["chargeBoxID"],
+            "charger_name": charger["charger_name"],
             "charger_no": it.get("charger_no") or job.get("charger_no") or "",
             "charger_sn": it.get("charger_sn") or job.get("charger_sn") or "",
             "problem_details": it.get("problem_details") or job.get("problem_details") or "",
@@ -570,10 +690,25 @@ async def cmreport_list(
 
 
 async def _cm_items_for_station(station_id: str, station_name: str, status: str | None,
+                                station_company: str = "",
                                 scope: dict | None = None,
-                                current: UserClaims | None = None) -> list[dict]:
-    """ดึง CM report ของสถานีเดียว (merge กับ CMUrl ด้วย cm_date) + ใส่ station info"""
+                                current: UserClaims | None = None,
+                                charger_docs: list[dict] | None = None) -> list[dict]:
+    """ดึง CM report ของสถานีเดียว + ใส่ station info
+
+    charger_docs: ข้อมูลตู้ของสถานีนี้ที่ caller ดึงไว้แล้ว (list-all ดึงทุกสถานีด้วย
+    query เดียว) — ถ้าไม่ส่งมา จะ query เองครั้งเดียวแล้วใช้ร่วมกันทั้ง brand clause
+    และ charger index
+    """
     coll = get_cmreport_collection_for(station_id)
+
+    if charger_docs is None:
+        try:
+            charger_docs = await charger_coll_async.find(
+                {"station_id": station_id}, _CHARGER_PROJECTION,
+            ).to_list(length=1_000)
+        except Exception:
+            charger_docs = None  # อ่านตู้ไม่ได้ — ปล่อยให้สองฟังก์ชันล่างจัดการ fallback เอง
 
     mongo_filter: dict = {}
     if status and (conds := _status_or_conditions(status)):
@@ -581,13 +716,15 @@ async def _cm_items_for_station(station_id: str, station_name: str, status: str 
     if scope:
         _merge_clause(mongo_filter, scope)
     if current is not None:
-        _merge_clause(mongo_filter, await _brand_clause_for_station(station_id, current))
+        _merge_clause(mongo_filter, await _brand_clause_for_station(station_id, current, charger_docs))
 
     cursor = coll.find(mongo_filter, {
         "_id": 1, "doc_name": 1, "issue_id": 1, "cm_date": 1, "found_date": 1, "status": 1,
         "stage": 1, "reject_remark": 1,
-        "reported_by": 1, "inspector": 1, "approved_by": 1, "faulty_equipment": 1, "severity": 1,
+        "reported_by": 1, "inspector": 1, "approved_by": 1, "faulty_equipment": 1, "severity": 1, "company": 1,
         "charger_no": 1, "charger_sn": 1,
+        "chargeBoxID": 1, "chargebox_id": 1, "charger_name": 1,
+        "charger_model": 1, "charger_brand": 1,
         "problem_details": 1, "location": 1, "job": 1, "repair_result": 1,
         # analyse CM dashboard : cause / correction (codes Maximo)
         "cause": 1, "problem_type": 1, "repaired_equipment": 1,
@@ -600,19 +737,7 @@ async def _cm_items_for_station(station_id: str, station_name: str, status: str 
 
     # ใบงานรุ่นเก่าเก็บ faulty_equipment เป็น charger_1 / charger_<id>
     # จึงแนบ label + ชื่อ/เลข/ยี่ห้อของตู้ไว้ให้ dashboard แสดงผล โดยไม่เปลี่ยนค่า raw เดิม
-    charger_index = await _charger_index_for_station(station_id)
-
-    # map ไฟล์จาก CMUrl ด้วย cm_date
-    cm_dates = [it.get("cm_date") for it in items_raw if it.get("cm_date")]
-    url_by_day: dict[str, str] = {}
-    if cm_dates:
-        urls_coll = get_cmurl_coll_upload(station_id)
-        ucur = urls_coll.find({"cm_date": {"$in": cm_dates}}, {"cm_date": 1, "urls": 1})
-        for u in await ucur.to_list(length=10_000):
-            day = u.get("cm_date")
-            first_url = (u.get("urls") or [None])[0]
-            if day and first_url and day not in url_by_day:
-                url_by_day[day] = first_url
+    charger_index = await _charger_index_for_station(station_id, charger_docs)
 
     def resolve_cm_date(it: dict, job: dict) -> str | None:
         # เอกสารจาก /cmreport/submit เก็บวันที่ใน found_date (ไม่มี cm_date) —
@@ -644,15 +769,25 @@ async def _cm_items_for_station(station_id: str, station_name: str, status: str 
         job = it.get("job", {})
         faulty_equipment = it.get("faulty_equipment") or job.get("faulty_equipment") or ""
         charger = _charger_identity(
-        charger_index,
-        faulty_equipment,
-        it.get("charger_sn") or job.get("charger_sn") or "",
-        it.get("charger_no") or job.get("charger_no") or "",
+            charger_index,
+            faulty_equipment,
+            it.get("charger_sn") or job.get("charger_sn") or "",
+            it.get("charger_no") or job.get("charger_no") or "",
+            fallback={
+                "chargeBoxID": it.get("chargeBoxID") or it.get("chargebox_id") or job.get("chargeBoxID") or job.get("chargebox_id") or "",
+                "charger_name": it.get("charger_name") or job.get("charger_name") or "",
+                "charger_no": it.get("charger_no") or job.get("charger_no"),
+                "charger_sn": it.get("charger_sn") or job.get("charger_sn") or "",
+                "charger_model": it.get("charger_model") or job.get("charger_model") or "",
+                "charger_brand": it.get("charger_brand") or job.get("charger_brand") or "",
+                "label": it.get("charger_name") or job.get("charger_name") or "",
+            },
         )
         out.append({
             "id": str(it["_id"]),
             "station_id": station_id,
             "station_name": station_name,
+            "company": str(it.get("company") or job.get("company") or station_company).strip(),
             "doc_name": it.get("doc_name") or "",
             "issue_id": it.get("issue_id") or job.get("issue_id") or "",
             "cm_date": resolve_cm_date(it, job),
@@ -689,7 +824,9 @@ async def _cm_items_for_station(station_id: str, station_name: str, status: str 
             "maximo_ticket_id": it.get("maximo_ticket_id") or "",
             "maximo_wonum": it.get("maximo_wonum") or "",
             "createdAt": _ensure_utc_iso(it.get("createdAt")),
-            "file_url": url_by_day.get(it.get("cm_date") or "", ""),
+            # CM Dashboard/CM List ไม่ได้ใช้ไฟล์แนบ (ลิงก์ PDF สร้างจาก id เอง) — เลิก query
+            # CMUrl ต่อสถานี แต่คงคีย์ไว้เป็นค่าว่างกันฝั่งที่อ่าน field นี้อยู่พัง
+            "file_url": "",
         })
     return out
 
@@ -711,7 +848,7 @@ async def cmreport_list_all(
         stations = await loop.run_in_executor(
             None,
             lambda: list(station_collection.find(
-                station_query, {"_id": 0, "station_id": 1, "station_name": 1}
+                station_query, {"_id": 0, "station_id": 1, "station_name": 1, "company": 1, "user_id": 1, "username": 1}
             )),
         )
     except Exception:
@@ -720,9 +857,51 @@ async def cmreport_list_all(
     if not stations:
         return {"items": [], "total": 0, "stations_count": 0}
 
+    # Company ของ CM คือ company ของ owner ที่ผูกกับสถานี ไม่ใช่ brand ของ charger
+    # รองรับทั้งข้อมูลสถานีรุ่นใหม่ที่เก็บ company ตรง ๆ และข้อมูลเดิมที่อ้าง owner user
+    try:
+        owner_ids = [s.get("user_id") for s in stations if isinstance(s.get("user_id"), ObjectId)]
+        owner_names = [str(s.get("username") or "").strip() for s in stations if s.get("username")]
+        owner_query = []
+        if owner_ids:
+            owner_query.append({"_id": {"$in": owner_ids}})
+        if owner_names:
+            owner_query.append({"username": {"$in": owner_names}})
+        owner_docs = await users_coll_async.find(
+            {"$or": owner_query} if owner_query else {"_id": None},
+            {"_id": 1, "username": 1, "company": 1},
+        ).to_list(length=10_000)
+    except Exception:
+        owner_docs = []
+
+    company_by_id = {str(u.get("_id")): str(u.get("company") or "").strip() for u in owner_docs}
+    company_by_name = {str(u.get("username") or "").strip().lower(): str(u.get("company") or "").strip() for u in owner_docs}
+    for station in stations:
+        station["company"] = (
+            str(station.get("company") or "").strip()
+            or company_by_id.get(str(station.get("user_id")), "")
+            or company_by_name.get(str(station.get("username") or "").strip().lower(), "")
+        )
+
+    # ดึงข้อมูลตู้ของทุกสถานีด้วย query เดียว แทนที่จะให้แต่ละสถานียิงเอง 2 ครั้ง
+    # (brand clause + charger index) — เปิดหน้า CM List/Dashboard ทีหนึ่งประหยัดไป 2N queries
+    station_ids = [s["station_id"] for s in stations if s.get("station_id")]
+    chargers_by_station: dict[str, list[dict]] | None = {sid: [] for sid in station_ids}
+    try:
+        all_chargers = await charger_coll_async.find(
+            {"station_id": {"$in": station_ids}}, _CHARGER_PROJECTION,
+        ).to_list(length=50_000)
+        for c in all_chargers:
+            chargers_by_station.setdefault(str(c.get("station_id")), []).append(c)
+    except Exception:
+        chargers_by_station = None  # อ่านรวมไม่ได้ — ให้แต่ละสถานี query เองแบบเดิม
+
     scope = _assignee_scope(current)
     tasks = [
-        _cm_items_for_station(s["station_id"], s.get("station_name", "-"), status, scope, current)
+        _cm_items_for_station(
+            s["station_id"], s.get("station_name", "-"), status, s.get("company", ""), scope, current,
+            charger_docs=None if chargers_by_station is None else chargers_by_station.get(s["station_id"], []),
+        )
         for s in stations
         if s.get("station_id")
     ]
@@ -801,6 +980,8 @@ async def cmreport_save_draft(
         raise HTTPException(status_code=400, detail="Bad report_id")
 
     await _assert_can_edit_cm(coll, oid, station_id, current)
+    # ร่างเก็บที่ใบงาน ไม่ได้แยกรายคน — ปล่อยให้เขียนพร้อมกันคือทับร่างของอีกคนทิ้ง
+    await _assert_not_locked_by_other(coll, oid, station_id, current)
     now = datetime.now(timezone.utc)
     result = await coll.update_one(
         {"_id": oid, "station_id": station_id},
@@ -863,6 +1044,151 @@ async def cmreport_delete_draft(
         raise HTTPException(status_code=404, detail="Report not found")
     return {"ok": True}
 
+# ══════════════════════════════════════════════════════════════════
+# ล็อกใบงานกันกรอกชนกัน — ใครเปิดฟอร์มก่อนได้สิทธิ์กรอก คนที่เหลือดูอย่างเดียว
+# ══════════════════════════════════════════════════════════════════
+# ล็อกมีอายุ ไม่ใช่ล็อกถาวร: ฟอร์มต่ออายุให้ทุก 30 วิระหว่างเปิดอยู่ ปิดจอ/เน็ตหลุด
+# ก็หลุดล็อกเองใน 2 นาที — ไม่งั้นใบจะค้างล็อกถาวรเวลาเบราว์เซอร์ปิดโดยไม่ทันปล่อย
+CM_LOCK_TTL_SECONDS = 120
+
+
+def _lock_expires(doc: dict | None) -> datetime | None:
+    """
+    เวลาหมดอายุของล็อก แบบมี tzinfo เสมอ
+
+    Mongo คืน datetime แบบ naive ซึ่งเป็น UTC — ใช้ _ensure_utc_iso ตรงนี้ไม่ได้
+    เพราะตัวนั้นตีความ naive เป็นเวลาไทยแล้วแปลงเป็น UTC (เวลาจะเพี้ยนไป 7 ชม.)
+    """
+    expires = ((doc or {}).get("cm_lock") or {}).get("expires_at")
+    if not isinstance(expires, datetime):
+        return None
+    return expires.replace(tzinfo=timezone.utc) if expires.tzinfo is None else expires
+
+
+def _lock_holder(doc: dict | None, now: datetime) -> str:
+    """ชื่อคนที่ถือล็อกอยู่ ณ ตอนนี้ — ว่าง = ไม่มีใครถือ หรือล็อกหมดอายุไปแล้ว"""
+    by = str(((doc or {}).get("cm_lock") or {}).get("by") or "").strip()
+    if not by:
+        return ""
+    expires = _lock_expires(doc)
+    return "" if expires and expires <= now else by
+
+
+def _same_user(a: str, b: str) -> bool:
+    return a.strip().lower() == b.strip().lower()
+
+
+async def _assert_not_locked_by_other(coll, oid, station_id: str, current: UserClaims) -> None:
+    """
+    กันบันทึกทับ — ใบที่คนอื่นถือล็อกอยู่ ห้ามเขียนข้อมูลลงไป
+
+    ด่านนี้จำเป็นถึงแม้ฝั่งฟอร์มจะสลับเป็นโหมดดูอย่างเดียวให้แล้ว เพราะแท็บที่เปิดค้าง
+    ไว้ก่อนหน้ายังยิง API ได้อยู่ และผู้ใช้เรียก endpoint ตรง ๆ ได้เสมอ
+    """
+    doc = await coll.find_one({"_id": oid, "station_id": station_id}, {"cm_lock": 1})
+    holder = _lock_holder(doc, datetime.now(timezone.utc))
+    if holder and not _same_user(holder, current.username or ""):
+        raise HTTPException(
+            status_code=409,
+            detail=f"ใบงานนี้กำลังถูกแก้ไขโดย {holder} — รอให้ปิดฟอร์มก่อนถึงจะบันทึกได้",
+        )
+
+
+@router.post("/cmreport/{report_id}/lock")
+async def cmreport_acquire_lock(
+    report_id: str,
+    station_id: str = Query(...),
+    current: UserClaims = Depends(get_current_user),
+):
+    """
+    ขอ/ต่ออายุสิทธิ์กรอกใบงาน — ฟอร์มยิงตอนเปิดหน้า แล้วต่ออายุทุก 30 วิ
+
+    คนอื่นถืออยู่ = คืน held_by_me=false พร้อมชื่อคนถือ ด้วย HTTP 200 (ไม่ใช่ error
+    เพราะยังเปิดดูใบงานได้ปกติ) ฟอร์มเอาไปสลับเป็นโหมดดูอย่างเดียว แล้ววนขอใหม่เรื่อย ๆ
+    พอคนแรกออกจากหน้าก็ได้สิทธิ์ต่อเองโดยไม่ต้องรีเฟรช
+    """
+    station_id = station_id.strip()
+    assert_station_access(current, station_id)
+    coll = get_cmreport_collection_for(station_id)
+    try:
+        oid = ObjectId(report_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bad report_id")
+
+    me = (current.username or "").strip()
+    if not me:
+        raise HTTPException(status_code=400, detail="Missing username in token")
+
+    async def _try_take() -> dict | None:
+        now = datetime.now(timezone.utc)
+        expires = now + timedelta(seconds=CM_LOCK_TTL_SECONDS)
+        res = await coll.update_one(
+            {
+                "_id": oid, "station_id": station_id,
+                # ยังไม่มีใครถือ / เป็นของเราเอง / ของคนอื่นแต่หมดอายุแล้ว → ยึดได้
+                "$or": [
+                    {"cm_lock": {"$exists": False}},
+                    {"cm_lock": None},
+                    {"cm_lock.by": me},
+                    {"cm_lock.expires_at": {"$lte": now}},
+                ],
+            },
+            {"$set": {"cm_lock": {"by": me, "at": now, "expires_at": expires}}},
+        )
+        if not res.matched_count:
+            return None
+        return {"ok": True, "held_by_me": True, "locked_by": me,
+                "expires_at": expires.isoformat(), "ttl": CM_LOCK_TTL_SECONDS}
+
+    taken = await _try_take()
+    if taken:
+        return taken
+
+    doc = await coll.find_one({"_id": oid, "station_id": station_id}, {"cm_lock": 1})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Report not found")
+
+    now = datetime.now(timezone.utc)
+    holder = _lock_holder(doc, now)
+    if not holder:
+        # ล็อกเพิ่งหมดอายุ/ถูกปล่อยระหว่างสองคำสั่ง — ลองยึดอีกรอบเดียวพอ
+        taken = await _try_take()
+        if taken:
+            return taken
+        doc = await coll.find_one({"_id": oid, "station_id": station_id}, {"cm_lock": 1})
+        holder = _lock_holder(doc, datetime.now(timezone.utc))
+
+    expires = _lock_expires(doc)
+    return {
+        "ok": True, "held_by_me": _same_user(holder, me), "locked_by": holder,
+        "expires_at": expires.isoformat() if expires else "",
+        "ttl": CM_LOCK_TTL_SECONDS,
+    }
+
+
+@router.delete("/cmreport/{report_id}/lock")
+async def cmreport_release_lock(
+    report_id: str,
+    station_id: str = Query(...),
+    current: UserClaims = Depends(get_current_user),
+):
+    """ปล่อยสิทธิ์กรอก — ฟอร์มยิงตอนออกจากหน้า ไม่ยิงก็แค่รอหมดอายุเอง"""
+    station_id = station_id.strip()
+    assert_station_access(current, station_id)
+    coll = get_cmreport_collection_for(station_id)
+    try:
+        oid = ObjectId(report_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bad report_id")
+
+    # ปล่อยได้เฉพาะล็อกของตัวเอง — กันแท็บที่ค้างอยู่ไปปลดล็อกของคนอื่นตอนปิด
+    await coll.update_one(
+        {"_id": oid, "station_id": station_id, "cm_lock.by": (current.username or "").strip()},
+        {"$unset": {"cm_lock": ""}},
+    )
+    return {"ok": True}
+
+
 @router.post("/cmreport/{report_id}/photos")
 async def cmreport_upload_photos(
     report_id: str,
@@ -893,11 +1219,23 @@ async def cmreport_upload_photos(
     except Exception:
         raise HTTPException(status_code=400, detail="Bad report_id")
 
-    doc = await coll.find_one({"_id": oid}, {"_id":1, "station_id":1})
+    doc = await coll.find_one(
+        {"_id": oid},
+        {"_id": 1, "station_id": 1, photo_field: 1},
+    )
     if not doc:
         raise HTTPException(status_code=404, detail="Report not found")
     if doc.get("station_id") != station_id:
         raise HTTPException(status_code=400, detail="station_id mismatch")
+
+    existing_groups = doc.get(photo_field) or {}
+    existing_photos = existing_groups.get(group) if isinstance(existing_groups, dict) else []
+    existing_count = len(existing_photos) if isinstance(existing_photos, list) else 0
+    if existing_count + len(files) > MAX_CM_PHOTOS_PER_GROUP:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Maximum {MAX_CM_PHOTOS_PER_GROUP} photos per group",
+        )
 
     dest_dir = pathlib.Path(UPLOADS_ROOT) / "cm" / station_id / report_id / group
     dest_dir.mkdir(parents=True, exist_ok=True)
@@ -930,10 +1268,35 @@ async def cmreport_upload_photos(
             "uploadedAt": created_at or uploaded_at.isoformat(),
         })
 
-    await coll.update_one(
-        {"_id": oid},
+    # Re-check atomically so concurrent uploads cannot push a group beyond the limit.
+    result = await coll.update_one(
+        {
+            "_id": oid,
+            "station_id": station_id,
+            "$expr": {
+                "$lte": [
+                    {
+                        "$add": [
+                            {"$size": {"$ifNull": [f"${photo_field}.{group}", []]}},
+                            len(saved),
+                        ]
+                    },
+                    MAX_CM_PHOTOS_PER_GROUP,
+                ]
+            },
+        },
         {"$push": {f"{photo_field}.{group}": {"$each": saved}}}
     )
+    if result.matched_count == 0:
+        for item in saved:
+            try:
+                (dest_dir / item["filename"]).unlink(missing_ok=True)
+            except OSError:
+                pass
+        raise HTTPException(
+            status_code=400,
+            detail=f"Maximum {MAX_CM_PHOTOS_PER_GROUP} photos per group",
+        )
 
     return {
         "ok": True,
@@ -1113,6 +1476,8 @@ async def cmurl_list(
         "urls": 1, 
         "createdAt": 1,
         "status": 1, 
+        "stage": 1,
+        "repair_result": 1,
         "job": 1,
         "inspector": 1,
         "reported_by": 1,
@@ -1164,6 +1529,8 @@ async def cmurl_list(
             "faulty_equipment": it.get("faulty_equipment") or "",
             "createdAt": _ensure_utc_iso(it.get("createdAt")),
             "status": (it.get("status") or (it.get("job") or {}).get("status") or ""),
+            "stage": it.get("stage") or (it.get("job") or {}).get("stage") or "",
+            "repair_result": it.get("repair_result") or (it.get("job") or {}).get("repair_result") or "",
             "file_url": first_url,
             "urls": urls,
         })
@@ -1181,6 +1548,9 @@ class CMSubmitIn(BaseModel):
     found_date: Optional[str] = None
     found_time: str = ""  # เวลาแจ้ง (HH:MM)
     faulty_equipment: str = ""
+    # อาการชำรุดที่ผู้แจ้งเลือก (เลือกได้หลายข้อ) + ข้อความอิสระเมื่อเลือก "อื่น ๆ"
+    damage_symptoms: List[str] = []
+    damage_symptom_other: str = ""
     severity: str = ""
     problem_details: str = ""
     remarks_open: str = ""
@@ -1228,6 +1598,8 @@ async def cmreport_submit(body: CMSubmitIn, current: UserClaims = Depends(get_cu
         "reported_by": body.reported_by or current.username,
         # flat fields
         "faulty_equipment": body.faulty_equipment,
+        "damage_symptoms": [str(x).strip() for x in (body.damage_symptoms or []) if str(x or "").strip()],
+        "damage_symptom_other": (body.damage_symptom_other or "").strip(),
         "charger_no": body.charger_no,
         "charger_sn": (body.charger_sn or "").strip(),
         "severity": body.severity,
@@ -1329,6 +1701,44 @@ async def cmreport_submit(body: CMSubmitIn, current: UserClaims = Depends(get_cu
         "maximo_ticket_id": maximo_ticket_id,                      # ← B) เพิ่ม
     }
 
+
+@router.delete("/cmreport/{report_id}/rollback")
+async def cmreport_rollback_new(
+    report_id: str,
+    station_id: str = Query(...),
+    current: UserClaims = Depends(get_current_user),
+):
+    """ลบใบ CM ที่เพิ่งสร้างไว้ชั่วคราว เมื่อไฟล์แนบหรือการบันทึกขั้นถัดไปล้มเหลว"""
+    station_id = station_id.strip()
+    assert_station_access(current, station_id)
+    try:
+        oid = ObjectId(report_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bad report_id")
+
+    coll = get_cmreport_collection_for(station_id)
+    doc = await coll.find_one({"_id": oid, "station_id": station_id})
+    if not doc:
+        return {"ok": True, "deleted": False}
+
+    role_lower = (current.role or "").lower()
+    is_owner = (doc.get("reported_by") or "").strip().lower() == (current.username or "").strip().lower()
+    if role_lower not in {"admin", "planner"} and not current.is_super_admin and not is_owner:
+        raise HTTPException(status_code=403, detail="Only the creator can rollback this report")
+
+    status = str(doc.get("status") or "").strip().lower()
+    stage = str(doc.get("stage") or "").strip().lower()
+    if status != "wait for approve" or stage != "cs_approval":
+        raise HTTPException(status_code=409, detail="Report is no longer in the initial save state")
+
+    result = await coll.delete_one({"_id": oid, "station_id": station_id})
+    if result.deleted_count:
+        report_dir = (pathlib.Path(UPLOADS_ROOT) / "cm" / station_id / report_id).resolve()
+        uploads_root = pathlib.Path(UPLOADS_ROOT).resolve()
+        if report_dir.is_relative_to(uploads_root):
+            shutil.rmtree(report_dir, ignore_errors=True)
+    return {"ok": True, "deleted": bool(result.deleted_count)}
+
 @router.get("/cmreport/{report_id}")
 async def cmreport_detail_path(
     report_id: str,
@@ -1358,6 +1768,15 @@ async def cmreport_detail_path(
         doc.get("faulty_equipment") or nested_job.get("faulty_equipment") or "",
         doc.get("charger_sn") or nested_job.get("charger_sn") or "",
         doc.get("charger_no") or nested_job.get("charger_no") or "",
+        fallback={
+            "chargeBoxID": doc.get("chargeBoxID") or doc.get("chargebox_id") or nested_job.get("chargeBoxID") or nested_job.get("chargebox_id") or "",
+            "charger_name": doc.get("charger_name") or nested_job.get("charger_name") or "",
+            "charger_no": doc.get("charger_no") or nested_job.get("charger_no"),
+            "charger_sn": doc.get("charger_sn") or nested_job.get("charger_sn") or "",
+            "charger_model": doc.get("charger_model") or nested_job.get("charger_model") or "",
+            "charger_brand": doc.get("charger_brand") or nested_job.get("charger_brand") or "",
+            "label": doc.get("charger_name") or nested_job.get("charger_name") or "",
+        },
     )
 
     return {
@@ -1387,6 +1806,8 @@ async def cmreport_detail_path(
         
         # flat fields จาก Open
         "faulty_equipment": doc.get("faulty_equipment") or "",
+        "damage_symptoms": doc.get("damage_symptoms") or nested_job.get("damage_symptoms") or [],
+        "damage_symptom_other": doc.get("damage_symptom_other") or nested_job.get("damage_symptom_other") or "",
         "charger_no": doc.get("charger_no") or nested_job.get("charger_no") or "",
         "charger_sn": doc.get("charger_sn") or nested_job.get("charger_sn") or "",
         "severity": doc.get("severity") or "",
@@ -1428,6 +1849,8 @@ async def cmreport_detail_path(
         "resolved_time": doc.get("resolved_time") or "",
 
         # เหตุผลที่ถูกตีกลับ — ช่างต้องเห็นว่าต้องแก้อะไร
+        "maximo_labor": doc.get("maximo_labor") or [],
+        "maximo_contractor": doc.get("maximo_contractor") or "",
         "reject_remark": doc.get("reject_remark") or "",
         "rejected_by": doc.get("rejected_by") or "",
         # เหตุผลที่ยกเลิก — แสดงในหน้ารายละเอียดใบงาน Cancelled
@@ -1489,6 +1912,10 @@ async def cmreport_update_status(
     except Exception:
         raise HTTPException(status_code=400, detail="Bad report_id")
 
+    # ใบที่คนอื่นกำลังกรอกอยู่ ห้ามบันทึกทับ (ฟอร์มของคนที่สองเป็นโหมดดูอย่างเดียวอยู่แล้ว
+    # ด่านนี้กันแท็บที่เปิดค้างไว้ก่อนล็อกจะเกิด)
+    await _assert_not_locked_by_other(coll, oid, station_id, current)
+
     # cs เปิดใบงานเป็นหลัก — แก้ได้เฉพาะใบที่ตัวเองเปิดและยังอยู่ด่าน cs
     # (เคส planner ตีกลับมาให้แก้ ถ้าห้ามทั้งหมด ใบจะค้างไม่มีใครแก้ได้)
     if role_lower == "cs":
@@ -1516,12 +1943,15 @@ async def cmreport_update_status(
             "resolved_date", "repair_result", "preventive_action", 
             "remarks", "remarks_open",
             "faulty_equipment",
+            "damage_symptoms", "damage_symptom_other",
             "charger_no", "charger_sn",
             "repaired_equipment",
             "inprogress_remarks",
             "cause", "problem_type_other","repair_result_remark","start_repair_date",
             "signature", "start_repair_time", "resolved_time", "reporter_signature",
             "stage", "reject_remark",
+            # laborcode ที่ช่างเลือกเองในฟอร์ม — ใช้ส่ง IN09
+            "maximo_labor", "maximo_contractor",
         }
 
         if "status" in body.job:
@@ -1529,6 +1959,19 @@ async def cmreport_update_status(
             if js not in ALLOWED_STATUS:
                 raise HTTPException(status_code=400, detail="Invalid job.status")
             updates["status"] = js
+
+        # ช่างเป็นคนเลือก "ตำแหน่งจุดที่มีความผิดปกติ" ในหน้า In Progress แล้ว — จุดนี้คือครั้งแรก
+        # ที่ใบงานรู้ว่าเป็นตู้ไหน จึงเป็นที่ที่ต้องเช็คสิทธิ์ยี่ห้อ (ตอนเปิดใบยังไม่มีข้อมูลให้เช็ค)
+        new_faulty = str(body.job.get("faulty_equipment") or "").strip()
+        if new_faulty:
+            await _assert_can_open_cm(
+                station_id,
+                new_faulty,
+                current,
+                body.job.get("charger_no"),
+                str(body.job.get("charger_sn") or ""),
+                detail="เลือกได้เฉพาะอุปกรณ์ของตู้ยี่ห้อที่บริษัทของคุณดูแล",
+            )
 
         for k, v in body.job.items():
             if k in allowed_job_keys:
@@ -1542,8 +1985,13 @@ async def cmreport_update_status(
 
     # PATCH /status ใช้โดยฟอร์มซ่อม — ถ้าใบขึ้นเป็น "Wait for approve" จากด่านนี้ = ด่านปิดงาน
     # ปั๊ม stage ให้อัตโนมัติเพื่อแยกจากด่าน cs (คงค่าที่ส่งมาโดยตรงถ้ามี)
-    if str(updates.get("status", "")).strip().lower() == "wait for approve" and "stage" not in updates:
-        updates["stage"] = "close_approval"
+    if str(updates.get("status", "")).strip().lower() == "wait for approve":
+        # cs_approval is reserved for the initial CS approval queue.
+        # Any later save from the repair flow must be the close-approval queue.
+        if role_lower != "cs" and str(updates.get("stage", "")).strip().lower() == "cs_approval":
+            updates["stage"] = "close_approval"
+        elif "stage" not in updates:
+            updates["stage"] = "close_approval"
 
     # ปิดงานตรงจากฟอร์มซ่อม (planner กรอกผลเอง = ไม่ต้องรออนุมัติ)
     # — สิทธิ์และการประทับผู้อนุมัติต้องเหมือนเส้นทาง POST /approve
@@ -1881,7 +2329,7 @@ async def cmreport_cs_reject(
 
 # ── ยกเลิกใบงานที่ยังไม่ปิด → Cancelled (ไปแสดงใน tab Closed)
 #    planner/admin ยกเลิกตอนรีวิว/วางแผนได้
-PLANNER_CANCEL_ROLES: set[str] = {"admin", "planner"}
+PLANNER_CANCEL_ROLES: set[str] = {"admin", "owner", "planner"}
 TECHNICIAN_CANCEL_ROLE = "technician"
 
 

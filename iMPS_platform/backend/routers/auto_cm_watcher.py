@@ -2,9 +2,9 @@
 Auto CM Watcher — ฝังใน FastAPI
 ================================
 Triggers:
-  1) Edge Box offline เกิน 5 นาที  (stationsOnOff DB)
-  2) Router temp เกิน 75°C          (monitorCBM DB)
-  3) Charger Gun temp >= 200°C       (monitorCBM DB)
+  1) Edge Box offline เกิน 10 นาที  (stationsOnOff DB)
+  2) Router temp เกิน 75°C ต่อเนื่อง 10 นาที (monitorCBM DB)
+  3) Charger Gun temp >= 100°C ต่อเนื่อง 1 วัน หรือ ติดลบต่อเนื่อง 1 วัน (monitorCBM DB)
   4) PE CUT >= 5 ครั้ง/วัน/หัว หรือ เกิดติดต่อกัน 3 วัน/หัว (FaultStatus DB)
   5) IMD SELF CHECK >= 5 ครั้ง/วัน/หัว หรือ เกิดติดต่อกัน 3 วัน/หัว (FaultStatus DB)
   *) เพิ่ม fault trigger ใหม่ได้ง่ายใน FAULT_TRIGGERS list
@@ -15,6 +15,7 @@ import inspect
 import os
 import asyncio
 import logging
+import re
 from datetime import datetime, timezone, timedelta
 
 from config import client, CBM_DB, charger_onoff, CMReportDB, th_tz
@@ -31,10 +32,22 @@ from routers.cmreport import (
 # ══════════════════════════════════════════════════════════════════
 # CONFIG
 # ══════════════════════════════════════════════════════════════════
-OFFLINE_THRESHOLD_MIN = int(os.getenv("OFFLINE_THRESHOLD", "5"))
+OFFLINE_THRESHOLD_MIN = int(os.getenv("OFFLINE_THRESHOLD", "10"))
 ROUTER_TEMP_THRESHOLD = float(os.getenv("ROUTER_TEMP_THRESHOLD", "75"))
-GUN_TEMP_THRESHOLD = float(os.getenv("GUN_TEMP_THRESHOLD", "200"))
+# router temp ต้องสูงต่อเนื่องครบกี่นาที ถึงจะเปิดใบงาน
+ROUTER_TEMP_DURATION_MIN = int(os.getenv("ROUTER_TEMP_DURATION", "10"))
+# จำนวน doc ย้อนหลังสูงสุดที่ไล่ดูตอนเช็คความต่อเนื่อง
+ROUTER_TEMP_SCAN_LIMIT = int(os.getenv("ROUTER_TEMP_SCAN_LIMIT", "500"))
+GUN_TEMP_THRESHOLD = float(os.getenv("GUN_TEMP_THRESHOLD", "100"))
+# gun temp ต้องผิดปกติต่อเนื่องครบกี่ชั่วโมง ถึงจะเปิดใบงาน (สูงเกิน / ติดลบ)
+GUN_TEMP_DURATION_HOURS = int(os.getenv("GUN_TEMP_DURATION_HOURS", "24"))
+# จำนวน doc ย้อนหลังสูงสุดที่ไล่ดูตอนเช็คความต่อเนื่องของ gun temp
+GUN_TEMP_SCAN_LIMIT = int(os.getenv("GUN_TEMP_SCAN_LIMIT", "5000"))
 CHECK_INTERVAL_SEC = int(os.getenv("CM_CHECK_INTERVAL", "60"))
+
+# ใบที่ระบบเปิดเองยังไม่ต้องเปิด SR ที่ Maximo — รอ EGAT พร้อมรับใบแบบ auto ก่อน
+# ค่อยตั้ง AUTO_CM_MAXIMO_SR=true (interface IN01–IN09 ยังยิงตามปกติตอนคนเดินใบต่อ)
+AUTO_CM_MAXIMO_SR_ENABLED = os.getenv("AUTO_CM_MAXIMO_SR", "false").lower() == "true"
 
 # ── Trigger 4+: Fault-based (PE CUT, IMD SELF CHECK, ...) ──
 PE_CUT_DAILY_THRESHOLD = int(os.getenv("PE_CUT_DAILY_THRESHOLD", "5"))
@@ -126,10 +139,14 @@ async def _lookup_station(sn: str) -> dict | None:
 
     info = {
         "station_id": doc.get("station_id", ""),
+        "station_name": station_doc.get("station_name", "") if station_doc else "",
+        "company": station_doc.get("company", "") if station_doc else "",
         "maximo_location": charger_maximo or station_maximo,  # ← charger > station
         "charger_name": doc.get("charger_name", ""),
         "charger_no": doc.get("chargerNo") or doc.get("charger_no", ""),
         "chargebox_id": doc.get("chargeBoxID", ""),
+        "charger_model": doc.get("model", ""),
+        "charger_brand": doc.get("brand", ""),
         "sn": sn,
     }
     _sn_cache[sn] = info
@@ -153,14 +170,22 @@ async def _create_auto_cm(
     problem_text: str, remarks_text: str,
 ) -> bool:
     """Shared: สร้าง CM report สำหรับทุก trigger type"""
-    faulty = f"charger_{info.get('charger_no', '1')}"
-    found_date = datetime.now(th_tz).date().isoformat()
+    detected_at = datetime.now(th_tz)
+    found_date = detected_at.date().isoformat()
+    found_time = detected_at.strftime("%H:%M")
+    charger_no = info.get("charger_no")
+    faulty = f"charger_{charger_no or '1'}"
 
     issue_id = await get_next_cm_issue_id(station_id, found_date)
     doc_name = await get_next_cm_doc_name(station_id, found_date)
 
     station_doc = await _stations_col.find_one({"station_id": station_id})
     location = station_doc.get("station_name", station_id) if station_doc else station_id
+    company = (
+        info.get("company")
+        or (station_doc.get("company", "") if station_doc else "")
+    )
+    now_utc = datetime.now(timezone.utc)
 
     coll = get_cmreport_collection_for(station_id)
     await _ensure_cm_indexes(coll)
@@ -170,29 +195,42 @@ async def _create_auto_cm(
         "doc_name": doc_name,
         "station_id": station_id,
         "found_date": found_date,
+        "found_time": found_time,
+        "cm_date": found_date,
         "faulty_equipment": faulty,
+        "charger_no": charger_no,
+        "charger_sn": sn,
+        "chargeBoxID": info.get("chargebox_id", ""),
+        "charger_name": info.get("charger_name", ""),
+        "charger_model": info.get("charger_model", ""),
+        "charger_brand": info.get("charger_brand", ""),
+        "chargebox_id": info.get("chargebox_id", ""),
+        "company": company,
         "severity": severity,
-        "status": "Open",
+        # ให้ Auto เดินสถานะเดียวกับใบที่เปิดผ่าน Manual ใน flow ปัจจุบัน
+        "status": "Wait for approve",
+        "stage": "cs_approval",
         "problem_details": problem_text,
         "remarks_open": remarks_text,
         "location": location,
         "reported_by": "System (Auto CM)",
         "auto_generated": True,
         "auto_trigger": trigger_key,
-        "charger_sn": sn,
         "photos_problem": {},
-        "createdAt": datetime.now(timezone.utc),
-        "updatedAt": datetime.now(timezone.utc),
+        "maximo_ticket_id": None,
+        "createdAt": now_utc,
+        "updatedAt": now_utc,
     }
 
     try:
         insert_result = await coll.insert_one(cm_doc)
 
-        cm_doc["maximo_ticket_id"] = None
-        
         maximo_loc = info.get("maximo_location", "")
-        if maximo_loc:
-            desc = f"[iMPS Auto CM] {location} / {info.get('charger_name', 'Unknown')} (SN: {sn}) / {trigger_key}"
+        if AUTO_CM_MAXIMO_SR_ENABLED and maximo_loc:
+            # ใช้รูปแบบเดียวกับการเปิด CM แบบ Manual:
+            # [iMPS CM] สถานี / หมายเลขตู้หรือ S/N / รายละเอียดปัญหา
+            charger_label = info.get("charger_no") or sn or faulty
+            desc = f"[iMPS CM] {location} / {charger_label} / {problem_text}"
             sr_result = maximo_create_sr(
                 description=desc[:250],
                 location=maximo_loc,
@@ -229,15 +267,26 @@ async def _create_auto_cm(
         return False
 
 
-async def _has_open_auto_cm(station_id: str, sn: str, trigger_key: str) -> bool:
-    """Shared: เช็ค duplicate สำหรับทุก trigger type"""
+_CLOSED_CM_STATUS_PATTERN = r"^\s*(?:complete|completed|closed|close)\s*$"
+
+
+async def _has_unclosed_auto_cm(station_id: str, sn: str, trigger_key: str) -> bool:
+    """เช็คใบ Auto CM เดิม โดยอนุญาตใบใหม่เฉพาะเมื่อใบเดิมปิดแล้วเท่านั้น"""
     col = CMReportDB[station_id]
     existing = await col.find_one({
         "auto_trigger": trigger_key,
-        "status": {"$in": ["Open", "In Progress"]},
+        # ใบงานระหว่างทางมีหลายสถานะ (เช่น Wait for approve / Wait for
+        # schedule / Pending) จึงเช็คแบบ "ยังไม่ปิด" แทนการไล่ชื่อสถานะเปิด
+        # ทั้งหมด ส่วน Cancelled ยังถือว่าไม่ได้ปิดและจะไม่ถูกเปิดซ้ำอัตโนมัติ
+        "status": {
+            "$not": {
+                "$regex": _CLOSED_CM_STATUS_PATTERN,
+                "$options": "i",
+            }
+        },
         "$or": [
             {"charger_sn": sn},
-            {"problem_details": {"$regex": sn, "$options": "i"}},
+            {"problem_details": {"$regex": re.escape(sn), "$options": "i"}},
         ],
     })
     return existing is not None
@@ -293,8 +342,8 @@ async def _check_all_edgebox():
 
         station_id = info["station_id"]
 
-        if await _has_open_auto_cm(station_id, sn, "edgebox_offline"):
-            log.info(f"  📋 Edge Box {sn} → CM already open, skip")
+        if await _has_unclosed_auto_cm(station_id, sn, "edgebox_offline"):
+            log.info(f"  📋 Edge Box {sn} → CM is not closed, skip")
             continue
 
         charger_label = info.get("charger_name") or f"Charger {info.get('charger_no', sn)}"
@@ -357,7 +406,7 @@ async def _auto_note_edgebox_online():
 
 
 # ══════════════════════════════════════════════════════════════════
-# ▶ TRIGGER 2: Router temp > 75°C
+# ▶ TRIGGER 2: Router temp > 75°C ต่อเนื่อง N นาที
 # ══════════════════════════════════════════════════════════════════
 async def _get_all_cbm_sn() -> list[str]:
     cols = await CBM_DB.list_collection_names()
@@ -386,9 +435,43 @@ def _is_router_temp_over_threshold(doc: dict) -> tuple[bool, float, str]:
     return True, temp_val, ts_str
 
 
+async def _router_temp_over_since(sn: str) -> str | None:
+    """
+    เช็คว่า router temp สูงเกิน threshold "ต่อเนื่อง" ครบ ROUTER_TEMP_DURATION_MIN แล้วหรือยัง
+    ไล่ doc จากใหม่ → เก่า: ถ้าเจอค่าปกติก่อนถึง cutoff แปลว่ายังไม่ครบ (คืน None)
+    ถ้าย้อนได้ถึงก่อน cutoff โดยยังสูงตลอด → คืน timestamp ที่เริ่มสูงต่อเนื่อง
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=ROUTER_TEMP_DURATION_MIN)
+    over_since = None
+
+    cursor = CBM_DB[sn].find(
+        {"router_temp": {"$exists": True}},
+        {"router_temp": 1, "timestamp": 1},
+    ).sort("timestamp", -1).limit(ROUTER_TEMP_SCAN_LIMIT)
+
+    async for doc in cursor:
+        is_over, _temp_val, _ts = _is_router_temp_over_threshold(doc)
+        if not is_over:
+            break  # เจอค่าปกติ → ช่วงต่อเนื่องขาดตรงนี้
+
+        ts_str = doc.get("timestamp", "")
+        ts = _parse_ts(ts_str)
+        if not ts:
+            continue
+
+        over_since = ts_str
+        if ts <= cutoff:
+            return over_since  # สูงต่อเนื่องย้อนไปถึงก่อน cutoff → ครบเวลาแล้ว
+
+    return None
+
+
 async def _check_all_router_temp():
     sn_list = await _get_all_cbm_sn()
-    log.info(f"🌡️  [Router Temp] Checking {len(sn_list)} device(s)...")
+    log.info(
+        f"🌡️  [Router Temp] Checking {len(sn_list)} device(s) "
+        f"(> {ROUTER_TEMP_THRESHOLD}°C ต่อเนื่อง {ROUTER_TEMP_DURATION_MIN} นาที)..."
+    )
     created = 0
 
     for sn in sn_list:
@@ -400,7 +483,18 @@ async def _check_all_router_temp():
         if not is_over:
             continue
 
-        log.info(f"  🔥 Router {sn} temp {temp_val}°C > {ROUTER_TEMP_THRESHOLD}°C ({ts_str})")
+        over_since = await _router_temp_over_since(sn)
+        if not over_since:
+            log.info(
+                f"  ⏳ Router {sn} temp {temp_val}°C สูงแต่ยังไม่ครบ "
+                f"{ROUTER_TEMP_DURATION_MIN} นาที → skip"
+            )
+            continue
+
+        log.info(
+            f"  🔥 Router {sn} temp {temp_val}°C > {ROUTER_TEMP_THRESHOLD}°C "
+            f"ต่อเนื่องตั้งแต่ {_to_thai_str(over_since)} ({ts_str})"
+        )
 
         info = await _lookup_station(sn)
         if not info:
@@ -408,18 +502,23 @@ async def _check_all_router_temp():
 
         station_id = info["station_id"]
 
-        if await _has_open_auto_cm(station_id, sn, "router_temp_high"):
-            log.info(f"  📋 Router {sn} → CM already open, skip")
+        if await _has_unclosed_auto_cm(station_id, sn, "router_temp_high"):
+            log.info(f"  📋 Router {sn} → CM is not closed, skip")
             continue
 
         charger_label = info.get("charger_name") or f"Charger {info.get('charger_no', sn)}"
         problem = (
             f"[Auto CM] ตู้ชาร์จ {charger_label} (SN: {sn}) "
-            f"Router temperature สูงเกินกำหนด: {temp_val}°C (threshold: {ROUTER_TEMP_THRESHOLD}°C)\n"
+            f"Router temperature สูงเกินกำหนด: {temp_val}°C (threshold: {ROUTER_TEMP_THRESHOLD}°C) "
+            f"ต่อเนื่องเกิน {ROUTER_TEMP_DURATION_MIN} นาที\n"
+            f"สูงต่อเนื่องตั้งแต่: {_to_thai_str(over_since)}\n"
             f"Detected at: {_to_thai_str(ts_str)}\n"
             f"ระบบตรวจพบและสร้าง CM report อัตโนมัติ"
         )
-        remarks = f"Auto-generated: Router temp {temp_val}°C > {ROUTER_TEMP_THRESHOLD}°C"
+        remarks = (
+            f"Auto-generated: Router temp {temp_val}°C > {ROUTER_TEMP_THRESHOLD}°C "
+            f"ต่อเนื่อง > {ROUTER_TEMP_DURATION_MIN} min"
+        )
 
         log.info(f"  📝 Router {sn} → Creating CM for station {station_id}...")
         if await _create_auto_cm(station_id, sn, info, "router_temp_high", "High", problem, remarks):
@@ -482,32 +581,107 @@ async def _auto_note_router_temp_normal():
 
 
 # ══════════════════════════════════════════════════════════════════
-# ▶ TRIGGER 3: Charger Gun temp >= 200°C
+# ▶ TRIGGER 3: Charger Gun temp >= 100°C หรือ ติดลบ — ต่อเนื่อง 1 วัน
 # ══════════════════════════════════════════════════════════════════
-def _check_gun_temp_fields(doc: dict) -> list[tuple[str, str, float]]:
+def _read_gun_temp(doc: dict, field: str) -> float | None:
+    val = doc.get(field)
+    if val is None:
+        return None
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return None
+
+
+# เงื่อนไขผิดปกติของ gun temp — เพิ่มเงื่อนไขใหม่ได้ที่นี่
+GUN_TEMP_CONDITIONS = {
+    "high": {
+        "label": "สูงเกินกำหนด",
+        "test": lambda v: v >= GUN_TEMP_THRESHOLD,
+        "trigger_prefix": "gun_temp_high",
+        "severity": "Urgent",
+    },
+    "negative": {
+        "label": "ค่าติดลบ (สงสัยเซนเซอร์/สายสัญญาณผิดปกติ)",
+        "test": lambda v: v < 0,
+        "trigger_prefix": "gun_temp_negative",
+        "severity": "High",
+    },
+}
+
+
+def _check_gun_temp_fields(doc: dict, cond_key: str = "high") -> list[tuple[str, str, float]]:
     """
-    เช็ค 4 fields:
-      charger_gun_temp_plus1, charger_gun_temp_plus2,
-      charger_gan_temp_minus1, charger_gan_temp_minus2
-    Returns list of (field_name, friendly_name, temp_value) ที่ >= threshold
+    เช็ค 4 fields ของ doc ล่าสุดว่าเข้าเงื่อนไข cond_key ไหม
+    Returns list of (field_name, friendly_name, temp_value)
     """
-    over_fields = []
+    test = GUN_TEMP_CONDITIONS[cond_key]["test"]
+    hit = []
     for field, friendly in GUN_TEMP_FIELDS.items():
-        val = doc.get(field)
-        if val is None:
+        temp_val = _read_gun_temp(doc, field)
+        if temp_val is None:
             continue
-        try:
-            temp_val = float(val)
-        except (ValueError, TypeError):
+        if test(temp_val):
+            hit.append((field, friendly, temp_val))
+    return hit
+
+
+async def _gun_temp_sustained(sn: str) -> dict[tuple[str, str], str]:
+    """
+    หาว่า field ไหน เข้าเงื่อนไขไหน "ต่อเนื่อง" ครบ GUN_TEMP_DURATION_HOURS แล้วบ้าง
+    ไล่ doc จากใหม่ → เก่า ถ้าเจอค่าที่หลุดเงื่อนไขก่อนถึง cutoff → ตัดทิ้ง
+    Returns { (field, cond_key): since_timestamp_str }
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=GUN_TEMP_DURATION_HOURS)
+
+    # (field, cond) -> {"alive": bool, "since": str}
+    tracking = {
+        (field, cond): {"alive": True, "since": ""}
+        for field in GUN_TEMP_FIELDS
+        for cond in GUN_TEMP_CONDITIONS
+    }
+    confirmed: dict[tuple[str, str], str] = {}
+
+    projection = {"timestamp": 1}
+    for field in GUN_TEMP_FIELDS:
+        projection[field] = 1
+
+    cursor = CBM_DB[sn].find({}, projection).sort("timestamp", -1).limit(GUN_TEMP_SCAN_LIMIT)
+
+    async for doc in cursor:
+        ts_str = doc.get("timestamp", "")
+        ts = _parse_ts(ts_str)
+        if not ts:
             continue
-        if temp_val >= GUN_TEMP_THRESHOLD:
-            over_fields.append((field, friendly, temp_val))
-    return over_fields
+
+        for field in GUN_TEMP_FIELDS:
+            temp_val = _read_gun_temp(doc, field)
+            for cond, meta in GUN_TEMP_CONDITIONS.items():
+                state = tracking[(field, cond)]
+                if not state["alive"]:
+                    continue
+                # ไม่มีค่า หรือ หลุดเงื่อนไข → ช่วงต่อเนื่องขาดตรงนี้
+                if temp_val is None or not meta["test"](temp_val):
+                    state["alive"] = False
+                    continue
+                state["since"] = ts_str
+                if ts <= cutoff:
+                    # ผิดปกติต่อเนื่องย้อนไปถึงก่อน cutoff → ครบเวลาแล้ว
+                    confirmed[(field, cond)] = ts_str
+                    state["alive"] = False
+
+        if not any(st["alive"] for st in tracking.values()):
+            break
+
+    return confirmed
 
 
 async def _check_all_gun_temp():
     sn_list = await _get_all_cbm_sn()
-    log.info(f"🔫 [Gun Temp] Checking {len(sn_list)} device(s)...")
+    log.info(
+        f"🔫 [Gun Temp] Checking {len(sn_list)} device(s) "
+        f"(>= {GUN_TEMP_THRESHOLD}°C หรือ ติดลบ ต่อเนื่อง {GUN_TEMP_DURATION_HOURS} ชม.)..."
+    )
     created = 0
 
     for sn in sn_list:
@@ -515,42 +689,83 @@ async def _check_all_gun_temp():
         if not doc:
             continue
 
-        over_fields = _check_gun_temp_fields(doc)
-        if not over_fields:
+        # ค่าล่าสุดต้องยังผิดปกติอยู่ ถึงจะเสียเวลาไล่ย้อนหลัง
+        latest_hit = {
+            cond: _check_gun_temp_fields(doc, cond) for cond in GUN_TEMP_CONDITIONS
+        }
+        if not any(latest_hit.values()):
             continue
 
-        ts_str = doc.get("timestamp", "")
-        fields_detail = ", ".join(f"{friendly}: {v}°C" for _, friendly, v in over_fields)
-        max_temp = max(v for _, _, v in over_fields)
-
-        log.info(f"  🔥 Gun {sn} temp over threshold: {fields_detail} ({ts_str})")
+        confirmed = await _gun_temp_sustained(sn)
+        if not confirmed:
+            detail = ", ".join(
+                f"{friendly}: {v}°C"
+                for hits in latest_hit.values()
+                for _, friendly, v in hits
+            )
+            log.info(
+                f"  ⏳ Gun {sn} ผิดปกติ ({detail}) แต่ยังไม่ครบ "
+                f"{GUN_TEMP_DURATION_HOURS} ชม. → skip"
+            )
+            continue
 
         info = await _lookup_station(sn)
         if not info:
             continue
 
         station_id = info["station_id"]
-
-        if await _has_open_auto_cm(station_id, sn, "gun_temp_high"):
-            log.info(f"  📋 Gun {sn} → CM already open, skip")
-            continue
-
+        ts_str = doc.get("timestamp", "")
         charger_label = info.get("charger_name") or f"Charger {info.get('charger_no', sn)}"
-        positions = ", ".join(f"{friendly}: {v}°C" for _, friendly, v in over_fields)
-        problem = (
-            f"[Auto CM] ตู้ชาร์จ {charger_label} (SN: {sn}) "
-            f"Charger Gun temperature สูงเกินกำหนด — {positions} "
-            f"(threshold: {GUN_TEMP_THRESHOLD}°C)\n"
-            f"Detected at: {_to_thai_str(ts_str)}\n"
-            f"ระบบตรวจพบและสร้าง CM report อัตโนมัติ"
-        )
-        remarks = f"Auto-generated: Gun temp {fields_detail} >= {GUN_TEMP_THRESHOLD}°C"
 
-        log.info(f"  📝 Gun {sn} → Creating CM for station {station_id}...")
-        if await _create_auto_cm(station_id, sn, info, "gun_temp_high", "Urgent", problem, remarks):
-            created += 1
+        for (field, cond), since_ts in confirmed.items():
+            friendly = GUN_TEMP_FIELDS[field]
+            meta = GUN_TEMP_CONDITIONS[cond]
+            temp_val = _read_gun_temp(doc, field)
+            trigger_key = f"{meta['trigger_prefix']}_{field}"
+
+            log.info(
+                f"  🔥 Gun {sn} {friendly} {meta['label']} ({temp_val}°C) "
+                f"ต่อเนื่องตั้งแต่ {_to_thai_str(since_ts)}"
+            )
+
+            if await _has_unclosed_auto_cm(station_id, sn, trigger_key):
+                log.info(f"  📋 Gun {sn} [{trigger_key}] → CM is not closed, skip")
+                continue
+
+            if cond == "high":
+                cond_text = (
+                    f"อุณหภูมิสูงเกินกำหนด: {temp_val}°C "
+                    f"(threshold: {GUN_TEMP_THRESHOLD}°C)"
+                )
+                remark_cond = f"temp {temp_val}°C >= {GUN_TEMP_THRESHOLD}°C"
+            else:
+                cond_text = (
+                    f"ค่าอุณหภูมิติดลบ: {temp_val}°C "
+                    f"(สงสัยเซนเซอร์หรือสายสัญญาณผิดปกติ)"
+                )
+                remark_cond = f"temp {temp_val}°C < 0"
+
+            problem = (
+                f"[Auto CM] ตู้ชาร์จ {charger_label} (SN: {sn}) "
+                f"Charger Gun temperature ผิดปกติ — {friendly}: {cond_text} "
+                f"ต่อเนื่องเกิน {GUN_TEMP_DURATION_HOURS} ชม.\n"
+                f"ผิดปกติต่อเนื่องตั้งแต่: {_to_thai_str(since_ts)}\n"
+                f"Detected at: {_to_thai_str(ts_str)}\n"
+                f"ระบบตรวจพบและสร้าง CM report อัตโนมัติ"
+            )
+            remarks = (
+                f"Auto-generated: Gun temp {friendly} {remark_cond} "
+                f"> {GUN_TEMP_DURATION_HOURS}h"
+            )
+
+            log.info(f"  📝 Gun {sn} [{trigger_key}] → Creating CM for station {station_id}...")
+            if await _create_auto_cm(
+                station_id, sn, info, trigger_key, meta["severity"], problem, remarks
+            ):
+                created += 1
 
     log.info(f"  ✅ [Gun Temp] Done — created {created} new CM report(s)")
+
 
 
 async def _auto_note_gun_temp_normal():
@@ -564,7 +779,7 @@ async def _auto_note_gun_temp_normal():
         col = CMReportDB[station_id]
 
         open_cms = await col.find({
-            "auto_trigger": "gun_temp_high",
+            "auto_trigger": {"$regex": "^gun_temp_"},
             "status": "Open",
             "$or": [
                 {"charger_sn": sn},
@@ -579,10 +794,14 @@ async def _auto_note_gun_temp_normal():
         if not doc:
             continue
 
-        # เช็คว่ายังมี field ไหนเกินอยู่ไหม
-        over_fields = _check_gun_temp_fields(doc)
-        if over_fields:
-            continue  # ยังสูงอยู่
+        # เช็คว่ายังมี field ไหนผิดปกติอยู่ไหม (สูงเกิน หรือ ติดลบ)
+        abnormal = [
+            hit
+            for cond in GUN_TEMP_CONDITIONS
+            for hit in _check_gun_temp_fields(doc, cond)
+        ]
+        if abnormal:
+            continue  # ยังผิดปกติอยู่
 
         # ดึงค่าปัจจุบันทุก field มาแสดงใน note
         current_vals = []
@@ -620,8 +839,6 @@ async def _auto_note_gun_temp_normal():
 # ▶ TRIGGER 4+: Generic Fault Triggers (PE CUT, IMD SELF CHECK, ...)
 #   แยกนับต่อหัว — ≥N ครั้ง/วัน/หัว หรือ เกิดติดต่อกัน M วัน/หัว
 # ══════════════════════════════════════════════════════════════════
-import re
-
 _HEAD_PATTERN = re.compile(r"Head\s*(\d+)", re.IGNORECASE)
 
 
@@ -676,21 +893,6 @@ async def _has_fault_for_head_in_range(
         col_name, fault_regex, start_str, end_str
     )
     return counts.get(head, 0) > 0
-
-
-async def _has_open_auto_cm_fault(
-    station_id: str, sn: str, trigger_key: str,
-) -> bool:
-    col = CMReportDB[station_id]
-    existing = await col.find_one({
-        "auto_trigger": trigger_key,
-        "status": {"$in": ["Open", "In Progress"]},
-        "$or": [
-            {"charger_sn": sn},
-            {"problem_details": {"$regex": sn, "$options": "i"}},
-        ],
-    })
-    return existing is not None
 
 
 async def _check_all_fault_triggers():
@@ -788,9 +990,9 @@ async def _check_all_fault_triggers():
                 station_id = info["station_id"]
                 trigger_key = f"{trigger_prefix}_head_{head}"
 
-                if await _has_open_auto_cm_fault(station_id, sn, trigger_key):
+                if await _has_unclosed_auto_cm(station_id, sn, trigger_key):
                     log.info(
-                        f"  📋 {fault_name} {sn} Head {head} → CM already open, skip"
+                        f"  📋 {fault_name} {sn} Head {head} → CM is not closed, skip"
                     )
                     continue
 
@@ -905,8 +1107,8 @@ async def _run_loop():
         f"🔄 Auto CM Watcher started "
         f"(every {CHECK_INTERVAL_SEC}s, "
         f"Edge Box threshold: {OFFLINE_THRESHOLD_MIN}m, "
-        f"Router temp threshold: {ROUTER_TEMP_THRESHOLD}°C, "
-        f"Gun temp threshold: {GUN_TEMP_THRESHOLD}°C, "
+        f"Router temp threshold: {ROUTER_TEMP_THRESHOLD}°C ต่อเนื่อง {ROUTER_TEMP_DURATION_MIN}m, "
+        f"Gun temp threshold: {GUN_TEMP_THRESHOLD}°C หรือติดลบ ต่อเนื่อง {GUN_TEMP_DURATION_HOURS}h, "
         f"PE CUT threshold: {PE_CUT_DAILY_THRESHOLD}/day or {PE_CUT_CONSEC_DAYS} consec. days, "
         f"Fault triggers: {len(FAULT_TRIGGERS)})"
     )

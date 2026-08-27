@@ -20,6 +20,10 @@ const TABS: { id: TabId; label: string; slug: TabSlug }[] = [
   { id: "Cancelled", label: "Cancelled", slug: "cancelled" },
 ];
 
+// แท็บที่ช่างใช้ได้ — ช่างเปิดใบงานเองได้ จึงต้องเห็นแท็บ Open ด้วย (ปุ่ม + เพิ่ม กับใบของ
+// ตัวเองที่ยังรออนุมัติอยู่ในแท็บนี้) ฝั่ง backend จำกัดให้เห็นเฉพาะใบที่ตัวเองเปิด/ถูก assign อยู่แล้ว
+const TECHNICIAN_TABS: TabId[] = ["Open", "In Progress", "Closed"];
+
 function slugToTab(slug: string | null): TabId {
   switch (slug) {
     case "in-progress": return "In Progress";
@@ -58,7 +62,7 @@ export default function DataTablesPage() {
 
   const isTechnician = currentRole.trim().toLowerCase() === "technician";
   const visibleTabs = isTechnician
-    ? TABS.filter((tab) => tab.id === "In Progress" || tab.id === "Closed")
+    ? TABS.filter((tab) => TECHNICIAN_TABS.includes(tab.id))
     : TABS;
 
   // ใช้ state แทน useMemo เพื่อให้ sync กับ URL ได้ทันที
@@ -73,11 +77,11 @@ export default function DataTablesPage() {
     }
   }, [searchParams]);
 
-  // Technician ใช้เฉพาะแท็บ In Progress และ Closed
+  // Technician ใช้ได้เฉพาะแท็บใน TECHNICIAN_TABS — แท็บอื่น (Cancelled) เด้งกลับ In Progress
   useEffect(() => {
     if (!isTechnician) return;
     const requestedTab = slugToTab(searchParams.get("tab"));
-    if (requestedTab === "In Progress" || requestedTab === "Closed") return;
+    if (TECHNICIAN_TABS.includes(requestedTab)) return;
 
     setActive("In Progress");
     const params = new URLSearchParams(searchParams.toString());

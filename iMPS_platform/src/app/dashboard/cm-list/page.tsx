@@ -19,7 +19,7 @@ import useLanguage from "@/utils/useLanguage";
 import {
   CMRow, ActiveFilters, DateSel, STATUS_LABELS, WorkStatusFilter, EMPTY_FILTERS, CmOrigin,
   normalizeStatus, workStatusOf, workStatusBadge, filterByDate, listYears, listBrands,
-  weeksInMonth, applyFilters, applySearch, brandOf, originOf, UNKNOWN_BRAND,
+  weeksInMonth, applyFilters, applySearch, brandOf, originOf, matchesCompanyFilter, UNKNOWN_BRAND, UNKNOWN_COMPANY, FLEXXFAST_BRAND, COMPANY_FILTER_OPTIONS,
 } from "@/utils/cm-dashboard";
 import { CM_ORIGIN_LIST } from "@/app/dashboard/cm-report/lib/origin";
 import { failureCodeLabel } from "@/app/dashboard/cm-report/lib/failureCode";
@@ -30,6 +30,10 @@ const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 500;
 const FETCH_LIMIT = 10000;
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+
+// Company เริ่มต้นของหน้านี้ — ผู้ใช้ EGAT/super admin เปิดมาเห็นใบของ EGAT ก่อน
+// แล้วค่อยสลับเป็น EDS หรือ "ทุกบริษัท" เองได้จากดรอปดาวน์
+const DEFAULT_COMPANY_FILTER = "EGAT";
 
 const PLANNING_ROLES = ["admin", "owner", "planner"];
 const WAITING_ON_REPLAN_RESULTS = [
@@ -65,11 +69,24 @@ function statusSlug(status: string, stage?: string, repairResult?: string): "ope
 // L'accesseur renvoie la valeur comparée : string pour un tri alphabétique,
 // number pour un tri numérique. `null`/"" finit toujours en bas quel que soit le sens.
 type SortKey =
-  | "station" | "charger" | "brand" | "issue_id" | "reported_by"
+  | "station" | "charger" | "brand" | "sr" | "wo" | "reported_by"
   | "equipment" | "problem" | "severity" | "date" | "status";
 type SortDir = "asc" | "desc";
 
 const SEVERITY_RANK: Record<string, number> = { urgent: 4, high: 3, medium: 2, low: 1 };
+
+function workNumberOf(issueId: string | undefined, prefix: "SR" | "WO"): string {
+  const match = String(issueId || "").match(/(\d+)/);
+  return match ? `${prefix}${match[1].padStart(3, "0")}` : "";
+}
+
+// เลข WO มีได้เฉพาะใบที่ผ่านด่าน CS แล้ว — bucket "new"/"wait_cs_approve" ยังเป็นแค่ SR
+// ที่รอ head CS อนุมัติ (กติกาเดียวกับ KPI "WO ทั้งหมด" ของ CM Dashboard = ทั้งหมด − new
+// − wait_cs_approve และฟอร์ม CM ที่สลับเลขจาก SR เป็น WO ตอน status "Wait for schedule")
+function isWorkOrder(r: CMRow): boolean {
+  const ws = workStatusOf(r);
+  return ws !== "new" && ws !== "wait_cs_approve";
+}
 
 export default function CMListPage() {
   const [rows, setRows] = useState<CMRow[]>([]);
@@ -81,13 +98,21 @@ export default function CMListPage() {
   const [weekSel, setWeekSel] = useState<DateSel>("all");
   const [stationFilter, setStationFilter] = useState<string>("All");
   // Filtre par défaut = In Progress : la page sert à suivre le travail en cours
-  const [filters, setFilters] = useState<ActiveFilters>({ ...EMPTY_FILTERS, status: STATUS_LABELS.in_progress });
+  // origin = user : หน้านี้คือคิวงานของคน ใบที่ระบบเปิดเองจาก fault/alarm ให้กดดูเพิ่มเอง
+  // (Company เริ่มต้นตั้งทีหลังใน effect ของ /me เพราะต้องรู้ก่อนว่าผู้ใช้เห็นดรอปดาวน์นั้นไหม)
+  const [filters, setFilters] = useState<ActiveFilters>({
+    ...EMPTY_FILTERS,
+    status: STATUS_LABELS.in_progress,
+    origin: "user",
+  });
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [sortKey, setSortKey] = useState<SortKey>("date");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [userRole, setUserRole] = useState("");
+  const [userCompany, setUserCompany] = useState("");
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
 
   const router = useRouter();
   const { lang } = useLanguage();
@@ -104,6 +129,14 @@ export default function CMListPage() {
   }, [maximoFailureTree]);
 
   const displayFaultyEquipment = useCallback((row: CMRow) => {
+    // เลขตู้มาก่อนเสมอ — faulty_equipment_label ที่ backend ประกอบให้ใช้ charger_name
+    // ซึ่งบางสถานีตั้งเป็นรหัส Location ของ Maximo คอลัมน์นี้ต้องบอกว่า "ตู้ไหน"
+    const chargerNo = String(row.charger_no ?? "").trim();
+    if (chargerNo) {
+      const sn = (row.charger_sn || "").trim();
+      return sn ? `Charger ${chargerNo} (${sn})` : `Charger ${chargerNo}`;
+    }
+    // ใบที่ไม่ได้ผูกกับตู้ (CM ระดับสถานี/MDB) — คงป้ายเดิมไว้ ข้อมูลจะได้ไม่หาย
     if (row.faulty_equipment_label) return row.faulty_equipment_label;
     const code = (row.faulty_equipment || "").trim();
     if (!code) return "";
@@ -123,7 +156,19 @@ export default function CMListPage() {
         const res = await apiFetch(`/me`);
         if (!res.ok) return;
         const user = await res.json();
-        if (alive) setUserRole(user?.role ?? "");
+        if (alive) {
+          const company = String(user?.company ?? "");
+          const superAdmin = !!user?.is_super_admin;
+          setUserRole(user?.role ?? "");
+          setUserCompany(company);
+          setIsSuperAdmin(superAdmin);
+          // ใส่ค่าเริ่มต้นให้เฉพาะคนที่เห็นดรอปดาวน์ Company (super admin / พนักงาน EGAT)
+          // คนบริษัทอื่นดรอปดาวน์ถูกซ่อน ถ้าใส่ให้ด้วยจะโดนล็อกอยู่ที่ EGAT แล้วแก้กลับไม่ได้
+          if (superAdmin || company.trim().toLowerCase() === "egat") {
+            // เช็ค prev.company กันเคสผู้ใช้กดเลือกบริษัทเองก่อน /me ตอบกลับ
+            setFilters((prev) => (prev.company ? prev : { ...prev, company: DEFAULT_COMPANY_FILTER }));
+          }
+        }
       } catch (err) {
         console.error("fetch /me error:", err);
       }
@@ -176,6 +221,19 @@ export default function CMListPage() {
     setPage(0);
   }, []);
 
+  // ปุ่มแถวสถานะเลือกได้ทีละอัน ถึงจะตั้งกันคนละ dimension (4 ปุ่มหลังตั้ง status ส่วน
+  // "รอเปิดใบงาน" ตั้ง workStatus) — ต้องล้างอีก dimension ทิ้งด้วย ไม่งั้นกด "รอเปิดใบงาน"
+  // ทับตัวกรองเริ่มต้น "รอดำเนินการ" จะกลายเป็นเอาสองเงื่อนไขมา AND กันแล้วได้ตารางว่าง
+  const selectStatusButton = useCallback((dim: "status" | "workStatus", value: string) => {
+    setFilters((prev) => ({
+      ...prev,
+      status: null,
+      workStatus: null,
+      [dim]: prev[dim] === value ? null : value,
+    } as ActiveFilters));
+    setPage(0);
+  }, []);
+
   const clearAll = () => {
     setFilters(EMPTY_FILTERS);
     setSearch("");
@@ -183,6 +241,8 @@ export default function CMListPage() {
   };
 
   const activeFilterCount = Object.values(filters).filter(Boolean).length;
+  const isEgatCompany = userCompany.trim().toLowerCase() === "egat";
+  const canSeeAllCompanies = isSuperAdmin || isEgatCompany;
 
   const stations = useMemo(() => {
     const names = Array.from(new Set(rows.map((r) => r.station_name || r.station_id))).filter(Boolean);
@@ -206,15 +266,45 @@ export default function CMListPage() {
   const allFiltered = useMemo(() => applyFilters(periodRows, filters), [periodRows, filters]);
   const searchFiltered = useMemo(() => applySearch(allFiltered, search), [allFiltered, search]);
 
-  // compteurs des boutons de statut — indépendants du filtre statut courant
-  const statusCounts = useMemo(() => {
-    const base = applySearch(applyFilters(periodRows, filters, "status"), search);
-    const counts = { open: 0, in_progress: 0, completed: 0, cancelled: 0 };
-    for (const r of base) counts[normalizeStatus(r.status)]++;
-    return counts;
-  }, [periodRows, filters, search]);
+  // ฐานสำหรับนับตัวเลขบนแถวปุ่มสถานะ — ตัดตัวกรองที่ "ปุ่มแถวนี้เป็นคนตั้ง" ออกทั้งคู่
+  // (status ของ 4 ปุ่มหลัง + workStatus ของปุ่ม "รอเปิดใบงาน") ปุ่มทั้งแถวคือตัวควบคุมเดียวกัน
+  // ตัวเลขจึงต้องไม่ขยับเวลากดสลับปุ่มกันเอง — ถ้ากันแค่ status ปุ่มแรกจะโชว์ 0 ตลอดเวลาที่
+  // ตัวกรองเริ่มต้น "รอดำเนินการ" ทำงานอยู่ ทั้งที่มีใบรอเปิดค้างอยู่จริง
+  const statusButtonBase = useMemo(
+    () => applySearch(applyFilters(periodRows, { ...filters, status: null, workStatus: null }), search),
+    [periodRows, filters, search]
+  );
 
-  const brands = useMemo(() => listBrands(rows), [rows]);
+  const statusCounts = useMemo(() => {
+    const counts = { open: 0, in_progress: 0, completed: 0, cancelled: 0 };
+    for (const r of statusButtonBase) counts[normalizeStatus(r.status, r.stage, r.repair_result)]++;
+    return counts;
+  }, [statusButtonBase]);
+
+  // สองด่านอนุมัติใช้ status "Wait for approve" ชื่อเดียวกัน แยกกันที่ stage เท่านั้น จึงต้องนับ
+  // ผ่าน workStatusOf() ไม่ใช่ status ดิบ — cs_approval = SR รอ head CS เปิดเป็นใบงาน (ยังไม่มีเลข WO)
+  // ส่วน close_approval = WO ที่ช่างซ่อมเสร็จแล้วรออนุมัติปิดงาน
+  const approvalCounts = useMemo(() => {
+    const counts = { wait_cs_approve: 0, wait_approve: 0 };
+    for (const r of statusButtonBase) {
+      const ws = workStatusOf(r);
+      if (ws === "wait_cs_approve") counts.wait_cs_approve++;
+      else if (ws === "wait_approve") counts.wait_approve++;
+    }
+    return counts;
+  }, [statusButtonBase]);
+
+  const companies = COMPANY_FILTER_OPTIONS;
+  const brandRows = useMemo(
+    () => rows.filter((r) => matchesCompanyFilter(r, filters.company)),
+    [rows, filters.company]
+  );
+  const brands = useMemo(() => {
+    const listed = listBrands(brandRows);
+    if (filters.company?.trim().toLowerCase() !== "eds") return listed;
+    if (!isSuperAdmin) return [FLEXXFAST_BRAND];
+    return [FLEXXFAST_BRAND, ...listed.filter((brand) => brand.toLowerCase() !== FLEXXFAST_BRAND.toLowerCase())];
+  }, [brandRows, filters.company, isSuperAdmin]);
   const originCounts = useMemo(() => {
     const base = applyFilters(periodRows, filters, "origin");
     let auto = 0;
@@ -232,7 +322,9 @@ export default function CMListPage() {
         return (r.charger_name || "").toLowerCase();
       }
       case "brand": return brandOf(r).toLowerCase();
-      case "issue_id": return (r.issue_id || "").toLowerCase();
+      case "sr": return workNumberOf(r.issue_id, "SR");
+      // ใบที่ยังเป็น SR ไม่มีเลข WO — คืนค่าว่างเพื่อให้ตกไปอยู่ล่างสุดเสมอเวลาจัดเรียง
+      case "wo": return isWorkOrder(r) ? workNumberOf(r.issue_id, "WO") : "";
       case "reported_by": return (r.reported_by || "").toLowerCase();
       case "equipment": return (displayFaultyEquipment(r) || "").toLowerCase();
       case "problem": return (r.problem_details || "").toLowerCase();
@@ -291,8 +383,11 @@ export default function CMListPage() {
       weekOption: (n: number) => `สัปดาห์ที่ ${n}`,
       monthsLong: ["มกราคม","กุมภาพันธ์","มีนาคม","เมษายน","พฤษภาคม","มิถุนายน","กรกฎาคม","สิงหาคม","กันยายน","ตุลาคม","พฤศจิกายน","ธันวาคม"],
       stationFilterLabel: "กรองตามสถานี",
-      brandFilterLabel: "บริษัทผู้ถือครอง",
-      allBrands: "ทุกบริษัท",
+      companyFilterLabel: "บริษัท",
+      allCompanies: "ทุกบริษัท",
+      unknownCompany: "ไม่ระบุบริษัท",
+      brandFilterLabel: "Brand",
+      allBrands: "ทุก Brand",
       rowsPerPage: "แถวต่อหน้า",
       statusFilterLabel: "กรองตามสถานะ",
       tableCount: (n: number, q?: string) => `${n} รายการ${q ? ` · "${q}"` : ""}`,
@@ -304,10 +399,12 @@ export default function CMListPage() {
       noResults: (q?: string) => q ? `ไม่พบรายการที่ตรงกับ "${q}"` : "ไม่พบรายงาน",
       volumeWarning: (total: number, limit: number) => `ฐานข้อมูลมี ${total.toLocaleString()} รายการ — แสดงผล ${limit.toLocaleString()} รายการล่าสุด`,
       openReportTitle: "เปิดใบงาน CM",
-      quickOpen: "รอจัดซื้อ", quickInProgress: "รอดำเนินการ", quickComplete: "เสร็จสิ้น", quickCancelled: "ยกเลิก",
+      quickWaitCsApprove: "รอเปิดใบงาน",
+      quickWaitApprove: "รออนุมัติ",
+      quickInProgress: "รอดำเนินการ", quickComplete: "เสร็จสิ้น", quickCancelled: "ยกเลิก",
       sortAsc: "เรียงน้อย→มาก", sortDesc: "เรียงมาก→น้อย",
       headers: {
-        station: "สถานี", charger: "ตู้ชาร์จ", brand: "บริษัท", issue_id: "รหัสเอกสาร",
+        station: "สถานี", charger: "ตู้ชาร์จ", brand: "บริษัท", sr: "เลขที่ SR", wo: "เลขที่ WO",
         reported_by: "ผู้แจ้งปัญหา", equipment: "อุปกรณ์ที่ผิดปกติ", problem: "ปัญหาที่พบ",
         severity: "ความรุนแรง", date: "วันที่", status: "สถานะ",
       },
@@ -327,12 +424,15 @@ export default function CMListPage() {
       weekOption: (n: number) => `Week ${n}`,
       monthsLong: ["January","February","March","April","May","June","July","August","September","October","November","December"],
       stationFilterLabel: "Filter by station",
-      brandFilterLabel: "Owning company",
-      allBrands: "All companies",
+      companyFilterLabel: "Company",
+      allCompanies: "All companies",
+      unknownCompany: "Unknown company",
+      brandFilterLabel: "Brand",
+      allBrands: "All brands",
       rowsPerPage: "Rows per page",
       statusFilterLabel: "Filter by status",
       tableCount: (n: number, q?: string) => `${n} records${q ? ` · "${q}"` : ""}`,
-      searchPlaceholder: "Search by station, issue ID, charger, company, equipment, severity…",
+      searchPlaceholder: "Search by station, SR, WO, charger, company, equipment, severity…",
       clearFilters: "Clear filters",
       pagination: (from: number, to: number, total: number) => `Showing ${from}–${to} of ${total} records`,
       loading: "Loading",
@@ -340,10 +440,12 @@ export default function CMListPage() {
       noResults: (q?: string) => q ? `No records matching "${q}"` : "No reports found",
       volumeWarning: (total: number, limit: number) => `Database has ${total.toLocaleString()} records — showing latest ${limit.toLocaleString()}.`,
       openReportTitle: "Open CM work order",
-      quickOpen: "Open", quickInProgress: "In Progress", quickComplete: "Complete", quickCancelled: "Cancelled",
+      quickWaitCsApprove: "SR wait for approve",
+      quickWaitApprove: "WO wait for approve",
+      quickInProgress: "In Progress", quickComplete: "Complete", quickCancelled: "Cancelled",
       sortAsc: "Sort ascending", sortDesc: "Sort descending",
       headers: {
-        station: "Station", charger: "Charger", brand: "Company", issue_id: "Issue ID",
+        station: "Station", charger: "Charger", brand: "Company", sr: "SR No.", wo: "WO No.",
         reported_by: "Reported By", equipment: "Faulty Equipment", problem: "Problem Found",
         severity: "Severity", date: "Date", status: "Status",
       },
@@ -364,13 +466,28 @@ export default function CMListPage() {
   const columns: { key: SortKey; label: string; className?: string }[] = [
     { key: "station", label: t.headers.station },
     { key: "brand", label: "Brand" },
-    { key: "issue_id", label: t.headers.issue_id },
+    { key: "sr", label: t.headers.sr },
+    { key: "wo", label: t.headers.wo },
     { key: "reported_by", label: t.headers.reported_by },
     { key: "equipment", label: t.headers.equipment },
     { key: "problem", label: t.headers.problem },
     { key: "severity", label: t.headers.severity },
     { key: "date", label: t.headers.date },
     { key: "status", label: t.headers.status },
+  ];
+
+  // ปุ่มกรองแถวสถานะ — สองด่านอนุมัติ ("รอเปิดใบงาน"/"รออนุมัติ") กรองด้วยมิติ workStatus
+  // เพราะ status ดิบของทั้งคู่คือ "Wait for approve" เหมือนกัน แยกไม่ได้ด้วย status 4 กลุ่ม
+  // ที่เหลือกรองด้วย status ตามเดิม จึงเก็บ dim ไว้กับปุ่มแทนที่จะ hardcode ตอน render
+  // สีของสองปุ่มนั้นใช้ชุดเดียวกับป้าย wait_cs_approve / wait_approve ในตาราง ให้สื่อถึงถังเดียวกัน
+  const statusButtons: {
+    dim: "status" | "workStatus"; value: string; label: string; color: string; bg: string; count: number;
+  }[] = [
+    { dim: "workStatus", value: "wait_cs_approve", label: t.quickWaitCsApprove, color: "#c2410c", bg: "#ffedd5", count: approvalCounts.wait_cs_approve },
+    { dim: "status", value: STATUS_LABELS.in_progress, label: t.quickInProgress, color: "#ea580c", bg: "#fff7ed", count: statusCounts.in_progress },
+    { dim: "workStatus", value: "wait_approve", label: t.quickWaitApprove, color: "#4338ca", bg: "#e0e7ff", count: approvalCounts.wait_approve },
+    { dim: "status", value: STATUS_LABELS.completed, label: t.quickComplete, color: "#15803d", bg: "#dcfce7", count: statusCounts.completed },
+    { dim: "status", value: STATUS_LABELS.cancelled, label: t.quickCancelled, color: "#475569", bg: "#f1f5f9", count: statusCounts.cancelled },
   ];
 
   const totalPages = Math.ceil(sortedRows.length / pageSize);
@@ -465,6 +582,29 @@ export default function CMListPage() {
             {stations.map((s) => <option key={s}>{s}</option>)}
           </select>
         </div>
+        {canSeeAllCompanies && (
+          <div className="tw-flex tw-items-center tw-gap-1.5">
+            <label htmlFor="company-filter" className="tw-text-xs tw-font-medium tw-text-gray-500">{t.companyFilterLabel}</label>
+            <select
+              id="company-filter"
+              value={filters.company ?? "all"}
+              onChange={(e) => {
+                setFilters((p) => ({
+                  ...p,
+                  company: e.target.value === "all" ? null : e.target.value,
+                  brand: null,
+                }));
+                setPage(0);
+              }}
+              className="tw-rounded-lg tw-border tw-border-gray-200 tw-bg-white tw-px-3 tw-py-1.5 tw-text-sm tw-text-gray-700 tw-shadow-sm focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-blue-400"
+            >
+              <option value="all">{t.allCompanies}</option>
+              {companies.map((company) => (
+                <option key={company} value={company}>{company}</option>
+              ))}
+            </select>
+          </div>
+        )}
         <div className="tw-flex tw-items-center tw-gap-1.5">
           <label htmlFor="brand-filter" className="tw-text-xs tw-font-medium tw-text-gray-500">{t.brandFilterLabel}</label>
           <select
@@ -511,18 +651,13 @@ export default function CMListPage() {
         </div>
 
         <div className="tw-flex tw-items-center tw-gap-1.5" role="group" aria-label={t.statusFilterLabel}>
-          {([
-            { key: "open", label: t.quickOpen, color: "#dc2626", bg: "#fee2e2", count: statusCounts.open },
-            { key: "in_progress", label: t.quickInProgress, color: "#ea580c", bg: "#fff7ed", count: statusCounts.in_progress },
-            { key: "completed", label: t.quickComplete, color: "#15803d", bg: "#dcfce7", count: statusCounts.completed },
-            { key: "cancelled", label: t.quickCancelled, color: "#475569", bg: "#f1f5f9", count: statusCounts.cancelled },
-          ] as const).map(({ key, label, color, bg, count }) => {
-            const isActive = filters.status === STATUS_LABELS[key];
+          {statusButtons.map(({ dim, value, label, color, bg, count }) => {
+            const isActive = filters[dim] === value;
             return (
               <button
-                key={key}
+                key={`${dim}:${value}`}
                 type="button"
-                onClick={() => toggleFilter("status", STATUS_LABELS[key])}
+                onClick={() => selectStatusButton(dim, value)}
                 aria-pressed={isActive}
                 className={`tw-rounded-full tw-px-3 tw-py-1 tw-text-xs tw-font-semibold tw-transition-all ${isActive ? "tw-shadow-sm" : "hover:tw-brightness-95"}`}
                 style={isActive ? { background: color, color: "#fff" } : { background: bg, color }}
@@ -610,7 +745,7 @@ export default function CMListPage() {
                 </tr>
               ) : tableRows.map((r, i) => {
                 const badge = workStatusBadge(r);
-                const canOpenPdf = normalizeStatus(r.status) === "completed";
+                const canOpenPdf = normalizeStatus(r.status, r.stage, r.repair_result) === "completed";
                 const brand = brandOf(r);
                 return (
                   <tr
@@ -631,7 +766,8 @@ export default function CMListPage() {
                         {brand}
                       </button>
                     </td>
-                    <td className="tw-px-4 tw-py-3 tw-text-gray-600">{r.issue_id || "-"}</td>
+                    <td className="tw-px-4 tw-py-3 tw-text-gray-600">{workNumberOf(r.issue_id, "SR") || "-"}</td>
+                    <td className="tw-px-4 tw-py-3 tw-text-gray-600">{(isWorkOrder(r) && workNumberOf(r.issue_id, "WO")) || "-"}</td>
                     <td className="tw-px-4 tw-py-3 tw-text-gray-600">
                       <span className="tw-inline-flex tw-items-center tw-gap-1.5">
                         {r.reported_by || "-"}

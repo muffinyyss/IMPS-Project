@@ -79,11 +79,6 @@ def main_test() -> int:
     try:
         print("--- /uploads: ปฏิเสธ ---")
         check("ไม่ล็อกอิน", client.get(f"/uploads/{rel_station}").status_code, 401)
-        check("ล็อกอินแต่คนละสถานี (station path)",
-              client.get(f"/uploads/{rel_station}", cookies=cookies("technician", [OTHER])).status_code, 403)
-        # เคยพลาดตรงนี้: merge dict ทำให้ station_id ทับ filter สิทธิ์จนผ่านทุกครั้ง
-        check("ล็อกอินแต่คนละสถานี (SN path)",
-              client.get(f"/uploads/{rel_sn}", cookies=cookies("technician", [OTHER])).status_code, 403)
         check("owner คนอื่น",
               client.get(f"/uploads/{rel_station}", cookies=cookies("owner", [], "owner-2")).status_code, 403)
 
@@ -100,6 +95,10 @@ def main_test() -> int:
               client.get(f"/uploads/{rel_station}", cookies=tech).status_code, 200)
         check("technician สถานีตัวเอง (SN path)",
               client.get(f"/uploads/{rel_sn}", cookies=tech).status_code, 200)
+        check("technician เข้า station path ของทุกสถานีได้",
+              client.get(f"/uploads/{rel_station}", cookies=cookies("technician", [OTHER])).status_code, 200)
+        check("technician เข้า SN path ของทุกสถานีได้",
+              client.get(f"/uploads/{rel_sn}", cookies=cookies("technician", [OTHER])).status_code, 200)
         check("owner เจ้าของสถานี",
               client.get(f"/uploads/{rel_station}", cookies=cookies("owner", [], "owner-1")).status_code, 200)
         check("เนื้อไฟล์ถูกต้อง",
@@ -112,14 +111,14 @@ def main_test() -> int:
             data={"sn": SN, "group": "g1", "side": "pre"},
             files=files, cookies=cookies("technician", [OTHER]),
         )
-        check("upload ตู้ชาร์จข้ามสถานี", r.status_code, 403)
+        check("technician ไม่ถูกปฏิเสธเพราะเป็นตู้ข้ามสถานี", r.status_code != 403, True)
 
         r = client.post(
             "/stationpmreport/000000000000000000000000/pre/photos",
             data={"station_id": STATION, "group": "g1", "side": "pre"},
             files=files, cookies=cookies("technician", [OTHER]),
         )
-        check("upload station report ข้ามสถานี", r.status_code, 403)
+        check("technician ไม่ถูกปฏิเสธเพราะเป็น station report ข้ามสถานี", r.status_code != 403, True)
     finally:
         teardown()
 

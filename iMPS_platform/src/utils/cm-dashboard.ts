@@ -4,6 +4,8 @@ export type CMRow = {
   id: string;
   station_id: string;
   station_name: string;
+  /** บริษัทเจ้าของสถานี (แยกจาก brand ของ charger) */
+  company?: string;
   status: string;
   stage?: string;
   reject_remark?: string;
@@ -41,9 +43,26 @@ export type CMRow = {
 
 /** บริษัทผู้ถือครองตู้ของใบงานนี้ — ใบที่ระบุไม่ได้จัดกลุ่มเป็น UNKNOWN_BRAND */
 export const UNKNOWN_BRAND = "Unknown";
+export const UNKNOWN_COMPANY = "Unknown";
+export const FLEXXFAST_BRAND = "FlexxFast";
+export const COMPANY_FILTER_OPTIONS = ["EGAT", "EDS"] as const;
+
+export function companyOf(r: CMRow): string {
+  return (r.company || "").trim() || UNKNOWN_COMPANY;
+}
 
 export function brandOf(r: CMRow): string {
-  return (r.charger_brand || "").trim() || UNKNOWN_BRAND;
+  const brand = (r.charger_brand || "").trim();
+  if (brand.toLowerCase() === FLEXXFAST_BRAND.toLowerCase()) return FLEXXFAST_BRAND;
+  return brand || UNKNOWN_BRAND;
+}
+
+export function matchesCompanyFilter(r: CMRow, company: string | null): boolean {
+  if (!company) return true;
+  if (company.trim().toLowerCase() === "eds") {
+    return brandOf(r).toLowerCase() === FLEXXFAST_BRAND.toLowerCase();
+  }
+  return companyOf(r).toLowerCase() === company.trim().toLowerCase();
 }
 
 /** ที่มาของใบงาน — ระบบเปิดเอง vs ผู้ใช้กรอกเอง */
@@ -70,6 +89,21 @@ export function listBrands(rows: CMRow[]): string[] {
     .map((e) => e[0]);
 }
 
+export function listCompanies(rows: CMRow[]): string[] {
+  const counts = new Map<string, number>();
+  for (const r of rows) {
+    const company = companyOf(r);
+    counts.set(company, (counts.get(company) ?? 0) + 1);
+  }
+  return Array.from(counts.entries())
+    .sort((a, b) => {
+      if (a[0] === UNKNOWN_COMPANY) return 1;
+      if (b[0] === UNKNOWN_COMPANY) return -1;
+      return a[0].localeCompare(b[0]);
+    })
+    .map(([company]) => company);
+}
+
 export type Period = "yearly" | "monthly" | "weekly";
 
 export type ActiveFilters = {
@@ -85,13 +119,15 @@ export type ActiveFilters = {
   remedy: string | null;
   /** บริษัทผู้ถือครองตู้ (ยี่ห้อ) — ปุ่มกรองแถวบนของแดชบอร์ด */
   brand: string | null;
+  /** บริษัทเจ้าของสถานี — แสดง/ใช้งานเฉพาะผู้ใช้ company EGAT */
+  company: string | null;
   /** ที่มาของใบ: ระบบเปิดเอง / ผู้ใช้เปิดเอง */
   origin: CmOrigin | null;
 };
 
 export const EMPTY_FILTERS: ActiveFilters = {
   status: null, equipment: null, severity: null, station: null,
-  workStatus: null, cause: null, remedy: null, brand: null, origin: null,
+  workStatus: null, cause: null, remedy: null, brand: null, company: null, origin: null,
 };
 
 /** Champs multi-valeurs : le backend renvoie un tableau, les fiches anciennes une chaîne. */
@@ -138,10 +174,14 @@ export const STATUS_LABELS = {
   cancelled: "ยกเลิก",
 } as const;
 
-export function normalizeStatus(s: string): keyof typeof STATUS_LABELS {
+export function normalizeStatus(s: string, stage = "", repairResult = ""): keyof typeof STATUS_LABELS {
   const v = (s || "").trim().toLowerCase().replace(/[-_\s]+/g, " ");
+  const stageValue = (stage || "").trim().toLowerCase();
+  const repairValue = (repairResult || "").trim().toLowerCase();
   if (v === "complete" || v === "completed" || v === "closed" || v === "close") return "completed";
   if (v === "in progress" || v === "inprogress") return "in_progress";
+  if (v === "wo wait for approve") return "in_progress";
+  if (v === "wait for approve" && (stageValue !== "cs_approval" || repairValue === "wo - wait for approve")) return "in_progress";
   // ใบที่ถูกยกเลิก — ต้องแยกจาก open ไม่งั้นจะถูกนับเป็นงานค้างทั้งที่ไม่มีใครต้องทำแล้ว
   if (v === "cancelled" || v === "canceled" || v === "cancel" || v === "void" || v === "ยกเลิก") return "cancelled";
   return "open";
@@ -149,7 +189,7 @@ export function normalizeStatus(s: string): keyof typeof STATUS_LABELS {
 
 /** ใบที่ถูกยกเลิก = ไม่ใช่ภาระงานซ่อม → ตัดออกจากกราฟและ KPI ทุกตัว (ยังโชว์ในตาราง) */
 export function isCancelled(r: CMRow): boolean {
-  return normalizeStatus(r.status) === "cancelled";
+  return normalizeStatus(r.status, r.stage, r.repair_result) === "cancelled";
 }
 
 export function excludeCancelled(rows: CMRow[]): CMRow[] {
@@ -315,7 +355,7 @@ export function groupByMonth(rows: CMRow[]): { open: number[]; inProgress: numbe
     const d = rowDate(r);
     if (!d) continue;
     const m = d.getMonth();
-    const s = normalizeStatus(r.status);
+    const s = normalizeStatus(r.status, r.stage, r.repair_result);
     if (s === "cancelled") continue;
     if (s === "completed") completed[m]++;
     else if (s === "in_progress") inProgress[m]++;
@@ -331,7 +371,7 @@ export function applyFilters(
 ): CMRow[] {
   return rows.filter((r) => {
     if (filters.status && exclude !== "status") {
-      if (STATUS_LABELS[normalizeStatus(r.status)] !== filters.status) return false;
+      if (STATUS_LABELS[normalizeStatus(r.status, r.stage, r.repair_result)] !== filters.status) return false;
     }
     if (filters.equipment && exclude !== "equipment") {
       if ((r.faulty_equipment || "Unknown") !== filters.equipment) return false;
@@ -356,7 +396,10 @@ export function applyFilters(
       if (!remedyCodesOf(r).includes(filters.remedy)) return false;
     }
     if (filters.brand && exclude !== "brand") {
-      if (brandOf(r) !== filters.brand) return false;
+      if (brandOf(r).toLowerCase() !== filters.brand.toLowerCase()) return false;
+    }
+    if (filters.company && exclude !== "company") {
+      if (!matchesCompanyFilter(r, filters.company)) return false;
     }
     if (filters.origin && exclude !== "origin") {
       if (originOf(r) !== filters.origin) return false;
@@ -368,16 +411,17 @@ export function applyFilters(
 export function applySearch(rows: CMRow[], q: string): CMRow[] {
   if (!q.trim()) return rows;
   const lq = q.trim().toLowerCase();
+  const hit = (v: string | undefined | null) => (v || "").toLowerCase().includes(lq);
+  // เทียบทีละ field แบบลัดวงจร แทนการรวมทุกค่าเป็น array ก่อนแล้วค่อย .some()
+  // — แบบเดิมต้องกาง causeLabelsOf/remedyCodesOf ของทุกแถวเสมอ ถึงจะเจอคำค้นตั้งแต่ field แรกก็ตาม
   return rows.filter((r) =>
-    [
-      r.station_name, r.station_id, r.issue_id, r.faulty_equipment,
-      r.problem_details, r.severity, r.inspector, r.reported_by, r.status,
-      // charger_no เป็นตัวเลขได้ (backend resolve มาจาก charger index) ต้องแปลงก่อน
-      r.charger_name, r.charger_sn, r.charger_brand,
-      r.charger_no === null || r.charger_no === undefined ? "" : String(r.charger_no),
-      ...causeLabelsOf(r),
-      ...remedyCodesOf(r).map(remedyLabel),
-    ].some((v) => (v || "").toLowerCase().includes(lq))
+    hit(r.station_name) || hit(r.station_id) || hit(r.issue_id) || hit(r.faulty_equipment) ||
+    hit(r.problem_details) || hit(r.severity) || hit(r.inspector) || hit(r.reported_by) ||
+    hit(r.status) || hit(r.charger_name) || hit(r.charger_sn) || hit(r.charger_brand) ||
+    // charger_no เป็นตัวเลขได้ (backend resolve มาจาก charger index) ต้องแปลงก่อน
+    hit(r.charger_no === null || r.charger_no === undefined ? "" : String(r.charger_no)) ||
+    causeLabelsOf(r).some(hit) ||
+    remedyCodesOf(r).some((c) => hit(remedyLabel(c)))
   );
 }
 

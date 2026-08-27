@@ -8,15 +8,18 @@ import { ArrowLeftIcon, ArrowUturnLeftIcon, PhotoIcon, XMarkIcon, CheckCircleIco
 import { useLanguage, type Lang } from "@/utils/useLanguage";
 import CreatableSelect from "react-select/creatable";
 import { useDraft, type DraftData, type DraftImage, type DraftCorrectiveAction } from "../lib/draft";
+import { useReportLock } from "@/app/dashboard/cm-report/lib/lock";
 import { failureCodeLabel } from "@/app/dashboard/cm-report/lib/failureCode";
 import {
-    useMaximoFailureTree, maximoCodeLabel, isMaximoCode, failureClassRole, type SelectOption,
-    maximoProblemOptions, maximoCauseOptions, maximoRemedyOptions,
+    useMaximoFailureTree, isMaximoCode, failureClassRole, type SelectOption,
+    maximoProblemOptions, maximoCauseOptions, maximoRemedyOptions, NO_PROBLEM_OPTION,
 } from "@/app/dashboard/cm-report/lib/maximo";
 import { cmBackRoute } from "@/app/dashboard/cm-report/lib/origin";
 import ChargerIdentity, { type ChargerIdentityData } from "@/app/dashboard/cm-report/components/ChargerIdentity";
 import { repairResultLabel, normalizeRepairResult, REPAIR_RESULT_VALUES } from "@/app/dashboard/cm-report/lib/repairResult";
 import { ZoomableImg, AttachmentFileRow, isImageAttachment } from "@/app/dashboard/cm-report/components/photo-viewer";
+import RepairRoundCard, { type RepairRound } from "@/app/dashboard/cm-report/components/RepairRoundCard";
+import LockBanner from "@/app/dashboard/cm-report/components/LockBanner";
 
 // ==================== DEVICE NAME FORMATTER ====================
 function formatDeviceName(name: string): string {
@@ -51,9 +54,9 @@ const T = {
     inspector: { th: "ผู้ตรวจสอบ", en: "Inspector" },
     repairer: { th: "ผู้เข้าแก้ไข", en: "Repairer" },
     inspectorEntered: { th: "ผู้ตรวจสอบ", en: "Inspector" },
-    faultyEquipment: { th: "อุปกรณ์ที่พัง", en: "Faulty Equipment" },
+    faultyEquipment: { th: "ตำแหน่งจุดที่มีความผิดปกติ", en: "FAILURECODE DESCRIPTION" },
     repairedEquipment: { th: "การแก้ไข", en: "Correction" },
-    selectEquipmentPlaceholder: { th: "เลือกอุปกรณ์...", en: "Select equipment..." },
+    selectEquipmentPlaceholder: { th: "เลือกตำแหน่ง...", en: "Select location..." },
     chargersGroup: { th: "Chargers", en: "Chargers" },
     devicesGroup: { th: "อุปกรณ์ในตู้", en: "Cabinet Devices" },
     otherEquipmentGroup: { th: "อุปกรณ์อื่นๆ", en: "Other Equipment" },
@@ -82,6 +85,16 @@ const T = {
     // preventiveAction: { th: "วิธีป้องกันไม่ให้เกิดซ้ำ", en: "Preventive Action" },
     addPreventive: { th: "เพิ่ม", en: "Add" },
     resolvedDate: { th: "วันที่เริ่มแก้ไข", en: "Start Repair Date" },
+    maximoLabor: { th: "ช่างที่ลงเวลากับ Maximo", en: "Technicians for Maximo time log" },
+    maximoLaborHint: {
+        th: "เลือกคนที่จะลงเวลาทำงานเข้า Maximo (IN09) — ไม่เลือกจะใช้ช่างที่ผู้วางแผนมอบหมายแทน",
+        en: "Who gets an actual-labor record in Maximo (IN09) — leave empty to fall back to the assigned technicians",
+    },
+    maximoLaborEmpty: { th: "ยังไม่มีรหัสช่างจาก Maximo", en: "No Maximo labor codes available" },
+    contractorName: { th: "ชื่อผู้รับเหมา", en: "Contractor name" },
+    contractorPlaceholder: { th: "ระบุชื่อผู้รับเหมาที่มาทำงานจริง", en: "Name of the contractor who did the work" },
+    contractorRequired: { th: "เลือกผู้รับเหมาแล้วต้องระบุชื่อด้วย", en: "Enter the contractor name" },
+    maximoLaborNone: { th: "ช่างไม่ได้เลือกรหัสช่างไว้", en: "No labor code selected by the technician" },
     completedDate: { th: "วันที่แก้ไขเสร็จ", en: "Completed Date" },
 
     // Section 3 - Problem Summary
@@ -91,6 +104,10 @@ const T = {
     // Buttons
     saving: { th: "กำลังบันทึก...", en: "Saving..." },
     closed: { th: "Closed", en: "Closed" },
+    cancelWorkOrder: { th: "ยกเลิกใบงาน", en: "Cancel work order" },
+    cancelReason: { th: "เหตุผลที่ยกเลิก", en: "Cancellation reason" },
+    confirmCancel: { th: "ยืนยันยกเลิก", en: "Confirm cancel" },
+    cancelling: { th: "กำลังยกเลิก...", en: "Cancelling..." },
     save: { th: "บันทึก", en: "Save" },
     repairRound: { th: "แก้ไขครั้งที่", en: "Repair round" },
     rrResult: { th: "ผลหลังซ่อม", en: "Repair result" },
@@ -200,26 +217,6 @@ type ValidationItem = { key: string; label: string; isValid: boolean; message: s
 // ตัวเลือกผลหลังซ่อมของช่าง — ไม่มี "wait for manpower" เพราะพอช่างมากรอกฟอร์มนี้ก็ไม่ได้รอช่างแล้ว
 // (manpower เป็นสถานะที่ planner ตั้งตอน assign ไม่ใช่ผลที่ช่างเลือกเอง)
 // ผลซ่อม 1 รอบ — ช่างบันทึกเป็นสถานะรอ (material/site) แล้วกลับมาซ่อมใหม่ รอบเดิมย้ายมาเก็บที่นี่
-type RepairRound = {
-    // วันที่/เวลาที่ช่างเริ่มลงมือแก้ไขรอบนั้น (ไม่ใช่เวลาที่กดบันทึก)
-    start_repair_date?: string;
-    start_repair_time?: string;
-    // วันที่/เวลาที่ปิดรอบนั้น = ตอนกดบันทึกเป็นสถานะรอ
-    finish_date?: string;
-    finish_time?: string;
-    // ชื่อฟิลด์เดิม (เก็บ "เวลาที่กดบันทึก") — ความหมายตรงกับ finish ไม่ใช่ start
-    saved_date?: string;
-    saved_time?: string;
-    repair_result?: string;
-    repair_result_remark?: string;
-    problem_type?: string[];
-    problem_type_other?: string;
-    cause?: string[];
-    repaired_equipment?: string[];
-    inprogress_remarks?: string;
-    corrective_actions?: { code?: string; text?: string; beforeImages?: { url?: string }[]; afterImages?: { url?: string }[] }[];
-};
-
 // ผลซ่อมที่แปลว่ายังซ่อมไม่จบ ต้องรอของ/รอหน้างาน → บันทึกแล้วปิดรอบ ขึ้นรอบใหม่เมื่อกลับมา
 const WAITING_REPAIR_RESULTS = [
     "WO - wait for material", "WO - wait for spare part",
@@ -229,7 +226,24 @@ const WAITING_REPAIR_RESULTS = [
 // ป้ายชื่อทั้งชุดอยู่ใน lib/repairResult — ตาราง In Progress ใช้ตัวเดียวกัน ชื่อจะได้ไม่หลุดกัน
 // value ที่บันทึกยังเป็นภาษาอังกฤษเสมอ (Maximo/backend อ้างค่านี้) แปลแค่ตอนแสดง
 const REPAIR_OPTIONS = REPAIR_RESULT_VALUES;
-const DEFAULT_REPAIR_RESULT = "WO - wait for scheduled";
+// marker ที่ planner ตั้งตอน assign — ไม่ใช่ผลที่ช่างเลือก (ดู hasChosenResult)
+const PLANNER_REPAIR_MARKER = "WO - wait for scheduled";
+// ผลหลังซ่อมเริ่มต้นตอนช่างเปิดฟอร์ม = "แก้ไขสำเร็จ" (ค่าที่เลือกบ่อยที่สุด)
+const DEFAULT_REPAIR_RESULT = "WO - wait for approve";
+
+/**
+ * ผลหลังซ่อมที่ควรโชว์ตอนเปิดฟอร์ม — ค่าที่ช่างเคยเลือกไว้มาก่อนเสมอ
+ *
+ * ใบที่ยังอยู่สถานะ "Wait for schedule" ต้องคง marker ของ planner ไว้ ห้ามใส่ค่าเริ่มต้นให้
+ * เพราะปุ่ม "บันทึกความคืบหน้า" ขึ้นเฉพาะตอนที่ยังไม่เลือกผล (hasChosenResult = false)
+ * ถ้าเติมค่าให้ ปุ่มนั้นจะหายไปทั้งใบ = ช่างบันทึกงานที่ยังทำไม่จบไม่ได้
+ */
+const initialRepairResult = (saved: string, status: unknown): string => {
+    if (saved && saved !== PLANNER_REPAIR_MARKER) return saved;
+    return String(status ?? "").trim().toLowerCase() === "wait for schedule"
+        ? PLANNER_REPAIR_MARKER
+        : DEFAULT_REPAIR_RESULT;
+};
 
 function asStringArray(value: unknown): string[] {
     if (Array.isArray(value)) return value.map(v => String(v ?? "").trim()).filter(Boolean);
@@ -274,7 +288,7 @@ const NO_PROBLEM_REPAIR_RESULT = "ไม่พบปัญหา";
 const PROGRESS_REQUIRED_KEYS = ["problemType", "problemTypeOther", "cause"];
 
 // เลือก "แก้ไขสำเร็จ" = ปิดงาน ต้องมีหลักฐานครบ
-const COMPLETED_REQUIRED_KEYS = ["problemType", "cause", "correction", "correctiveAction", "beforePhoto", "afterPhoto", "repairResult"];
+const COMPLETED_REQUIRED_KEYS = ["problemType", "cause", "correction", "correctiveAction", "afterPhoto", "repairResult"];
 
 // รูปของแต่ละรอบซ่อมต้องไม่ไปกองรวมกลุ่มเดียวกัน — index ของ corrective action
 // รีเซ็ตทุกรอบ จึงบวก offset ตามจำนวนรอบที่เก็บเข้าประวัติแล้ว (คงรูปแบบ before_<เลข> ไว้)
@@ -282,7 +296,6 @@ const PHOTO_GROUP_ROUND_STRIDE = 100;
 
 // "ไม่พบปัญหา" เป็นตัวเลือกของ iMPS เอง ไม่มีใน Maximo — ช่างต้องปิดใบงานได้
 // แม้ตรวจแล้วไม่เจออะไรผิดปกติ
-const NO_PROBLEM_OPTION = { value: "NOPROBLM", th: "ไม่พบปัญหา", en: "No Problem Found" } as const;
 
 // ตัวเลือกของ dropdown ปัญหา/สาเหตุ/การแก้ไข มาจาก Maximo (IN04) อย่างเดียว
 // backend cache ตารางไว้ใน MongoDB ให้แล้ว ฟอร์มจึงไม่ได้ยิง Maximo เองทุกครั้ง
@@ -426,92 +439,6 @@ function RowSelect({ values, options, onChange, resolveLabel, accent, placeholde
 }
 
 // ==================== VALIDATION CARD ====================
-// แปลงรหัสที่เก็บใน DB (เช่น "POWMODUL") เป็นข้อความที่อ่านรู้เรื่อง
-// การ์ดประวัติไม่รู้ว่า failure code ตอนนั้นคืออะไร จึงค้นจากทั้งต้นไม้ของ Maximo
-// รหัสที่ไม่รู้จัก (ค่าที่ผู้ใช้พิมพ์เอง / ใบงานเก่า) จะคืนค่าเดิมกลับไป
-export const problemLabelOf = (v: string) =>
-    v === NO_PROBLEM_OPTION.value ? NO_PROBLEM_OPTION.th : maximoCodeLabel(v);
-export const causeLabelOf = (v: string) => maximoCodeLabel(v);
-
-function RepairRoundCard({ round, index, lang }: { round: RepairRound; index: number; lang: Lang }) {
-    const src = (u?: string) => (!u ? "" : u.startsWith("http") ? u : `${API_BASE}${u}`);
-    const problems = [...(round.problem_type ?? []).map(problemLabelOf), round.problem_type_other ?? ""].map(x => (x || "").trim()).filter(Boolean);
-    const causes = (round.cause ?? []).map(x => causeLabelOf((x || "").trim())).filter(Boolean);
-    const equipment = (round.repaired_equipment ?? []).map(x => (x || "").trim()).filter(Boolean);
-    const actions = (round.corrective_actions ?? []).filter(
-        a => (a.text || "").trim() || (a.beforeImages?.length ?? 0) > 0 || (a.afterImages?.length ?? 0) > 0
-    );
-    const startedAt = [round.start_repair_date, round.start_repair_time].filter(Boolean).join(" ");
-    // saved_* ของข้อมูลเก่าคือเวลาที่กดบันทึก = เวลาปิดรอบ จึง fallback มาที่นี่
-    const finishedAt = [round.finish_date || round.saved_date, round.finish_time || round.saved_time].filter(Boolean).join(" ");
-
-    const block = (label: string, body: React.ReactNode) => (
-        <div className="tw-mb-3 last:tw-mb-0">
-            <p className="tw-text-xs tw-font-semibold tw-text-blue-gray-500 tw-mb-1">{label}</p>
-            {body}
-        </div>
-    );
-    const line = (v?: string) => <p className="tw-text-sm tw-text-blue-gray-800 tw-break-words">{v?.trim() ? v : "-"}</p>;
-    const thumbs = (label: string, imgs: { url?: string }[]) =>
-        imgs.length ? (
-            <div className="tw-mt-2">
-                <p className="tw-text-[11px] tw-text-blue-gray-400 tw-mb-1">{label}</p>
-                <div className="tw-flex tw-flex-wrap tw-gap-2">
-                    {imgs.map((im, k) => (
-                        <a key={k} href={src(im.url)} target="_blank" rel="noreferrer"
-                            className="tw-block tw-w-20 tw-h-20 tw-rounded-lg tw-overflow-hidden tw-border tw-border-gray-200 tw-bg-gray-50">
-                            <ZoomableImg src={src(im.url)} alt={label} className="tw-w-full tw-h-full tw-object-cover" />
-                        </a>
-                    ))}
-                </div>
-            </div>
-        ) : null;
-
-    return (
-        <div className="tw-mb-4 tw-p-4 tw-rounded-xl tw-border tw-border-gray-200 tw-bg-white">
-            <h4 className="tw-text-sm tw-font-bold tw-text-blue-gray-700 tw-mb-3">{t("repairRound", lang)} {index + 1}</h4>
-            <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-3 tw-gap-3 tw-mb-3">
-                <div>
-                    <p className="tw-text-xs tw-font-semibold tw-text-blue-gray-500 tw-mb-1">{t("rrStartedAt", lang)}</p>
-                    {line(startedAt)}
-                </div>
-                <div>
-                    <p className="tw-text-xs tw-font-semibold tw-text-blue-gray-500 tw-mb-1">{t("rrFinishedAt", lang)}</p>
-                    {line(finishedAt)}
-                </div>
-                <div>
-                    <p className="tw-text-xs tw-font-semibold tw-text-blue-gray-500 tw-mb-1">{t("rrResult", lang)}</p>
-                    {line(repairResultLabel(round.repair_result, lang))}
-                </div>
-                <div>
-                    <p className="tw-text-xs tw-font-semibold tw-text-blue-gray-500 tw-mb-1">{t("rrRemarks", lang)}</p>
-                    {line(round.repair_result_remark)}
-                </div>
-                {/* อุปกรณ์ที่ซ่อม — ไม่มีก็ไม่ต้องแสดงช่องนี้ */}
-                {equipment.length > 0 && (
-                    <div>
-                        <p className="tw-text-xs tw-font-semibold tw-text-blue-gray-500 tw-mb-1">{t("rrEquipment", lang)}</p>
-                        {line(equipment.join(", "))}
-                    </div>
-                )}
-            </div>
-            {problems.length ? block(t("rrProblem", lang), line(problems.join(", "))) : null}
-            {causes.length ? block(t("rrCause", lang), line(causes.join(", "))) : null}
-            {actions.length ? block(t("rrAction", lang),
-                <div className="tw-space-y-3">
-                    {actions.map((a, i) => (
-                        <div key={i} className="tw-rounded-lg tw-bg-gray-50 tw-border tw-border-gray-200 tw-p-3">
-                            {(a.text || "").trim() && <p className="tw-text-sm tw-text-blue-gray-800 tw-break-words">{a.text}</p>}
-                            {thumbs(t("rrBefore", lang), a.beforeImages ?? [])}
-                            {thumbs(t("rrAfter", lang), a.afterImages ?? [])}
-                        </div>
-                    ))}
-                </div>) : null}
-            {(round.inprogress_remarks || "").trim() ? block(t("rrRemarks", lang), line(round.inprogress_remarks)) : null}
-        </div>
-    );
-}
-
 function CMValidationCard({ validations, lang }: { validations: ValidationItem[]; lang: Lang; }) {
     const [isExpanded, setIsExpanded] = useState(true);
     const requiredValidations = validations.filter(v => v.isRequired);
@@ -903,7 +830,7 @@ function ProblemGroupBlock({ faultyEquipment, value, onChange, onRemove, onAddGr
                                             {/* Before Images */}
                                             <div className="tw-border tw-border-red-200 tw-rounded-xl tw-p-4 tw-bg-red-50/30">
                                                 <div className="tw-flex tw-items-center tw-justify-between tw-mb-3">
-                                                    <span className="tw-text-sm tw-font-semibold tw-text-red-700 tw-flex tw-items-center tw-gap-2"><span className="tw-w-2 tw-h-2 tw-rounded-full tw-bg-red-500"></span>{t("beforePhoto", lang)} <span className="tw-text-red-500">*</span></span>
+                                                    <span className="tw-text-sm tw-font-semibold tw-text-red-700 tw-flex tw-items-center tw-gap-2"><span className="tw-w-2 tw-h-2 tw-rounded-full tw-bg-red-500"></span>{t("beforePhoto", lang)}</span>
                                                     {!disabled && (
                                                         <label className="tw-inline-flex tw-items-center tw-gap-1.5 tw-px-3 tw-py-1.5 tw-rounded-lg tw-bg-white tw-border tw-border-red-300 tw-text-red-600 tw-font-medium tw-text-xs tw-cursor-pointer hover:tw-bg-red-50 tw-shadow-sm tw-transition-all">
                                                             <input type="file" accept="image/*" multiple className="tw-hidden" onChange={(e) => addImgs(i, "beforeImages", e.target.files)} />
@@ -927,7 +854,7 @@ function ProblemGroupBlock({ faultyEquipment, value, onChange, onRemove, onAddGr
                                                         ))}
                                                     </div>
                                                 ) : (
-                                                    <div className="tw-text-center tw-py-6 tw-text-red-500 tw-text-sm tw-font-medium">{th ? "⚠️ กรุณาแนบรูปก่อนแก้ไข" : "⚠️ Please attach before image"}</div>
+                                                    <div className="tw-text-center tw-py-6 tw-text-blue-gray-400 tw-text-sm tw-font-medium">{th ? "ยังไม่มีรูปก่อนแก้ไข" : "No before image yet"}</div>
                                                 )}
                                             </div>
                                             {/* After Images */}
@@ -999,6 +926,12 @@ export default function CMInProgressForm() {
     // ประวัติผลซ่อมรอบก่อน ๆ (อ่านอย่างเดียว) — flat fields คือรอบที่กำลังกรอก
     const [repairHistory, setRepairHistory] = useState<RepairRound[]>([]);
     const [assignees, setAssignees] = useState<string[]>([]);   // ช่างที่ planner มอบหมายตอนวางแผน
+    // laborcode ฝั่ง Maximo ที่ช่างเลือกเอง — ใช้ส่งเวลาทำงานเข้า Maximo (IN09)
+    // แยกจาก assignees เพราะ username ใน iMPS กับ laborcode ของ Maximo คนละชุดกัน
+    const [laborOptions, setLaborOptions] = useState<{ laborcode: string; name: string; needs_name?: boolean }[]>([]);
+    const [maximoLabor, setMaximoLabor] = useState<string[]>([]);
+    // EVCONTRACTOR เป็นรหัสกลาง ไม่ผูกกับคน — ต้องให้พิมพ์ชื่อผู้รับเหมาจริงเพิ่ม
+    const [maximoContractor, setMaximoContractor] = useState<string>("");
     // ตาราง failure code จาก Maximo (IN04) — ผสมกับตารางในโค้ดเพื่อทำ dropdown ปัญหา→สาเหตุ→การแก้ไข
     const maximoTree = useMaximoFailureTree();
     const [currentUsername, setCurrentUsername] = useState("");
@@ -1007,6 +940,9 @@ export default function CMInProgressForm() {
     const [approvalStage, setApprovalStage] = useState("");
     const [approving, setApproving] = useState(false);
     const [approveOpen, setApproveOpen] = useState(false);
+    const [cancelOpen, setCancelOpen] = useState(false);
+    const [cancelRemark, setCancelRemark] = useState("");
+    const [cancelling, setCancelling] = useState(false);
     const [plannerEditMode, setPlannerEditMode] = useState(false);
     const [editConfirmOpen, setEditConfirmOpen] = useState(false);
     // ตีกลับใบงาน — ต้องกรอกเหตุผลให้ช่างรู้ว่าต้องแก้อะไร
@@ -1015,6 +951,7 @@ export default function CMInProgressForm() {
     const [rejecting, setRejecting] = useState(false);
     // เหตุผลที่ใบนี้เคยถูกตีกลับ (โหลดจาก server) — แสดงให้ช่างเห็นว่าต้องแก้อะไร
     const [rejectedInfo, setRejectedInfo] = useState<{ remark: string; by: string }>({ remark: "", by: "" });
+    const [cancelledInfo, setCancelledInfo] = useState<{ remark: string; by: string }>({ remark: "", by: "" });
     const [saving, setSaving] = useState(false);
     // ผลหลังซ่อมที่มีอยู่ใน DB ก่อนช่างแก้ — ใช้กันไม่ให้ค่าถูกล้างตอนบันทึกโดยไม่ได้เลือกผลใหม่
     const originalRepairResultRef = useRef<string>("");
@@ -1025,9 +962,12 @@ export default function CMInProgressForm() {
     const [loadingDevices, setLoadingDevices] = useState(false);
     const [jobLoaded, setJobLoaded] = useState(false);
     const [startRepairStamped, setStartRepairStamped] = useState(false);
+    // ช่างกดปุ่ม "เริ่มแก้ไข" แล้วหรือยัง — ก่อนกดจะเห็นเฉพาะข้อมูลที่ CS/Planner กรอกมาแบบอ่านอย่างเดียว
+    const [repairStartedManually, setRepairStartedManually] = useState(false);
 
     const editId = searchParams.get("edit_id") ?? "";
     const isEdit = !!editId;
+    const plannerSelfCloseRequested = searchParams.get("self_close") === "1";
 
     // เปิดใบงานที่ปิดแล้ว (Closed) = โหมดดูอย่างเดียว (อ่านไม่แก้, ปิดฟีเจอร์ร่าง)
     // สิทธิ์กรอกใบงานเฟสซ่อม = ต้องเป็นช่างที่ planner มอบหมายตอนวางแผน (อยู่ใน assignees) หรือ admin
@@ -1046,6 +986,8 @@ export default function CMInProgressForm() {
     // รองรับทั้ง Closed ใหม่และ Complete เดิมที่ยังอยู่ในฐานข้อมูล
     const normalizedJobStatus = job.status.trim().toLowerCase();
     const isClosedStatus = normalizedJobStatus === "closed" || normalizedJobStatus === "complete";
+    const isCancelledStatus = normalizedJobStatus === "cancelled";
+    const isWaitForSchedule = normalizedJobStatus === "wait for schedule";
     // ใช้ status จริงเป็นตัวกำหนด Read only เท่านั้น
     // การเลือก Repair Result = WO - wait for approve ยังต้องแก้ไข/บันทึกได้ก่อน
     const isWaitForApprove = normalizedJobStatus === "wait for approve";
@@ -1055,22 +997,51 @@ export default function CMInProgressForm() {
         isWaitForApprove &&
         approvalStage.trim().toLowerCase() !== "cs_approval";
     const canEditTechnicianData = isPlanner && isWoCloseApproval;
+    // เปิดให้ Planner กรอกผลได้เฉพาะเมื่อเลือก "สามารถปิดใบงานได้เลย" จากหน้าวางแผน
+    const plannerSelfCloseMode = plannerSelfCloseRequested && isPlanner && isWaitForSchedule;
     const isTechnicianWaitForApprove = isTechnician && isWaitForApprove;
     // ด่านรออนุมัติจาก CS เป็นหน้าตรวจอย่างเดียว
     // ส่วนด่านปิดงานเปิดให้ Planner แก้ข้อมูลของช่างแล้วบันทึก/อนุมัติได้
-    const viewOnly =
+    const viewOnlyByRole =
         isCs ||
         isClosedStatus ||
+        isCancelledStatus ||
         isTechnicianWaitForApprove ||
         (isWaitForApprove && !canEditTechnicianData) ||
-        (isPlanner && (!canEditTechnicianData || !plannerEditMode)) ||
+        (isPlanner && !plannerSelfCloseMode && (!canEditTechnicianData || !plannerEditMode)) ||
         (!isPlanner && !isJobOwner);
+
+    // ล็อกกันกรอกชนกัน — คนที่เปิดฟอร์มในโหมดกรอกก่อนได้สิทธิ์ ที่เหลือดูได้อย่างเดียว
+    // (จองสิทธิ์เฉพาะคนที่กรอกได้จริง ไม่งั้นคนที่แค่เปิดดูจะไปกันคนอื่นกรอก)
+    const { lockedBy } = useReportLock(editId, stationId ?? "", !viewOnlyByRole);
+    const viewOnly = viewOnlyByRole || !!lockedBy;
+
+    // ช่างเปิดใบงานครั้งแรก = อ่านข้อมูลจาก CS/Planner ก่อน แล้วค่อยกด "เริ่มแก้ไข" ถึงจะเห็นส่วนที่ต้องกรอก
+    // ใบที่เคยเริ่มแก้ไขแล้ว (มีเวลาเริ่ม) เข้ามาก็กรอกต่อได้เลย — role อื่นไม่ต้องผ่านด่านนี้
+    const repairStarted =
+        !isTechnician || viewOnly || repairStartedManually || !!job.start_repair_date || !!job.start_repair_time;
 
     // อนุมัติปิดใบงาน (Wait for approve → Closed) — เฉพาะ admin/planner และเฉพาะใบที่รออนุมัติอยู่จริง
     const canApprove =
         isWoCloseApproval &&
         ["admin", "planner"].includes(currentRole.trim().toLowerCase());
+    const canCancelJob =
+        isEdit &&
+        !isClosedStatus &&
+        normalizedJobStatus !== "cancelled" &&
+        ["admin", "owner", "planner", "technician", "super_admin"].includes(currentRole.trim().toLowerCase());
     const reviewerName = isClosedStatus ? approvedBy : currentUsername;
+
+    const cancelAction = canCancelJob ? (
+        <Button
+            type="button"
+            onClick={() => { setCancelRemark(""); setCancelOpen(true); }}
+            disabled={saving || approving || rejecting || cancelling}
+            className="tw-bg-amber-500 hover:tw-bg-amber-600 tw-text-white tw-font-semibold tw-text-base tw-px-8 tw-py-3 tw-rounded-xl hover:tw-shadow-xl hover:tw-shadow-amber-500/30 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed tw-transition-all"
+        >
+            {t("cancelWorkOrder", lang)}
+        </Button>
+    ) : null;
 
     const approvalActions = canApprove ? (
         <>
@@ -1140,6 +1111,13 @@ export default function CMInProgressForm() {
     };
 
     const goBackToList = () => router.push(buildListUrl(currentTab));
+
+    const returnToPlannerSchedule = () => {
+        const params = new URLSearchParams(searchParams.toString());
+        params.delete("self_close");
+        params.set("view", "form");
+        router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    };
 
     // ==================== DRAFT MANAGEMENT ====================
     const { status: draftStatus, hasDraft, saveNow: saveDraftNow, load: loadDraft, deleteDraft } = useDraft(
@@ -1509,7 +1487,17 @@ export default function CMInProgressForm() {
         })
     ), [extraGroups, lang, isNoProblem, isWaitingForSiteCondition, isClosedResult]);
 
+    // ติ๊กรหัสกลางของผู้รับเหมาไว้ = ต้องมีชื่อจริงกำกับ
+    const contractorPicked = laborOptions.some(
+        (o) => o.needs_name && maximoLabor.includes(o.laborcode)
+    );
+    const contractorMissing = contractorPicked && !maximoContractor.trim();
+    // รายชื่อช่างจาก Maximo (IN08) ดึงไม่ได้ = ไม่มีอะไรให้เลือก บังคับไม่ได้
+    // และด่านตรวจ/อนุมัติแก้ไม่ได้ ใบเก่าที่ช่างไม่ได้เลือกไว้จะกลายเป็นทางตันของ planner
+    const maximoLaborRequired = !viewOnly && laborOptions.length > 0;
+
     const validations = useMemo<ValidationItem[]>(() => [
+        { key: "equipment", label: t("faultyEquipment", lang), isValid: !!job.faulty_equipment, message: t("notSelected", lang), isRequired: !isWaitingForSiteCondition, scrollId: "cm-equipment" },
         { key: "problemType", label: t("validProblemType", lang), isValid: validationGroupState.allProblemTypesFilled, message: t("notSelected", lang), isRequired: !isWaitingForSiteCondition, scrollId: "cm-problem-type" },
         { key: "problemTypeOther", label: lang === "th" ? "ระบุปัญหา (อื่นๆ)" : "Specify Problem (Other)", isValid: !!job.problem_type_other.trim(), message: t("notFilled", lang), isRequired: job.problem_type.includes("Other"), scrollId: "cm-problem-type" },
         { key: "cause", label: t("validCause", lang), isValid: validationGroupState.allCausesFilled, message: t("notFilled", lang), isRequired: !isNoProblem && !isWaitingForSiteCondition, scrollId: "cm-cause" },
@@ -1517,15 +1505,19 @@ export default function CMInProgressForm() {
         // แต่มันเทียบกับ label ("แก้ไขสำเร็จ") ไม่ใช่ value จึงไม่เคยทำงาน
         { key: "correction", label: t("repairedEquipment", lang), isValid: validationGroupState.allCorrectionsFilled, message: t("notSelected", lang), isRequired: isClosedResult && !isNoProblem, scrollId: "cm-correction" },
         { key: "correctiveAction", label: t("validCorrectiveAction", lang), isValid: validationGroupState.allActionTextsFilled, message: t("notFilled", lang), isRequired: !isNoProblem && !isWaitingForMaterial && !isWaitingForSiteCondition, scrollId: "cm-corrective" },
-        { key: "beforePhoto", label: t("validBeforePhoto", lang), isValid: validationGroupState.allBeforePhotosFilled, message: t("notFilled", lang), isRequired: !isNoProblem && !isWaitingForMaterial && !isWaitingForSiteCondition, scrollId: "cm-corrective" },
+        { key: "beforePhoto", label: t("validBeforePhoto", lang), isValid: validationGroupState.allBeforePhotosFilled, message: t("notFilled", lang), isRequired: false, scrollId: "cm-corrective" },
         { key: "afterPhoto", label: t("validAfterPhoto", lang), isValid: validationGroupState.allAfterPhotosFilled, message: t("notFilled", lang), isRequired: isClosedResult && !isNoProblem, scrollId: "cm-corrective" },
         { key: "repairResult", label: t("validRepairResult", lang), isValid: !!job.repair_result, message: t("notSelected", lang), isRequired: !isNoProblem, scrollId: "cm-repair-result" },
         // { key: "preventiveAction", label: t("preventiveAction", lang), isValid: job.preventive_action.some((p: string) => p.trim() !== ""), message: t("notFilled", lang), isRequired: isClosedResult && !isNoProblem, scrollId: "cm-preventive" },
         { key: "inprogressRemarks", label: lang === "th" ? "หมายเหตุผลหลังซ่อม" : "Repair Result Remark", isValid: !!job.repair_result_remark.trim(), message: t("notFilled", lang), isRequired: needsRepairRemark, scrollId: "cm-repair-result" },
         { key: "noProblemPhoto", label: lang === "th" ? "รูปภาพ" : "Photo", isValid: (job.corrective_actions[0]?.afterImages.length ?? 0) > 0, message: t("notFilled", lang), isRequired: isNoProblem, scrollId: "cm-noproblem-photo" },
         { key: "noProblemRemarks", label: t("remarks", lang), isValid: !!job.inprogress_remarks.trim(), message: t("notFilled", lang), isRequired: isNoProblem, scrollId: "cm-remarks" },
+        // ไม่เลือกช่าง = IN09 ไม่มี laborcode ให้ส่ง เวลาทำงานจะหายไปจาก Maximo ทั้งใบ
+        // และเติมย้อนหลังไม่ได้หลัง WO ขึ้น COMP จึงต้องบังคับตั้งแต่ตอนบันทึกใบงาน
+        { key: "maximoLabor", label: t("maximoLabor", lang), isValid: maximoLabor.length > 0, message: t("notSelected", lang), isRequired: maximoLaborRequired, scrollId: "cm-maximo-labor" },
+        { key: "maximoContractor", label: t("contractorName", lang), isValid: !contractorMissing, message: t("notFilled", lang), isRequired: maximoLaborRequired && contractorPicked, scrollId: "cm-maximo-labor" },
         ...additionalGroupValidations,
-    ], [job, lang, isClosedResult, needsRepairRemark, isNoProblem, validationGroupState, isWaitingForMaterial, isWaitingForSiteCondition, additionalGroupValidations]);
+    ], [job, lang, isClosedResult, needsRepairRemark, isNoProblem, validationGroupState, isWaitingForMaterial, isWaitingForSiteCondition, additionalGroupValidations, maximoLabor, maximoLaborRequired, contractorPicked, contractorMissing]);
 
     // "แก้ไขสำเร็จ" ใน dropdown มี value = "WO - wait for approve" (label ต่างจาก value)
     // isClosedResult เทียบข้อความไทยซึ่งเป็นค่าของใบเก่า จึงต้องเช็คค่าใหม่เพิ่มเอง
@@ -1550,13 +1542,9 @@ export default function CMInProgressForm() {
     }, [validations, hasChosenResult, isNoProblem, isRepairCompleted]);
     const canSave = useMemo(() => effectiveValidations.filter(v => v.isRequired).every(v => v.isValid), [effectiveValidations]);
     // ผล "แก้ไขสำเร็จ" ต้องผ่าน validation ครบทุกข้อก่อนเปลี่ยนสถานะเป็น Closed
-    const canClose = !isClosedResult || canSave;
+    const canClose = !(isClosedResult || isNoProblem) || canSave;
 
     // ใบที่ planner ยังไม่ได้วางแผน/assign — ช่างยังปิดงานไม่ได้ แต่ต้องเก็บสิ่งที่กรอกไว้ได้
-    // ไม่มีใน type Status เดิมเพราะสถานะนี้เพิ่งเพิ่มทีหลัง จึงเทียบด้วยข้อความ
-    const isWaitForSchedule = job.status.trim().toLowerCase() === "wait for schedule";
-
-
     // บันทึกความคืบหน้าใช้เกณฑ์ขั้นต่ำ: ต้องระบุอาการและสาเหตุ
     // (ไม่ใช้ canSave เพราะนั่นบังคับครบทุกช่องสำหรับ "ปิดงาน")
     const canSaveProgress = useMemo(() => {
@@ -1572,20 +1560,23 @@ export default function CMInProgressForm() {
 
     // การ์ดสรุปต้องสะท้อนสิ่งที่ "ปุ่มที่กดได้จริง" ต้องการ ไม่งั้นจะขึ้นแดงว่ายังไม่เลือก
     // ผลหลังซ่อม ทั้งที่สถานะนี้ไม่ต้องเลือก — canSave ยังใช้ validations ชุดเต็มเหมือนเดิม
+    // เงื่อนไขต้องตรงกับตอนที่ปุ่ม "บันทึกความคืบหน้า" ถูกเรนเดอร์ (ใช้ canSaveProgress)
+    // พอช่างเลือกผลหลังซ่อมแล้วปุ่มจะสลับเป็นปุ่มบันทึกใบงานที่ใช้ canSave — การ์ดต้อง
+    // กลับไปโชว์ชุดเต็มด้วย ไม่งั้นการ์ดขึ้นเขียวครบแต่ปุ่มยังกดไม่ได้
     const displayValidations = useMemo(
-        () => isWaitForSchedule
+        () => isWaitForSchedule && !plannerSelfCloseMode && !hasChosenResult && !isNoProblem
             ? validations.map(v => PROGRESS_REQUIRED_KEYS.includes(v.key) ? v : { ...v, isRequired: false })
             : effectiveValidations,
-        [validations, effectiveValidations, isWaitForSchedule],
+        [validations, effectiveValidations, isWaitForSchedule, plannerSelfCloseMode, hasChosenResult, isNoProblem],
     );
 
     // ซ่อมเสร็จ ("แก้ไขสำเร็จ/ไม่สำเร็จ" หรือ "ไม่พบปัญหา") หรือเลือก "WO - wait for approve"
     // → เข้าคิวรออนุมัติ (Wait for approve) ให้ planner/admin กดปิดงาน | ติดตามผล/รออะไหล่ → In Progress
     const isClosing = isClosedResult || isNoProblem;
-    // planner เป็นผู้อนุมัติปิดงานอยู่แล้ว — ถ้ากรอกผลซ่อมเองและเลือก "แก้ไขสำเร็จ"
+    // planner เป็นผู้อนุมัติปิดงานอยู่แล้ว — ถ้ากรอกผลสุดท้ายเอง (รวมไม่พบปัญหา)
     // ก็ไม่ต้องเข้าคิวรออนุมัติ ปิดเป็น Closed ไปเลย (role อื่นยังต้องรอ planner/admin อนุมัติ)
     const isRepairSuccess = job.repair_result === "WO - wait for approve" || isClosedResult;
-    const plannerAutoClose = isPlanner && isRepairSuccess;
+    const plannerAutoClose = isPlanner && (isRepairSuccess || isNoProblem);
     const targetStatus = plannerAutoClose
         ? "Closed"
         : (isClosing || job.repair_result === "WO - wait for approve" ? "Wait for approve" : "In Progress");
@@ -1593,10 +1584,15 @@ export default function CMInProgressForm() {
     // ป้าย Job Status ต้องบอก "สถานะตอนนี้" ของใบงาน ไม่ใช่สถานะที่จะกลายเป็นตอนกดบันทึก
     // ด่านปิดงาน targetStatus ของ planner เป็น "Closed" ตั้งแต่เปิดหน้า (กดบันทึกแล้วปิดเลย)
     // ถ้าเอามาโชว์ตรง ๆ จะดูเหมือนใบถูกปิดไปแล้วทั้งที่ยังรออนุมัติอยู่
-    const jobStatusLabel = isWoCloseApproval ? "WO - wait for approve" : targetStatus;
+    const jobStatusLabel = isWoCloseApproval
+        ? "WO - wait for approve"
+        : (plannerSelfCloseMode ? "Wait for schedule" : targetStatus);
     // ใบที่ซ่อมจบแล้ว (รออนุมัติ หรือปิดเลย) → ต้องมีวันที่แก้ไขเสร็จเสมอ
     // (ครอบคลุมทั้ง แก้ไขสำเร็จ/ไม่สำเร็จ, ไม่พบปัญหา และ WO - wait for approve)
     const hasResolvedDate = targetStatus === "Wait for approve" || targetStatus === "Closed";
+    // "วันที่แก้ไขเสร็จ" แบบอ่านอย่างเดียวคู่กับ "วันที่เริ่มแก้ไข" ด้านบน — ซ่อนเฉพาะตอนที่
+    // ช่องกรอกจริง (date + time ใต้ผลหลังซ่อม) โผล่อยู่ ไม่งั้นหน้าเดียวจะมีวันที่เสร็จสองที่
+    const showCompletedAtTop = !isClosedResult || viewOnly;
 
     // ==================== HELPERS ====================
     const localTodayFormatted = () => { const d = new Date(); return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`; };
@@ -1898,7 +1894,10 @@ export default function CMInProgressForm() {
         //                    ทำให้ repaired_equipment ที่โหลดมาถูกล้างทิ้งทุกครั้งที่เปิดใบ (และหายจาก DB ถ้าบันทึกซ้ำ)
         if (prev === null || prev === "") return;
         if (prev !== job.faulty_equipment) {
-            setJob(p => ({ ...p, repaired_equipment: [] }));
+            // ปัญหา/สาเหตุ/การแก้ไข cascade มาจาก failure class — เปลี่ยนอุปกรณ์แล้วค่าเดิม
+            // จะไม่อยู่ในตัวเลือกชุดใหม่ ปล่อยไว้จะบันทึกรหัสที่ไม่เข้าคู่กันลง Maximo
+            setJob(p => ({ ...p, repaired_equipment: [], problem_type: [], problem_type_other: "", cause: [] }));
+            setExtraGroups([]);
         }
     }, [job.faulty_equipment]);
 
@@ -2006,20 +2005,24 @@ export default function CMInProgressForm() {
                     status: (data.status ?? "In Progress") as Status,
                     remarks: data.remarks_open ?? "",
                     faulty_equipment: data.faulty_equipment ?? "",
-                    // รอบใหม่: ประทับวันที่ตอนกดเข้าฟอร์มมากรอกรอบนี้เลย (ไม่รอให้เริ่มพิมพ์)
-                    start_repair_date: waitingRoundArchived ? localTodayISO() : (data.start_repair_date || ""),
+                    // รอบใหม่: ล้างเวลาเริ่มให้ว่าง ช่างต้องกด "เริ่มแก้ไข" อีกครั้งถึงจะประทับเวลาใหม่
+                    // (repairStarted อิงฟิลด์นี้ — ประทับไว้ตั้งแต่โหลดจะข้ามด่านกดเริ่มไปเลย
+                    //  แล้วรอบนี้จะได้เวลาตอนเปิดหน้า ไม่ใช่เวลาที่ลงมือจริง IN09 ก็เพี้ยนตาม)
+                    start_repair_date: waitingRoundArchived ? "" : (data.start_repair_date || ""),
                     // ปัญหา/สาเหตุ: รอบใหม่ใช้ค่าของรอบก่อนเป็นค่าเริ่มต้น (มักเป็นอาการเดิมที่ยังแก้ไม่จบ)
                     problem_type: loadedProblemTypes,
                     problem_type_other: data.problem_type_other ?? "",
                     cause: loadedCauses,
                     // ล้างให้ว่างเพื่อบังคับให้ช่างเลือกผลใหม่ — แต่ต้องจำค่าเดิมไว้ (originalRepairResultRef)
                     // ไม่งั้นพอกดบันทึกจะส่งค่าว่างไปทับ ทำให้ marker ที่ planner ตั้งไว้หายจาก DB
-                    repair_result: waitingRoundArchived ? DEFAULT_REPAIR_RESULT : (normalizeRepairResult(data.repair_result ?? "") || DEFAULT_REPAIR_RESULT),
+                    repair_result: waitingRoundArchived
+                        ? initialRepairResult("", data.status)
+                        : initialRepairResult(normalizeRepairResult(data.repair_result ?? ""), data.status),
                     inprogress_remarks: waitingRoundArchived ? "" : (data.inprogress_remarks ?? ""),
                     repair_result_remark: waitingRoundArchived ? "" : (data.repair_result_remark ?? ""),
                     resolved_date: data.resolved_date ? isoToDisplay(data.resolved_date) : "",
                     signature: data.signature ?? "",
-                    start_repair_time: waitingRoundArchived ? localNowHHMM() : (data.start_repair_time ?? ""),
+                    start_repair_time: waitingRoundArchived ? "" : (data.start_repair_time ?? ""),
                     resolved_time: data.resolved_time ?? "",
                     repaired_equipment: waitingRoundArchived ? [] : loadedCorrections,
                     preventive_action: Array.isArray(data.preventive_action) && data.preventive_action.length > 0 ? data.preventive_action : [""],
@@ -2187,6 +2190,7 @@ export default function CMInProgressForm() {
                 setApprovedBy(data.approved_by ?? "");
                 setApprovalStage(data.stage ?? "");
                 setRejectedInfo({ remark: data.reject_remark ?? "", by: data.rejected_by ?? "" });
+                setCancelledInfo({ remark: data.cancel_remark ?? "", by: data.cancelled_by ?? "" });
                 setJobLoaded(true);
 
                 // ✅ ดึง inspector จาก data ถ้ามี (ไม่ override จาก /me)
@@ -2196,6 +2200,8 @@ export default function CMInProgressForm() {
                 }
                 // ช่างที่ planner มอบหมายตอนวางแผน — ใช้จำกัดว่าใครกรอกใบงานเฟสซ่อมได้
                 setAssignees(Array.isArray(data.assignees) ? data.assignees.filter(Boolean) : []);
+                setMaximoLabor(Array.isArray(data.maximo_labor) ? data.maximo_labor.filter(Boolean) : []);
+                setMaximoContractor(data.maximo_contractor ?? "");
 
                 // Photos สำหรับ Section 1
                 if (data.photos_problem) {
@@ -2237,6 +2243,16 @@ export default function CMInProgressForm() {
         }
     }, [job]);
 
+    // ปุ่ม "เริ่มแก้ไข" ของช่าง — ประทับเวลาเริ่มงานแล้วเปิดส่วนที่ต้องกรอก
+    const startRepair = () => {
+        const stampedDate = job.start_repair_date || localTodayISO();
+        const stampedTime = job.start_repair_time || localNowHHMM();
+        setJob(prev => ({ ...prev, start_repair_date: stampedDate, start_repair_time: stampedTime }));
+        setStartRepairStamped(true);
+        setRepairStartedManually(true);
+        void saveDraftWithImages({ start_repair_date: stampedDate, start_repair_time: stampedTime });
+    };
+
     useEffect(() => {
         if (!jobLoaded || startRepairStamped || !loadedJobRef.current || viewOnly) return;
         if (job.start_repair_date || job.start_repair_time) {
@@ -2276,6 +2292,24 @@ export default function CMInProgressForm() {
         })();
         return () => { alive = false; };
     }, []);
+    useEffect(() => {
+        let alive = true;
+        (async () => {
+            try {
+                const res = await fetch(`${API_BASE}/cm-maximo/labor-codes`, { credentials: "include" });
+                if (!res.ok) return;
+                const data = await res.json();
+                if (alive && Array.isArray(data?.items)) setLaborOptions(data.items);
+            } catch {
+                // ดึงไม่ได้ = ไม่โชว์ตัวเลือก ไม่ต้องบล็อกการกรอกใบงาน
+            }
+        })();
+        return () => { alive = false; };
+    }, []);
+
+    const toggleMaximoLabor = (code: string) =>
+        setMaximoLabor(prev => prev.includes(code) ? prev.filter(c => c !== code) : [...prev, code]);
+
     // ==================== HANDLERS ====================
     // อนุมัติปิดใบงาน — ย้ายมาจากตาราง In Progress เพื่อให้ผู้อนุมัติเห็นรายละเอียดใบงานก่อนกด
     const onApprove = async () => {
@@ -2296,6 +2330,32 @@ export default function CMInProgressForm() {
         } catch (e: any) {
             alert((lang === "th" ? "อนุมัติไม่สำเร็จ: " : "Approve failed: ") + (e?.message ?? e));
             setApproving(false);
+        }
+    };
+
+    const onCancelJob = async () => {
+        if (!canCancelJob || !editId || !stationId || cancelling) return;
+        setCancelling(true);
+        try {
+            const res = await fetch(
+                `${API_BASE}/cmreport/${encodeURIComponent(editId)}/cancel?station_id=${encodeURIComponent(stationId)}`,
+                {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    credentials: "include",
+                    body: JSON.stringify({ remark: cancelRemark.trim() }),
+                }
+            );
+            if (!res.ok) {
+                const j = await res.json().catch(() => ({}));
+                throw new Error(j?.detail || `HTTP ${res.status}`);
+            }
+            setCancelOpen(false);
+            router.push(buildListUrl("cancelled"));
+        } catch (e: any) {
+            alert((lang === "th" ? "ยกเลิกไม่สำเร็จ: " : "Cancel failed: ") + (e?.message ?? e));
+        } finally {
+            setCancelling(false);
         }
     };
 
@@ -2338,7 +2398,11 @@ export default function CMInProgressForm() {
             alert(lang === "th" ? "กรุณาเลือกผลหลังซ่อมก่อนบันทึก" : "Select a repair result before saving.");
             return;
         }
-        if (!keepStatus && isClosedResult && !canClose) {
+        if (plannerSelfCloseMode && !keepStatus && !plannerAutoClose) {
+            alert(lang === "th" ? "กรุณาเลือกผลสุดท้ายที่สามารถปิดใบงานได้" : "Select a final result that can close the work order.");
+            return;
+        }
+        if (!keepStatus && (isClosedResult || isNoProblem) && !canClose) {
             alert(lang === "th" ? "กรุณากรอกข้อมูลการซ่อมให้ครบก่อนปิดงาน" : "Complete all required repair data before closing.");
             return;
         }
@@ -2533,8 +2597,16 @@ export default function CMInProgressForm() {
             // บันทึกเป็นสถานะรอ = จบรอบนี้ เก็บเข้าประวัติ แล้วรอบหน้าจะเริ่มกรอกใหม่จากว่าง
             // (ผลที่ปิดงานได้ เช่น "แก้ไขสำเร็จ" ไม่ต้องเก็บ เพราะเป็นรอบสุดท้ายที่คงอยู่ใน flat fields)
             const closingRound = WAITING_REPAIR_RESULTS.includes(job.repair_result.trim());
+            // ช่างที่ลงเวลากับ Maximo ของรอบนี้ — เก็บชื่อคู่กับรหัสไว้เลย รายชื่อจาก IN08
+            // เปลี่ยนได้ ประวัติจะได้ยังอ่านออก (ผู้รับเหมาใช้ชื่อจริงที่ช่างกรอกแทนชื่อรหัสกลาง)
+            const roundLabor = maximoLabor.map(code => {
+                const opt = laborOptions.find(o => o.laborcode === code);
+                const contractorName = opt?.needs_name ? maximoContractor.trim() : "";
+                return { laborcode: code, name: contractorName || opt?.name || code };
+            });
             const nextRepairHistory: RepairRound[] = closingRound
                 ? [...repairHistory, {
+                    maximo_labor: roundLabor,
                     start_repair_date: job.start_repair_date || localTodayISO(),
                     start_repair_time: job.start_repair_time || localNowHHMM(),
                     // ปิดรอบ ณ ตอนกดบันทึก
@@ -2562,6 +2634,7 @@ export default function CMInProgressForm() {
                     status: keepStatus ? job.status : targetStatus,
                     inspector,
                     job: {
+                        faulty_equipment: job.faulty_equipment,
                         problem_type: mergedProblemType,
                         problem_type_other: job.problem_type_other,
                         cause: mergedCause,
@@ -2572,6 +2645,7 @@ export default function CMInProgressForm() {
                         preventive_action: job.preventive_action,
                         inprogress_remarks: job.inprogress_remarks,
                         repair_result_remark: job.repair_result_remark,
+                        ...(targetStatus === "Wait for approve" ? { stage: "close_approval" } : {}),
                         start_repair_date: job.start_repair_date || localTodayISO(),
                         // ช่องกรอกวันที่/เวลาเสร็จเองมีเฉพาะตอน "แก้ไขสำเร็จ/ไม่สำเร็จ" — กรอกมาก็เคารพค่านั้น
                         // กรณีอื่น (รออนุมัติ/ไม่พบปัญหา) ประทับเวลาตอนกดบันทึกเสมอ ไม่ใช้ค่าเก่าที่ค้างจากใบที่เคยถูกตีกลับ
@@ -2580,6 +2654,8 @@ export default function CMInProgressForm() {
                         // ประทับเวลาเริ่มแก้ไขครั้งแรกพร้อมวันที่ — ใบเก่าที่มีวันที่แต่ไม่มีเวลา ไม่เติมย้อนหลัง
                         start_repair_time: job.start_repair_time || (job.start_repair_date ? "" : localNowHHMM()),
                         resolved_time: (!keepStatus && hasResolvedDate) ? (isClosedResult && job.resolved_time ? job.resolved_time : localNowHHMM()) : "",
+                        maximo_labor: maximoLabor,
+                        maximo_contractor: contractorPicked ? maximoContractor.trim() : "",
                     }
                 })
             });
@@ -2713,6 +2789,9 @@ export default function CMInProgressForm() {
     // ==================== RENDER ====================
     return (
         <section className="tw-pb-24">
+            {/* มีคนกำลังกรอกใบงานนี้อยู่ — เปิดดูได้ แต่กรอกไม่ได้จนกว่าเขาจะออกจากหน้า
+                (หน้านี้ขอสิทธิ์ใหม่ให้เองทุก 15 วิ พอเขาออกก็กรอกต่อได้โดยไม่ต้องรีเฟรช) */}
+            <LockBanner lockedBy={lockedBy} lang={lang} />
             {/* Draft Prompt Dialog */}
             {/* Draft Status Indicator */}
             {!viewOnly && draftStatus && (
@@ -2760,7 +2839,25 @@ export default function CMInProgressForm() {
             <form noValidate onSubmit={e => e.preventDefault()} onKeyDown={e => e.key === "Enter" && e.target instanceof HTMLInputElement && e.preventDefault()}>
                 <div className="tw-mx-auto tw-max-w-6xl tw-bg-white tw-border tw-border-blue-gray-100 tw-rounded-xl tw-shadow-md tw-shadow-blue-gray-500/5 tw-p-6 md:tw-p-8">
 
+
+
                     {/* ใบงานถูกตีกลับ — ช่างต้องเห็นเหตุผลก่อนแก้ (ซ่อนเมื่อรออนุมัติรอบใหม่แล้ว) */}
+                    {isCancelledStatus && (
+                        <div className="tw-mb-6 tw-flex tw-gap-3 tw-rounded-xl tw-border tw-border-amber-200 tw-bg-amber-50 tw-p-4">
+                            <ExclamationTriangleIcon className="tw-w-5 tw-h-5 tw-text-amber-600 tw-flex-shrink-0 tw-mt-0.5" />
+                            <div className="tw-min-w-0">
+                                <p className="tw-text-sm tw-font-bold tw-text-amber-800">
+                                    {lang === "th" ? "ใบงานถูกยกเลิก" : "Work order was cancelled"}
+                                    {cancelledInfo.by && <span className="tw-font-normal tw-text-amber-700"> — {lang === "th" ? "โดย" : "by"} {cancelledInfo.by}</span>}
+                                </p>
+                                <p className="tw-text-sm tw-text-amber-900 tw-mt-1 tw-whitespace-pre-wrap tw-break-words">
+                                    <span className="tw-font-semibold">{lang === "th" ? "เหตุผล:" : "Reason:"}</span>{" "}
+                                    {cancelledInfo.remark || (lang === "th" ? "ไม่ได้ระบุเหตุผล" : "No reason provided")}
+                                </p>
+                            </div>
+                        </div>
+                    )}
+
                     {rejectedInfo.remark && job.status !== "Wait for approve" && (
                         <div className="tw-mb-6 tw-flex tw-gap-3 tw-rounded-xl tw-border tw-border-red-200 tw-bg-red-50 tw-p-4">
                             <ArrowUturnLeftIcon className="tw-w-5 tw-h-5 tw-text-red-600 tw-flex-shrink-0 tw-mt-0.5" />
@@ -2774,8 +2871,8 @@ export default function CMInProgressForm() {
                         </div>
                     )}
 
-                    {/* fieldset disabled = โหมดดูอย่างเดียวเมื่อใบงานปิดแล้ว */}
-                    <fieldset disabled={viewOnly} className="tw-border-0 tw-p-0 tw-m-0 tw-min-w-0">
+                    {/* fieldset disabled = โหมดดูอย่างเดียวเมื่อใบงานปิดแล้ว หรือช่างยังไม่กด "เริ่มแก้ไข" */}
+                    <fieldset disabled={viewOnly || !repairStarted} className="tw-border-0 tw-p-0 tw-m-0 tw-min-w-0">
                     {/* Header */}
                     <div className="tw-flex tw-flex-col md:tw-flex-row tw-items-start tw-justify-between tw-gap-6 tw-mb-6">
                         <div className="tw-flex tw-items-start tw-gap-4">
@@ -2846,53 +2943,12 @@ export default function CMInProgressForm() {
                         </div>
 
                         <div className="tw-p-4 tw-space-y-4">
-                            {/* Faulty Equipment & Severity */}
-                            <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-4">
-                                <div>
-                                    <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-2">{t("faultyEquipment", lang)}</label>
-                                    <select
-                                        value={job.faulty_equipment}
-                                        disabled
-                                        className="tw-w-full tw-h-10 tw-border tw-border-blue-gray-200 tw-rounded-lg tw-px-4 tw-text-sm tw-font-medium tw-bg-gray-100 tw-text-blue-gray-700 tw-cursor-not-allowed tw-opacity-100"
-                                        style={{ backgroundColor: '#f3f4f6', color: '#455a64' }}
-                                    >
-                                        <option value="">{t("selectEquipmentPlaceholder", lang)}</option>
-                                        <optgroup label={lang === "th" ? "รหัสความเสียหาย" : "Failure Code"}>
-                                            {maximoTree.classes.map(c => (
-                                                <option key={c.code} value={c.code}>{c.description || c.code}</option>
-                                            ))}
-                                            {/* ใบงานเก่าที่เก็บรหัสชุดเดิม — ต้องมี option ให้ค่าที่เลือกไว้ ไม่งั้น select โชว์ว่าง */}
-                                            {job.faulty_equipment
-                                                && !maximoTree.classes.some(c => c.code === job.faulty_equipment)
-                                                && !job.faulty_equipment.startsWith("charger_") && (
-                                                <option value={job.faulty_equipment}>
-                                                    {failureCodeLabel(job.faulty_equipment)}
-                                                </option>
-                                            )}
-                                        </optgroup>
-                                        {/* กลุ่มเดิม — ให้รายงานเก่าที่บันทึกเป็น charger_x / mdb / ccb ฯลฯ ยังแสดงผลได้ */}
-                                        {chargers.length > 0 && (
-                                            <optgroup label={t("chargersGroup", lang)}>
-                                                {chargers.map((c, i) => {
-                                                    const id = c.chargerNo ?? c.charger_id ?? i + 1;
-                                                    const sn = c.SN ?? c.sn ?? "";
-                                                    const label = c.charger_name || `Charger ${c.chargerNo ?? i + 1}`;
-                                                    return <option key={id} value={`charger_${id}`}>{sn ? `${label} (${sn})` : label}</option>;
-                                                })}
-                                            </optgroup>
-                                        )}
-                                        <optgroup label={t("otherEquipmentGroup", lang)}>
-                                            {FIXED_EQUIPMENT.map(eq => <option key={eq} value={eq.toLowerCase()}>{eq}</option>)}
-                                        </optgroup>
-                                    </select>
-                                    {loadingChargers && <p className="tw-text-xs tw-text-blue-gray-400 tw-mt-2">{t("loadingChargers", lang)}</p>}
-                                </div>
-                                <div>
-                                    <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-2">{t("severity", lang)}</label>
-                                    <div className="tw-flex tw-items-center tw-gap-2 tw-h-10 tw-px-3 tw-border tw-border-blue-gray-200 tw-rounded-lg tw-bg-gray-100">
-                                        <span className={`tw-w-2.5 tw-h-2.5 tw-rounded-full ${severityColor.dot}`}></span>
-                                        <span className={`tw-text-sm tw-font-medium ${severityColor.text}`}>{job.severity || "-"}</span>
-                                    </div>
+                            {/* Severity — ตำแหน่งจุดที่มีความผิดปกติ ย้ายไปอยู่กับ dropdown ปัญหา เพราะช่างเป็นคนเลือกเองแล้ว */}
+                            <div>
+                                <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-2">{t("severity", lang)}</label>
+                                <div className="tw-flex tw-items-center tw-gap-2 tw-h-10 tw-px-3 tw-border tw-border-blue-gray-200 tw-rounded-lg tw-bg-gray-100">
+                                    <span className={`tw-w-2.5 tw-h-2.5 tw-rounded-full ${severityColor.dot}`}></span>
+                                    <span className={`tw-text-sm tw-font-medium ${severityColor.text}`}>{job.severity || "-"}</span>
                                 </div>
                             </div>
 
@@ -2933,11 +2989,35 @@ export default function CMInProgressForm() {
                     {repairHistory.length > 0 && (
                         <div className="tw-mb-6">
                             {repairHistory.map((r, i) => <RepairRoundCard key={i} round={r} index={i} lang={lang} />)}
-                            <h4 className="tw-text-sm tw-font-bold tw-text-blue-gray-700">
-                                {t("repairRound", lang)} {repairHistory.length + 1}
-                            </h4>
+                            {/* หัวข้อรอบใหม่ขึ้นตอนกดเริ่มแก้ไขแล้วเท่านั้น — ก่อนกดยังไม่มีช่องกรอก
+                                อยู่ข้างล่าง หัวข้อจะลอยอยู่เฉย ๆ */}
+                            {repairStarted && (
+                                <h4 className="tw-text-sm tw-font-bold tw-text-blue-gray-700">
+                                    {t("repairRound", lang)} {repairHistory.length + 1}
+                                </h4>
+                            )}
                         </div>
                     )}
+
+                    {plannerSelfCloseMode && (
+                        <div className="tw-mb-6 tw-rounded-xl tw-border tw-border-green-200 tw-bg-green-50/60 tw-p-5">
+                            <label className="tw-flex tw-cursor-pointer tw-items-start tw-gap-3">
+                                <input
+                                    type="checkbox"
+                                    checked
+                                    onChange={returnToPlannerSchedule}
+                                    className="tw-mt-0.5 tw-h-5 tw-w-5 tw-rounded tw-border-blue-gray-300 tw-text-green-600 focus:tw-ring-green-500"
+                                />
+                                <span>
+                                    <span className="tw-block tw-text-sm tw-font-bold tw-text-blue-gray-900">{lang === "th" ? "ปิดใบงาน" : "Close this work order"}</span>
+                                    <span className="tw-mt-1 tw-block tw-text-xs tw-text-blue-gray-600">{lang === "th" ? "กรอกรายละเอียดและเลือกผลสุดท้ายเพื่อปิดใบงาน — ติ๊กออกเพื่อกลับไปวางแผนคนเข้า" : "Complete the details and pick a final result to close it — untick to go back to scheduling."}</span>
+                                </span>
+                            </label>
+                        </div>
+                    )}
+
+                    {/* ก่อนช่างกด "เริ่มแก้ไข" ให้เห็นเฉพาะข้อมูลจาก CS/Planner ด้านบน */}
+                    {repairStarted && (<>
 
                     {/* Section 2: Problem Found + Corrective (Editable) — รวมปัญหากับการแก้ไขในการ์ดเดียว */}
                     <div className="tw-mb-6 tw-rounded-lg tw-overflow-hidden tw-border tw-border-blue-gray-100 tw-bg-white tw-shadow-sm">
@@ -2947,9 +3027,10 @@ export default function CMInProgressForm() {
                         </div>
 
                         <div className="tw-p-6 tw-space-y-5">
-                            {/* วันที่เริ่มแก้ไข + วันที่แก้ไขเสร็จ — readonly ทั้งคู่ (ช่องกรอกวันที่เสร็จจริงอยู่ใต้ผลหลังซ่อม เมื่อเลือกแก้ไขสำเร็จ/ไม่สำเร็จ) */}
-                            {!isClosedResult && (
-                                <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-5">
+                            {/* วันที่เริ่มแก้ไข + วันที่แก้ไขเสร็จ — readonly ทั้งคู่ (ช่องกรอกวันที่เสร็จจริงอยู่ใต้ผลหลังซ่อม เมื่อเลือกแก้ไขสำเร็จ/ไม่สำเร็จ)
+                                วันที่เริ่มแก้ไขต้องเห็นเสมอ รวมถึงด่านรออนุมัติที่ผลหลังซ่อมเป็น "แก้ไขสำเร็จ/ไม่สำเร็จ"
+                                ไม่งั้นผู้อนุมัติจะไม่เห็นว่าช่างเข้าหน้างานรอบนี้เมื่อไหร่ */}
+                            <div className={`tw-grid tw-grid-cols-1 tw-gap-5 ${showCompletedAtTop ? "md:tw-grid-cols-2" : ""}`}>
                                     <div className="tw-space-y-2">
                                         <label className="tw-flex tw-items-center tw-gap-2 tw-text-sm tw-font-semibold tw-text-gray-700">
                                             <span className="tw-w-1.5 tw-h-1.5 tw-rounded-full tw-bg-amber-500"></span>
@@ -2957,9 +3038,11 @@ export default function CMInProgressForm() {
                                         </label>
                                         <Input
                                             type="text"
+                                            // ด่านตรวจ/อนุมัติไม่มีอะไรให้พรีวิว — ไม่มีค่าจริงก็ต้องเป็น "-"
+                                            // ไม่ใช่เวลาปัจจุบัน ไม่งั้นผู้อนุมัติจะอ่านเป็นเวลาที่ช่างเริ่มจริง
                                             value={job.start_repair_date
                                                 ? `${isoToDisplay(job.start_repair_date)}${job.start_repair_time ? ` ${job.start_repair_time}` : ""}`
-                                                : `${localTodayFormatted()} ${localNowHHMM()}`}
+                                                : (viewOnly ? "-" : `${localTodayFormatted()} ${localNowHHMM()}`)}
                                             readOnly
                                             crossOrigin=""
                                             className="!tw-w-full !tw-h-12 !tw-bg-gray-100 !tw-text-gray-700 !tw-opacity-100 !tw-border-gray-200 !tw-rounded-xl"
@@ -2967,6 +3050,7 @@ export default function CMInProgressForm() {
                                             containerProps={{ className: "!tw-min-w-0 !tw-h-12" }}
                                         />
                                     </div>
+                                    {showCompletedAtTop && (
                                     <div className="tw-space-y-2">
                                         <label className="tw-flex tw-items-center tw-gap-2 tw-text-sm tw-font-semibold tw-text-gray-700">
                                             <span className="tw-w-1.5 tw-h-1.5 tw-rounded-full tw-bg-green-500"></span>
@@ -2974,9 +3058,10 @@ export default function CMInProgressForm() {
                                         </label>
                                         <Input
                                             type="text"
+                                            // ด่านตรวจ/อนุมัติ → ค่าจริงที่ช่างบันทึกไว้ ไม่มีก็ "-" (แบบเดียวกับวันที่เริ่มแก้ไข)
                                             // กำลังจะเข้าคิวรออนุมัติ → พรีวิววันเวลาที่จะถูกประทับตอนกดบันทึก
                                             // | ยังซ่อมไม่จบ → แสดงค่าเดิมถ้ามี ไม่มีก็ "-" (ไม่โชว์วันนี้ กันเข้าใจผิดว่าเสร็จแล้ว)
-                                            value={hasResolvedDate
+                                            value={(!viewOnly && hasResolvedDate)
                                                 ? `${localTodayFormatted()} ${localNowHHMM()}`
                                                 : job.resolved_date
                                                     ? `${job.resolved_date}${job.resolved_time ? ` ${job.resolved_time}` : ""}`
@@ -2988,8 +3073,86 @@ export default function CMInProgressForm() {
                                             containerProps={{ className: "!tw-min-w-0 !tw-h-12" }}
                                         />
                                     </div>
-                                </div>
-                            )}
+                                    )}
+                            </div>
+
+                            {/* ช่างที่จะลงเวลาเข้า Maximo — laborcode คนละชุดกับ username ใน iMPS
+                                จึงต้องให้เลือกเอง ไม่งั้น IN09 จะ unmapped ทั้งใบ */}
+                            <div id="cm-maximo-labor" className="tw-space-y-2">
+                                <label className="tw-flex tw-items-center tw-gap-2 tw-text-sm tw-font-semibold tw-text-gray-700">
+                                    <span className="tw-w-1.5 tw-h-1.5 tw-rounded-full tw-bg-blue-500"></span>
+                                    {t("maximoLabor", lang)}
+                                    {maximoLaborRequired && <span className="tw-text-red-500">*</span>}
+                                </label>
+
+                                {/* ด่านตรวจ/อนุมัติ — ผู้อนุมัติต้องเห็นว่าช่างเลือกใครไว้ แต่แก้ไม่ได้ */}
+                                {viewOnly ? (
+                                    maximoLabor.length === 0 ? (
+                                        <p className="tw-text-xs tw-text-gray-400">{t("maximoLaborNone", lang)}</p>
+                                    ) : (
+                                        <div className="tw-flex tw-flex-wrap tw-gap-2">
+                                            {maximoLabor.map((code) => {
+                                                const opt = laborOptions.find((o) => o.laborcode === code);
+                                                const label = opt?.name && opt.name !== code ? opt.name : code;
+                                                const isContractor = opt?.needs_name;
+                                                return (
+                                                    <span
+                                                        key={code}
+                                                        className="tw-inline-flex tw-items-center tw-gap-2 tw-rounded-full tw-border tw-border-blue-200 tw-bg-blue-50 tw-px-3 tw-py-1 tw-text-xs tw-text-blue-800"
+                                                    >
+                                                        <span className="tw-font-medium">
+                                                            {isContractor && maximoContractor ? maximoContractor : label}
+                                                        </span>
+                                                        <span className="tw-font-mono tw-text-[11px] tw-text-blue-400">{code}</span>
+                                                    </span>
+                                                );
+                                            })}
+                                        </div>
+                                    )
+                                ) : (
+                                <>
+                                    <p className="tw-text-xs tw-text-gray-500">{t("maximoLaborHint", lang)}</p>
+                                    {laborOptions.length === 0 ? (
+                                        <p className="tw-text-xs tw-text-orange-600">{t("maximoLaborEmpty", lang)}</p>
+                                    ) : (
+                                        <div className="tw-rounded-xl tw-border tw-border-gray-200 tw-bg-white tw-divide-y tw-divide-gray-100 tw-max-h-56 tw-overflow-y-auto">
+                                            {laborOptions.map((o) => (
+                                                <label key={o.laborcode} className="tw-flex tw-items-center tw-gap-2.5 tw-px-3 tw-py-2.5 tw-cursor-pointer hover:tw-bg-blue-50/60 tw-transition-colors">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={maximoLabor.includes(o.laborcode)}
+                                                        onChange={() => toggleMaximoLabor(o.laborcode)}
+                                                        className="tw-h-4 tw-w-4 tw-shrink-0 tw-rounded tw-border-gray-300 tw-text-blue-600 focus:tw-ring-blue-500 tw-cursor-pointer"
+                                                    />
+                                                    <span className="tw-min-w-0 tw-truncate tw-text-sm tw-text-gray-800">{o.name}</span>
+                                                    <span className="tw-ml-auto tw-font-mono tw-text-xs tw-text-gray-400">{o.laborcode}</span>
+                                                </label>
+                                            ))}
+                                        </div>
+                                    )}
+
+                                    {contractorPicked && (
+                                        <div className="tw-space-y-1.5 tw-pt-1">
+                                            <label className="tw-block tw-text-sm tw-font-semibold tw-text-gray-700">
+                                                {t("contractorName", lang)} <span className="tw-text-red-500">*</span>
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={maximoContractor}
+                                                onChange={(e) => setMaximoContractor(e.target.value)}
+                                                placeholder={t("contractorPlaceholder", lang)}
+                                                className={`tw-w-full tw-h-12 tw-rounded-xl tw-border tw-px-4 tw-text-sm tw-text-gray-700 focus:tw-outline-none ${contractorMissing
+                                                    ? "tw-border-red-400 focus:tw-border-red-500"
+                                                    : "tw-border-gray-200 focus:tw-border-blue-500"}`}
+                                            />
+                                            {contractorMissing && (
+                                                <p className="tw-text-xs tw-text-red-600">{t("contractorRequired", lang)}</p>
+                                            )}
+                                        </div>
+                                    )}
+                                </>
+                                )}
+                            </div>
 
                             {/* Repair Result */}
                             {!isNoProblem && (
@@ -3031,7 +3194,9 @@ export default function CMInProgressForm() {
                                                 )}
                                             </div>
                                         </div>
-                                        {isClosedResult && (
+                                        {/* ช่องกรอกวันที่เสร็จจริง — เฉพาะตอนที่แก้ไขได้
+                                            ด่านตรวจ/อนุมัติอ่านค่าจากช่องอ่านอย่างเดียวด้านบนแทน (showCompletedAtTop) */}
+                                        {isClosedResult && !viewOnly && (
                                             <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-5">
                                                 <div className="tw-space-y-2">
                                                     <label className="tw-flex tw-items-center tw-gap-2 tw-text-sm tw-font-semibold tw-text-gray-700">
@@ -3058,6 +3223,54 @@ export default function CMInProgressForm() {
                                     </div>
                                 </div>
                             )}
+
+                            {/* Faulty Equipment — ช่างเลือกตำแหน่งจุดที่มีความผิดปกติตรงนี้
+                                ต้องมาก่อน "ปัญหา" เพราะตัวเลือกปัญหา/สาเหตุ/การแก้ไข cascade มาจากค่านี้ */}
+                            <div id="cm-equipment" className="tw-space-y-2">
+                                <label className="tw-flex tw-items-center tw-gap-2 tw-text-sm tw-font-semibold tw-text-gray-700">
+                                    <span className="tw-w-1.5 tw-h-1.5 tw-rounded-full tw-bg-blue-500"></span>
+                                    {t("faultyEquipment", lang)} <span className="tw-text-red-500">*</span>
+                                </label>
+                                <div className="tw-flex-1 tw-min-w-0 md:tw-flex-none md:tw-w-96">
+                                    <select
+                                        value={job.faulty_equipment}
+                                        disabled={viewOnly}
+                                        onChange={e => setJob(prev => ({ ...prev, faulty_equipment: e.target.value }))}
+                                        className={`tw-w-full tw-h-12 tw-border tw-border-gray-200 tw-rounded-xl tw-px-4 tw-text-sm tw-font-medium tw-transition-all focus:tw-outline-none focus:tw-ring-3 focus:tw-ring-blue-500/20 focus:tw-border-blue-500 ${viewOnly ? "tw-bg-gray-100 tw-text-blue-gray-700 tw-cursor-not-allowed tw-opacity-100" : "tw-bg-white tw-text-gray-700 hover:tw-border-blue-400 tw-cursor-pointer"}`}
+                                        style={viewOnly ? { backgroundColor: "#f3f4f6", color: "#455a64" } : {}}
+                                    >
+                                        <option value="">{t("selectEquipmentPlaceholder", lang)}</option>
+                                        <optgroup label={lang === "th" ? "รหัสความเสียหาย" : "Failure Code"}>
+                                            {maximoTree.classes.map(c => (
+                                                <option key={c.code} value={c.code}>{c.description || c.code}</option>
+                                            ))}
+                                            {/* ใบงานเก่าที่เก็บรหัสชุดเดิม — ต้องมี option ให้ค่าที่เลือกไว้ ไม่งั้น select โชว์ว่าง */}
+                                            {job.faulty_equipment
+                                                && !maximoTree.classes.some(c => c.code === job.faulty_equipment)
+                                                && !job.faulty_equipment.startsWith("charger_") && (
+                                                <option value={job.faulty_equipment}>
+                                                    {failureCodeLabel(job.faulty_equipment)}
+                                                </option>
+                                            )}
+                                        </optgroup>
+                                        {/* กลุ่มเดิม — ให้รายงานเก่าที่บันทึกเป็น charger_x / mdb / ccb ฯลฯ ยังแสดงผลได้ */}
+                                        {chargers.length > 0 && (
+                                            <optgroup label={t("chargersGroup", lang)}>
+                                                {chargers.map((c, i) => {
+                                                    const id = c.chargerNo ?? c.charger_id ?? i + 1;
+                                                    const sn = c.SN ?? c.sn ?? "";
+                                                    const label = c.charger_name || `Charger ${c.chargerNo ?? i + 1}`;
+                                                    return <option key={id} value={`charger_${id}`}>{sn ? `${label} (${sn})` : label}</option>;
+                                                })}
+                                            </optgroup>
+                                        )}
+                                        <optgroup label={t("otherEquipmentGroup", lang)}>
+                                            {FIXED_EQUIPMENT.map(eq => <option key={eq} value={eq.toLowerCase()}>{eq}</option>)}
+                                        </optgroup>
+                                    </select>
+                                    {loadingChargers && <p className="tw-text-xs tw-text-blue-gray-400 tw-mt-2">{t("loadingChargers", lang)}</p>}
+                                </div>
+                            </div>
 
                             {/* Problem Type */}
                             {!isWaitingForSiteCondition && (
@@ -3223,7 +3436,7 @@ export default function CMInProgressForm() {
                                                             <div className="tw-flex tw-items-center tw-justify-between tw-mb-3">
                                                                 <span className="tw-text-sm tw-font-semibold tw-text-red-700 tw-flex tw-items-center tw-gap-2">
                                                                     <span className="tw-w-2 tw-h-2 tw-rounded-full tw-bg-red-500"></span>
-                                                                    {t("beforePhoto", lang)} <span className="tw-text-red-500">*</span>
+                                                                    {t("beforePhoto", lang)}
                                                                 </span>
                                                                 {/* label ไม่ใช่ form control — fieldset[disabled] block ไม่ได้ และ attribute hidden ก็ถูก tw-inline-flex ทับ จึงต้องไม่ render เลย */}
                                                                 {!viewOnly && (
@@ -3255,8 +3468,8 @@ export default function CMInProgressForm() {
                                                                     ))}
                                                                 </div>
                                                             ) : (
-                                                                <div className="tw-text-center tw-py-6 tw-text-red-500 tw-text-sm tw-font-medium">
-                                                                    {lang === "th" ? "⚠️ กรุณาแนบรูปก่อนแก้ไข" : "⚠️ Please attach before image"}
+                                                                <div className="tw-text-center tw-py-6 tw-text-blue-gray-400 tw-text-sm tw-font-medium">
+                                                                    {lang === "th" ? "ยังไม่มีรูปก่อนแก้ไข" : "No before image yet"}
                                                                 </div>
                                                             )}
                                                         </div>
@@ -3444,6 +3657,7 @@ export default function CMInProgressForm() {
 
                     {/* Validation Card — ซ่อนในโหมดดูอย่างเดียว */}
                     {!viewOnly && <div className="tw-mb-6"><CMValidationCard validations={displayValidations} lang={lang} /></div>}
+                    </>)}
                     </fieldset>
 
                     {/* Actions */}
@@ -3458,6 +3672,7 @@ export default function CMInProgressForm() {
                                 >
                                     {lang === "th" ? "กลับ" : "Back"}
                                 </Button>
+                                {cancelAction}
                                 {canEditTechnicianData && (
                                     <Button
                                         type="button"
@@ -3471,8 +3686,25 @@ export default function CMInProgressForm() {
                                 {/* อนุมัติ / ตีกลับ — เห็นเฉพาะ admin/planner และเฉพาะใบที่รออนุมัติ */}
                                 {approvalActions}
                             </>
+                        ) : !repairStarted ? (
+                            /* ช่างยังไม่กดเริ่มแก้ไข — มีแค่ปุ่มเริ่มแก้ไข (ข้อมูลด้านบนอ่านอย่างเดียว) */
+                            <>
+                                {cancelAction}
+                                <Button
+                                    type="button"
+                                    onClick={startRepair}
+                                    className="tw-bg-amber-500 hover:tw-bg-amber-600 tw-text-white tw-font-semibold tw-text-base tw-px-8 tw-py-3 tw-rounded-xl hover:tw-shadow-xl hover:tw-shadow-amber-500/30 tw-transition-all"
+                                >
+                                    {repairHistory.length > 0
+                                        ? (lang === "th"
+                                            ? `เริ่มแก้ไขรอบที่ ${repairHistory.length + 1}`
+                                            : `Start repair round ${repairHistory.length + 1}`)
+                                        : (lang === "th" ? "เริ่มแก้ไข" : "Start repair")}
+                                </Button>
+                            </>
                         ) : (
                             <>
+                            {cancelAction}
                             {/* planner เข้าโหมดแก้ไขข้อมูลของช่าง — ต้องถอยออกได้โดยไม่บันทึก */}
                             {isPlannerEditing && (
                                 <Button
@@ -3488,7 +3720,7 @@ export default function CMInProgressForm() {
                             {/* โหมดแก้ไขข้อมูลเหลือแค่ ยกเลิกแก้ไข + ปิดงาน — อนุมัติ/ตีกลับ เป็นของหน้าตรวจ
                                 กดตอนแก้ไขค้างอยู่จะทิ้งสิ่งที่แก้ไปโดยไม่ได้บันทึก */}
                             {!isPlannerEditing && approvalActions}
-                            {isWaitForSchedule && !hasChosenResult && !isNoProblem && (
+                            {isWaitForSchedule && !plannerSelfCloseMode && !hasChosenResult && !isNoProblem && (
                                 <Button
                                     onClick={() => { void onFinalSave({ keepStatus: true }); }}
                                     disabled={saving || !canSaveProgress}
@@ -3498,16 +3730,17 @@ export default function CMInProgressForm() {
                                     {saving ? t("saving", lang) : (lang === "th" ? "บันทึกความคืบหน้า" : "Save progress")}
                                 </Button>
                             )}
-                            {(!isWaitForSchedule || hasChosenResult || isNoProblem) && (
+                            {(plannerSelfCloseMode || !isWaitForSchedule || hasChosenResult || isNoProblem) && (
                             <Button
                                 onClick={() => { void onFinalSave(); }}
-    disabled={saving || ((isClosedResult || plannerAutoClose) ? !canClose : !canSave)}
-                                className={`tw-text-white tw-font-semibold tw-text-base tw-px-8 tw-py-3 tw-rounded-xl hover:tw-shadow-xl disabled:tw-opacity-50 disabled:tw-cursor-not-allowed disabled:tw-shadow-none tw-transition-all tw-transform hover:tw-scale-[1.02] ${isClosing || plannerAutoClose
-                                    ? "tw-bg-gray-700 hover:tw-bg-red-800 hover:tw-shadow-red-500/30"
+                                disabled={saving || (plannerSelfCloseMode ? (!plannerAutoClose || !canClose) : ((isClosedResult || plannerAutoClose) ? !canClose : !canSave))}
+                                title={plannerSelfCloseMode && !plannerAutoClose ? (lang === "th" ? "กรุณาเลือกผลสุดท้ายที่สามารถปิดใบงานได้" : "Select a final result that can close the work order") : undefined}
+                                className={`tw-text-white tw-font-semibold tw-text-base tw-px-8 tw-py-3 tw-rounded-xl hover:tw-shadow-xl disabled:tw-opacity-50 disabled:tw-cursor-not-allowed disabled:tw-shadow-none tw-transition-all tw-transform hover:tw-scale-[1.02] ${plannerSelfCloseMode || isClosing || plannerAutoClose
+                                    ? "tw-bg-green-600 hover:tw-bg-green-700 hover:tw-shadow-green-500/30"
                                     : "tw-bg-amber-500 hover:tw-bg-amber-600 hover:tw-shadow-amber-500/30"
                                     }`}
                             >
-                                {saving ? t("saving", lang) : (isClosing || plannerAutoClose ? t("closed", lang) : t("save", lang))}
+                                {saving ? t("saving", lang) : (plannerSelfCloseMode || isClosing || plannerAutoClose ? t("closed", lang) : t("save", lang))}
                             </Button>
                             )}
                             </>
@@ -3554,6 +3787,51 @@ export default function CMInProgressForm() {
             )}
 
             {/* Modal ตีกลับ — บังคับกรอกเหตุผลก่อนส่งกลับให้ช่าง */}
+            {cancelOpen && (
+                <div
+                    className="tw-fixed tw-inset-0 tw-z-[9999] tw-flex tw-items-center tw-justify-center tw-bg-black/50 tw-p-4"
+                    onClick={() => { if (!cancelling) setCancelOpen(false); }}
+                >
+                    <div className="tw-w-full tw-max-w-lg tw-rounded-2xl tw-bg-white tw-p-6 tw-shadow-2xl" onClick={e => e.stopPropagation()}>
+                        <h3 className="tw-text-lg tw-font-bold tw-text-red-700 tw-mb-2">
+                            {t("cancelWorkOrder", lang)}
+                        </h3>
+                        <p className="tw-text-sm tw-text-blue-gray-600 tw-mb-4">
+                            {lang === "th" ? "ระบุเหตุผลที่ยกเลิกใบงานนี้ (ถ้ามี)" : "Enter the reason for cancelling this work order (optional)."}
+                        </p>
+                        <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-2">
+                            {t("cancelReason", lang)}
+                        </label>
+                        <textarea
+                            value={cancelRemark}
+                            onChange={e => setCancelRemark(e.target.value)}
+                            rows={4}
+                            autoFocus
+                            className="tw-w-full tw-px-3 tw-py-2 tw-border tw-border-blue-gray-200 tw-rounded-lg tw-text-sm tw-bg-white focus:tw-outline-none focus:tw-border-red-400 tw-transition-colors tw-resize-y"
+                        />
+                        <div className="tw-flex tw-items-center tw-justify-end tw-gap-3 tw-mt-5">
+                            <Button
+                                type="button"
+                                variant="outlined"
+                                disabled={cancelling}
+                                onClick={() => setCancelOpen(false)}
+                                className="tw-border-blue-gray-200 tw-text-blue-gray-700 hover:tw-border-blue-gray-300"
+                            >
+                                {lang === "th" ? "กลับ" : "Back"}
+                            </Button>
+                            <Button
+                                type="button"
+                                onClick={onCancelJob}
+                                disabled={cancelling}
+                                className="tw-bg-amber-500 hover:tw-bg-amber-600 tw-text-white tw-font-semibold disabled:tw-opacity-50 disabled:tw-cursor-not-allowed"
+                            >
+                                {cancelling ? t("cancelling", lang) : t("confirmCancel", lang)}
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {rejectOpen && (
                 <div className="tw-fixed tw-inset-0 tw-z-[9999] tw-flex tw-items-center tw-justify-center tw-bg-black/50 tw-p-4"
                     onClick={() => { if (!rejecting) setRejectOpen(false); }}>

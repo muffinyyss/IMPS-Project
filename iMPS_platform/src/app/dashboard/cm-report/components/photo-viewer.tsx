@@ -84,6 +84,7 @@ export function isAllowedCmAttachment(name?: string | null): boolean {
 }
 
 const IMAGE_EXT = /\.(jpe?g|png|webp|gif|svg|heic|bmp)(\?|#|$)/i;
+const VIDEO_EXT = /\.(mp4|mov|mkv|avi|webm|wmv)(\?|#|$)/i;
 
 /**
  * ไฟล์แนบนี้เป็นรูปหรือเปล่า — ตัดสินจาก mime ก่อน (ไฟล์ที่เพิ่งเลือกจากเครื่องมี type)
@@ -95,6 +96,12 @@ export function isImageAttachment(src?: string | null, mime?: string | null): bo
     if (type.startsWith("image/")) return true;
     if (type) return false;
     return IMAGE_EXT.test(String(src || ""));
+}
+
+export function isVideoAttachment(src?: string | null, mime?: string | null, name?: string | null): boolean {
+    const type = (mime || "").toLowerCase();
+    if (type.startsWith("video/")) return true;
+    return VIDEO_EXT.test(String(name || src || ""));
 }
 
 /** ชื่อไฟล์จาก url เมื่อไม่มีชื่อจริงติดมา (ไฟล์ที่โหลดกลับจาก server) */

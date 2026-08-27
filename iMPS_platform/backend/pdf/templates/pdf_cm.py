@@ -628,6 +628,7 @@ def _repair_history_parts(
                     "title": f"{title} ({_t('round_label', n=_num(i))})",
                     "cols": 3,
                     "img_h": 38,
+                    "draw_outer": True,
                 })
 
     if not rows:
@@ -1641,7 +1642,7 @@ def _draw_section_group(
                 cols=int(p.get("cols", 3)),
                 img_h=float(p.get("img_h", 40.0)),
                 gap=float(p.get("gap", 2.0)),
-                draw_outer=False,
+                draw_outer=bool(p.get("draw_outer", False)),
             )
         elif kind == "links":
             items = p.get("items") or []
@@ -1688,7 +1689,7 @@ def _draw_photo_grid(
     cols: int = 3,
     img_h: float = 40.0,
     gap: float = 2.0,
-    draw_outer: bool = True,
+    draw_outer: bool = False,
 ) -> float:
     """วาด grid รูปภาพในกรอบที่มี label (optional)
     draw_outer → วาดกรอบรอบ grid (ปิดได้เมื่ออยู่ภายใน group box)
@@ -1716,7 +1717,8 @@ def _draw_photo_grid(
 
     # กรอบ grid
     if draw_outer:
-        pdf.rect(x, y + label_h, w, grid_h)
+        # กรอบเดียวครอบทั้งช่องแสดงรูป รวมแถบหัวข้อก่อน/หลังแก้ไข
+        pdf.rect(x, y, w, total_h)
 
     # วาดรูป — แถวที่ไม่เต็มคอลัมน์จะจัดกึ่งกลาง ไม่ให้รูปกองซ้ายแล้วเหลือที่ว่างข้างขวา
     for i, photo in enumerate(photos):
@@ -1745,9 +1747,6 @@ def _draw_photo_grid(
                         pass
                     finally:
                         img_buf.seek(0)
-                pdf.set_draw_color(200, 200, 200)
-                pdf.rect(cx, cy, img_w, img_h)
-                pdf.set_draw_color(0, 0, 0)
                 pdf.image(
                     img_buf,
                     x=cx + (img_w - draw_w) / 2.0,
@@ -1825,9 +1824,6 @@ def _draw_links_block(
 
 
 def _draw_placeholder(pdf: FPDF, base_font: str, x: float, y: float, w: float, h: float):
-    pdf.set_draw_color(180, 180, 180)
-    pdf.rect(x, y, w, h)
-    pdf.set_draw_color(0, 0, 0)
     pdf.set_font(base_font, "", FONT_SMALL)
     pdf.set_text_color(150, 150, 150)
     pdf.set_xy(x, y + (h - LINE_H) / 2.0)
@@ -2023,9 +2019,19 @@ def _measure_action_block_height(
     w: float,
     fields: List[Tuple[str, str, float]],
     action: dict,
+    include_photos: bool = True,
 ) -> float:
-    """Measure a complete action, including both photo grids."""
+    """Measure an action details block, optionally including both photo grids."""
     height = SECTION_BAR_H + _measure_action_details_group_height(pdf, base_font, w, fields) + 2
+    if not include_photos:
+        return height + 3
+
+    height += _measure_action_photos_height(action)
+    return height + 3
+
+
+def _measure_action_photos_height(action: dict) -> float:
+    """Measure the two-column before/after photo area for one action."""
     photo_heights = []
     for photos in (action.get("beforeImages") or [], action.get("afterImages") or []):
         if not photos:
@@ -2033,8 +2039,8 @@ def _measure_action_block_height(
         rows = math.ceil(len(photos) / 2)
         photo_heights.append((LINE_H + 1.0) + rows * 38 + (rows + 1) * 2)
     if photo_heights:
-        height += max(photo_heights)
-    return height + 3
+        return max(photo_heights)
+    return 0.0
 
 
 def _draw_action_block(
@@ -2045,9 +2051,8 @@ def _draw_action_block(
     w: float,
     idx: int,
     action: dict,
-    problem_text: str = "",
-    cause_text: str = "",
     correction_text: str = "",
+    include_photos: bool = True,
 ) -> float:
     """วาดรายละเอียดการดำเนินการแก้ไข 1 ชุด (ข้อความ + รูปก่อน/หลัง)"""
     # แถบหัวข้อย่อยมีพื้นและกรอบ ให้เป็นส่วนหนึ่งของฟอร์ม ไม่ใช่ข้อความลอย
@@ -2056,10 +2061,6 @@ def _draw_action_block(
 
     action_text = action.get("text", "") or "-"
     fields: List[Tuple[str, str, float]] = []
-    if (problem_text or "").strip():
-        fields.append((_t("problem"), problem_text, 8))
-    if (cause_text or "").strip():
-        fields.append((_t("cause"), cause_text, 8))
     if (correction_text or "").strip():
         fields.append((_t("correction"), correction_text, 8))
     fields.append((_t("action_details"), action_text, 10))
@@ -2067,29 +2068,43 @@ def _draw_action_block(
     y = _draw_action_details_group(pdf, base_font, x, y, w, fields)
     y += 2
 
-    before_imgs = action.get("beforeImages") or []
-    after_imgs = action.get("afterImages") or []
-
-    if before_imgs or after_imgs:
-        col_w = (w - 4) / 2
-        start_y = y
-        max_y = y
-
-        if before_imgs:
-            max_y = max(max_y, _draw_photo_grid(
-                pdf, base_font, x, start_y, col_w, before_imgs,
-                title=_t("photos_before"), cols=2, img_h=38,
-            ))
-
-        if after_imgs:
-            max_y = max(max_y, _draw_photo_grid(
-                pdf, base_font, x + col_w + 4, start_y, col_w, after_imgs,
-                title=_t("photos_after"), cols=2, img_h=38,
-            ))
-
-        y = max_y
+    if include_photos:
+        y = _draw_action_photos(pdf, base_font, x, y, w, action)
 
     return y + 3
+
+
+def _draw_action_photos(
+    pdf: FPDF,
+    base_font: str,
+    x: float,
+    y: float,
+    w: float,
+    action: dict,
+) -> float:
+    """Draw the before/after photo area for one action without repeating its text header."""
+    before_imgs = action.get("beforeImages") or []
+    after_imgs = action.get("afterImages") or []
+    if not before_imgs and not after_imgs:
+        return y
+
+    col_w = (w - 4) / 2
+    start_y = y
+    max_y = y
+
+    if before_imgs:
+        max_y = max(max_y, _draw_photo_grid(
+            pdf, base_font, x, start_y, col_w, before_imgs,
+            title=_t("photos_before"), cols=2, img_h=38, draw_outer=True,
+        ))
+
+    if after_imgs:
+        max_y = max(max_y, _draw_photo_grid(
+            pdf, base_font, x + col_w + 4, start_y, col_w, after_imgs,
+            title=_t("photos_after"), cols=2, img_h=38, draw_outer=True,
+        ))
+
+    return max_y
 
 
 # -------------------- Report PDF class --------------------
@@ -2143,7 +2158,6 @@ def make_cm_report_pdf_bytes(
     failure_codes = doc.get("_maximo_failure_codes")
     failure_class_code = doc.get("_maximo_failure_class") or doc.get("faulty_equipment")
     corrective_actions = _pdf_corrective_actions(doc)
-    multiple_actions = len(corrective_actions) > 1
     status_bucket = _cm_status_bucket(doc)
     is_repair_form = status_bucket == "in_progress"
     issue_id = str(doc.get("issue_id", "-"))
@@ -2315,7 +2329,7 @@ def make_cm_report_pdf_bytes(
     # รูปที่เกินขอบหน้าจึงถูกตัดหาย — บล็อกนี้ย้ายไปทั้งก้อน รูปทุกใบจึงอยู่ที่เดียวกันเสมอ
     photos_obj = doc.get("photos", {}) or doc.get("photos_problem", {}) or {}
     cm_attachments = photos_obj.get("cm_photos", []) if isinstance(photos_obj, dict) else []
-    cm_images, cm_files = _split_attachments(cm_attachments)
+    cm_images, _ = _split_attachments(cm_attachments)
 
     attachment_parts: List[Dict[str, Any]] = []
     if cm_images:
@@ -2325,14 +2339,6 @@ def make_cm_report_pdf_bytes(
             "cols": 3,
             "img_h": 45,
         })
-    if cm_files:
-        attachment_parts.append({
-            "kind": "links",
-            # มีรูปอยู่ด้วยต้องมีป้ายคั่นว่าส่วนนี้คือไฟล์แนบ ถ้ามีแต่ไฟล์ หัวบล็อกบอกอยู่แล้ว
-            "label": _t("attached_files") if cm_images else "",
-            "items": cm_files,
-        })
-
     if attachment_parts:
         y = _new_page_if_needed(
             pdf, y,
@@ -2340,51 +2346,14 @@ def make_cm_report_pdf_bytes(
         )
         y = _draw_section_group(
             pdf, base_font, x0, y, page_w,
-            _t("problem_photos") if cm_images else _t("attachments"),
+            _t("problem_photos"),
             parts=attachment_parts,
         )
         y += 3
 
-    # ===== ส่วนที่ 3: ประเภทและสาเหตุของปัญหา =====
-    # ฟิลด์เหล่านี้เก็บเป็นรหัส Maximo — เอกสารต้องแสดงคำอธิบาย ไม่ใช่รหัส
+    # เตรียมรหัสปัญหา/สาเหตุไว้ใช้แปลคำอธิบายของ corrective action
     problem_codes = _as_code_list(doc.get("problem_type"))
     cause_codes = _as_code_list(doc.get("cause"))
-
-    problem_type_text = _join_labels(
-        problem_codes,
-        lambda code: problem_label(code, failure_codes, failure_class_code),
-    ) or "-"
-    section3_parts: List[Dict[str, Any]] = [
-        {
-            "kind": "info",
-            "data": [(_t("problem"), problem_type_text)],
-            "cols": 1,
-        },
-    ]
-    cause = _join_labels(
-        cause_codes,
-        lambda code: cause_label(code, failure_codes, failure_class_code),
-    )
-    if cause and cause != "-":
-        section3_parts.append({
-            "kind": "info",
-            "data": [(_t("cause"), cause)],
-            "cols": 1,
-        })
-
-    # ฟอร์ม Open ยังไม่มีช่องปัญหา/สาเหตุจากช่าง จึงไม่พิมพ์หมวดนี้จนกว่าจะมีข้อมูลจริง
-    if (is_repair_form or problem_type_text != "-" or cause) and not multiple_actions:
-        y = _new_page_if_needed(
-            pdf, y,
-            SECTION_BAR_H + sum(_measure_part_height(pdf, page_w, p) for p in section3_parts),
-        )
-        y = _draw_section_group(
-            pdf, base_font, x0, y, page_w,
-            _t("sec3_repair" if is_repair_form else "sec3"),
-            parts=section3_parts,
-        )
-        y += 3
-
     # ===== ส่วนที่ 4: การดำเนินการแก้ไข =====
     # repaired_equipment เก็บ remedy code — คำอธิบายขึ้นกับบริบท (failure code + ปัญหา + สาเหตุ)
     # เช่น REPLACE ของ POWBOAFA = "Replace (Power Board)" คนละเรื่องกับ REPLACE ของ OVERHEAT
@@ -2466,22 +2435,6 @@ def make_cm_report_pdf_bytes(
             action_cause = action_cause_codes[idx - 1] if idx - 1 < len(action_cause_codes) else ""
             context_problems = [action_problem] if action_problem else problem_codes
             context_causes = [action_cause] if action_cause else cause_codes
-            problem_text = problem_label(
-                action_problem,
-                failure_codes,
-                failure_class_code,
-            ) if action_problem else _join_labels(
-                context_problems,
-                lambda code: problem_label(code, failure_codes, failure_class_code),
-            )
-            cause_text = cause_label(
-                action_cause,
-                failure_codes,
-                failure_class_code,
-            ) if action_cause else _join_labels(
-                context_causes,
-                lambda code: cause_label(code, failure_codes, failure_class_code),
-            )
             correction_code = action_codes[idx - 1] if idx - 1 < len(action_codes) else str(action.get("code") or "")
             correction_labels = remedy_descriptions(
                 failure_code,
@@ -2493,17 +2446,16 @@ def make_cm_report_pdf_bytes(
             ) if correction_code else []
             correction_text = "\n".join(correction_labels) or correction_code
             action_fields: List[Tuple[str, str, float]] = []
-            if (problem_text or "").strip():
-                action_fields.append((_t("problem"), problem_text, 8))
-            if (cause_text or "").strip():
-                action_fields.append((_t("cause"), cause_text, 8))
             if (correction_text or "").strip():
                 action_fields.append((_t("correction"), correction_text, 8))
             action_fields.append((_t("action_details"), action.get("text", "") or "-", 10))
             y = _new_page_if_needed(
                 pdf,
                 y,
-                _measure_action_block_height(pdf, base_font, page_w, action_fields, action),
+                _measure_action_block_height(
+                    pdf, base_font, page_w, action_fields, action,
+                    include_photos=False,
+                ),
             )
             y = _draw_action_block(
                 pdf,
@@ -2513,10 +2465,56 @@ def make_cm_report_pdf_bytes(
                 page_w,
                 idx,
                 action,
-                problem_text=problem_text,
-                cause_text=cause_text,
                 correction_text=correction_text,
+                include_photos=False,
             )
+
+    # ===== ส่วนที่ 3: ประเภทและสาเหตุของปัญหา =====
+    # แสดงหลังรายละเอียด corrective action ตามลำดับของแบบฟอร์ม PDF
+    problem_type_text = _join_labels(
+        problem_codes,
+        lambda code: problem_label(code, failure_codes, failure_class_code),
+    ) or "-"
+    section3_parts: List[Dict[str, Any]] = [
+        {
+            "kind": "info",
+            "data": [(_t("problem"), problem_type_text)],
+            "cols": 1,
+        },
+    ]
+    cause = _join_labels(
+        cause_codes,
+        lambda code: cause_label(code, failure_codes, failure_class_code),
+    )
+    if cause and cause != "-":
+        section3_parts.append({
+            "kind": "info",
+            "data": [(_t("cause"), cause)],
+            "cols": 1,
+        })
+
+    # ฟอร์ม Open ยังไม่มีช่องปัญหา/สาเหตุจากช่าง จึงไม่พิมพ์หมวดนี้จนกว่าจะมีข้อมูลจริง
+    if is_repair_form or problem_type_text != "-" or cause:
+        y = _new_page_if_needed(
+            pdf, y,
+            SECTION_BAR_H + sum(_measure_part_height(pdf, page_w, p) for p in section3_parts),
+        )
+        y = _draw_section_group(
+            pdf, base_font, x0, y, page_w,
+            _t("sec3_repair" if is_repair_form else "sec3"),
+            parts=section3_parts,
+        )
+        y += 3
+
+    # วางรูปก่อน/หลังแก้ไขหลัง Problem and Cause Details
+    if corrective_actions:
+        for action in corrective_actions:
+            photo_height = _measure_action_photos_height(action)
+            if not photo_height:
+                continue
+            y = _new_page_if_needed(pdf, y, photo_height + 3)
+            y = _draw_action_photos(pdf, base_font, x0, y, page_w, action)
+            y += 3
 
     # ===== ส่วนที่ 5: การป้องกันและผลการซ่อม =====
     section5_parts: List[Dict[str, Any]] = []

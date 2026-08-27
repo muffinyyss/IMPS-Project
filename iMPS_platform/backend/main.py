@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from config import errorDB, client
@@ -83,9 +83,19 @@ async def _refresh_maximo_master_data() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     import asyncio
+    import logging
+
+    from routers.cmreport import ensure_cm_indexes
 
     app.state.errorDB = errorDB
     app.state.mongo_client = client
+
+    # index ของ CMReport ทุกสถานี — ทำใน thread เพื่อไม่หน่วง startup (pymongo เป็น sync)
+    try:
+        n = await asyncio.to_thread(ensure_cm_indexes)
+        logging.getLogger("startup").info(f"  ✓ CM indexes ensured on {n} collections")
+    except Exception as e:
+        logging.getLogger("startup").warning(f"  ⚠️ ensure CM indexes failed: {e}")
 
     start_watcher()
     await _warm_maximo_master_data()
@@ -104,7 +114,6 @@ app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None
 # กันเคส frontend res.json() พังด้วย "Unexpected token '<', "<html>...": ถ้ามี exception ที่ไม่ถูก handle
 # ให้ log traceback ไว้ดูสาเหตุจริง แล้วส่ง JSON กลับแทน (HTTPException/validation ยังทำงานตามเดิม)
 import logging
-from fastapi import Request
 from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
 
@@ -198,7 +207,7 @@ app.add_middleware(
 # ส่ง cookie ให้อัตโนมัติเมื่อเป็น same-origin
 import os
 from fastapi import Depends
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response, StreamingResponse
 
 from routers.pm_helpers import UPLOADS_ROOT
 from deps import get_current_user, UserClaims
@@ -206,12 +215,74 @@ from uploads_access import assert_upload_access, resolve_upload_path
 
 os.makedirs(UPLOADS_ROOT, exist_ok=True)
 
+_UPLOAD_MEDIA_TYPES = {
+    ".mp4": "video/mp4",
+    ".mov": "video/quicktime",
+    ".mkv": "video/x-matroska",
+    ".avi": "video/x-msvideo",
+    ".webm": "video/webm",
+    ".wmv": "video/x-ms-wmv",
+}
+
+
+def _upload_media_type(target):
+    import mimetypes
+    return mimetypes.guess_type(str(target))[0] or _UPLOAD_MEDIA_TYPES.get(target.suffix.lower()) or "application/octet-stream"
+
+
+def _iter_file_range(target, start: int, length: int, chunk_size: int = 1024 * 1024):
+    with target.open("rb") as stream:
+        stream.seek(start)
+        remaining = length
+        while remaining > 0:
+            chunk = stream.read(min(chunk_size, remaining))
+            if not chunk:
+                break
+            remaining -= len(chunk)
+            yield chunk
+
 
 @app.get("/uploads/{rel_path:path}")
-def serve_upload(rel_path: str, current: UserClaims = Depends(get_current_user)):
+def serve_upload(request: Request, rel_path: str, current: UserClaims = Depends(get_current_user)):
     target = resolve_upload_path(rel_path)   # กัน path traversal + 404 ถ้าไม่ใช่ไฟล์
     assert_upload_access(current, rel_path)
-    return FileResponse(target)
+    media_type = _upload_media_type(target)
+    headers = {"Accept-Ranges": "bytes"}
+
+    range_header = request.headers.get("range")
+    if range_header and media_type.startswith("video/"):
+        file_size = target.stat().st_size
+        try:
+            unit, value = range_header.split("=", 1)
+            if unit.strip().lower() != "bytes" or "," in value:
+                raise ValueError
+            start_text, end_text = value.split("-", 1)
+            if start_text.strip():
+                start = int(start_text)
+                end = int(end_text) if end_text.strip() else file_size - 1
+            else:
+                suffix_length = int(end_text)
+                start = max(file_size - suffix_length, 0)
+                end = file_size - 1
+            if file_size == 0 or start < 0 or start >= file_size or end < start:
+                raise ValueError
+            end = min(end, file_size - 1)
+        except (ValueError, TypeError):
+            return Response(status_code=416, headers={"Content-Range": f"bytes */{file_size}"})
+
+        length = end - start + 1
+        headers.update({
+            "Content-Range": f"bytes {start}-{end}/{file_size}",
+            "Content-Length": str(length),
+        })
+        return StreamingResponse(
+            _iter_file_range(target, start, length),
+            status_code=206,
+            media_type=media_type,
+            headers=headers,
+        )
+
+    return FileResponse(target, media_type=media_type, headers=headers)
 
 from config import client1  # re-export for pdf_routes1.py
 
@@ -249,6 +320,7 @@ from routers.pm_all_stations import router as pm_all_stations_router
 from routers.pm_maximo import router as pm_maximo_router
 from routers.cm_maximo import router as cm_maximo_router
 from routers.ai_agent import router as ai_agent_router
+from routers.company import router as company_router
 
 app.include_router(users_router)
 app.include_router(stations_router)
@@ -270,3 +342,4 @@ app.include_router(pm_all_stations_router)
 app.include_router(pm_maximo_router)
 app.include_router(cm_maximo_router)
 app.include_router(ai_agent_router)
+app.include_router(company_router)

@@ -2,6 +2,7 @@
 ขอบเขตการเห็นข้อมูลตามยี่ห้อตู้ชาร์จที่บริษัทผู้ดูแลรับผิดชอบ
 
 EDS ดูแลเฉพาะตู้ FlexxFast → พนักงาน EDS (cs/planner/technician) เห็นเฉพาะตู้ยี่ห้อนี้
+technician ของบริษัทอื่นเห็นทุกสถานีและทุกยี่ห้อเพื่อปฏิบัติงานภาคสนาม
 EGAT และบริษัทอื่นเห็นทุกยี่ห้อ | admin/owner ไม่ถูกจำกัดไม่ว่าสังกัดไหน
 
 สถานีที่มีตู้ปนหลายยี่ห้อ → ยังเห็นสถานีได้ แต่รายการตู้ถูกกรองเหลือเฉพาะยี่ห้อที่ดูแล
@@ -56,6 +57,8 @@ def _company_of(current: UserClaims) -> str:
 
 def brand_scope_of(current: UserClaims) -> Optional[str]:
     """ยี่ห้อที่ user คนนี้ถูกจำกัดให้เห็น — None = เห็นทุกยี่ห้อ"""
+    if getattr(current, "is_super_admin", False):
+        return None
     if (current.role or "").strip().lower() not in BRAND_SCOPED_ROLES:
         return None
     return COMPANY_BRAND_SCOPE.get(_company_of(current).lower())
