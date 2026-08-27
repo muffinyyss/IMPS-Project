@@ -875,6 +875,58 @@ def _serialize_open(doc: dict) -> dict:
     }
 
 
+def _attach_owner_info(items: list[dict]) -> None:
+    """เติม charger_brand / company ให้ใบงาน Maximo (in-place)
+
+    PM Dashboard กรองตาม BRAND กับ COMPANY เหมือน CM Dashboard แต่ใบงานที่ Maximo
+    ส่งมาไม่มี 2 field นี้ — หาให้จาก iMPS ทีเดียวทั้งชุด (2 query ไม่ว่าจะกี่ใบ):
+      brand   ← ตู้ตาม SN ; ใบระดับสถานีใช้ยี่ห้อสถานีได้เฉพาะตอนทุกตู้ยี่ห้อเดียวกัน
+      company ← สถานีเจ้าของใบงาน (ทับค่า company ที่ Maximo ส่งมาไม่ได้ จึงใช้ต่อเมื่อว่าง)
+    ล้มเหลว = ปล่อยผ่าน ใบงานยังแสดงได้ แค่ไม่มียี่ห้อ
+    """
+    station_ids = {str(i.get("station_id") or "").strip() for i in items}
+    station_ids.discard("")
+    if not station_ids:
+        return
+    try:
+        chargers = list(charger_collection.find(
+            {"station_id": {"$in": list(station_ids)}},
+            {"_id": 0, "SN": 1, "station_id": 1, "brand": 1},
+        ))
+        stations = list(station_collection.find(
+            {"station_id": {"$in": list(station_ids)}},
+            {"_id": 0, "station_id": 1, "company": 1},
+        ))
+    except Exception as e:
+        log.warning(f"  ⚠️ หา brand/company ของใบงาน Maximo ไม่สำเร็จ: {e}")
+        return
+
+    sn_brand: dict[str, str] = {}
+    brands_by_station: dict[str, list[str]] = {}
+    for c in chargers:
+        brand = str(c.get("brand") or "").strip()
+        if not brand:
+            continue
+        sn = str(c.get("SN") or "").strip()
+        if sn:
+            sn_brand[sn] = brand
+        sid = str(c.get("station_id") or "").strip()
+        if sid:
+            seen = brands_by_station.setdefault(sid, [])
+            if brand not in seen:
+                seen.append(brand)
+    station_brand = {sid: b[0] for sid, b in brands_by_station.items() if len(b) == 1}
+    station_company = {
+        str(s.get("station_id") or ""): str(s.get("company") or "") for s in stations
+    }
+
+    for i in items:
+        sid = str(i.get("station_id") or "").strip()
+        i["charger_brand"] = sn_brand.get(str(i.get("sn") or "").strip()) or station_brand.get(sid, "")
+        if not str(i.get("company") or "").strip():
+            i["company"] = station_company.get(sid, "")
+
+
 @router.get("/maximo/pm/open")
 async def list_maximo_pm_open(
     source: Optional[PMSource] = Query(None, description="tab ที่กำลังดูอยู่ใน PM report"),
@@ -969,6 +1021,7 @@ async def list_maximo_pm_open(
                     log.warning(f"  ⚠️ backfill station_id ของ {d.get('wonum')} ไม่สำเร็จ: {e}")
 
     items = [_serialize_open(d) for d in docs]
+    _attach_owner_info(items)
 
     # เช็คว่าใบไหนมีอยู่จริงใน Maximo — ถามทีเดียวทั้งชุด
     # ล้มก็ปล่อยผ่าน (คืน exists_in_maximo = None = ยังไม่รู้) ไม่บล็อกการแสดงผล

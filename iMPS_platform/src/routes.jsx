@@ -59,6 +59,15 @@ const baseRoutes = [
       {
         layout: "dashboard",
         icon: <i className="fa fa-chart-pie" />,
+        // หน้าวิเคราะห์ PM — คู่กับ CM Dashboard, ข้อมูลชุดเดียวกับ PM List
+        // cs/technician ไม่เห็นส่วนวิเคราะห์ (ถ้าเข้า URL ตรง เพจจะพาไป PM List ให้เอง)
+        name: "PM Dashboard",
+        path: "/dashboard/pm-dashboard",
+        allow: ["admin", "owner", "planner"],
+      },
+      {
+        layout: "dashboard",
+        icon: <i className="fa fa-chart-pie" />,
         name: "CM Dashboard",
         path: "/dashboard/cm-dashboard",
         // cs/technician ไม่เห็นส่วนวิเคราะห์ — เมนูของ role นี้คือ CM List ด้านล่าง

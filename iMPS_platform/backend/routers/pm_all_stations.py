@@ -198,7 +198,7 @@ async def get_all_station_pm_reports(
             lambda: list(
                 station_collection.find(
                     station_query,
-                    {"_id": 0, "station_id": 1, "station_name": 1}
+                    {"_id": 0, "station_id": 1, "station_name": 1, "company": 1}
                 )
             )
         )
@@ -211,6 +211,8 @@ async def get_all_station_pm_reports(
 
     station_ids      = [s["station_id"] for s in stations]
     station_name_map = {s["station_id"]: s.get("station_name", "-") for s in stations}
+    # บริษัทเจ้าของสถานี — PM Dashboard ใช้กรอง COMPANY (แพทเทิร์นเดียวกับ CM)
+    station_company_map = {s["station_id"]: (s.get("company") or "") for s in stations}
 
     # ── 2. Chargers (sync PyMongo) ──────────────────────────────
     try:
@@ -219,7 +221,7 @@ async def get_all_station_pm_reports(
             lambda: list(
                 charger_collection.find(
                     {"station_id": {"$in": station_ids}},
-                    {"_id": 0, "SN": 1, "chargeBoxID": 1, "station_id": 1}
+                    {"_id": 0, "SN": 1, "chargeBoxID": 1, "station_id": 1, "brand": 1}
                 )
             )
         )
@@ -232,6 +234,26 @@ async def get_all_station_pm_reports(
         for c in chargers
         if c.get("SN") and c["SN"] not in ("-", "", None)
     ]
+
+    # ── ยี่ห้อของตู้ (สำหรับตัวกรอง BRAND ของ PM Dashboard) ──
+    # เอกสารชนิด CHARGER รู้ SN จึงระบุยี่ห้อได้ตรงตัว ส่วน MDB/CCB/CB-BOX/STATION
+    # เป็นเอกสารระดับสถานี — ใช้ยี่ห้อของสถานีได้เฉพาะตอนทุกตู้เป็นยี่ห้อเดียวกัน
+    # (เกณฑ์เดียวกับ _brand_clause_for_station ฝั่ง CM)
+    sn_brand_map: dict[str, str] = {}
+    brands_by_station: dict[str, list[str]] = {}
+    for c in chargers:
+        brand = str(c.get("brand") or "").strip()
+        sn = c.get("SN")
+        if sn and brand:
+            sn_brand_map[sn] = brand
+        sid = c.get("station_id") or ""
+        if sid and brand:
+            seen = brands_by_station.setdefault(sid, [])
+            if brand not in seen:
+                seen.append(brand)
+    station_brand_map = {
+        sid: brands[0] for sid, brands in brands_by_station.items() if len(brands) == 1
+    }
 
     # ── 3. Fetch all sources concurrently ───────────────────────
     # CHARGER → keyed ด้วย SN ; MDB/CCB/CB-BOX/STATION → keyed ด้วย station_id
@@ -271,7 +293,13 @@ async def get_all_station_pm_reports(
     # ── 4. Enrich + Filter + Sort ───────────────────────────────
     # ── 4. Enrich + Filter + Sort ───────────────────────────────
     for r in all_reports:
-        r["station_name"] = station_name_map.get(r.get("station_id", ""), "-")
+        sid = r.get("station_id", "")
+        r["station_name"] = station_name_map.get(sid, "-")
+        r["company"] = station_company_map.get(sid, "")
+        r["charger_brand"] = (
+            sn_brand_map.get(r.get("sn") or "")
+            or station_brand_map.get(sid, "")
+        )
 
     # ✅ กรอง pre ออก
     all_reports = [r for r in all_reports if r.get("side") not in ("pre", "Pre", "PRE")]
