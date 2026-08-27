@@ -22,13 +22,14 @@ export const labelOf = (
 ) => options.find((o) => o.value === value)?.[lang] ?? value;
 
 /** dropdown แบบเลือกได้หลายอัน (checkbox) หน้าตาเข้าชุดกับ Material Tailwind Select */
-export const MultiSelectDropdown = ({ label, options, selected, onChange, lang, emptyLabel }: {
+export const MultiSelectDropdown = ({ label, options, selected, onChange, lang, emptyLabel, disabled = false }: {
     label: string;
     options: readonly { value: string; th: string; en: string }[];
     selected: string[];
     onChange: (next: string[]) => void;
     lang: "th" | "en";
     emptyLabel: string;
+    disabled?: boolean;
 }) => {
     const [open, setOpen] = useState(false);
     const boxRef = useRef<HTMLDivElement>(null);
@@ -52,8 +53,9 @@ export const MultiSelectDropdown = ({ label, options, selected, onChange, lang, 
         <div className="tw-relative tw-w-full" ref={boxRef}>
             <button
                 type="button"
-                onClick={() => setOpen((o) => !o)}
-                className="tw-peer tw-w-full tw-h-full tw-bg-transparent tw-text-blue-gray-700 tw-font-sans tw-font-normal tw-outline-none tw-border tw-border-blue-gray-200 focus:tw-border-2 focus:tw-border-gray-900 tw-rounded-[7px] tw-px-3 tw-py-2.5 tw-text-sm tw-text-left tw-cursor-pointer tw-truncate"
+                onClick={() => !disabled && setOpen((o) => !o)}
+                disabled={disabled}
+                className="tw-peer tw-w-full tw-h-full tw-bg-transparent tw-text-blue-gray-700 tw-font-sans tw-font-normal tw-outline-none tw-border tw-border-blue-gray-200 focus:tw-border-2 focus:tw-border-gray-900 tw-rounded-[7px] tw-px-3 tw-py-2.5 tw-text-sm tw-text-left tw-truncate disabled:tw-bg-gray-100 disabled:tw-cursor-not-allowed tw-cursor-pointer"
             >
                 <span className={selected.length ? "" : "tw-text-blue-gray-300"}>{summary}</span>
             </button>
@@ -65,7 +67,7 @@ export const MultiSelectDropdown = ({ label, options, selected, onChange, lang, 
             <label className="tw-pointer-events-none tw-absolute tw-left-3 tw--top-1.5 tw-text-[11px] tw-text-blue-gray-400 tw-bg-white tw-px-1 tw-font-normal">
                 {label}
             </label>
-            {open && (
+            {open && !disabled && (
                 <div className="tw-absolute tw-z-[10000] tw-mt-1 tw-w-full tw-rounded-xl tw-border tw-border-blue-gray-100 tw-bg-white tw-shadow-xl tw-py-1">
                     {options.map((o) => (
                         <label

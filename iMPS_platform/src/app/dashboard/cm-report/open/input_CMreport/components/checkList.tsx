@@ -18,6 +18,7 @@ import { cmBackRoute } from "@/app/dashboard/cm-report/lib/origin";
 import { brandScopeOf, canOpenCmAtStation } from "@/utils/brandScope";
 import ChargerIdentity, { type ChargerIdentityData } from "@/app/dashboard/cm-report/components/ChargerIdentity";
 import LockBanner from "@/app/dashboard/cm-report/components/LockBanner";
+import { WARRANTY_STATUS_OPTIONS, INVESTMENT_SCOPE_OPTIONS, MultiSelectDropdown } from "@/app/dashboard/stations/components/stationOptions";
 import { ZoomableImg, AttachmentFileRow, isImageAttachment, isVideoAttachment, isAllowedCmAttachment, CM_ACCEPT_ATTACH } from "@/app/dashboard/cm-report/components/photo-viewer";
 
 // ==================== TRANSLATIONS ====================
@@ -49,6 +50,10 @@ const T = {
     problemFound: { th: "ปัญหาที่พบ", en: "Problem Found" },
     jobStatus: { th: "สถานะงาน", en: "Job Status" },
     remarks_open: { th: "หมายเหตุ", en: "Remarks" },
+    warrantyStatus: { th: "การรับประกัน", en: "Warranty" },
+    investmentScope: { th: "สัดส่วนการลงทุน", en: "Investment Scope" },
+    ioCode: { th: "รหัสค่าใช้จ่าย (IO)", en: "Expense Code (IO)" },
+    selectPlaceholder: { th: "เลือก...", en: "Select..." },
     save: { th: "บันทึก", en: "Save" },
     saving: { th: "กำลังบันทึก...", en: "Saving..." },
     assign: { th: "มอบหมาย", en: "Assign" },
@@ -138,6 +143,13 @@ const T = {
     photosUnit: { th: "ไฟล์", en: "files" },
     photoSavedBadge: { th: "บันทึกแล้ว", en: "Saved" },
     cancelledBannerTitle: { th: "ใบงานถูกยกเลิก", en: "Work order cancelled" },
+    // ═══ ลบใบงาน (ทำได้เฉพาะในฟอร์ม ไม่มีปุ่มลบที่หน้ารายการแล้ว) ═══
+    deleteJob: { th: "ลบใบงาน", en: "Delete work order" },
+    deleteTitle: { th: "ยืนยันการลบใบงาน", en: "Confirm delete" },
+    deleteWarn: { th: "การลบไม่สามารถย้อนกลับได้", en: "This action cannot be undone." },
+    deleteConfirm: { th: "ลบใบงาน", en: "Delete" },
+    deleting: { th: "กำลังลบ...", en: "Deleting..." },
+    deleteFailedMsg: { th: "ลบไม่สำเร็จ: ", en: "Delete failed: " },
 };
 
 const t = (key: keyof typeof T, lang: Lang): string => T[key][lang];
@@ -204,7 +216,13 @@ type ServerPhoto = { filename: string; size: number; url: string; remark?: strin
 // แนบได้ทั้งรูปและไฟล์ (PDF) — mime/name ใช้แยกว่าจะโชว์เป็นรูปหรือการ์ดไฟล์
 type PhotoItem = { id: string; file: File; preview: string; ref?: PhotoRef; isServer?: boolean; serverUrl?: string; serverGroup?: string; createdAt?: string; location?: string; mime?: string; name?: string; };
 type ChargerInfo = { chargerNo?: number; charger_no?: number | string; charger_id?: string; id?: string; chargeBoxID?: string; charger_name?: string; SN?: string; sn?: string; chargerType?: string; brand?: string; };
-type StationPublic = { station_id: string; station_name: string; };
+type StationPublic = {
+    station_id: string;
+    station_name: string;
+    warranty_status?: string;
+    investment_scope?: string[];
+    io_code?: string;
+};
 type ValidationItem = { key: string; label: string; isValid: boolean; message: string; isRequired: boolean; scrollId?: string; };
 
 const SEVERITY_OPTIONS: Severity[] = ["", "Low", "Medium", "High", "Urgent"];
@@ -588,6 +606,10 @@ export default function CMOpenForm() {
     // เหตุผลที่ยกเลิก — โชว์ในหน้ารายละเอียดใบงาน Cancelled
     const [cancelledInfo, setCancelledInfo] = useState<{ remark: string; by: string }>({ remark: "", by: "" });
     const [remarks_open, setRemarksOpen] = useState("");
+    // ข้อมูลระดับสถานี — ดึงมาแสดงจากสถานี แต่แก้ไขบนใบงานได้ (snapshot ไว้กับใบงาน)
+    const [warrantyStatus, setWarrantyStatus] = useState("");
+    const [investmentScope, setInvestmentScope] = useState<string[]>([]);
+    const [ioCode, setIoCode] = useState("");
     const [faultyEquipment, setFaultyEquipment] = useState("");
     const [selectedChargerNo, setSelectedChargerNo] = useState("");
     const [selectedChargerSn, setSelectedChargerSn] = useState("");
@@ -937,6 +959,32 @@ export default function CMOpenForm() {
 
     const goBackToList = () => router.push(buildListUrl(currentTab));
 
+    // ลบใบงานถาวร — ทำได้เฉพาะ super admin และเฉพาะจากในฟอร์ม (หน้ารายการไม่มีปุ่มลบแล้ว)
+    const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+    const [deleting, setDeleting] = useState(false);
+    const canDeleteJob = isSuperAdmin && isEdit && !!editId && !!stationId;
+
+    const handleDeleteJob = async () => {
+        if (!canDeleteJob) return;
+        setDeleting(true);
+        try {
+            const res = await apiFetch(
+                `${API_BASE}/cmreport/${encodeURIComponent(editId)}?station_id=${encodeURIComponent(stationId!)}`,
+                { method: "DELETE", credentials: "include" }
+            );
+            if (!res.ok) {
+                const j = await res.json().catch(() => ({}));
+                throw new Error(j?.detail || `HTTP ${res.status}`);
+            }
+            setConfirmDeleteOpen(false);
+            goBackToList();
+        } catch (err: any) {
+            alert(t("deleteFailedMsg", lang) + (err?.message ?? err));
+        } finally {
+            setDeleting(false);
+        }
+    };
+
     // ==================== PHOTO HANDLERS ====================
     // Pre-fetch GPS + reverse geocode ตอนเปิดหน้า เก็บ cache ไว้ใช้ตอนแนบรูปทันที
     const gpsCache = useRef<{ location?: string; fetched: boolean; promise?: Promise<string | undefined> }>({ fetched: false });
@@ -1063,13 +1111,13 @@ export default function CMOpenForm() {
             saveDraftLocal(draftKey, {
                 issueId, docName, foundDate, foundTime, location, problemDetails,
                 severity, status, remarks_open, faultyEquipment,
-                reported_by,
+                reported_by, warrantyStatus, investmentScope, ioCode,
             });
             setTimeout(() => setDraftStatus("saved"), 300);
             setTimeout(() => setDraftStatus("idle"), 2000);
         }, 1500);
         return () => clearTimeout(timer);
-    }, [issueId, docName, foundDate, foundTime, location, problemDetails, severity, status, remarks_open, faultyEquipment, reported_by, draftKey, isEdit, stationId, draftLoaded]);
+    }, [issueId, docName, foundDate, foundTime, location, problemDetails, severity, status, remarks_open, faultyEquipment, reported_by, warrantyStatus, investmentScope, ioCode, draftKey, isEdit, stationId, draftLoaded]);
 
     // ==================== DRAFT: LOAD ====================
     useEffect(() => {
@@ -1085,6 +1133,9 @@ export default function CMOpenForm() {
             if (draft.severity) setSeverity(draft.severity as Severity);
             if (draft.status) setStatus(draft.status as Status);
             if (draft.remarks_open) setRemarksOpen(draft.remarks_open);
+            if (draft.warrantyStatus) setWarrantyStatus(draft.warrantyStatus);
+            if (Array.isArray(draft.investmentScope) && draft.investmentScope.length) setInvestmentScope(draft.investmentScope);
+            if (draft.ioCode) setIoCode(draft.ioCode);
             if (draft.faultyEquipment) setFaultyEquipment(draft.faultyEquipment);
             if (draft.reported_by) setReportedBy(draft.reported_by);
             if (draft.summary) setSummary(draft.summary);
@@ -1116,7 +1167,7 @@ export default function CMOpenForm() {
     useEffect(() => {
         if (!stationId || isEdit) return; // skip ถ้าเป็น edit mode
         let alive = true;
-        (async () => { try { const res = await apiFetch(`${API_BASE}/station/info/public?station_id=${encodeURIComponent(stationId)}`, { cache: "no-store" }); if (res.ok) { const data: { station: StationPublic } = await res.json(); if (alive && !location) setLocation(data.station.station_name || ""); } } catch { } })();
+        (async () => { try { const res = await apiFetch(`${API_BASE}/station/info/public?station_id=${encodeURIComponent(stationId)}`, { cache: "no-store" }); if (res.ok) { const data: { station: StationPublic } = await res.json(); if (alive) { if (!location) setLocation(data.station.station_name || ""); if (!isEdit) { setWarrantyStatus(prev => prev || (data.station.warranty_status || "")); setInvestmentScope(prev => prev.length ? prev : (data.station.investment_scope || [])); setIoCode(prev => prev || (data.station.io_code || "")); } } } } catch { } })();
         return () => { alive = false; };
     }, [stationId, isEdit]);
 
@@ -1247,6 +1298,9 @@ export default function CMOpenForm() {
                 setRejectedInfo({ remark: data.reject_remark ?? "", by: data.rejected_by ?? "" });
                 setCancelledInfo({ remark: data.cancel_remark ?? "", by: data.cancelled_by ?? "" });
                 setRemarksOpen(data.remarks_open ?? "");
+                setWarrantyStatus(data.warranty_status ?? "");
+                setInvestmentScope(Array.isArray(data.investment_scope) ? data.investment_scope : []);
+                setIoCode(data.io_code ?? "");
                 setFaultyEquipment(data.faulty_equipment ?? "");
                 setLoadedCharger({
                     chargeBoxID: data.chargeBoxID ?? "",
@@ -1447,6 +1501,9 @@ ${in01.error ?? ""}`);
                         problem_details: problemDetails,
                         remarks_open,
                         location,
+                        warranty_status: warrantyStatus,
+                        investment_scope: investmentScope,
+                        io_code: ioCode.trim(),
                         reporter_signature: reporterSignature,
                         stage,
                         reject_remark: "",
@@ -1526,6 +1583,9 @@ ${in01.error ?? ""}`);
                             problem_details: problemDetails,
                             remarks_open,
                             location,
+                            warranty_status: warrantyStatus,
+                            investment_scope: investmentScope,
+                            io_code: ioCode.trim(),
                             reported_by,
                             reporter_signature: reporterSignature,
                         })
@@ -1732,6 +1792,9 @@ ${in01.error ?? ""}`);
         setSeverity("");
         setStatus("Wait for approve");
         setRemarksOpen("");
+        setWarrantyStatus("");
+        setInvestmentScope([]);
+        setIoCode("");
         setFaultyEquipment("");
         setPhotosOpen([]);
         setSummary("");
@@ -1892,6 +1955,40 @@ ${in01.error ?? ""}`);
                             <Input value={reported_by || ""} readOnly crossOrigin="" className="!tw-w-full !tw-bg-gray-100" containerProps={{ className: "!tw-min-w-0" }} />
                         </div>
                     </div>
+                    {/* ข้อมูลระดับสถานี — ดึงมาจากสถานี แก้ไขบนใบงานนี้ได้ */}
+                    <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-3 tw-gap-4 tw-mb-6">
+                        <div>
+                            <label className="tw-block tw-text-sm tw-text-blue-gray-600 tw-mb-1">{t("warrantyStatus", lang)}</label>
+                            <select
+                                value={warrantyStatus}
+                                disabled={fieldsLocked}
+                                onChange={e => setWarrantyStatus(e.target.value)}
+                                className={`tw-w-full tw-h-10 tw-border tw-border-blue-gray-200 tw-rounded-lg tw-px-3 tw-text-sm tw-transition-all focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-blue-500 focus:tw-border-transparent ${fieldsLocked ? "tw-bg-gray-100 tw-text-blue-gray-700 tw-cursor-not-allowed" : "tw-bg-white tw-text-blue-gray-700 hover:tw-border-blue-gray-300"}`}
+                            >
+                                <option value="">{t("selectPlaceholder", lang)}</option>
+                                {WARRANTY_STATUS_OPTIONS.map(o => (
+                                    <option key={o.value} value={o.value}>{o[lang]}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="tw-block tw-text-sm tw-text-blue-gray-600 tw-mb-1">{t("investmentScope", lang)}</label>
+                            <MultiSelectDropdown
+                                label=""
+                                options={INVESTMENT_SCOPE_OPTIONS}
+                                selected={investmentScope}
+                                onChange={setInvestmentScope}
+                                lang={lang}
+                                emptyLabel={t("selectPlaceholder", lang)}
+                                disabled={fieldsLocked}
+                            />
+                        </div>
+                        <div>
+                            <label className="tw-block tw-text-sm tw-text-blue-gray-600 tw-mb-1">{t("ioCode", lang)}</label>
+                            <Input value={ioCode} onChange={e => setIoCode(e.target.value)} readOnly={fieldsLocked} crossOrigin="" className={`!tw-w-full ${fieldsLocked ? "!tw-bg-gray-100" : ""}`} containerProps={{ className: "!tw-min-w-0" }} />
+                        </div>
+                    </div>
+
                     {/* ตู้ชาร์จที่ใบงานนี้เกี่ยวข้อง — ชื่อ / เลขตู้ / S/N / บริษัทผู้ถือครอง */}
                     {chargerIdentityItems.map((data, index) => (
                         <ChargerIdentity key={`${data.chargeBoxID || data.charger_no || data.charger_sn || "station"}-${index}`} data={data} lang={lang} />
@@ -2147,7 +2244,13 @@ ${in01.error ?? ""}`);
 
                     {/* Actions */}
                     <div className="tw-flex tw-items-center tw-justify-between tw-pt-6 tw-border-t tw-border-blue-gray-100">
-                        <div className="tw-flex-1" />
+                        <div className="tw-flex-1">
+                            {canDeleteJob && (
+                                <Button variant="outlined" onClick={() => setConfirmDeleteOpen(true)} disabled={saving || deleting} className="tw-border-red-300 tw-text-red-600 hover:tw-border-red-400 hover:tw-bg-red-50">
+                                    {t("deleteJob", lang)}
+                                </Button>
+                            )}
+                        </div>
                         <div className="tw-flex tw-items-center tw-gap-3">
                             <Button variant="outlined" onClick={goBackToList} className="tw-border-blue-gray-200 tw-text-blue-gray-700 hover:tw-border-blue-gray-300">
                                 {t("backToList", lang)}
@@ -2250,6 +2353,25 @@ ${in01.error ?? ""}`);
                     </div>
                 );
             })()}
+
+            {/* ยืนยันลบใบงาน — ปุ่มลบมีเฉพาะในฟอร์มนี้ */}
+            {confirmDeleteOpen && (
+                <div className="tw-fixed tw-inset-0 tw-z-[100] tw-flex tw-items-center tw-justify-center tw-bg-black/40 tw-p-4" onClick={() => { if (!deleting) setConfirmDeleteOpen(false); }}>
+                    <div className="tw-w-full tw-max-w-md tw-rounded-2xl tw-bg-white tw-p-6 tw-shadow-xl" onClick={(e) => e.stopPropagation()}>
+                        <h3 className="tw-text-lg tw-font-bold tw-text-blue-gray-800 tw-mb-3">{t("deleteTitle", lang)}</h3>
+                        <p className="tw-text-sm tw-text-blue-gray-800 tw-break-all">{docName || issueId || editId || "-"}</p>
+                        <p className="tw-mt-2 tw-text-sm tw-text-red-600">{t("deleteWarn", lang)}</p>
+                        <div className="tw-flex tw-items-center tw-justify-end tw-gap-3 tw-pt-4">
+                            <Button variant="outlined" onClick={() => setConfirmDeleteOpen(false)} disabled={deleting} className="tw-border-blue-gray-200 tw-text-blue-gray-700">
+                                {t("backToList", lang)}
+                            </Button>
+                            <Button onClick={() => { void handleDeleteJob(); }} disabled={deleting} className="tw-bg-red-600 hover:tw-bg-red-700 tw-text-white disabled:tw-opacity-50 disabled:tw-cursor-not-allowed">
+                                {deleting ? t("deleting", lang) : t("deleteConfirm", lang)}
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </section>
     );
 }
