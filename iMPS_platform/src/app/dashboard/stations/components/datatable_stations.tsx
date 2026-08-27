@@ -17,6 +17,7 @@ import {
 } from "@heroicons/react/24/solid";
 import { useRouter } from "next/navigation";
 import AddStation, { type NewStationPayload, MaximoLocationSelect, type MaximoLocation } from "@/app/dashboard/stations/components/addstations";
+import { WARRANTY_STATUS_OPTIONS, INVESTMENT_SCOPE_OPTIONS, MultiSelectDropdown } from "@/app/dashboard/stations/components/stationOptions";
 import { apiFetch } from "@/utils/api";
 import { isStaffRole, staffChargerPath } from "@/utils/roles";
 
@@ -60,6 +61,7 @@ type StationRow = {
   id?: string; station_id: string; station_name: string; owner: string;
   user_id: string; username: string; is_active: boolean;
   maximo_location: string; maximo_desc: string;
+  warranty_status?: string; investment_scope?: string[];
   stationImage?: string;
   mdbImages?: string[];   // ✅ เพิ่ม mdb images
   chargers: ChargerData[];
@@ -68,6 +70,7 @@ type StationRow = {
 export type StationUpdatePayload = {
   station_id?: string; station_name?: string; username?: string;
   is_active?: boolean; user_id?: string; maximo_location?: string; maximo_desc?: string;
+  warranty_status?: string; investment_scope?: string[];
 };
 
 export type ChargerUpdatePayload = {
@@ -347,7 +350,7 @@ export function SearchDataTables() {
 
   const [openEditStation, setOpenEditStation] = useState(false);
   const [editingStation, setEditingStation] = useState<StationRow | null>(null);
-  const [editStationForm, setEditStationForm] = useState({ station_name: "", is_active: true, maximo_location: "", maximo_desc: "" });
+  const [editStationForm, setEditStationForm] = useState<{ station_name: string; is_active: boolean; maximo_location: string; maximo_desc: string; warranty_status: string; investment_scope: string[] }>({ station_name: "", is_active: true, maximo_location: "", maximo_desc: "", warranty_status: "", investment_scope: [] });
 
   const isFlexxfast = (brand: string) => brand.trim().toLowerCase() === "flexxfast";
   const [openEditCharger, setOpenEditCharger] = useState(false);
@@ -467,6 +470,7 @@ export function SearchDataTables() {
         stationName: "ชื่อสถานี", chargers: "ตู้ชาร์จ", owner: "เจ้าของ", technician: "ช่างเทคนิค",
         active: "เปิดใช้งาน", inactive: "ปิดใช้งาน", actions: "จัดการ", online: "ออนไลน์", offline: "ออฟไลน์",
         maximoLocation: "Maximo Location", maximoDescription: "Maximo Description", ocppUrl: "OCPP URL", ocppSection: "🔌 OCPP",
+        warrantyStatus: "การรับประกัน", investmentScope: "สัดส่วนการลงทุน", selectPlaceholder: "เลือก",
         maximoSearch: "ค้นหา location...", maximoEmpty: "ไม่พบ location",
         chargerBoxId: "รหัสตู้ชาร์จ (Charge Box ID)", chargerType: "ประเภทตู้ชาร์จ",
         brand: "ยี่ห้อ", manufacturer: "ผู้ผลิตตู้ Charger", vendor: "ผู้จำหน่าย (Vendor)", model: "รุ่น", serialNumber: "S/N", workOrder: "W/O", power: "กำลังไฟ",
@@ -505,6 +509,7 @@ export function SearchDataTables() {
         stationName: "Station Name", chargers: "Chargers", owner: "Owner", technician: "Technician",
         active: "Active", inactive: "Inactive", actions: "Actions", online: "online", offline: "offline",
         maximoLocation: "Maximo Location", maximoDescription: "Maximo Description", ocppUrl: "OCPP URL", ocppSection: "🔌 OCPP",
+        warrantyStatus: "Warranty", investmentScope: "Investment Scope", selectPlaceholder: "Select",
         maximoSearch: "Search location...", maximoEmpty: "No location found",
         chargerBoxId: "Charge Box ID", chargerType: "Charger Type",
         brand: "Brand", manufacturer: "Charger Manufacturer", vendor: "Vendor", model: "Model", serialNumber: "S/N", workOrder: "W/O", power: "Power",
@@ -650,7 +655,7 @@ export function SearchDataTables() {
 
   useEffect(() => {
     if (openEditStation && editingStation) {
-      setEditStationForm({ station_name: editingStation.station_name ?? "", is_active: !!editingStation.is_active, maximo_location: editingStation.maximo_location ?? "", maximo_desc: editingStation.maximo_desc ?? "" });
+      setEditStationForm({ station_name: editingStation.station_name ?? "", is_active: !!editingStation.is_active, maximo_location: editingStation.maximo_location ?? "", maximo_desc: editingStation.maximo_desc ?? "", warranty_status: editingStation.warranty_status ?? "", investment_scope: editingStation.investment_scope ?? [] });
       const ownerExists = owners.some(o => o.user_id === editingStation.user_id);
       if (ownerExists) {
         setIsOtherOwnerEdit(false);
@@ -746,6 +751,7 @@ export function SearchDataTables() {
       id: s.id, station_id: s.station_id ?? "-", station_name: s.station_name ?? "-",
       owner: s.owner ?? "", user_id: s.user_id ?? "", username: s.username ?? "",
       is_active: !!s.is_active, maximo_location: s.maximo_location ?? "", maximo_desc: s.maximo_desc ?? "",
+      warranty_status: s.warranty_status ?? "", investment_scope: Array.isArray(s.investment_scope) ? s.investment_scope : [],
       stationImage: s.stationImage ?? (norm(imgs.station)[0] ?? ""),
       mdbImages: norm(imgs.mdb),
       chargers: Array.isArray(s.chargers) ? s.chargers.map(mapCharger) : [],
@@ -839,7 +845,7 @@ export function SearchDataTables() {
     try {
       setSaving(true);
       const payload: StationUpdatePayload = {
-        station_name: editStationForm.station_name.trim(), is_active: editStationForm.is_active, maximo_location: editStationForm.maximo_location.trim(), maximo_desc: editStationForm.maximo_desc.trim(), ...(isAdmin && isOtherOwnerEdit && otherOwnerNameEdit.trim()
+        station_name: editStationForm.station_name.trim(), is_active: editStationForm.is_active, maximo_location: editStationForm.maximo_location.trim(), maximo_desc: editStationForm.maximo_desc.trim(), warranty_status: editStationForm.warranty_status, investment_scope: editStationForm.investment_scope, ...(isAdmin && isOtherOwnerEdit && otherOwnerNameEdit.trim()
           ? { username: otherOwnerNameEdit.trim() }
           : isAdmin && selectedOwnerId
             ? { user_id: selectedOwnerId }
@@ -878,6 +884,8 @@ export function SearchDataTables() {
         is_active: updated.is_active ?? editStationForm.is_active,
         maximo_location: updated.maximo_location ?? editStationForm.maximo_location,
         maximo_desc: updated.maximo_desc ?? editStationForm.maximo_desc,
+        warranty_status: updated.warranty_status ?? editStationForm.warranty_status,
+        investment_scope: updated.investment_scope ?? editStationForm.investment_scope,
         user_id: updated.user_id ?? s.user_id,
         username: updated.username ?? s.username,
         stationImage: editStationImages.length ? s.stationImage : (deleteCurrentImage ? "" : s.stationImage),
@@ -980,7 +988,7 @@ export function SearchDataTables() {
       const res = await apiFetch(`/add_stations/`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       if (!res.ok) { const errBody = await res.json().catch(() => ({})); throw new Error(errBody?.detail || `Create failed: ${res.status}`); }
       const created = await res.json();
-      const newStation: StationRow = { id: created.id || created.station?.id, station_id: created.station?.station_id ?? payload.station?.station_id, station_name: created.station?.station_name ?? payload.station?.station_name ?? "", owner: created.station?.owner ?? "", user_id: created.station?.user_id ?? me?.user_id ?? "", username: created.station?.username ?? me?.username ?? "", is_active: created.station?.is_active ?? true, maximo_location: created.station?.maximo_location ?? (payload.station as any)?.maximo_location ?? "", maximo_desc: created.station?.maximo_desc ?? (payload.station as any)?.maximo_desc ?? "", stationImage: "", mdbImages: [], chargers: Array.isArray(created.chargers) ? created.chargers.map(mapCharger) : [] };
+      const newStation: StationRow = { id: created.id || created.station?.id, station_id: created.station?.station_id ?? payload.station?.station_id, station_name: created.station?.station_name ?? payload.station?.station_name ?? "", owner: created.station?.owner ?? "", user_id: created.station?.user_id ?? me?.user_id ?? "", username: created.station?.username ?? me?.username ?? "", is_active: created.station?.is_active ?? true, maximo_location: created.station?.maximo_location ?? (payload.station as any)?.maximo_location ?? "", maximo_desc: created.station?.maximo_desc ?? (payload.station as any)?.maximo_desc ?? "", warranty_status: created.station?.warranty_status ?? (payload.station as any)?.warranty_status ?? "", investment_scope: created.station?.investment_scope ?? (payload.station as any)?.investment_scope ?? [], stationImage: "", mdbImages: [], chargers: Array.isArray(created.chargers) ? created.chargers.map(mapCharger) : [] };
       setData(prev => [newStation, ...prev]); setOpenAdd(false); setNotice({ type: "success", msg: t.createSuccess }); setTimeout(() => setNotice(null), 3000);
       return created;
     } catch (e: any) { console.error(e); alert(e?.message || t.createStationFailed); throw e; } finally { setSaving(false); }
@@ -1278,6 +1286,19 @@ export function SearchDataTables() {
                     <Option value="true">{t.active}</Option>
                     <Option value="false">{t.inactive}</Option>
                   </Select>
+                  <Select label={t.warrantyStatus} value={editStationForm.warranty_status} onChange={(v) => setEditStationForm(s => ({ ...s, warranty_status: v ?? "" }))}>
+                    {WARRANTY_STATUS_OPTIONS.map((o) => (
+                      <Option key={o.value} value={o.value}>{o[lang]}</Option>
+                    ))}
+                  </Select>
+                  <MultiSelectDropdown
+                    label={t.investmentScope}
+                    options={INVESTMENT_SCOPE_OPTIONS}
+                    selected={editStationForm.investment_scope}
+                    onChange={(next) => setEditStationForm(s => ({ ...s, investment_scope: next }))}
+                    lang={lang}
+                    emptyLabel={t.selectPlaceholder}
+                  />
                 </div>
 
                 {/* ✅ Station Images — grid-cols-2 เหมือน AddStation */}
