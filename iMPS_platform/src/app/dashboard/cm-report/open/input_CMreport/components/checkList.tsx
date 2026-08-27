@@ -1955,40 +1955,6 @@ ${in01.error ?? ""}`);
                             <Input value={reported_by || ""} readOnly crossOrigin="" className="!tw-w-full !tw-bg-gray-100" containerProps={{ className: "!tw-min-w-0" }} />
                         </div>
                     </div>
-                    {/* ข้อมูลระดับสถานี — ดึงมาจากสถานี แก้ไขบนใบงานนี้ได้ */}
-                    <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-3 tw-gap-4 tw-mb-6">
-                        <div>
-                            <label className="tw-block tw-text-sm tw-text-blue-gray-600 tw-mb-1">{t("warrantyStatus", lang)}</label>
-                            <select
-                                value={warrantyStatus}
-                                disabled={fieldsLocked}
-                                onChange={e => setWarrantyStatus(e.target.value)}
-                                className={`tw-w-full tw-h-10 tw-border tw-border-blue-gray-200 tw-rounded-lg tw-px-3 tw-text-sm tw-transition-all focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-blue-500 focus:tw-border-transparent ${fieldsLocked ? "tw-bg-gray-100 tw-text-blue-gray-700 tw-cursor-not-allowed" : "tw-bg-white tw-text-blue-gray-700 hover:tw-border-blue-gray-300"}`}
-                            >
-                                <option value="">{t("selectPlaceholder", lang)}</option>
-                                {WARRANTY_STATUS_OPTIONS.map(o => (
-                                    <option key={o.value} value={o.value}>{o[lang]}</option>
-                                ))}
-                            </select>
-                        </div>
-                        <div>
-                            <label className="tw-block tw-text-sm tw-text-blue-gray-600 tw-mb-1">{t("investmentScope", lang)}</label>
-                            <MultiSelectDropdown
-                                label=""
-                                options={INVESTMENT_SCOPE_OPTIONS}
-                                selected={investmentScope}
-                                onChange={setInvestmentScope}
-                                lang={lang}
-                                emptyLabel={t("selectPlaceholder", lang)}
-                                disabled={fieldsLocked}
-                            />
-                        </div>
-                        <div>
-                            <label className="tw-block tw-text-sm tw-text-blue-gray-600 tw-mb-1">{t("ioCode", lang)}</label>
-                            <Input value={ioCode} onChange={e => setIoCode(e.target.value)} readOnly={fieldsLocked} crossOrigin="" className={`!tw-w-full ${fieldsLocked ? "!tw-bg-gray-100" : ""}`} containerProps={{ className: "!tw-min-w-0" }} />
-                        </div>
-                    </div>
-
                     {/* ตู้ชาร์จที่ใบงานนี้เกี่ยวข้อง — ชื่อ / เลขตู้ / S/N / บริษัทผู้ถือครอง */}
                     {chargerIdentityItems.map((data, index) => (
                         <ChargerIdentity key={`${data.chargeBoxID || data.charger_no || data.charger_sn || "station"}-${index}`} data={data} lang={lang} />
@@ -2073,6 +2039,40 @@ ${in01.error ?? ""}`);
                                             <option value="Urgent">Urgent</option>
                                         </select>
                                     </div>
+                                </div>
+                            </div>
+
+                            {/* ข้อมูลระดับสถานี — ดึงมาจากสถานี แก้ไขบนใบงานนี้ได้ */}
+                            <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-3 tw-gap-4 tw-mb-6">
+                                <div>
+                                    <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-2">{t("warrantyStatus", lang)}</label>
+                                    <select
+                                        value={warrantyStatus}
+                                        disabled={fieldsLocked}
+                                        onChange={e => setWarrantyStatus(e.target.value)}
+                                        className={`tw-w-full tw-h-10 tw-border tw-border-blue-gray-200 tw-rounded-lg tw-px-3 tw-text-sm tw-transition-all focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-blue-500 focus:tw-border-transparent ${fieldsLocked ? "tw-bg-gray-100 tw-text-blue-gray-700 tw-cursor-not-allowed" : "tw-bg-white tw-text-blue-gray-700 hover:tw-border-blue-gray-300"}`}
+                                    >
+                                        <option value="">{t("selectPlaceholder", lang)}</option>
+                                        {WARRANTY_STATUS_OPTIONS.map(o => (
+                                            <option key={o.value} value={o.value}>{o[lang]}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-2">{t("investmentScope", lang)}</label>
+                                    <MultiSelectDropdown
+                                        label=""
+                                        options={INVESTMENT_SCOPE_OPTIONS}
+                                        selected={investmentScope}
+                                        onChange={setInvestmentScope}
+                                        lang={lang}
+                                        emptyLabel={t("selectPlaceholder", lang)}
+                                        disabled={fieldsLocked}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-2">{t("ioCode", lang)}</label>
+                                    <Input value={ioCode} onChange={e => setIoCode(e.target.value)} readOnly={fieldsLocked} crossOrigin="" className={`!tw-w-full ${fieldsLocked ? "!tw-bg-gray-100" : ""}`} containerProps={{ className: "!tw-min-w-0" }} />
                                 </div>
                             </div>
 
