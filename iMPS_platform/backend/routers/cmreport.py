@@ -1543,6 +1543,10 @@ class CMSubmitIn(BaseModel):
     problem_details: str = ""
     remarks_open: str = ""
     location: str = ""
+    # ข้อมูลระดับสถานีที่ snapshot ไว้บนใบงาน — แก้ไขได้ตอนเปิดใบ
+    warranty_status: str = ""
+    investment_scope: List[str] = []
+    io_code: str = ""
     reported_by: Optional[str] = None
     reporter_signature: str = ""  # ลายเซ็นผู้แจ้ง (dataURL PNG)
     # ใบที่เลือก failure class ระดับ Charger จะถูกสร้างแยกต่อหนึ่งตู้
@@ -1591,6 +1595,9 @@ async def cmreport_submit(body: CMSubmitIn, current: UserClaims = Depends(get_cu
         "severity": body.severity,
         "problem_details": body.problem_details,
         "remarks_open": body.remarks_open,
+        "warranty_status": body.warranty_status,
+        "investment_scope": body.investment_scope or [],
+        "io_code": body.io_code,
         "reporter_signature": body.reporter_signature,
         # cs เปิดใบงาน → รอ head cs อนุมัติ; ใช้ชื่อ "Wait for approve" ร่วมกับด่านปิดงาน
         # แยกกันด้วย stage: "cs_approval" (ด่าน cs head) vs "close_approval" (ด่านช่างซ่อมเสร็จ)
@@ -1798,6 +1805,9 @@ async def cmreport_detail_path(
         "problem_details": doc.get("problem_details") or "",
         "remarks_open": doc.get("remarks_open") or "",
         "location": doc.get("location") or "",
+        "warranty_status": doc.get("warranty_status") or "",
+        "investment_scope": doc.get("investment_scope") or [],
+        "io_code": doc.get("io_code") or "",
 
         # flat fields จาก Planning
         "sched_start": doc.get("sched_start") or "",
@@ -1926,6 +1936,7 @@ async def cmreport_update_status(
             "planned_date", "planned_time", "plan_history", "repair_history",
             "resolved_date", "repair_result", "preventive_action", 
             "remarks", "remarks_open",
+            "warranty_status", "investment_scope", "io_code",
             "faulty_equipment",
             "charger_no", "charger_sn",
             "repaired_equipment",
