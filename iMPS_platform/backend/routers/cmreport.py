@@ -2379,18 +2379,25 @@ async def cmreport_delete(
     station_id: str = Query(...),
     current: UserClaims = Depends(get_current_user),
 ):
-    # ลบถาวร = สิทธิ์ super admin เท่านั้น
-    if not current.is_super_admin:
-        raise HTTPException(status_code=403, detail="Not allowed to delete")
-
     station_id = station_id.strip()
     try:
         oid = ObjectId(report_id)
     except Exception:
         raise HTTPException(status_code=400, detail="Bad report_id")
 
-    # ลองลบจาก CM report ก่อน (จับคู่ station_id) → ถ้าไม่เจอลองแบบไม่ผูก station → สุดท้ายลองจาก cmurl (ไฟล์อัปโหลด)
+    # ลบถาวร = super admin หรือคนที่เปิดใบงานนั้นเอง (ลบได้เฉพาะใบของตัวเอง)
     coll = get_cmreport_collection_for(station_id)
+    if not current.is_super_admin:
+        assert_station_access(current, station_id)
+        doc = await coll.find_one({"_id": oid}, {"reported_by": 1, "job": 1})
+        reporter = ""
+        if doc:
+            job = doc.get("job") or {}
+            reporter = (doc.get("reported_by") or job.get("reported_by") or "").strip().lower()
+        if not doc or reporter != (current.username or "").strip().lower():
+            raise HTTPException(status_code=403, detail="Not allowed to delete")
+
+    # ลองลบจาก CM report ก่อน (จับคู่ station_id) → ถ้าไม่เจอลองแบบไม่ผูก station → สุดท้ายลองจาก cmurl (ไฟล์อัปโหลด)
     res = await coll.delete_one({"_id": oid, "station_id": station_id})
     if res.deleted_count == 0:
         res = await coll.delete_one({"_id": oid})

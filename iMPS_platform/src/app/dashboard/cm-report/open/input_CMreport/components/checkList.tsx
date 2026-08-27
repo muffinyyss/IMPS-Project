@@ -962,7 +962,8 @@ export default function CMOpenForm() {
     // ลบใบงานถาวร — ทำได้เฉพาะ super admin และเฉพาะจากในฟอร์ม (หน้ารายการไม่มีปุ่มลบแล้ว)
     const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
     const [deleting, setDeleting] = useState(false);
-    const canDeleteJob = isSuperAdmin && isEdit && !!editId && !!stationId;
+    // super admin ลบได้ทุกใบ / คนเปิดใบงานลบได้เฉพาะใบของตัวเอง
+    const canDeleteJob = (isSuperAdmin || isOwner) && isEdit && !!editId && !!stationId;
 
     const handleDeleteJob = async () => {
         if (!canDeleteJob) return;
