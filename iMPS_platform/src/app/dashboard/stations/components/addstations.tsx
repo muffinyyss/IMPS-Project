@@ -51,6 +51,7 @@ export type StationForm = {
     maximo_desc: string;
     warranty_status: string;
     investment_scope: string[];
+    io_code: string;
     stationImages: File[];
     mdbImages: File[];
 };
@@ -319,7 +320,7 @@ export default function AddStationModal({
                 stationInfo: "ข้อมูลสถานี", stationName: "ชื่อสถานี", owner: "เจ้าของ",
                 status: "สถานะ", active: "เปิดใช้งาน", inactive: "ปิดใช้งาน",
                 maximoLocation: "Location", maximoDesc: "Description",
-                warrantyStatus: "การรับประกัน", investmentScope: "สัดส่วนการลงทุน",
+                warrantyStatus: "การรับประกัน", investmentScope: "สัดส่วนการลงทุน", ioCode: "รหัสค่าใช้จ่าย (IO)",
                 selectPlaceholder: "เลือก",
                 stationImages: "รูปภาพสถานี", station: "สถานี", mdb: "MDB",
                 chargers: "ตู้ชาร์จ", addCharger: "เพิ่มตู้ชาร์จ", chargerNo: "ตู้ชาร์จ #",
@@ -358,7 +359,7 @@ export default function AddStationModal({
                 stationInfo: "Station Information", stationName: "Station Name", owner: "Owner",
                 status: "Status", active: "Active", inactive: "Inactive",
                 maximoLocation: "Location", maximoDesc: "Description",
-                warrantyStatus: "Warranty", investmentScope: "Investment Scope",
+                warrantyStatus: "Warranty", investmentScope: "Investment Scope", ioCode: "Expense Code (IO)",
                 selectPlaceholder: "Select",
                 stationImages: "Station Images", station: "Station", mdb: "MDB",
                 chargers: "Chargers", addCharger: "Add Charger", chargerNo: "Charger #",
@@ -399,7 +400,7 @@ export default function AddStationModal({
     /* ── state ── */
     const [station, setStation] = useState<StationForm>({
         station_id: "", station_name: "", owner: "", is_active: true,
-        maximo_location: "", maximo_desc: "", warranty_status: "", investment_scope: [],
+        maximo_location: "", maximo_desc: "", warranty_status: "", investment_scope: [], io_code: "",
         stationImages: [], mdbImages: [],
     });
     const [stationPreviews, setStationPreviews] = useState<Record<StationImageKind, string[]>>({ station: [], mdb: [] });
@@ -708,6 +709,7 @@ export default function AddStationModal({
                 owner: (station.owner || currentUser).trim(), is_active: station.is_active,
                 maximo_location: station.maximo_location.trim(), maximo_desc: station.maximo_desc.trim(),
                 warranty_status: station.warranty_status, investment_scope: station.investment_scope,
+                io_code: station.io_code.trim(),
             },
             chargers: chargers.map((c) => ({
                 chargerNo: c.chargerNo, brand: c.brand.trim(), manufacturer: c.manufacturer.trim(), vendor: c.vendor.trim(), model: c.model.trim(),
@@ -759,7 +761,7 @@ export default function AddStationModal({
     const resetAndClose = () => {
         Object.values(stationPreviews).forEach((urls) => urls.forEach((u) => u && URL.revokeObjectURL(u)));
         Object.values(chargerPreviews).forEach((p) => { p.charger?.forEach((u) => URL.revokeObjectURL(u)); p.device?.forEach((u) => URL.revokeObjectURL(u)); });
-        setStation({ station_id: "", station_name: "", owner: isAdmin ? "" : currentUser, is_active: true, maximo_location: "", maximo_desc: "", warranty_status: "", investment_scope: [], stationImages: [], mdbImages: [] });
+        setStation({ station_id: "", station_name: "", owner: isAdmin ? "" : currentUser, is_active: true, maximo_location: "", maximo_desc: "", warranty_status: "", investment_scope: [], io_code: "", stationImages: [], mdbImages: [] });
         setStationPreviews({ station: [], mdb: [] });
         setChargerPreviews({});
         setChargers([]);
@@ -922,6 +924,7 @@ export default function AddStationModal({
                                         lang={lang}
                                         emptyLabel={t.selectPlaceholder}
                                     />
+                                    <Input label={t.ioCode} value={station.io_code} onChange={(e) => onStationChange("io_code", e.target.value)} crossOrigin={undefined} />
                                 </div>
 
                                 {/* images */}
