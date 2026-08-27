@@ -349,6 +349,28 @@ class ChargerOut(BaseModel):
     updatedAt: Optional[datetime] = None
     updatedBy: Optional[str] = None
 
+# ── การรับประกัน / สัดส่วนการลงทุน (ระดับสถานี) ──
+WARRANTY_STATUSES = {"in_warranty", "out_of_warranty"}
+INVESTMENT_SCOPES = {"cb_box", "mdb", "structure", "charger", "ccb"}
+
+def _clean_warranty_status(value: Optional[str]) -> str:
+    v = (value or "").strip()
+    if v and v not in WARRANTY_STATUSES:
+        raise HTTPException(status_code=400, detail=f"Invalid warranty_status: {v}")
+    return v
+
+def _clean_investment_scope(values: Optional[List[str]]) -> List[str]:
+    out = []
+    for v in values or []:
+        v = (v or "").strip()
+        if not v:
+            continue
+        if v not in INVESTMENT_SCOPES:
+            raise HTTPException(status_code=400, detail=f"Invalid investment_scope: {v}")
+        if v not in out:
+            out.append(v)
+    return out
+
 class StationCreate(BaseModel):
     station_id: str
     station_name: str
@@ -357,6 +379,8 @@ class StationCreate(BaseModel):
     is_active: Optional[bool] = True
     maximo_location: Optional[str] = ""
     maximo_desc: Optional[str] = ""
+    warranty_status: Optional[str] = ""
+    investment_scope: Optional[List[str]] = []
 
 class StationUpdate(BaseModel):
     station_name: Optional[str] = None
@@ -365,6 +389,8 @@ class StationUpdate(BaseModel):
     username: Optional[str] = None
     maximo_location: Optional[str] = None
     maximo_desc: Optional[str] = None
+    warranty_status: Optional[str] = None
+    investment_scope: Optional[List[str]] = None
 
 class StationOut(BaseModel):
     id: str
@@ -375,6 +401,8 @@ class StationOut(BaseModel):
     is_active: bool
     maximo_location: Optional[str] = ""
     maximo_desc: Optional[str] = ""
+    warranty_status: Optional[str] = ""
+    investment_scope: Optional[List[str]] = []
     status: Optional[bool] = None
     stationImage: Optional[str] = None
     stationImages: Optional[list] = []
@@ -576,6 +604,8 @@ def format_station_with_chargers(station_doc: dict, charger_docs: List[dict]) ->
         is_active=bool(station_doc.get("is_active", False)),
         maximo_location=station_doc.get("maximo_location", ""),
         maximo_desc=station_doc.get("maximo_desc", ""),
+        warranty_status=station_doc.get("warranty_status", ""),
+        investment_scope=station_doc.get("investment_scope", []) or [],
         status=status,
         stationImage=station_image_list[0] if station_image_list else None,
         stationImages=station_image_list,
@@ -790,6 +820,8 @@ def create_station_with_chargers(
         "is_active": station_data.is_active if station_data.is_active is not None else True,
         "maximo_location": station_data.maximo_location.strip() if station_data.maximo_location else "",
         "maximo_desc": station_data.maximo_desc.strip() if station_data.maximo_desc else "",
+        "warranty_status": _clean_warranty_status(station_data.warranty_status),
+        "investment_scope": _clean_investment_scope(station_data.investment_scope),
         "images": {},
         "createdAt": now,
         "createdBy": actor,
@@ -868,6 +900,10 @@ def update_station(
         update_data["maximo_location"] = body.maximo_location.strip()
     if body.maximo_desc is not None:
         update_data["maximo_desc"] = body.maximo_desc.strip()
+    if body.warranty_status is not None:
+        update_data["warranty_status"] = _clean_warranty_status(body.warranty_status)
+    if body.investment_scope is not None:
+        update_data["investment_scope"] = _clean_investment_scope(body.investment_scope)
 
     if body.user_id is not None:
         new_user_oid = to_object_id(body.user_id)

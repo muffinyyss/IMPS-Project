@@ -3,7 +3,6 @@
 import React, { useMemo, useState, useEffect, useRef, useCallback } from "react";
 import { Button, Input, Textarea, Tooltip } from "@material-tailwind/react";
 import Image from "next/image";
-import Select from "react-select";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { ArrowLeftIcon, PhotoIcon, XMarkIcon, CheckCircleIcon, ExclamationTriangleIcon } from "@heroicons/react/24/solid";
 import { InformationCircleIcon } from "@heroicons/react/24/outline";
@@ -40,10 +39,6 @@ const T = {
     selectEquipmentPlaceholder: { th: "เลือกตำแหน่ง...", en: "Select location..." },
     loadingChargers: { th: "กำลังโหลด...", en: "Loading..." },
     noChargersFound: { th: "ไม่พบ Charger", en: "No chargers found" },
-    damageSymptoms: { th: "อาการชำรุด", en: "Damage Symptoms" },
-    damageSymptomsPlaceholder: { th: "เลือกอาการชำรุด (เลือกได้หลายข้อ)...", en: "Select damage symptoms (multiple)..." },
-    damageSymptomOther: { th: "ระบุอาการชำรุด (อื่น ๆ)", en: "Specify damage symptom (Other)" },
-    damageSymptomOtherPlaceholder: { th: "ระบุอาการที่พบ", en: "Describe the symptom" },
     problemDetails: { th: "รายละเอียดปัญหา", en: "Problem Details" },
     severity: { th: "ความเร่งด่วน", en: "Urgency" },
     severityTooltip: {
@@ -120,7 +115,6 @@ const T = {
     remaining: { th: "ยังขาดอีก", en: "Missing" },
     items: { th: "รายการ", en: "items" },
     validEquipment: { th: "ตำแหน่งจุดที่มีความผิดปกติ", en: "FAILURECODE DESCRIPTION" },
-    validDamageSymptoms: { th: "อาการชำรุด", en: "Damage Symptoms" },
     validSeverity: { th: "ความเร่งด่วน", en: "Urgency" },
     validProblemFound: { th: "ปัญหาที่พบ", en: "Problem Found" },
     validPhotos: { th: "รูปภาพ / ไฟล์แนบ", en: "Photos / Files" },
@@ -149,8 +143,6 @@ const T = {
 const t = (key: keyof typeof T, lang: Lang): string => T[key][lang];
 
 // ==================== TYPES ====================
-// อาการชำรุดที่ผู้แจ้งเลือกได้ (เลือกได้หลายข้อ) — value เป็นรหัสคงที่ ไม่ใช่ข้อความไทย
-// เพื่อให้แก้คำเรียก/เพิ่มภาษาได้ภายหลังโดยข้อมูลเก่าใน DB ไม่เพี้ยน
 // ค่าเริ่มต้นของแผนงาน: เริ่มวันนี้ ไปจบอีก 7 วัน — planner แก้เองได้ทั้งสองช่อง
 // คืนรูปแบบของ <input type="datetime-local"> คือ YYYY-MM-DDTHH:mm ตามเวลาเครื่อง
 const PLAN_DEFAULT_SPAN_DAYS = 7;
@@ -159,34 +151,6 @@ const planDateTimeDefault = (offsetDays = 0): string => {
     d.setDate(d.getDate() + offsetDays);
     const pad = (n: number) => String(n).padStart(2, "0");
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-};
-
-const DAMAGE_SYMPTOM_OTHER = "other";
-const DAMAGE_SYMPTOM_OPTIONS: { value: string; th: string; en: string }[] = [
-    { value: "charger", th: "เครื่องชาร์จมีปัญหา", en: "Charger problem" },
-    { value: "electrical", th: "ระบบไฟฟ้ามีปัญหา", en: "Electrical system problem" },
-    { value: "lighting", th: "ไฟสถานี / ไฟป้ายดับ", en: "Station / sign lighting out" },
-    { value: "structure", th: "โครงสร้าง / สีพื้น ชำรุด", en: "Structure / floor paint damaged" },
-    { value: DAMAGE_SYMPTOM_OTHER, th: "อื่น ๆ (โปรดระบุ)", en: "Other (please specify)" },
-];
-
-// ให้ react-select สูง/มุมโค้งใกล้เคียง <select> อื่นในฟอร์ม และ menu ต้องลอยเหนือ overlay
-const damageSelectStyles = {
-    control: (base: any, state: any) => ({
-        ...base,
-        minHeight: 40,
-        borderRadius: 8,
-        borderColor: state.isFocused ? "#3b82f6" : "#cfd8dc",
-        boxShadow: state.isFocused ? "0 0 0 2px rgba(59,130,246,.35)" : "none",
-        backgroundColor: state.isDisabled ? "#f3f4f6" : "#fff",
-        ":hover": { borderColor: state.isFocused ? "#3b82f6" : "#b0bec5" },
-    }),
-    valueContainer: (base: any) => ({ ...base, padding: "2px 10px" }),
-    placeholder: (base: any) => ({ ...base, fontSize: 14, color: "#90a4ae" }),
-    multiValue: (base: any) => ({ ...base, backgroundColor: "#e3f2fd", borderRadius: 6 }),
-    multiValueLabel: (base: any) => ({ ...base, fontSize: 13, color: "#1565c0" }),
-    option: (base: any) => ({ ...base, fontSize: 14 }),
-    menuPortal: (base: any) => ({ ...base, zIndex: 9999 }),
 };
 
 type Severity = "" | "Low" | "Medium" | "High" | "Urgent";
@@ -596,11 +560,6 @@ function PhotoUpload({ photos_open, onAdd, onRemove, max, disabled, lang, id }: 
 // ==================== MAIN COMPONENT ====================
 export default function CMOpenForm() {
     const { lang } = useLanguage();
-    // ตัวเลือกอาการชำรุดตามภาษาที่เปิดอยู่ — value คงที่เสมอ เปลี่ยนแค่ข้อความที่แสดง
-    const damageSymptomOptions = useMemo(
-        () => DAMAGE_SYMPTOM_OPTIONS.map(o => ({ value: o.value, label: o[lang] })),
-        [lang],
-    );
     const router = useRouter();
     const searchParams = useSearchParams();
     const pathname = usePathname();
@@ -614,8 +573,6 @@ export default function CMOpenForm() {
     const [foundTime, setFoundTime] = useState(""); // เวลาแจ้ง (HH:MM)
     const [location, setLocation] = useState("");
     const [problemDetails, setProblemDetails] = useState("");
-    const [damageSymptoms, setDamageSymptoms] = useState<string[]>([]);
-    const [damageSymptomOther, setDamageSymptomOther] = useState("");
     const [severity, setSeverity] = useState<Severity>("");
     const [status, setStatus] = useState<Status>("");
     // แยกด่านของ "Wait for approve": "cs_approval" (รอ head cs) vs "close_approval" (รอปิดงาน)
@@ -631,9 +588,6 @@ export default function CMOpenForm() {
     // เหตุผลที่ยกเลิก — โชว์ในหน้ารายละเอียดใบงาน Cancelled
     const [cancelledInfo, setCancelledInfo] = useState<{ remark: string; by: string }>({ remark: "", by: "" });
     const [remarks_open, setRemarksOpen] = useState("");
-    // ตำแหน่งจุดที่มีความผิดปกติ (failure class) ย้ายไปให้ช่างเลือกในหน้า In Progress แล้ว
-    // คงตัวแปรไว้เพราะ draft ของใบเก่าและ logic ระบุตู้ยังอ่านค่านี้ — ใบที่เปิดใหม่จะส่งค่าว่างไป
-    // แล้ว backend เลื่อนการเช็คสิทธิ์ยี่ห้อไปตอนที่ช่างเลือก (ดู _assert_can_open_cm)
     const [faultyEquipment, setFaultyEquipment] = useState("");
     const [selectedChargerNo, setSelectedChargerNo] = useState("");
     const [selectedChargerSn, setSelectedChargerSn] = useState("");
@@ -939,12 +893,11 @@ export default function CMOpenForm() {
 
     // ==================== VALIDATION ====================
     const validations = useMemo<ValidationItem[]>(() => [
-        { key: "damageSymptoms", label: t("validDamageSymptoms", lang), isValid: damageSymptoms.length > 0, message: t("notSelected", lang), isRequired: true, scrollId: "cm-damage-symptoms" },
-        { key: "damageSymptomOther", label: t("damageSymptomOther", lang), isValid: !!damageSymptomOther.trim(), message: t("notFilled", lang), isRequired: damageSymptoms.includes(DAMAGE_SYMPTOM_OTHER), scrollId: "cm-damage-symptoms" },
+        { key: "equipment", label: t("validEquipment", lang), isValid: !!faultyEquipment, message: t("notSelected", lang), isRequired: true, scrollId: "cm-equipment" },
         { key: "severity", label: t("validSeverity", lang), isValid: !!severity, message: t("notSelected", lang), isRequired: true, scrollId: "cm-severity" },
         { key: "problemFound", label: t("validProblemFound", lang), isValid: !!problemDetails.trim(), message: t("notFilled", lang), isRequired: true, scrollId: "cm-problem-found" },
         { key: "photos", label: t("validPhotos", lang), isValid: photos_open.length > 0, message: t("notAttached", lang), isRequired: true, scrollId: "cm-photos" },
-    ], [damageSymptoms, damageSymptomOther, severity, problemDetails, photos_open, lang]);
+    ], [faultyEquipment, severity, problemDetails, photos_open, lang]);
     // มีคนถือสิทธิ์กรอกอยู่ = กดบันทึกไม่ได้ (backend ตอบ 409 อยู่แล้ว ปิดปุ่มไว้ก่อนจะได้ไม่เสียเที่ยว)
     const canSave = useMemo(
         () => !lockedBy && validations.filter(v => v.isRequired).every(v => v.isValid),
@@ -1110,14 +1063,13 @@ export default function CMOpenForm() {
             saveDraftLocal(draftKey, {
                 issueId, docName, foundDate, foundTime, location, problemDetails,
                 severity, status, remarks_open, faultyEquipment,
-                damageSymptoms, damageSymptomOther,
                 reported_by,
             });
             setTimeout(() => setDraftStatus("saved"), 300);
             setTimeout(() => setDraftStatus("idle"), 2000);
         }, 1500);
         return () => clearTimeout(timer);
-    }, [issueId, docName, foundDate, foundTime, location, problemDetails, severity, status, remarks_open, faultyEquipment, damageSymptoms, damageSymptomOther, reported_by, draftKey, isEdit, stationId, draftLoaded]);
+    }, [issueId, docName, foundDate, foundTime, location, problemDetails, severity, status, remarks_open, faultyEquipment, reported_by, draftKey, isEdit, stationId, draftLoaded]);
 
     // ==================== DRAFT: LOAD ====================
     useEffect(() => {
@@ -1134,8 +1086,6 @@ export default function CMOpenForm() {
             if (draft.status) setStatus(draft.status as Status);
             if (draft.remarks_open) setRemarksOpen(draft.remarks_open);
             if (draft.faultyEquipment) setFaultyEquipment(draft.faultyEquipment);
-            if (Array.isArray(draft.damageSymptoms)) setDamageSymptoms(draft.damageSymptoms);
-            if (draft.damageSymptomOther) setDamageSymptomOther(draft.damageSymptomOther);
             if (draft.reported_by) setReportedBy(draft.reported_by);
             if (draft.summary) setSummary(draft.summary);
         }
@@ -1290,8 +1240,6 @@ export default function CMOpenForm() {
                 setFoundDate(rawDate ? isoToDisplay(rawDate) : localTodayFormatted());
                 setFoundTime(data.found_time ?? "");
                 setLocation(data.location ?? "");
-                setDamageSymptoms(Array.isArray(data.damage_symptoms) ? data.damage_symptoms : []);
-                setDamageSymptomOther(data.damage_symptom_other ?? "");
                 setProblemDetails(data.problem_details ?? "");
                 setSeverity((data.severity ?? "") as Severity);
                 setStatus((data.status ?? "Open") as Status);
@@ -1495,8 +1443,6 @@ ${in01.error ?? ""}`);
                     // เคลียร์ reject_remark = ยืนยันแก้ไขแล้ว → ใบกลับเข้าคิว head cs อีกครั้ง
                     payload.job = {
                         faulty_equipment: faultyEquipment,
-                        damage_symptoms: damageSymptoms,
-                        damage_symptom_other: damageSymptoms.includes(DAMAGE_SYMPTOM_OTHER) ? damageSymptomOther.trim() : "",
                         severity,
                         problem_details: problemDetails,
                         remarks_open,
@@ -1574,9 +1520,6 @@ ${in01.error ?? ""}`);
                             found_date: displayToISO(foundDate),
                             found_time: foundTime || localNowHHMM(),
                             faulty_equipment: faultyEquipment,
-                            damage_symptoms: damageSymptoms,
-                            // ข้อความอิสระมีความหมายเฉพาะตอนเลือก "อื่น ๆ" — ไม่งั้นส่งค่าว่างไป
-                            damage_symptom_other: damageSymptoms.includes(DAMAGE_SYMPTOM_OTHER) ? damageSymptomOther.trim() : "",
                             charger_no: chargerNo == null ? null : String(chargerNo),
                             charger_sn: chargerSn,
                             severity,
@@ -1964,25 +1907,31 @@ ${in01.error ?? ""}`);
 
                         {/* Section Content */}
                         <div className="tw-p-4 tw-space-y-4">
-                            {/* Damage Symptoms & Severity - Same Row */}
+                            {/* Problem Location / Damage Symptoms / Severity */}
                             <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-4">
-                                {/* Damage Symptoms — เลือกได้หลายข้อ */}
-                                <div id="cm-damage-symptoms">
-                                    <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-2">
-                                        {t("damageSymptoms", lang)} <span className="tw-text-red-500">*</span>
-                                    </label>
-                                    <Select
-                                        isMulti
-                                        isDisabled={fieldsLocked}
-                                        placeholder={t("damageSymptomsPlaceholder", lang)}
-                                        options={damageSymptomOptions}
-                                        value={damageSymptomOptions.filter(o => damageSymptoms.includes(o.value))}
-                                        onChange={(opts: any) => setDamageSymptoms((opts || []).map((o: any) => o.value))}
-                                        menuPlacement="auto"
-                                        menuPortalTarget={typeof document !== "undefined" ? document.body : undefined}
-                                        classNamePrefix="react-select"
-                                        styles={damageSelectStyles}
-                                    />
+                                {/* Problem Location (ตำแหน่งจุดที่มีปัญหา) */}
+                                <div id="cm-equipment">
+                                    <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-2">{t("faultyEquipment", lang)} <span className="tw-text-red-500">*</span></label>
+                                    <select value={faultyEquipment} disabled={fieldsLocked} onChange={e => setFaultyEquipment(e.target.value)}
+                                        style={fieldsLocked ? { backgroundColor: '#f3f4f6', color: '#455a64' } : {}}
+                                        className={`tw-w-full tw-h-10 tw-border tw-border-blue-gray-200 tw-rounded-lg tw-px-4 tw-text-sm tw-font-medium tw-transition-colors focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-blue-500 focus:tw-border-transparent ${fieldsLocked ? "tw-bg-gray-100 tw-text-blue-gray-700 tw-cursor-not-allowed tw-opacity-100" : "tw-bg-white tw-text-blue-gray-700 hover:tw-border-blue-gray-300"}`}>
+                                        <option value="">{t("selectEquipmentPlaceholder", lang)}</option>
+                                        {failureCodeOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                        {/* ค่าเดิมของรายงานเก่าที่ไม่ใช่ failure code — ให้แสดงได้ตอน edit */}
+                                        {faultyEquipment && !failureCodeOptions.some(o => o.value === faultyEquipment) && (
+                                            <option value={faultyEquipment}>{failureCodeLabel(faultyEquipment)}</option>
+                                        )}
+                                    </select>
+                                    {failureCodesUnavailable && <p className="tw-text-xs tw-text-blue-gray-400 tw-mt-2">{t("failureCodesLoading", lang)}</p>}
+                                    {loadingChargers && <p className="tw-text-xs tw-text-blue-gray-400 tw-mt-2">{t("loadingChargers", lang)}</p>}
+                                    {!loadingChargers && chargers.length === 0 && <p className="tw-text-xs tw-text-orange-600 tw-mt-2">{t("noChargersFound", lang)}</p>}
+                                    {false && !isEdit && chargerTargets.length > 0 && (
+                                        <div className="tw-text-xs tw-text-blue-600 tw-mt-2">
+                                            {lang === "th"
+                                                ? `ระบบจะเปิดใบงานแยกตามตู้ชาร์จจำนวน ${chargerTargets.length} ใบ`
+                                                : ""}
+                                        </div>
+                                    )}
                                 </div>
 
                                 {/* Severity */}
@@ -2029,23 +1978,6 @@ ${in01.error ?? ""}`);
                                     </div>
                                 </div>
                             </div>
-
-                            {damageSymptoms.includes(DAMAGE_SYMPTOM_OTHER) && (
-                                <div>
-                                    <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-2">
-                                        {t("damageSymptomOther", lang)} <span className="tw-text-red-500">*</span>
-                                    </label>
-                                    <Input
-                                        value={damageSymptomOther}
-                                        disabled={fieldsLocked}
-                                        onChange={e => setDamageSymptomOther(e.target.value)}
-                                        placeholder={t("damageSymptomOtherPlaceholder", lang)}
-                                        crossOrigin=""
-                                        className="!tw-w-full"
-                                        containerProps={{ className: "!tw-min-w-0" }}
-                                    />
-                                </div>
-                            )}
 
                             {/* Problem Found (ปัญหาที่พบ) */}
                             <div id="cm-problem-found">

@@ -2,6 +2,7 @@
 import LoadingOverlay from "../../components/Loadingoverlay";
 import { useEffect, useState, useMemo, useRef } from "react";
 import { apiFetch } from "@/utils/api";
+import { WARRANTY_STATUS_OPTIONS, INVESTMENT_SCOPE_OPTIONS, MultiSelectDropdown } from "./stationOptions";
 import {
     Dialog,
     DialogHeader,
@@ -48,6 +49,8 @@ export type StationForm = {
     is_active: boolean;
     maximo_location: string;
     maximo_desc: string;
+    warranty_status: string;
+    investment_scope: string[];
     stationImages: File[];
     mdbImages: File[];
 };
@@ -316,6 +319,8 @@ export default function AddStationModal({
                 stationInfo: "ข้อมูลสถานี", stationName: "ชื่อสถานี", owner: "เจ้าของ",
                 status: "สถานะ", active: "เปิดใช้งาน", inactive: "ปิดใช้งาน",
                 maximoLocation: "Location", maximoDesc: "Description",
+                warrantyStatus: "การรับประกัน", investmentScope: "สัดส่วนการลงทุน",
+                selectPlaceholder: "เลือก",
                 stationImages: "รูปภาพสถานี", station: "สถานี", mdb: "MDB",
                 chargers: "ตู้ชาร์จ", addCharger: "เพิ่มตู้ชาร์จ", chargerNo: "ตู้ชาร์จ #",
                 chargerBoxId: "Charge Box ID", ocppUrl: "OCPP URL", ocppSection: "OCPP",
@@ -353,6 +358,8 @@ export default function AddStationModal({
                 stationInfo: "Station Information", stationName: "Station Name", owner: "Owner",
                 status: "Status", active: "Active", inactive: "Inactive",
                 maximoLocation: "Location", maximoDesc: "Description",
+                warrantyStatus: "Warranty", investmentScope: "Investment Scope",
+                selectPlaceholder: "Select",
                 stationImages: "Station Images", station: "Station", mdb: "MDB",
                 chargers: "Chargers", addCharger: "Add Charger", chargerNo: "Charger #",
                 chargerBoxId: "Charge Box ID", ocppUrl: "OCPP URL", ocppSection: "OCPP",
@@ -392,7 +399,8 @@ export default function AddStationModal({
     /* ── state ── */
     const [station, setStation] = useState<StationForm>({
         station_id: "", station_name: "", owner: "", is_active: true,
-        maximo_location: "", maximo_desc: "", stationImages: [], mdbImages: [],
+        maximo_location: "", maximo_desc: "", warranty_status: "", investment_scope: [],
+        stationImages: [], mdbImages: [],
     });
     const [stationPreviews, setStationPreviews] = useState<Record<StationImageKind, string[]>>({ station: [], mdb: [] });
     const [chargerPreviews, setChargerPreviews] = useState<Record<string, { charger: string[]; device: string[] }>>({});
@@ -699,6 +707,7 @@ export default function AddStationModal({
                 station_id: station.station_id.trim(), station_name: station.station_name.trim(),
                 owner: (station.owner || currentUser).trim(), is_active: station.is_active,
                 maximo_location: station.maximo_location.trim(), maximo_desc: station.maximo_desc.trim(),
+                warranty_status: station.warranty_status, investment_scope: station.investment_scope,
             },
             chargers: chargers.map((c) => ({
                 chargerNo: c.chargerNo, brand: c.brand.trim(), manufacturer: c.manufacturer.trim(), vendor: c.vendor.trim(), model: c.model.trim(),
@@ -750,7 +759,7 @@ export default function AddStationModal({
     const resetAndClose = () => {
         Object.values(stationPreviews).forEach((urls) => urls.forEach((u) => u && URL.revokeObjectURL(u)));
         Object.values(chargerPreviews).forEach((p) => { p.charger?.forEach((u) => URL.revokeObjectURL(u)); p.device?.forEach((u) => URL.revokeObjectURL(u)); });
-        setStation({ station_id: "", station_name: "", owner: isAdmin ? "" : currentUser, is_active: true, maximo_location: "", maximo_desc: "", stationImages: [], mdbImages: [] });
+        setStation({ station_id: "", station_name: "", owner: isAdmin ? "" : currentUser, is_active: true, maximo_location: "", maximo_desc: "", warranty_status: "", investment_scope: [], stationImages: [], mdbImages: [] });
         setStationPreviews({ station: [], mdb: [] });
         setChargerPreviews({});
         setChargers([]);
@@ -900,6 +909,19 @@ export default function AddStationModal({
                                         <Option value="true">{t.active}</Option>
                                         <Option value="false">{t.inactive}</Option>
                                     </Select>
+                                    <Select label={t.warrantyStatus} value={station.warranty_status} onChange={(v) => onStationChange("warranty_status", v ?? "")}>
+                                        {WARRANTY_STATUS_OPTIONS.map((o) => (
+                                            <Option key={o.value} value={o.value}>{o[lang]}</Option>
+                                        ))}
+                                    </Select>
+                                    <MultiSelectDropdown
+                                        label={t.investmentScope}
+                                        options={INVESTMENT_SCOPE_OPTIONS}
+                                        selected={station.investment_scope}
+                                        onChange={(next) => onStationChange("investment_scope", next)}
+                                        lang={lang}
+                                        emptyLabel={t.selectPlaceholder}
+                                    />
                                 </div>
 
                                 {/* images */}
