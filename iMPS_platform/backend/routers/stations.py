@@ -381,6 +381,7 @@ class StationCreate(BaseModel):
     maximo_desc: Optional[str] = ""
     warranty_status: Optional[str] = ""
     investment_scope: Optional[List[str]] = []
+    io_code: Optional[str] = ""
 
 class StationUpdate(BaseModel):
     station_name: Optional[str] = None
@@ -391,6 +392,7 @@ class StationUpdate(BaseModel):
     maximo_desc: Optional[str] = None
     warranty_status: Optional[str] = None
     investment_scope: Optional[List[str]] = None
+    io_code: Optional[str] = None
 
 class StationOut(BaseModel):
     id: str
@@ -403,6 +405,7 @@ class StationOut(BaseModel):
     maximo_desc: Optional[str] = ""
     warranty_status: Optional[str] = ""
     investment_scope: Optional[List[str]] = []
+    io_code: Optional[str] = ""
     status: Optional[bool] = None
     stationImage: Optional[str] = None
     stationImages: Optional[list] = []
@@ -606,6 +609,7 @@ def format_station_with_chargers(station_doc: dict, charger_docs: List[dict]) ->
         maximo_desc=station_doc.get("maximo_desc", ""),
         warranty_status=station_doc.get("warranty_status", ""),
         investment_scope=station_doc.get("investment_scope", []) or [],
+        io_code=station_doc.get("io_code", ""),
         status=status,
         stationImage=station_image_list[0] if station_image_list else None,
         stationImages=station_image_list,
@@ -822,6 +826,7 @@ def create_station_with_chargers(
         "maximo_desc": station_data.maximo_desc.strip() if station_data.maximo_desc else "",
         "warranty_status": _clean_warranty_status(station_data.warranty_status),
         "investment_scope": _clean_investment_scope(station_data.investment_scope),
+        "io_code": station_data.io_code.strip() if station_data.io_code else "",
         "images": {},
         "createdAt": now,
         "createdBy": actor,
@@ -904,6 +909,8 @@ def update_station(
         update_data["warranty_status"] = _clean_warranty_status(body.warranty_status)
     if body.investment_scope is not None:
         update_data["investment_scope"] = _clean_investment_scope(body.investment_scope)
+    if body.io_code is not None:
+        update_data["io_code"] = body.io_code.strip()
 
     if body.user_id is not None:
         new_user_oid = to_object_id(body.user_id)
