@@ -492,7 +492,7 @@ export default function PMListPage() {
       {error && (
         <div className="tw-mb-4 tw-flex tw-items-center tw-gap-3 tw-rounded-xl tw-border tw-border-red-200 tw-bg-red-50 tw-px-4 tw-py-3 tw-text-sm tw-text-red-700">
           <span className="tw-text-base">⚠️</span>
-          <span>{t.errorPrefix}: <strong>{error}</strong></span>
+          <span>{`${t.errorPrefix}: `}<strong>{error}</strong></span>
         </div>
       )}
 
@@ -582,7 +582,7 @@ export default function PMListPage() {
                 className={`tw-rounded-full tw-px-3 tw-py-1 tw-text-xs tw-font-semibold tw-transition-all ${isActive ? "tw-shadow-sm" : "hover:tw-brightness-95"}`}
                 style={isActive ? { background: text, color: "#fff" } : { background: bg, color: text }}
               >
-                {stageLabel[key]} ({stageCounts[key]})
+                {`${stageLabel[key]} (${stageCounts[key]})`}
               </button>
             );
           })}
@@ -748,7 +748,7 @@ export default function PMListPage() {
                 onClick={() => setPage(page - 1)} disabled={page === 0}
                 className="tw-flex tw-h-8 tw-w-8 tw-items-center tw-justify-center tw-rounded-lg tw-border tw-border-gray-200 tw-text-sm tw-text-gray-600 hover:tw-bg-gray-50 disabled:tw-cursor-not-allowed disabled:tw-opacity-40"
               >‹</button>
-              <span className="tw-px-2 tw-text-xs tw-text-gray-500">{page + 1} / {totalPages}</span>
+              <span className="tw-px-2 tw-text-xs tw-text-gray-500">{`${page + 1} / ${totalPages}`}</span>
               <button
                 onClick={() => setPage(page + 1)} disabled={page >= totalPages - 1}
                 className="tw-flex tw-h-8 tw-w-8 tw-items-center tw-justify-center tw-rounded-lg tw-border tw-border-gray-200 tw-text-sm tw-text-gray-600 hover:tw-bg-gray-50 disabled:tw-cursor-not-allowed disabled:tw-opacity-40"
