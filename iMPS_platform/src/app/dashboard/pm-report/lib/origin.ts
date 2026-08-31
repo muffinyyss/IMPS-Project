@@ -5,6 +5,9 @@
 
 export const PM_LIST_ROUTE = "/dashboard/pm-list";
 
+/** หน้าวิเคราะห์ PM — role ที่ดูแดชบอร์ดไม่ได้จะถูกพาไป PM_LIST_ROUTE แทน */
+export const PM_DASHBOARD_ROUTE = "/dashboard/pm-dashboard";
+
 /** ค่าที่ใส่ใน ?from= ตอนเปิดใบงานจากหน้า PM List */
 export const PM_ORIGIN_LIST = "pm-list";
 
