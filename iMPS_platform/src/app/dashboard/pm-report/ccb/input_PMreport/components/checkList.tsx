@@ -14,6 +14,7 @@ import {
 } from "@material-tailwind/react";
 import Image from "next/image";
 import { draftKey, saveDraftLocal, loadDraftLocal, clearDraftLocal } from "../lib/draft";
+import { findMissingCcbMeasurementInputs } from "../lib/validation";
 
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import PmApprovalBar from "@/app/dashboard/pm-report/components/PmApprovalBar";
@@ -1994,47 +1995,18 @@ export default function CCBPMReport() {
     }, [rows, validRemarkKeysPost, rowsPre]);
     const allRemarksFilledPost = missingRemarksPost.length === 0;
 
-    const missingInputs = useMemo(() => {
-        const r: string[] = [];
-        if (rows["r9_main"]?.pf !== "NA") {
-            VOLTAGE_FIELDS_CCB.forEach((k) => {
-                const v = mMain.state[k]?.value ?? "";
-                if (!String(v).trim()) r.push(`9 – ${LABELS[k]}`);
-            });
-        }
-        for (let i = 0; i < subBreakerCount; i++) {
-            const rowKey = `r10_sub${i + 1}`;
-            if (rows[rowKey]?.pf === "NA") continue;
-            const m = M_SUB_LIST[i];
-            VOLTAGE_FIELDS_CCB.forEach((k) => {
-                const v = m.state[k]?.value ?? "";
-                if (!String(v).trim()) r.push(`10.${i + 1} – ${LABELS[k]}`);
-            });
-        }
-        return r;
-    }, [mMain.state, mSub1.state, mSub2.state, mSub3.state, mSub4.state, mSub5.state, mSub6.state, rows, subBreakerCount, lang]);
-
     const missingInputsDetailed = useMemo(() => {
-        const r: { qNo: number; subNo?: number; label: string; fieldKey: string }[] = [];
-        if (rows["r9_main"]?.pf !== "NA") {
-            VOLTAGE_FIELDS_CCB.forEach((k) => {
-                const v = mMain.state[k]?.value ?? "";
-                if (!String(v).trim()) r.push({ qNo: 9, label: LABELS[k], fieldKey: k });
-            });
-        }
-        for (let i = 0; i < subBreakerCount; i++) {
-            const rowKey = `r10_sub${i + 1}`;
-            if (rows[rowKey]?.pf === "NA") continue;
-            const m = M_SUB_LIST[i];
-            VOLTAGE_FIELDS_CCB.forEach((k) => {
-                const v = m.state[k]?.value ?? "";
-                if (!String(v).trim()) r.push({ qNo: 10, subNo: i + 1, label: LABELS[k], fieldKey: k });
-            });
-        }
-        return r;
-    }, [mMain.state, mSub1.state, mSub2.state, mSub3.state, mSub4.state, mSub5.state, mSub6.state, rows, subBreakerCount]);
+        return findMissingCcbMeasurementInputs({
+            isPostMode,
+            currentRows: rows,
+            preRows: rowsPre,
+            mainMeasurements: mMain.state,
+            subMeasurements: [mSub1.state, mSub2.state, mSub3.state, mSub4.state, mSub5.state, mSub6.state],
+            subBreakerCount,
+        });
+    }, [mMain.state, mSub1.state, mSub2.state, mSub3.state, mSub4.state, mSub5.state, mSub6.state, rows, rowsPre, subBreakerCount, isPostMode]);
 
-    const allRequiredInputsFilled = missingInputs.length === 0;
+    const allRequiredInputsFilled = missingInputsDetailed.length === 0;
     const isSummaryFilled = summary.trim().length > 0;
     const isSummaryCheckFilled = summaryCheck !== "";
 
@@ -2066,13 +2038,13 @@ export default function CCBPMReport() {
     }, [key, stationId, rows, mMain.state, mSub1.state, mSub2.state, mSub3.state, mSub4.state, mSub5.state, mSub6.state, subBreakerCount, summary, summaryCheck, photoRefs, isPostMode, inspector]);
 
     useDebouncedEffect(() => {
-        if (!stationId || !isPostMode || !editId) return;
+        if (!stationId || !isPostMode || !editId || !postApiLoaded) return;
         saveDraftLocal(postKey, {
             rows, mMain: mMain.state, mSub1: mSub1.state, mSub2: mSub2.state, mSub3: mSub3.state,
             mSub4: mSub4.state, mSub5: mSub5.state, mSub6: mSub6.state,
             subBreakerCount, summary, summaryCheck, photoRefs,
         });
-    }, [postKey, stationId, rows, mMain.state, mSub1.state, mSub2.state, mSub3.state, mSub4.state, mSub5.state, mSub6.state, subBreakerCount, summary, summaryCheck, photoRefs, isPostMode, editId]);
+    }, [postKey, stationId, rows, mMain.state, mSub1.state, mSub2.state, mSub3.state, mSub4.state, mSub5.state, mSub6.state, subBreakerCount, summary, summaryCheck, photoRefs, isPostMode, editId, postApiLoaded]);
 
     // รับ PhotoItem แทน File[] เพื่อให้รู้ว่ารูปไหนอัปสำเร็จแล้ว — ตอนกดบันทึกซ้ำหลังอัปหลุด
     // จะได้ข้ามรูปเดิม ไม่อัปซ้ำจนรูปโผล่ซ้ำในรายงาน (และไม่ไปชนเพดาน 10 รูป/ข้อ)
