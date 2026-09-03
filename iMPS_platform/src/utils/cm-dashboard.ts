@@ -59,9 +59,6 @@ export function brandOf(r: CMRow): string {
 
 export function matchesCompanyFilter(r: CMRow, company: string | null): boolean {
   if (!company) return true;
-  if (company.trim().toLowerCase() === "eds") {
-    return brandOf(r).toLowerCase() === FLEXXFAST_BRAND.toLowerCase();
-  }
   return companyOf(r).toLowerCase() === company.trim().toLowerCase();
 }
 

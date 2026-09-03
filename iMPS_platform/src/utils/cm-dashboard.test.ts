@@ -20,6 +20,7 @@ import {
   ActiveFilters,
   companyOf,
   listCompanies,
+  matchesCompanyFilter,
 } from "./cm-dashboard";
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
@@ -61,6 +62,16 @@ describe("company filter helpers", () => {
   it("puts unknown companies last", () => {
     const rows = [makeRow({ id: "a", company: "" }), makeRow({ id: "b", company: "Company A" })];
     expect(listCompanies(rows)).toEqual(["Company A", "Unknown"]);
+  });
+
+  it("matches EGAT and EDS from the company field, independently of charger brand", () => {
+    const egatFlexxFast = makeRow({ company: "EGAT", charger_brand: "FlexxFast" });
+    const edsDelta = makeRow({ company: "EDS", charger_brand: "Delta" });
+
+    expect(matchesCompanyFilter(egatFlexxFast, "EGAT")).toBe(true);
+    expect(matchesCompanyFilter(egatFlexxFast, "EDS")).toBe(false);
+    expect(matchesCompanyFilter(edsDelta, "EDS")).toBe(true);
+    expect(matchesCompanyFilter(edsDelta, "EGAT")).toBe(false);
   });
 });
 

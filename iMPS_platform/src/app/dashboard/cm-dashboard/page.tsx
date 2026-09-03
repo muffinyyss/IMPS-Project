@@ -8,7 +8,7 @@ import { apiFetch } from "@/utils/api";
 import useLanguage from "@/utils/useLanguage";
 import {
   CMRow, ActiveFilters, DateSel, STATUS_LABELS, WorkStatusFilter, EMPTY_FILTERS, CmOrigin,
-  normalizeStatus, workStatusOf, filterByDate, listYears, listBrands, brandOf, matchesCompanyFilter, UNKNOWN_BRAND, UNKNOWN_COMPANY, FLEXXFAST_BRAND, COMPANY_FILTER_OPTIONS,
+  normalizeStatus, workStatusOf, filterByDate, listYears, listBrands, brandOf, matchesCompanyFilter, UNKNOWN_BRAND, UNKNOWN_COMPANY, COMPANY_FILTER_OPTIONS,
   excludeCancelled, isCancelled,
   weeksInMonth, applyFilters, groupCount, groupCountMulti, groupCountMultiByBrand, groupByMonth,
   causeLabelsOf, remedyCodesOf, remedyDescriptionsOf,
@@ -276,12 +276,7 @@ export default function CMDashboardPage() {
     () => rows.filter((r) => matchesCompanyFilter(r, filters.company)),
     [rows, filters.company]
   );
-  const brands = useMemo(() => {
-    const listed = listBrands(brandRows);
-    if (filters.company?.trim().toLowerCase() !== "eds") return listed;
-    if (!isSuperAdmin) return [FLEXXFAST_BRAND];
-    return [FLEXXFAST_BRAND, ...listed.filter((brand) => brand.toLowerCase() !== FLEXXFAST_BRAND.toLowerCase())];
-  }, [brandRows, filters.company, isSuperAdmin]);
+  const brands = useMemo(() => listBrands(brandRows), [brandRows]);
   const brandCounts = useMemo(() => {
     const counts = new Map<string, number>();
     for (const r of applyFilters(periodRows, filters, "brand")) {
