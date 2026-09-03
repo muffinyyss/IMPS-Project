@@ -1562,6 +1562,81 @@ async def _ensure_cm_indexes(coll):
     except Exception:
         pass
 
+# สถานะที่ถือว่าใบงาน "ผ่านด่านอนุมัติแล้ว" → เปิด SR ใน Maximo ได้
+CM_SR_READY_STATUSES: set[str] = {"wait for schedule", "in progress"}
+
+
+async def create_maximo_sr_for_report(coll, oid, doc: dict) -> Optional[str]:
+    """
+    ยิง Maximo SR ให้ใบงานหนึ่งใบ แล้วเก็บ ticketid กลับเข้า doc
+    เรียกตอน planner อนุมัติ (cs-approve) — ไม่ใช่ตอนเปิดใบงาน
+    lookup maximo_location: charger-level ก่อน → fallback station-level (เหมือน auto_cm_watcher._lookup_station)
+    ยิงซ้ำไม่ได้: ถ้าใบนี้มี maximo_ticket_id อยู่แล้วจะข้าม
+    """
+    if doc.get("maximo_ticket_id"):
+        return doc.get("maximo_ticket_id")
+
+    station_id = (doc.get("station_id") or "").strip()
+    faulty_equipment = doc.get("faulty_equipment") or ""
+    charger_no = doc.get("charger_no") or ""
+    charger_sn = (doc.get("charger_sn") or "").strip()
+
+    try:
+        # 1) Station info
+        st_doc = station_collection.find_one(
+            {"station_id": station_id},
+            {"maximo_location": 1, "station_name": 1}
+        )
+        station_name = (st_doc or {}).get("station_name", station_id)
+        station_maximo = (st_doc or {}).get("maximo_location", "")
+
+        # 2) Charger-level maximo_location (ถ้า faulty_equipment ระบุ charger)
+        charger_maximo = ""
+        if charger_no or charger_sn or (faulty_equipment and faulty_equipment.startswith("charger_")):
+            from config import client as mongo_client
+            charger_col = mongo_client["iMPS"]["charger"]
+            # ใบใหม่เก็บ charger_no/SN แยกกัน ส่วนใบเก่ายังรองรับ charger_1
+            charger_no_str = str(charger_no or faulty_equipment.replace("charger_", "")).strip()
+            charger_query = {"station_id": station_id}
+            charger_or = []
+            if charger_no_str:
+                if charger_no_str.isdigit():
+                    charger_or.append({"chargerNo": int(charger_no_str)})
+                charger_or.extend([{"charger_no": charger_no_str}, {"charger_id": charger_no_str}])
+            if charger_sn:
+                charger_or.extend([{"SN": charger_sn}, {"sn": charger_sn}])
+            if charger_or:
+                charger_query["$or"] = charger_or
+            charger_doc = await charger_col.find_one(charger_query)
+            if charger_doc:
+                charger_maximo = charger_doc.get("maximo_location", "")
+
+        # 3) ใช้ charger > station (เหมือน auto watcher)
+        maximo_loc = charger_maximo or station_maximo
+        if not maximo_loc:
+            return None
+
+        charger_label = charger_no or charger_sn or faulty_equipment
+        desc = f"[iMPS CM] {station_name} / {charger_label} / {doc.get('problem_details') or ''}"
+        result = maximo_create_sr(
+            description=desc[:250],
+            location=maximo_loc,
+            severity=doc.get("severity") or "Medium",
+        )
+        # รองรับทั้ง sync และ async (บาง environment อาจ wrap เป็น sync)
+        sr = await result if inspect.isawaitable(result) else result
+        if not sr:
+            return None
+
+        ticket_id = sr.get("ticketid")
+        await coll.update_one({"_id": oid}, {"$set": {"maximo_ticket_id": ticket_id}})
+        return ticket_id
+    except Exception as e:
+        import logging
+        logging.getLogger("cmreport").warning(f"Maximo SR failed: {e}")
+        return None
+
+
 @router.post("/cmreport/submit")
 async def cmreport_submit(body: CMSubmitIn, current: UserClaims = Depends(get_current_user)):
     station_id = body.station_id.strip()
@@ -1611,72 +1686,9 @@ async def cmreport_submit(body: CMSubmitIn, current: UserClaims = Depends(get_cu
 
     res = await coll.insert_one(doc)
 
-    # ══════════════════════════════════════════════════════════════
-    # B) ยิง Maximo SR (ถ้ามี maximo_location)
-    #    lookup: charger-level ก่อน → fallback station-level
-    #    (เหมือน auto_cm_watcher._lookup_station)
-    # ══════════════════════════════════════════════════════════════
+    # หมายเหตุ: ไม่ยิง Maximo SR ตอนเปิดใบงานแล้ว — รอ planner อนุมัติก่อน (ดู /cmreport/{id}/cs-approve)
+    # กันไม่ให้ใบที่ถูกตีกลับ/ยกเลิก/ลบทิ้ง ไปสร้าง SR ค้างไว้ใน Maximo
     maximo_ticket_id = None
-    try:
-        # 1) Station info
-        st_doc = station_collection.find_one(
-            {"station_id": station_id},
-            {"maximo_location": 1, "station_name": 1}
-        )
-        station_name = (st_doc or {}).get("station_name", station_id)
-        station_maximo = (st_doc or {}).get("maximo_location", "")
-
-        # 2) Charger-level maximo_location (ถ้า faulty_equipment ระบุ charger)
-        charger_maximo = ""
-        if body.charger_no or body.charger_sn or (body.faulty_equipment and body.faulty_equipment.startswith("charger_")):
-            from config import client as mongo_client
-            charger_col = mongo_client["iMPS"]["charger"]
-            # ใบใหม่ส่ง charger_no/SN แยกมา ส่วนใบเก่ายังรองรับ charger_1
-            charger_no_str = str(body.charger_no or body.faulty_equipment.replace("charger_", "")).strip()
-            charger_query = {"station_id": station_id}
-            charger_or = []
-            if charger_no_str:
-                if charger_no_str.isdigit():
-                    charger_or.append({"chargerNo": int(charger_no_str)})
-                charger_or.extend([{"charger_no": charger_no_str}, {"charger_id": charger_no_str}])
-            if body.charger_sn.strip():
-                charger_or.extend([{"SN": body.charger_sn.strip()}, {"sn": body.charger_sn.strip()}])
-            if charger_or:
-                charger_query["$or"] = charger_or
-            charger_doc = await charger_col.find_one(charger_query)
-            if charger_doc:
-                charger_maximo = charger_doc.get("maximo_location", "")
-
-        # 3) ใช้ charger > station (เหมือน auto watcher)
-        maximo_loc = charger_maximo or station_maximo
-
-        print(f"[DEBUG-PATCH-V2] maximo_loc={maximo_loc}")
-
-        if maximo_loc:
-            print(f"[DEBUG-V3] calling maximo_create_sr, type={type(maximo_create_sr)}, is_coroutine={inspect.iscoroutinefunction(maximo_create_sr)}")
-            charger_label = body.charger_no or body.charger_sn or body.faulty_equipment
-            desc = f"[iMPS CM] {station_name} / {charger_label} / {body.problem_details}"
-            result = maximo_create_sr(
-                description=desc[:250],
-                location=maximo_loc,
-                severity=body.severity or "Medium",
-            )
-            # รองรับทั้ง sync และ async (บาง environment อาจ wrap เป็น sync)
-            # sr = await result if inspect.isawaitable(result) else result
-            if inspect.isawaitable(result):
-                sr = await result
-            else:
-                sr = result
-
-            if sr:
-                maximo_ticket_id = sr.get("ticketid")
-                await coll.update_one(
-                    {"_id": res.inserted_id},
-                    {"$set": {"maximo_ticket_id": maximo_ticket_id}}
-                )
-    except Exception as e:
-        import logging
-        logging.getLogger("cmreport").warning(f"Maximo SR failed: {e}")
 
     # ── ส่งอีเมลแจ้ง "เปิดใบงาน CM" (manual) ──
     try:
@@ -2009,6 +2021,12 @@ async def cmreport_update_status(
     # ── ส่งต่อให้ Maximo (IN01 เปิด WO ตอนวางแผน / IN02 สถานะ / IN05+IN09 ตอนปิดงาน) ──
     # อ่านใบงานหลังบันทึกเพื่อให้ข้อมูลที่ส่งไปตรงกับที่เก็บจริง
     fresh = await coll.find_one({"_id": oid}) or {}
+
+    # ใบที่ปิดเอง (ช่าง/planner เปิดเคสเอง) ข้ามด่านอนุมัติ จึงยังไม่มี SR — เปิดให้ตอนนี้แทน
+    # (ใบปกติได้ SR ตอน planner กด approve แล้ว ฟังก์ชันนี้ข้ามให้เองถ้ามี ticket อยู่แล้ว)
+    if str(fresh.get("status") or "").strip().lower() in CM_SR_READY_STATUSES:
+        await create_maximo_sr_for_report(coll, oid, fresh)
+        fresh = await coll.find_one({"_id": oid}) or fresh
     maximo_result = await cm_maximo.safe_sync_report(
         coll, oid, fresh, memo=f"iMPS {fresh.get('issue_id') or ''} — {updates['status']}"
     )
@@ -2208,7 +2226,11 @@ async def cmreport_cs_approve(
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Report not found or not awaiting CS approval")
 
-    return {"ok": True, "status": "Wait for schedule"}
+    # อนุมัติแล้วค่อยเปิด SR ใน Maximo — ใบที่ถูกตีกลับ/ยกเลิกจะไม่ทิ้ง SR ค้างไว้
+    fresh = await coll.find_one({"_id": oid}) or {}
+    maximo_ticket_id = await create_maximo_sr_for_report(coll, oid, fresh)
+
+    return {"ok": True, "status": "Wait for schedule", "maximo_ticket_id": maximo_ticket_id}
 
 
 # ── planner ตีกลับใบงานขั้นวางแผน (Wait for schedule) → กลับไปหา cs (Wait for approve/cs_approval)
