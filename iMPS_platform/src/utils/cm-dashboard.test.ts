@@ -21,6 +21,8 @@ import {
   companyOf,
   listCompanies,
   matchesCompanyFilter,
+  isChargerWorkOrder,
+  isEdsWorkOrder,
 } from "./cm-dashboard";
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
@@ -75,16 +77,45 @@ describe("company filter helpers", () => {
     expect(matchesCompanyFilter(edsDelta, "EGAT")).toBe(false);
   });
 
-  it("keeps FlexxFast work orders out of the EGAT filter", () => {
-    // ตู้ FlexxFast ที่ตั้งอยู่ในสถานี EGAT เป็นงานของ EDS — เลือก EGAT ต้องไม่เห็น
-    const egatFlexxFast = makeRow({ company: "EGAT", charger_brand: "FlexxFast" });
-    const egatDelta = makeRow({ company: "EGAT", charger_brand: "Delta" });
-    const egatNoBrand = makeRow({ company: "EGAT", charger_brand: "" });
+  it("keeps FlexxFast charger work orders out of the EGAT filter", () => {
+    // ใบของตู้ FlexxFast ที่ตั้งอยู่ในสถานี EGAT เป็นงานของ EDS — เลือก EGAT ต้องไม่เห็น
+    const egatFlexxFast = makeRow({ company: "EGAT", charger_brand: "FlexxFast", faulty_equipment: "DCCHARGER" });
+    const egatDelta = makeRow({ company: "EGAT", charger_brand: "Delta", faulty_equipment: "DCCHARGER" });
+    const egatNoBrand = makeRow({ company: "EGAT", charger_brand: "", faulty_equipment: "DCCHARGER" });
 
     expect(matchesCompanyFilter(egatFlexxFast, "EGAT")).toBe(false);
     expect(matchesCompanyFilter(egatDelta, "EGAT")).toBe(true);
     expect(matchesCompanyFilter(egatNoBrand, "EGAT")).toBe(true);
     expect(applyFilters([egatFlexxFast, egatDelta], { ...EMPTY_FILTERS, company: "EGAT" })).toEqual([egatDelta]);
+  });
+
+  it("counts only charger work orders as EDS", () => {
+    // ใบระดับสถานี backend เติม brand จากยี่ห้อของทั้งสถานี — ไม่ใช่งานตู้ จึงยังเป็นของ EGAT
+    const stationLevel = makeRow({ company: "EGAT", charger_brand: "FlexxFast", faulty_equipment: "STATION" });
+    const legacyStation = makeRow({ company: "EGAT", charger_brand: "FlexxFast", faulty_equipment: "STATFC" });
+    const legacyCharger = makeRow({ company: "EGAT", charger_brand: "FlexxFast", faulty_equipment: "charger_2" });
+
+    expect(isChargerWorkOrder(stationLevel)).toBe(false);
+    expect(isEdsWorkOrder(stationLevel)).toBe(false);
+    expect(matchesCompanyFilter(stationLevel, "EGAT")).toBe(true);
+    expect(matchesCompanyFilter(stationLevel, "EDS")).toBe(false);
+
+    expect(matchesCompanyFilter(legacyStation, "EGAT")).toBe(true);
+    expect(matchesCompanyFilter(legacyStation, "EDS")).toBe(false);
+
+    expect(isEdsWorkOrder(legacyCharger)).toBe(true);
+    expect(matchesCompanyFilter(legacyCharger, "EGAT")).toBe(false);
+    expect(matchesCompanyFilter(legacyCharger, "EDS")).toBe(true);
+  });
+
+  it("falls back to the resolved charger when the failure code is unknown", () => {
+    const withCharger = makeRow({ company: "EGAT", charger_brand: "FlexxFast", faulty_equipment: "OTHER", charger_sn: "SN-9" });
+    const withoutCharger = makeRow({ company: "EGAT", charger_brand: "FlexxFast", faulty_equipment: "OTHER" });
+
+    expect(isChargerWorkOrder(withCharger)).toBe(true);
+    expect(matchesCompanyFilter(withCharger, "EGAT")).toBe(false);
+    expect(isChargerWorkOrder(withoutCharger)).toBe(false);
+    expect(matchesCompanyFilter(withoutCharger, "EGAT")).toBe(true);
   });
 });
 
