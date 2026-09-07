@@ -1539,6 +1539,8 @@ class CMSubmitIn(BaseModel):
     found_date: Optional[str] = None
     found_time: str = ""  # เวลาแจ้ง (HH:MM)
     faulty_equipment: str = ""
+    damage_symptoms: List[str] = []
+    damage_symptom_other: str = ""
     severity: str = ""
     problem_details: str = ""
     remarks_open: str = ""
@@ -1665,6 +1667,8 @@ async def cmreport_submit(body: CMSubmitIn, current: UserClaims = Depends(get_cu
         "reported_by": body.reported_by or current.username,
         # flat fields
         "faulty_equipment": body.faulty_equipment,
+        "damage_symptoms": body.damage_symptoms or [],
+        "damage_symptom_other": body.damage_symptom_other,
         "charger_no": body.charger_no,
         "charger_sn": (body.charger_sn or "").strip(),
         "severity": body.severity,
@@ -1811,6 +1815,8 @@ async def cmreport_detail_path(
         
         # flat fields จาก Open
         "faulty_equipment": doc.get("faulty_equipment") or "",
+        "damage_symptoms": doc.get("damage_symptoms") or [],
+        "damage_symptom_other": doc.get("damage_symptom_other") or "",
         "charger_no": doc.get("charger_no") or nested_job.get("charger_no") or "",
         "charger_sn": doc.get("charger_sn") or nested_job.get("charger_sn") or "",
         "severity": doc.get("severity") or "",
@@ -1950,6 +1956,7 @@ async def cmreport_update_status(
             "remarks", "remarks_open",
             "warranty_status", "investment_scope", "io_code",
             "faulty_equipment",
+            "damage_symptoms", "damage_symptom_other",
             "charger_no", "charger_sn",
             "repaired_equipment",
             "inprogress_remarks",

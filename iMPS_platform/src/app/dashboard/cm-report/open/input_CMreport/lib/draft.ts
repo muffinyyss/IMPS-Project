@@ -122,6 +122,8 @@ export type CMDraftData = {
     status: "" | "Open" | "In Progress" | "Wait for approve" | "Wait for schedule";
     remarks_open: string;
     faultyEquipment: string;
+    damageSymptoms: string[];
+    damageSymptomOther: string;
     
     // Other fields
     reported_by: string;
