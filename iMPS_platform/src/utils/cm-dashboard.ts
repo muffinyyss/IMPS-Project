@@ -59,6 +59,11 @@ export function brandOf(r: CMRow): string {
 
 export function matchesCompanyFilter(r: CMRow, company: string | null): boolean {
   if (!company) return true;
+  // EDS รับผิดชอบตู้ FlexxFast โดยไม่ขึ้นกับ company ของสถานี
+  // จึงต้องใช้ brand ของตู้จากใบงานเป็นเกณฑ์เดียวกับ PM Dashboard
+  if (company.trim().toLowerCase() === "eds") {
+    return brandOf(r).toLowerCase() === FLEXXFAST_BRAND.toLowerCase();
+  }
   return companyOf(r).toLowerCase() === company.trim().toLowerCase();
 }
 

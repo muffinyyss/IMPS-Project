@@ -64,13 +64,15 @@ describe("company filter helpers", () => {
     expect(listCompanies(rows)).toEqual(["Company A", "Unknown"]);
   });
 
-  it("matches EGAT and EDS from the company field, independently of charger brand", () => {
+  it("matches EDS to FlexxFast chargers, regardless of the station company", () => {
     const egatFlexxFast = makeRow({ company: "EGAT", charger_brand: "FlexxFast" });
     const edsDelta = makeRow({ company: "EDS", charger_brand: "Delta" });
+    const edsFlexxFast = makeRow({ company: "EDS", charger_brand: "flexxfast" });
 
     expect(matchesCompanyFilter(egatFlexxFast, "EGAT")).toBe(true);
-    expect(matchesCompanyFilter(egatFlexxFast, "EDS")).toBe(false);
-    expect(matchesCompanyFilter(edsDelta, "EDS")).toBe(true);
+    expect(matchesCompanyFilter(egatFlexxFast, "EDS")).toBe(true);
+    expect(matchesCompanyFilter(edsDelta, "EDS")).toBe(false);
+    expect(matchesCompanyFilter(edsFlexxFast, "EDS")).toBe(true);
     expect(matchesCompanyFilter(edsDelta, "EGAT")).toBe(false);
   });
 });
