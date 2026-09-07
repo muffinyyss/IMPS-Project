@@ -11,7 +11,7 @@ import { useDraft, type DraftData, type DraftImage, type DraftCorrectiveAction }
 import { useReportLock } from "@/app/dashboard/cm-report/lib/lock";
 import { failureCodeLabel } from "@/app/dashboard/cm-report/lib/failureCode";
 import {
-    useMaximoFailureTree, isMaximoCode, failureClassRole, type SelectOption,
+    useMaximoFailureTree, isMaximoCode, failureClassRole, failureClassOptions, type SelectOption,
     maximoProblemOptions, maximoCauseOptions, maximoRemedyOptions, NO_PROBLEM_OPTION,
 } from "@/app/dashboard/cm-report/lib/maximo";
 import { cmBackRoute } from "@/app/dashboard/cm-report/lib/origin";
@@ -20,6 +20,7 @@ import { repairResultLabel, normalizeRepairResult, REPAIR_RESULT_VALUES } from "
 import { ZoomableImg, AttachmentFileRow, isImageAttachment } from "@/app/dashboard/cm-report/components/photo-viewer";
 import RepairRoundCard, { type RepairRound } from "@/app/dashboard/cm-report/components/RepairRoundCard";
 import LockBanner from "@/app/dashboard/cm-report/components/LockBanner";
+import { damageSymptomLabel } from "@/app/dashboard/cm-report/lib/damageSymptoms";
 
 // ==================== DEVICE NAME FORMATTER ====================
 function formatDeviceName(name: string): string {
@@ -54,9 +55,10 @@ const T = {
     inspector: { th: "ผู้ตรวจสอบ", en: "Inspector" },
     repairer: { th: "ผู้เข้าแก้ไข", en: "Repairer" },
     inspectorEntered: { th: "ผู้ตรวจสอบ", en: "Inspector" },
-    faultyEquipment: { th: "อุปกรณ์ที่พัง", en: "Faulty Equipment" },
+    faultyEquipment: { th: "ตำแหน่งจุดที่มีความผิดปกติ", en: "Failure Location" },
+    damageSymptoms: { th: "อาการชำรุด", en: "Damage Symptoms" },
     repairedEquipment: { th: "การแก้ไข", en: "Correction" },
-    selectEquipmentPlaceholder: { th: "เลือกอุปกรณ์...", en: "Select equipment..." },
+    selectEquipmentPlaceholder: { th: "เลือกตำแหน่ง...", en: "Select location..." },
     chargersGroup: { th: "Chargers", en: "Chargers" },
     devicesGroup: { th: "อุปกรณ์ในตู้", en: "Cabinet Devices" },
     otherEquipmentGroup: { th: "อุปกรณ์อื่นๆ", en: "Other Equipment" },
@@ -196,6 +198,7 @@ type Job = {
     charger_no?: string; charger_sn?: string;
     problem_details: string; problem_type: string[]; severity: Severity;
     initial_cause: string; status: Status; remarks: string; faulty_equipment: string;
+    damage_symptoms: string[]; damage_symptom_other: string;
     corrective_actions: CorrectiveItem[];
     start_repair_date: string;
     resolved_date: string;
@@ -285,10 +288,10 @@ const COMPLETED_REPAIR_RESULTS = ["WO - wait for approve", "แก้ไขส�
 const NO_PROBLEM_REPAIR_RESULT = "ไม่พบปัญหา";
 
 // ตัวเลือกท้าย dropdown ปัญหา — แสดงเสมอทุก failure code
-const PROGRESS_REQUIRED_KEYS = ["problemType", "problemTypeOther", "cause"];
+const PROGRESS_REQUIRED_KEYS = ["faultyEquipment", "problemType", "problemTypeOther", "cause"];
 
 // เลือก "แก้ไขสำเร็จ" = ปิดงาน ต้องมีหลักฐานครบ
-const COMPLETED_REQUIRED_KEYS = ["problemType", "cause", "correction", "correctiveAction", "afterPhoto", "repairResult"];
+const COMPLETED_REQUIRED_KEYS = ["faultyEquipment", "problemType", "cause", "correction", "correctiveAction", "afterPhoto", "repairResult"];
 
 // รูปของแต่ละรอบซ่อมต้องไม่ไปกองรวมกลุ่มเดียวกัน — index ของ corrective action
 // รีเซ็ตทุกรอบ จึงบวก offset ตามจำนวนรอบที่เก็บเข้าประวัติแล้ว (คงรูปแบบ before_<เลข> ไว้)
@@ -320,6 +323,7 @@ const INITIAL_JOB: Job = {
     issue_id: "", doc_name: "", found_date: "", found_time: "", location: "", problem_details: "",
     charger_no: "", charger_sn: "",
     problem_type: [], severity: "", initial_cause: "", status: "", remarks: "", faulty_equipment: "",
+    damage_symptoms: [], damage_symptom_other: "",
     corrective_actions: [{ text: "", beforeImages: [], afterImages: [] }],
     resolved_date: "",
     start_repair_date: "",
@@ -1196,6 +1200,7 @@ export default function CMInProgressForm() {
             };
             setJob(prev => ({
                 ...prev,
+                faulty_equipment: pendingDraft.faulty_equipment || prev.faulty_equipment,
                 corrective_actions: pendingDraft.corrective_actions?.length > 0
                     ? mergeDraftActionsWithServer(draftActionsToCorrective(pendingDraft.corrective_actions), prev.corrective_actions)
                     : prev.corrective_actions,
@@ -1310,6 +1315,7 @@ export default function CMInProgressForm() {
             job.repair_result_remark ||
             job.problem_type.length > 0 ||
             job.cause.length > 0 ||
+            job.faulty_equipment ||
             job.start_repair_date ||
             job.start_repair_time;
         if (!hasData) return;
@@ -1337,6 +1343,7 @@ export default function CMInProgressForm() {
             })));
 
             const draftData: DraftData = {
+                faulty_equipment: job.faulty_equipment,
                 corrective_actions: correctiveActionsWithImages,
                 repaired_equipment: job.repaired_equipment,
                 repair_result: job.repair_result,
@@ -1354,7 +1361,7 @@ export default function CMInProgressForm() {
         } catch (e) {
             console.error("Failed to save draft with images:", e);
         }
-    }, [job.corrective_actions, extraGroups, job.repaired_equipment, job.repair_result, job.preventive_action, job.inprogress_remarks, job.repair_result_remark, job.problem_type, job.problem_type_other, job.cause, job.start_repair_date, job.start_repair_time, editId, stationId, saveDraftNow]);
+    }, [job.corrective_actions, extraGroups, job.repaired_equipment, job.repair_result, job.preventive_action, job.inprogress_remarks, job.repair_result_remark, job.problem_type, job.problem_type_other, job.cause, job.faulty_equipment, job.start_repair_date, job.start_repair_time, editId, stationId, saveDraftNow]);
 
     const draftTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     useEffect(() => {
@@ -1497,6 +1504,7 @@ export default function CMInProgressForm() {
     const maximoLaborRequired = !viewOnly && laborOptions.length > 0;
 
     const validations = useMemo<ValidationItem[]>(() => [
+        { key: "faultyEquipment", label: t("faultyEquipment", lang), isValid: !!job.faulty_equipment.trim(), message: t("notSelected", lang), isRequired: true, scrollId: "cm-equipment" },
         { key: "problemType", label: t("validProblemType", lang), isValid: validationGroupState.allProblemTypesFilled, message: t("notSelected", lang), isRequired: !isWaitingForSiteCondition, scrollId: "cm-problem-type" },
         { key: "problemTypeOther", label: lang === "th" ? "ระบุปัญหา (อื่นๆ)" : "Specify Problem (Other)", isValid: !!job.problem_type_other.trim(), message: t("notFilled", lang), isRequired: job.problem_type.includes("Other"), scrollId: "cm-problem-type" },
         { key: "cause", label: t("validCause", lang), isValid: validationGroupState.allCausesFilled, message: t("notFilled", lang), isRequired: !isNoProblem && !isWaitingForSiteCondition, scrollId: "cm-cause" },
@@ -1547,6 +1555,7 @@ export default function CMInProgressForm() {
     // บันทึกความคืบหน้าใช้เกณฑ์ขั้นต่ำ: ต้องระบุอาการและสาเหตุ
     // (ไม่ใช้ canSave เพราะนั่นบังคับครบทุกช่องสำหรับ "ปิดงาน")
     const canSaveProgress = useMemo(() => {
+        if (!job.faulty_equipment.trim()) return false;
         // เลือก "รอเข้าพื้นที่" = ฟอร์มล้างช่องอาการ/สาเหตุทิ้งไปแล้ว บังคับต่อไม่ได้
         // (ไม่งั้นปุ่มเดียวของใบสถานะ Wait for schedule จะ disabled ถาวร = ทางตัน)
         if (isWaitingForSiteCondition) return !!job.repair_result_remark.trim();
@@ -1555,7 +1564,7 @@ export default function CMInProgressForm() {
         const hasCause = job.cause.some(cause => cause.trim() !== "") &&
             extraGroups.filter(group => group.kind !== "correction").every(group => group.cause.some(cause => cause.trim() !== ""));
         return (hasProblem || !!job.problem_type_other.trim()) && hasCause;
-    }, [job.problem_type, job.problem_type_other, job.cause, job.repair_result_remark, isWaitingForSiteCondition, extraGroups]);
+    }, [job.faulty_equipment, job.problem_type, job.problem_type_other, job.cause, job.repair_result_remark, isWaitingForSiteCondition, extraGroups]);
 
     // การ์ดสรุปต้องสะท้อนสิ่งที่ "ปุ่มที่กดได้จริง" ต้องการ ไม่งั้นจะขึ้นแดงว่ายังไม่เลือก
     // ผลหลังซ่อม ทั้งที่สถานะนี้ไม่ต้องเลือก — canSave ยังใช้ validations ชุดเต็มเหมือนเดิม
@@ -2001,6 +2010,8 @@ export default function CMInProgressForm() {
                     status: (data.status ?? "In Progress") as Status,
                     remarks: data.remarks_open ?? "",
                     faulty_equipment: data.faulty_equipment ?? "",
+                    damage_symptoms: Array.isArray(data.damage_symptoms) ? data.damage_symptoms : [],
+                    damage_symptom_other: data.damage_symptom_other ?? "",
                     // รอบใหม่: ล้างเวลาเริ่มให้ว่าง ช่างต้องกด "เริ่มแก้ไข" อีกครั้งถึงจะประทับเวลาใหม่
                     // (repairStarted อิงฟิลด์นี้ — ประทับไว้ตั้งแต่โหลดจะข้ามด่านกดเริ่มไปเลย
                     //  แล้วรอบนี้จะได้เวลาตอนเปิดหน้า ไม่ใช่เวลาที่ลงมือจริง IN09 ก็เพี้ยนตาม)
@@ -2630,6 +2641,7 @@ export default function CMInProgressForm() {
                     status: keepStatus ? job.status : targetStatus,
                     inspector,
                     job: {
+                        faulty_equipment: job.faulty_equipment,
                         problem_type: mergedProblemType,
                         problem_type_other: job.problem_type_other,
                         cause: mergedCause,
@@ -2672,6 +2684,25 @@ export default function CMInProgressForm() {
     };
 
     const severityColor = getSeverityColor(job.severity);
+
+    // ใช้รายการ failure location ชุดเดียวกับหน้า Open เดิม แต่กรองตามชนิดตู้ของใบงาน
+    const failureLocationOptions = useMemo(() => {
+        const selectedNo = String(job.charger_no || chargerIdentity?.charger_no || "").trim().toLowerCase();
+        const selectedSn = String(job.charger_sn || chargerIdentity?.charger_sn || "").trim().toLowerCase();
+        const selectedCharger = chargers.find(charger => {
+            if (!selectedNo && !selectedSn) return false;
+            const no = String(charger.chargerNo ?? charger.charger_id ?? "").trim().toLowerCase();
+            const sn = String(charger.SN || charger.sn || "").trim().toLowerCase();
+            return selectedNo && selectedSn
+                ? no === selectedNo && sn === selectedSn
+                : no === selectedNo || sn === selectedSn;
+        });
+        const pinnedType = String(selectedCharger?.chargerType || "").trim().toUpperCase();
+        return failureClassOptions(maximoTree, {
+            hasDC: pinnedType ? pinnedType === "DC" : chargers.length === 0 || chargers.some(charger => String(charger.chargerType || "DC").toUpperCase() === "DC"),
+            hasAC: pinnedType ? pinnedType === "AC" : chargers.some(charger => String(charger.chargerType || "").toUpperCase() === "AC"),
+        }) ?? [];
+    }, [job.charger_no, job.charger_sn, chargerIdentity, chargers, maximoTree]);
 
     // ชุดตัวเลือก "ปัญหา" ตาม FAILURECODE ของใบงาน (ถ้าไม่มีลิสต์กำหนด → ใช้ชุดเดิม) + "ไม่พบปัญหา"
     const failureProblemOptions = toOptions(
@@ -2929,33 +2960,49 @@ export default function CMInProgressForm() {
                     {/* ตู้ชาร์จที่ใบงานนี้เกี่ยวข้อง — ชื่อ / เลขตู้ / S/N / บริษัทผู้ถือครอง */}
                     <ChargerIdentity data={chargerIdentity} lang={lang} />
 
-                    {/* Section 1: Problem Details (Readonly) */}
+                    {/* Section 1: ข้อมูลจากหน้า Open + ตำแหน่งที่ช่างระบุในขั้น In Progress */}
                     <div className="tw-mb-6 tw-rounded-lg tw-overflow-hidden tw-border tw-border-blue-gray-100 tw-bg-white tw-shadow-sm">
                         <div className="tw-flex tw-items-center tw-gap-3 tw-bg-red-600 hover:tw-bg-red-700 tw-px-4 tw-py-3 tw-text-white tw-cursor-pointer tw-transition-colors">
                             <div className="tw-w-8 tw-h-8 tw-rounded-full tw-bg-white tw-text-red-600 tw-flex tw-items-center tw-justify-center tw-font-bold tw-text-sm">1</div>
                             <span className="tw-font-semibold tw-text-base">{t("problemDetails", lang)}</span>
-                            <span className="tw-ml-auto tw-text-xs tw-bg-white/20 tw-px-2.5 tw-py-1 tw-rounded-full tw-font-medium">{lang === "th" ? "อ่านอย่างเดียว" : "Read Only"}</span>
+                            <span className="tw-ml-auto tw-text-xs tw-bg-white/20 tw-px-2.5 tw-py-1 tw-rounded-full tw-font-medium">
+                                {viewOnly ? (lang === "th" ? "อ่านอย่างเดียว" : "Read Only") : (lang === "th" ? "ระบุตำแหน่งที่ผิดปกติ" : "Select failure location")}
+                            </span>
                         </div>
 
                         <div className="tw-p-4 tw-space-y-4">
-                            {/* Faulty Equipment & Severity */}
+                            {/* Damage Symptoms from Open */}
+                            <div>
+                                <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-2">{t("damageSymptoms", lang)}</label>
+                                <div className="tw-min-h-10 tw-flex tw-flex-wrap tw-items-center tw-gap-2 tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-gray-100 tw-px-3 tw-py-2">
+                                    {job.damage_symptoms.length > 0 ? job.damage_symptoms.map(symptom => (
+                                        <span key={symptom} className="tw-rounded-full tw-bg-red-50 tw-px-2.5 tw-py-1 tw-text-xs tw-font-medium tw-text-red-700">
+                                            {symptom === "other" && job.damage_symptom_other.trim()
+                                                ? `${damageSymptomLabel(symptom, lang)}: ${job.damage_symptom_other}`
+                                                : damageSymptomLabel(symptom, lang)}
+                                        </span>
+                                    )) : <span className="tw-text-sm tw-text-blue-gray-500">-</span>}
+                                </div>
+                            </div>
+
+                            {/* Failure Location & Severity */}
                             <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-4">
-                                <div>
-                                    <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-2">{t("faultyEquipment", lang)}</label>
+                                <div id="cm-equipment">
+                                    <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-2">{t("faultyEquipment", lang)} <span className="tw-text-red-500">*</span></label>
                                     <select
                                         value={job.faulty_equipment}
-                                        disabled
-                                        className="tw-w-full tw-h-10 tw-border tw-border-blue-gray-200 tw-rounded-lg tw-px-4 tw-text-sm tw-font-medium tw-bg-gray-100 tw-text-blue-gray-700 tw-cursor-not-allowed tw-opacity-100"
-                                        style={{ backgroundColor: '#f3f4f6', color: '#455a64' }}
+                                        onChange={event => setJob(prev => ({ ...prev, faulty_equipment: event.target.value }))}
+                                        disabled={viewOnly}
+                                        className={`tw-w-full tw-h-10 tw-border tw-border-blue-gray-200 tw-rounded-lg tw-px-4 tw-text-sm tw-font-medium tw-text-blue-gray-700 tw-opacity-100 ${viewOnly ? "tw-bg-gray-100 tw-cursor-not-allowed" : "tw-bg-white hover:tw-border-blue-gray-300 focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-blue-500"}`}
                                     >
                                         <option value="">{t("selectEquipmentPlaceholder", lang)}</option>
                                         <optgroup label={lang === "th" ? "รหัสความเสียหาย" : "Failure Code"}>
-                                            {maximoTree.classes.map(c => (
-                                                <option key={c.code} value={c.code}>{c.description || c.code}</option>
+                                            {failureLocationOptions.map(option => (
+                                                <option key={option.value} value={option.value}>{option.label}</option>
                                             ))}
                                             {/* ใบงานเก่าที่เก็บรหัสชุดเดิม — ต้องมี option ให้ค่าที่เลือกไว้ ไม่งั้น select โชว์ว่าง */}
                                             {job.faulty_equipment
-                                                && !maximoTree.classes.some(c => c.code === job.faulty_equipment)
+                                                && !failureLocationOptions.some(option => option.value === job.faulty_equipment)
                                                 && !job.faulty_equipment.startsWith("charger_") && (
                                                 <option value={job.faulty_equipment}>
                                                     {failureCodeLabel(job.faulty_equipment)}
@@ -3712,7 +3759,7 @@ export default function CMInProgressForm() {
                                 <Button
                                     onClick={() => { void onFinalSave({ keepStatus: true }); }}
                                     disabled={saving || !canSaveProgress}
-                                    title={!canSaveProgress ? (lang === "th" ? "ต้องระบุอาการและสาเหตุก่อน" : "Fill in problem and cause first") : undefined}
+                                    title={!canSaveProgress ? (lang === "th" ? "ต้องระบุตำแหน่ง อาการ และสาเหตุก่อน" : "Fill in the failure location, problem, and cause first") : undefined}
                                     className="tw-text-white tw-font-semibold tw-text-base tw-px-8 tw-py-3 tw-rounded-xl hover:tw-shadow-xl disabled:tw-opacity-50 disabled:tw-cursor-not-allowed disabled:tw-shadow-none tw-transition-all tw-transform hover:tw-scale-[1.02] tw-bg-blue-500 hover:tw-bg-blue-600 hover:tw-shadow-blue-500/30 tw-mr-3"
                                 >
                                     {saving ? t("saving", lang) : (lang === "th" ? "บันทึกความคืบหน้า" : "Save progress")}
