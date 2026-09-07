@@ -69,11 +69,22 @@ describe("company filter helpers", () => {
     const edsDelta = makeRow({ company: "EDS", charger_brand: "Delta" });
     const edsFlexxFast = makeRow({ company: "EDS", charger_brand: "flexxfast" });
 
-    expect(matchesCompanyFilter(egatFlexxFast, "EGAT")).toBe(true);
     expect(matchesCompanyFilter(egatFlexxFast, "EDS")).toBe(true);
     expect(matchesCompanyFilter(edsDelta, "EDS")).toBe(false);
     expect(matchesCompanyFilter(edsFlexxFast, "EDS")).toBe(true);
     expect(matchesCompanyFilter(edsDelta, "EGAT")).toBe(false);
+  });
+
+  it("keeps FlexxFast work orders out of the EGAT filter", () => {
+    // ตู้ FlexxFast ที่ตั้งอยู่ในสถานี EGAT เป็นงานของ EDS — เลือก EGAT ต้องไม่เห็น
+    const egatFlexxFast = makeRow({ company: "EGAT", charger_brand: "FlexxFast" });
+    const egatDelta = makeRow({ company: "EGAT", charger_brand: "Delta" });
+    const egatNoBrand = makeRow({ company: "EGAT", charger_brand: "" });
+
+    expect(matchesCompanyFilter(egatFlexxFast, "EGAT")).toBe(false);
+    expect(matchesCompanyFilter(egatDelta, "EGAT")).toBe(true);
+    expect(matchesCompanyFilter(egatNoBrand, "EGAT")).toBe(true);
+    expect(applyFilters([egatFlexxFast, egatDelta], { ...EMPTY_FILTERS, company: "EGAT" })).toEqual([egatDelta]);
   });
 });
 

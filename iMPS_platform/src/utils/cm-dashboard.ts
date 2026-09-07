@@ -59,11 +59,15 @@ export function brandOf(r: CMRow): string {
 
 export function matchesCompanyFilter(r: CMRow, company: string | null): boolean {
   if (!company) return true;
+  const isFlexxFast = brandOf(r).toLowerCase() === FLEXXFAST_BRAND.toLowerCase();
   // EDS รับผิดชอบตู้ FlexxFast โดยไม่ขึ้นกับ company ของสถานี
   // จึงต้องใช้ brand ของตู้จากใบงานเป็นเกณฑ์เดียวกับ PM Dashboard
   if (company.trim().toLowerCase() === "eds") {
-    return brandOf(r).toLowerCase() === FLEXXFAST_BRAND.toLowerCase();
+    return isFlexxFast;
   }
+  // อีกด้านของกฎเดียวกัน: ตู้ FlexxFast เป็นงานของ EDS เสมอ
+  // เลือก EGAT จึงต้องเห็นเฉพาะใบงานของ EGAT — ตัดใบ FlexxFast ที่ตั้งอยู่ในสถานี EGAT ออก
+  if (isFlexxFast) return false;
   return companyOf(r).toLowerCase() === company.trim().toLowerCase();
 }
 
