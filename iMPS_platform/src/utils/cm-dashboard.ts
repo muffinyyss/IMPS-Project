@@ -57,17 +57,42 @@ export function brandOf(r: CMRow): string {
   return brand || UNKNOWN_BRAND;
 }
 
+/** FAILURECODE ของใบที่เปิดกับตู้ชาร์จ — รหัส Maximo (ใบใหม่) + รหัสชุดเก่าของ iMPS */
+const CHARGER_FAILURE_CODES = ["DCCHARGER", "ACCHARGER", "DCCHARFC", "ACCHARFC"];
+/** FAILURECODE ระดับสถานี — ไม่ใช่ใบของตู้ แม้สถานีนั้นจะเป็นตู้ FlexxFast ล้วน */
+const STATION_FAILURE_CODES = ["STATION", "STATFC"];
+
+/** ใบนี้เปิดกับตู้ชาร์จหรือไม่ — ใบระดับสถานี/MDB ไม่นับ */
+export function isChargerWorkOrder(r: CMRow): boolean {
+  const code = (r.faulty_equipment || "").trim().toUpperCase();
+  if (CHARGER_FAILURE_CODES.includes(code)) return true;
+  if (STATION_FAILURE_CODES.includes(code)) return false;
+  // ใบรุ่นเก่าเก็บ faulty_equipment เป็น charger_1 / charger_<id>
+  if (code.startsWith("CHARGER_")) return true;
+  // รหัสอื่นที่ไม่รู้จัก — นับเป็นใบของตู้ก็ต่อเมื่อ backend resolve ตู้ให้ได้จริง
+  return !!(r.charger_sn || "").trim() || String(r.charger_no ?? "").trim() !== "";
+}
+
+/**
+ * ใบนี้เป็นงานของ EDS หรือไม่ — ตู้ยี่ห้อ FlexxFast และเปิดเป็นใบของตู้ชาร์จ
+ *
+ * brand ของใบระดับสถานี backend เติมมาจากยี่ห้อของทั้งสถานี ใบพวกนั้นจึงอาจเป็น
+ * FlexxFast ทั้งที่ไม่ใช่งานตู้ — ต้องเช็ค isChargerWorkOrder ควบคู่เสมอ
+ */
+export function isEdsWorkOrder(r: CMRow): boolean {
+  return brandOf(r).toLowerCase() === FLEXXFAST_BRAND.toLowerCase() && isChargerWorkOrder(r);
+}
+
 export function matchesCompanyFilter(r: CMRow, company: string | null): boolean {
   if (!company) return true;
-  const isFlexxFast = brandOf(r).toLowerCase() === FLEXXFAST_BRAND.toLowerCase();
   // EDS รับผิดชอบตู้ FlexxFast โดยไม่ขึ้นกับ company ของสถานี
   // จึงต้องใช้ brand ของตู้จากใบงานเป็นเกณฑ์เดียวกับ PM Dashboard
   if (company.trim().toLowerCase() === "eds") {
-    return isFlexxFast;
+    return isEdsWorkOrder(r);
   }
-  // อีกด้านของกฎเดียวกัน: ตู้ FlexxFast เป็นงานของ EDS เสมอ
-  // เลือก EGAT จึงต้องเห็นเฉพาะใบงานของ EGAT — ตัดใบ FlexxFast ที่ตั้งอยู่ในสถานี EGAT ออก
-  if (isFlexxFast) return false;
+  // อีกด้านของกฎเดียวกัน: ใบตู้ FlexxFast เป็นงานของ EDS เสมอ
+  // เลือก EGAT จึงไม่เห็นใบของ EDS แม้ตู้นั้นจะอยู่ในสถานีของ EGAT
+  if (isEdsWorkOrder(r)) return false;
   return companyOf(r).toLowerCase() === company.trim().toLowerCase();
 }
 
