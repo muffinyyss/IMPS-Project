@@ -41,6 +41,14 @@ from PIL import Image
 from io import BytesIO
 
 
+# เวอร์ชันชุดหัวข้อของฟอร์ม MDB
+#   1 = ชุดเดิม 13 ข้อ
+#   2 = เพิ่ม "ตรวจสอบสภาพทั่วไป / อุปกรณ์ชำรุดเสียหาย (ก่อนบำรุงรักษา)" เป็นข้อ 1-2
+#       ข้อเดิมเลื่อนเป็น 3-15 → คีย์ rows/photos ของใบ v1 กับ v2 คนละความหมายกัน
+#       ทั้งฟอร์มและ PDF อ่านค่านี้เพื่อเลือกชุดหัวข้อให้ตรงกับใบ
+FORM_VERSION = 2
+
+
 def resize_image_bytes(data: bytes, max_width: int = 1920, quality: int = 85) -> bytes:
     """Resize รูปถ้าใหญ่เกิน max_width, return JPEG bytes"""
     try:
@@ -274,24 +282,6 @@ async def preview_docname(
 # Pydantic Models
 # ============================================
 
-class MDBPMSubmitIn(BaseModel):
-    side: Literal["pre", "post"]
-    station_id: str
-    # ใบงาน Maximo ที่ planner assign — โยงเอกสารกลับหาใบงานต้นทาง
-    wonum: Optional[str] = None
-    job: Dict[str, Any]
-    measures_pre: Dict[str, Any]
-    rows_pre: Optional[Dict[str, Dict[str, Any]]] = None
-    q4_items: Optional[List[Dict[str, str]]] = None
-    q6_items: Optional[List[Dict[str, str]]] = None
-    charger_count: Optional[int] = None
-    pm_date: str
-    issue_id: Optional[str] = None
-    doc_name: Optional[str] = None
-    inspector: Optional[str] = None
-    summary_pre: Optional[str] = None
-
-
 class MDBPMPostIn(BaseModel):
     report_id: Optional[str] = None
     station_id: str
@@ -308,6 +298,20 @@ class MDBPMPostIn(BaseModel):
     # laborcode ฝั่ง Maximo ที่ช่างเลือกเอง (ใช้ส่งเวลาทำงาน IN09)
     maximo_labor: Optional[List[str]] = None
     maximo_contractor: Optional[str] = None
+    # ── ข้อมูลหัวเอกสาร ────────────────────────────────────────────────
+    # ฟอร์มกรอกรอบเดียวแล้ว (ไม่มีด่าน "ก่อน PM") /submit จึงเป็นตัวสร้าง
+    # เอกสารเองเมื่อยังไม่มี report_id — ฟิลด์ชุดนี้เคยส่งมาที่ /pre/submit
+    job: Optional[Dict[str, Any]] = None
+    # q4_items / q6_items = ชื่อฟิลด์เดิมใน DB (สมัยที่ Breaker Main อยู่ข้อ 4
+    # และ Breaker CCB อยู่ข้อ 6) ตอนนี้เป็นข้อ 6 กับ 8 แต่คงชื่อฟิลด์ไว้
+    # จะได้ไม่ต้อง migrate ใบเก่า
+    pm_date: Optional[str] = None
+    issue_id: Optional[str] = None
+    doc_name: Optional[str] = None
+    inspector: Optional[str] = None
+    q4_items: Optional[List[Dict[str, str]]] = None
+    q6_items: Optional[List[Dict[str, str]]] = None
+    charger_count: Optional[int] = None
 
 
 # ============================================
@@ -418,31 +422,19 @@ async def mdbpmreport_latest_by_path(
 
 
 # ============================================
-# Pre-PM Submit
+# Issue ID / Doc Name allocation
 # ============================================
 
-@router.post("/mdbpmreport/pre/submit")
-async def mdbpmreport_pre_submit(
-    body: MDBPMSubmitIn,
-    current: UserClaims = Depends(get_current_user),
-):
-    station_id = body.station_id.strip()
-    coll = get_mdbpmreport_collection_for(station_id)
-    url_coll = get_mdbpmurl_coll_upload(station_id)
-    db = coll.database
+async def _resolve_issue_and_doc(
+    coll, url_coll, db, station_id: str, pm_type: str, d: date,
+    client_issue: str | None, client_doc: str | None,
+) -> tuple[str, str]:
+    """
+    จองเลข issue_id / doc_name ให้ใบใหม่
 
-    pm_type = str(body.job.get("pm_type") or "MB").upper()
-    body.job["pm_type"] = pm_type
-
-    try:
-        d = datetime.strptime(body.pm_date, "%Y-%m-%d").date()
-    except ValueError:
-        raise HTTPException(status_code=400, detail="pm_date must be YYYY-MM-DD")
-
-    client_issue = body.issue_id
-    client_doc = body.doc_name
-
-    # parallel existence checks (issue_id / doc_name)
+    ฝั่งฟอร์มพรีวิวเลขไว้ล่วงหน้า (preview-issueid / preview-docname) ถ้าเลขนั้น
+    ยังว่างอยู่จริงตอนกดบันทึกก็ใช้ตามนั้น ไม่งั้นออกเลขถัดไปให้ใหม่
+    """
     tasks: list = []
     prefix = ""
 
@@ -468,83 +460,24 @@ async def mdbpmreport_pre_submit(
 
     results = await asyncio.gather(*tasks)
 
-    # Resolve issue_id
     issue_id: str | None = None
     if client_issue and client_issue.startswith(prefix):
         rep_exists, url_exists = results[0], results[1]
         if not rep_exists and not url_exists:
             issue_id = client_issue
-
     if not issue_id:
         issue_id = await _next_issue_id_no_conflict(db, coll, url_coll, station_id, pm_type, d)
 
-    # Resolve doc_name
     doc_name: str | None = None
     if client_doc and client_doc.startswith(f"{station_id}_"):
         rep_exists, url_exists = results[2], results[3]
         if not rep_exists and not url_exists:
             doc_name = client_doc
-
     if not doc_name:
         year_seq = await _next_year_seq(db, station_id, pm_type, d)
         doc_name = f"{station_id}_{year_seq}/{d.year}"
 
-    # Reuse existing draft (same station/date/pre) if exists
-    existing_draft = await coll.find_one(
-        {"station_id": station_id, "pm_date": body.pm_date, "side": "pre", "status": "draft"},
-        {"_id": 1, "issue_id": 1, "doc_name": 1},
-    )
-
-    if existing_draft:
-        await coll.update_one(
-            {"_id": existing_draft["_id"]},
-            {"$set": {
-                "job": body.job,
-                "rows_pre": body.rows_pre or {},
-                "measures_pre": body.measures_pre,
-                "q4_items": body.q4_items or [{"key": "r4_1", "label": "4.1) Breaker Main ตัวที่ 1"}],
-                "q6_items": body.q6_items or [{"key": "r6_1", "label": "6.1) Breaker CCB ตัวที่ 1"}],
-                "charger_count": body.charger_count or 1,
-                "inspector": body.inspector,
-                "summary_pre": body.summary_pre or "",
-                "timestamp": datetime.now(timezone.utc),
-            }},
-        )
-        return {
-            "ok": True,
-            "report_id": str(existing_draft["_id"]),
-            "issue_id": existing_draft.get("issue_id") or issue_id,
-            "doc_name": existing_draft.get("doc_name") or doc_name,
-        }
-
-    doc = {
-        "station_id": station_id,
-        "doc_name": doc_name,
-        "issue_id": issue_id,
-        "job": body.job,
-        "measures_pre": body.measures_pre,
-        "rows_pre": body.rows_pre or {},
-        "q4_items": body.q4_items or [{"key": "r4_1", "label": "4.1) Breaker Main ตัวที่ 1"}],
-        "q6_items": body.q6_items or [{"key": "r6_1", "label": "6.1) Breaker CCB ตัวที่ 1"}],
-        "charger_count": body.charger_count or 1,
-        "pm_date": body.pm_date,
-        "inspector": body.inspector,
-        "summary_pre": body.summary_pre or "",
-        "photos_pre": {},
-        "status": "draft",
-        "side": body.side,
-        "timestamp": datetime.now(timezone.utc),
-    }
-
-    res = await coll.insert_one(doc)
-
-
-    return {
-        "ok": True,
-        "report_id": str(res.inserted_id),
-        "issue_id": issue_id,
-        "doc_name": doc_name,
-    }
+    return issue_id, doc_name
 
 
 # ============================================
@@ -556,40 +489,14 @@ async def mdbpmreport_post_submit(
     body: MDBPMPostIn,
     current: UserClaims = Depends(get_current_user),
 ):
-    """Submit Post-PM report for an MDB"""
+    """
+    บันทึกใบ PM ของ MDB (ฟอร์มกรอกรอบเดียว)
+
+    มี report_id = อัปเดตใบเดิม (ใบที่โดนตีกลับ / ใบเก่าที่ยังเป็น draft)
+    ไม่มี = สร้างใบใหม่พร้อมจองเลข issue_id / doc_name ให้เลย
+    """
     station_id = body.station_id.strip()
     coll = get_mdbpmreport_collection_for(station_id)
-
-    if body.report_id:
-        try:
-            oid = ObjectId(body.report_id)
-        except InvalidId:
-            raise HTTPException(status_code=400, detail="invalid report_id")
-
-        existing = await coll.find_one({"_id": oid, "station_id": station_id})
-        if not existing:
-            raise HTTPException(status_code=404, detail="Report not found")
-
-        update_fields = {
-            "rows": body.rows,
-            "measures": body.measures,
-            "summary": body.summary,
-            "summaryCheck": body.summaryCheck,
-            "dust_filter": body.dust_filter,
-            **pm_flow.post_submit_fields(body),
-            "side": "post",
-            "timestamp_post": datetime.now(timezone.utc),
-        }
-
-        await coll.update_one({"_id": oid}, {"$set": update_fields})
-        return {"ok": True, "report_id": body.report_id}
-
-    # Auto-discover latest draft
-    existing_draft = await coll.find_one(
-        {"station_id": station_id, "side": "post", "status": "draft"},
-        {"_id": 1},
-        sort=[("timestamp", -1)],
-    )
 
     update_fields = {
         "rows": body.rows,
@@ -602,109 +509,104 @@ async def mdbpmreport_post_submit(
         "timestamp_post": datetime.now(timezone.utc),
     }
 
+    if body.report_id:
+        try:
+            oid = ObjectId(body.report_id)
+        except InvalidId:
+            raise HTTPException(status_code=400, detail="invalid report_id")
+
+        existing = await coll.find_one({"_id": oid, "station_id": station_id})
+        if not existing:
+            raise HTTPException(status_code=404, detail="Report not found")
+
+        # จำนวน Breaker Main / CCB ช่างปรับได้ในฟอร์ม ต้องเก็บตามที่ส่งมาล่าสุด
+        # ไม่งั้น PDF กับตารางเทียบจะยังใช้ชุดเดิมของตอนสร้างใบ
+        if body.q4_items:
+            update_fields["q4_items"] = body.q4_items
+        if body.q6_items:
+            update_fields["q6_items"] = body.q6_items
+        if body.charger_count:
+            update_fields["charger_count"] = body.charger_count
+
+        await coll.update_one({"_id": oid}, {"$set": update_fields})
+        return {
+            "ok": True,
+            "report_id": body.report_id,
+            "issue_id": existing.get("issue_id"),
+            "doc_name": existing.get("doc_name"),
+        }
+
+    # ── ใบใหม่ ────────────────────────────────────────────────────────
+    pm_date = (body.pm_date or "").strip()
+    if not pm_date:
+        raise HTTPException(status_code=400, detail="pm_date is required for a new report")
+    try:
+        d = datetime.strptime(pm_date, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="pm_date must be YYYY-MM-DD")
+
+    job = dict(body.job or {})
+    pm_type = str(job.get("pm_type") or "MB").upper()
+    job["pm_type"] = pm_type
+
+    url_coll = get_mdbpmurl_coll_upload(station_id)
+    db = coll.database
+
+    # กดบันทึกซ้ำ (เน็ตหลุดกลางทาง / อัปรูปไม่ผ่านแล้วกดใหม่) ต้องลงใบเดิม
+    # ไม่ใช่ออกเลขเอกสารใหม่ทุกครั้ง
+    existing_draft = await coll.find_one(
+        {"station_id": station_id, "pm_date": pm_date, "status": "draft"},
+        {"_id": 1, "issue_id": 1, "doc_name": 1},
+        sort=[("timestamp", -1)],
+    )
+
+    common = {
+        **update_fields,
+        "job": job,
+        "pm_date": pm_date,
+        "inspector": body.inspector,
+        "q4_items": body.q4_items or [{"key": "r6_1", "label": "6.1) Breaker Main ตัวที่ 1"}],
+        "q6_items": body.q6_items or [{"key": "r8_1", "label": "8.1) Breaker CCB ตัวที่ 1"}],
+        "charger_count": body.charger_count or 1,
+        "form_version": FORM_VERSION,
+    }
+
     if existing_draft:
-        await coll.update_one({"_id": existing_draft["_id"]}, {"$set": update_fields})
-        return {"ok": True, "report_id": str(existing_draft["_id"])}
+        await coll.update_one({"_id": existing_draft["_id"]}, {"$set": common})
+        return {
+            "ok": True,
+            "report_id": str(existing_draft["_id"]),
+            "issue_id": existing_draft.get("issue_id"),
+            "doc_name": existing_draft.get("doc_name"),
+        }
+
+    issue_id, doc_name = await _resolve_issue_and_doc(
+        coll, url_coll, db, station_id, pm_type, d, body.issue_id, body.doc_name,
+    )
 
     doc = {
         "station_id": station_id,
-        **update_fields,
+        "doc_name": doc_name,
+        "issue_id": issue_id,
+        **common,
         "photos": {},
         "status": "draft",
         "timestamp": datetime.now(timezone.utc),
     }
     res = await coll.insert_one(doc)
-    return {"ok": True, "report_id": str(res.inserted_id)}
+    return {
+        "ok": True,
+        "report_id": str(res.inserted_id),
+        "issue_id": issue_id,
+        "doc_name": doc_name,
+    }
 
 
 # ============================================
-# Photo Upload (Pre / Post)
+# Photo Upload
 # ============================================
 
 PHOTO_GROUP_PATTERN = r"(g\d+|r\d+_\d+)"
-
-
-@router.post("/mdbpmreport/{report_id}/pre/photos")
-async def mdbpmreport_upload_photos_pre(
-    report_id: str,
-    station_id: str = Form(...),
-    group: str = Form(...),
-    files: List[UploadFile] = File(...),
-    current: UserClaims = Depends(get_current_user),
-):
-    """Upload Pre-PM photos for an MDB report"""
-    # ตรวจสิทธิ์สถานีก่อนแตะข้อมูล — เดิมเช็คแค่ว่า field ตรงกับ document
-    # ซึ่งผู้เรียกคุมได้ทั้งคู่ จึงยิงข้ามสถานีได้
-    assert_station_access(current, station_id)
-    if not re.fullmatch(PHOTO_GROUP_PATTERN, group):
-        raise HTTPException(status_code=400, detail=f"Bad group key format: {group}")
-
-    # MDB-specific: map r7_* -> g7 storage
-    storage_key = group
-
-    coll = get_mdbpmreport_collection_for(station_id)
-    try:
-        oid = ObjectId(report_id)
-    except Exception:
-        raise HTTPException(status_code=400, detail="Bad report_id")
-
-    doc = await coll.find_one(
-        {"_id": oid},
-        {"_id": 1, "station_id": 1, f"photos_pre.{storage_key}": 1},
-    )
-    if not doc:
-        raise HTTPException(status_code=404, detail="Report not found")
-    if doc.get("station_id") != station_id:
-        raise HTTPException(status_code=400, detail="station_id mismatch")
-
-    MAX_PHOTOS_PER_GROUP = 10
-    existing_count = len((doc.get("photos_pre") or {}).get(storage_key, []))
-    remaining = MAX_PHOTOS_PER_GROUP - existing_count
-    if remaining <= 0:
-        return {"ok": True, "count": 0, "group": group, "storage_key": storage_key, "files": [], "skipped": "group_full"}
-    files = files[:remaining]
-
-    dest_dir = pathlib.Path(UPLOADS_ROOT) / "mdbpm" / station_id / report_id / "pre" / storage_key
-    dest_dir.mkdir(parents=True, exist_ok=True)
-
-    saved = []
-    for f in files:
-        ext = _ext(f.filename or "")
-        if ext not in ALLOWED_EXTS:
-            raise HTTPException(status_code=400, detail=f"File type not allowed: {ext}")
-
-        data = await f.read()
-        if len(data) == 0:
-            raise HTTPException(status_code=400, detail=f"Empty file: {f.filename}")
-        if len(data) > MAX_FILE_MB * 1024 * 1024:
-            raise HTTPException(status_code=413, detail=f"File too large (> {MAX_FILE_MB} MB)")
-
-        data = resize_image_bytes(data, max_width=1280, quality=75)
-
-        fname = _safe_name(f.filename or f"image_{secrets.token_hex(3)}.jpg")
-        fname = pathlib.Path(fname).stem + ".jpg"
-        path = dest_dir / fname
-        with open(path, "wb") as out:
-            out.write(data)
-
-        url_path = f"/uploads/mdbpm/{station_id}/{report_id}/pre/{storage_key}/{fname}"
-        saved.append({
-            "filename": fname,
-            "url": url_path,
-            "uploadedAt": datetime.now(timezone.utc),
-        })
-
-    await coll.update_one(
-        {"_id": oid},
-        {
-            "$push": {f"photos_pre.{storage_key}": {"$each": saved}},
-            "$set": {"has_photos": True},
-        },
-    )
-    if not saved:
-        raise HTTPException(status_code=400, detail="No files were saved")
-
-    return {"ok": True, "count": len(saved), "group": group, "storage_key": storage_key, "files": saved}
 
 
 @router.post("/mdbpmreport/{report_id}/post/photos")

@@ -91,6 +91,22 @@ ROW_TITLES_EN = {
     "r13": "Clean MDB cabinet"
 }
 
+# ---- ฟอร์มรุ่นที่ 2 : เพิ่ม 2 ข้อ "ก่อนบำรุงรักษา" ไว้หน้าสุด ข้อเดิมเลื่อนไป 2 ----
+# ใบที่ไม่มี form_version คือรุ่นที่ 1 ต้องใช้ชุดหัวข้อด้านบน ไม่งั้นหัวข้อสลับกันทั้งใบ
+FORM_VERSION_SHIFT = 2
+
+ROW_TITLES_TH_V2 = {
+    "r1": "ตรวจสอบสภาพทั่วไป (ก่อนบำรุงรักษา)",
+    "r2": "อุปกรณ์ชำรุดเสียหาย (ก่อนบำรุงรักษา)",
+    **{f"r{int(k[1:]) + FORM_VERSION_SHIFT}": v for k, v in ROW_TITLES_TH.items()},
+}
+
+ROW_TITLES_EN_V2 = {
+    "r1": "General condition (before maintenance)",
+    "r2": "Damaged equipment (before maintenance)",
+    **{f"r{int(k[1:]) + FORM_VERSION_SHIFT}": v for k, v in ROW_TITLES_EN.items()},
+}
+
 # Default to Thai
 ROW_TITLES = ROW_TITLES_TH
 
@@ -110,6 +126,14 @@ SUB_ROW_TITLES_EN = {
     "r8_1": "Trip Test RCD #1",
     "r10_1": "Trip Test Breaker Charger #1",
 }
+
+def _shift_sub_titles(titles: dict) -> dict:
+    return {f"r{int(k[1:k.index('_')]) + FORM_VERSION_SHIFT}{k[k.index('_'):]}": v
+            for k, v in titles.items()}
+
+
+SUB_ROW_TITLES_TH_V2 = _shift_sub_titles(SUB_ROW_TITLES_TH)
+SUB_ROW_TITLES_EN_V2 = _shift_sub_titles(SUB_ROW_TITLES_EN)
 
 # Default to Thai
 SUB_ROW_TITLES = SUB_ROW_TITLES_TH
@@ -635,8 +659,13 @@ def _format_voltage_measurement_simple(measures: dict, key: str) -> str:
     return "\n".join(lines)
 
 # -------------------- Result / Row processing --------------------
-def _rows_to_checks(rows: dict, measures: Optional[dict] = None, row_titles: dict = None, sub_row_titles: dict = None, lang: str = "th") -> List[dict]:
-    """แปลง rows dict เป็น list พร้อมจัดกลุ่มข้อหลักและข้อย่อย"""
+def _rows_to_checks(rows: dict, measures: Optional[dict] = None, row_titles: dict = None, sub_row_titles: dict = None, lang: str = "th", shift: int = 0) -> List[dict]:
+    """
+    แปลง rows dict เป็น list พร้อมจัดกลุ่มข้อหลักและข้อย่อย
+
+    shift = ระยะที่เลขข้อของใบนี้เลื่อนไปจากชุดเดิม (ใบ form_version 2 = 2)
+    เลขข้อที่ผูกกับพฤติกรรมเฉพาะ (ข้อวัดแรงดัน / ข้อที่มีข้อย่อย) จึงต้องบวก shift ตาม
+    """
     if not isinstance(rows, dict):
         return []
 
@@ -645,6 +674,20 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None, row_titles: dic
         row_titles = ROW_TITLES
     if sub_row_titles is None:
         sub_row_titles = SUB_ROW_TITLES
+
+    fixed_sub_rows = {k + shift: v for k, v in FIXED_SUB_ROWS.items()}
+    dynamic_sub_rows = {n + shift for n in DYNAMIC_SUB_ROWS}
+    # ข้อวัดแรงดัน → bucket ใน measures (ชื่อ bucket m4..m7 ไม่ขยับตามเลขข้อ)
+    measure_bucket = {4 + shift: "m4", 5 + shift: "m5", 6 + shift: "m6", 7 + shift: "m7"}
+    # ป้ายข้อย่อยของข้อที่ generate ตามจำนวนอุปกรณ์จริง (en, th)
+    dynamic_sub_title = {
+        4 + shift: ("Breaker Main #{i}", "Breaker Main ตัวที่ {i}"),
+        5 + shift: ("Breaker Charger #{i}", "Breaker Charger ตัวที่ {i}"),
+        6 + shift: ("Breaker CCB #{i}", "Breaker CCB ตัวที่ {i}"),
+        7 + shift: ("RCD #{i}", "RCD ตัวที่ {i}"),
+        9 + shift: ("Trip Test Breaker CCB #{i}", "Breaker CCB ตัวที่ {i}"),
+        11 + shift: ("Trip Test Breaker Main #{i}", "Breaker Main ตัวที่ {i}"),
+    }
 
     measures = measures or {}
     items: List[dict] = []
@@ -676,14 +719,14 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None, row_titles: dic
         subs = sorted(group["subs"], key=lambda x: x[0])  # เรียงตาม sub_idx
         
         # 🔥 FIX: กรองเฉพาะข้อย่อยที่มีอยู่ใน FIXED_SUB_ROWS หรือ DYNAMIC_SUB_ROWS
-        if main_idx in FIXED_SUB_ROWS:
+        if main_idx in fixed_sub_rows:
             # ข้อที่มีจำนวนข้อย่อยคงที่ - เอาเท่าที่กำหนดไว้
-            expected_count = FIXED_SUB_ROWS[main_idx]
+            expected_count = fixed_sub_rows[main_idx]
             subs = subs[:expected_count]
-        elif main_idx == 6:
-            # ข้อ 6 จำกัด max 4 ข้อย่อย
+        elif main_idx == 6 + shift:
+            # ข้อ Breaker CCB จำกัด max 4 ข้อย่อย
             subs = subs[:4]
-        elif main_idx not in DYNAMIC_SUB_ROWS:
+        elif main_idx not in dynamic_sub_rows:
             # ถ้าไม่ใช่ข้อที่มีข้อย่อยทั้ง FIXED และ DYNAMIC ให้เคลียร์ subs
             subs = []
 
@@ -701,7 +744,7 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None, row_titles: dic
                 remark_user = ""
             
             # เพิ่มค่า measures สำหรับข้อ 10
-            if main_idx == 10:
+            if main_idx == 10 + shift:
                 cp_data = measures.get("cp", {})
                 cp_value = cp_data.get("value", "-")
                 cp_unit = cp_data.get("unit", "")
@@ -726,43 +769,17 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None, row_titles: dic
             voltage_data = {}
             
             # ดึงข้อมูล voltage ล่วงหน้า
-            if main_idx == 4:
-                m4_data = measures.get("m4", {})
+            if main_idx in measure_bucket:
+                bucket = measures.get(measure_bucket[main_idx], {})
+                # Breaker Main / Charger วัดครบทุกคู่สาย ส่วน CCB / RCD วัดแบบย่อ
+                fmt = (_format_voltage_measurement_order_full
+                       if main_idx in (4 + shift, 5 + shift)
+                       else _format_voltage_measurement_simple)
                 for i, (sub_idx, sub_key) in enumerate(subs):
-                    sub_key_in_measures = f"r4_{sub_idx}"
-                    sub_voltage = m4_data.get(sub_key_in_measures, {})
+                    sub_key_in_measures = f"r{main_idx}_{sub_idx}"
+                    sub_voltage = bucket.get(sub_key_in_measures, {})
                     if sub_voltage:
-                        voltage_text = _format_voltage_measurement_order_full({sub_key_in_measures: sub_voltage}, sub_key_in_measures)
-                        if voltage_text and voltage_text != "-":
-                            voltage_data[i] = voltage_text
-            
-            elif main_idx == 5:
-                m5_data = measures.get("m5", {})
-                for i, (sub_idx, sub_key) in enumerate(subs):
-                    sub_key_in_measures = f"r5_{sub_idx}"
-                    sub_voltage = m5_data.get(sub_key_in_measures, {})
-                    if sub_voltage:
-                        voltage_text = _format_voltage_measurement_order_full({sub_key_in_measures: sub_voltage}, sub_key_in_measures)
-                        if voltage_text and voltage_text != "-":
-                            voltage_data[i] = voltage_text
-            
-            elif main_idx == 6:
-                m6_data = measures.get("m6", {})
-                for i, (sub_idx, sub_key) in enumerate(subs):
-                    sub_key_in_measures = f"r6_{sub_idx}"
-                    sub_voltage = m6_data.get(sub_key_in_measures, {})
-                    if sub_voltage:
-                        voltage_text = _format_voltage_measurement_simple({sub_key_in_measures: sub_voltage}, sub_key_in_measures)
-                        if voltage_text and voltage_text != "-":
-                            voltage_data[i] = voltage_text
-            
-            elif main_idx == 7:
-                m7_data = measures.get("m7", {})
-                for i, (sub_idx, sub_key) in enumerate(subs):
-                    sub_key_in_measures = f"r7_{sub_idx}"
-                    sub_voltage = m7_data.get(sub_key_in_measures, {})
-                    if sub_voltage:
-                        voltage_text = _format_voltage_measurement_simple({sub_key_in_measures: sub_voltage}, sub_key_in_measures)
+                        voltage_text = fmt({sub_key_in_measures: sub_voltage}, sub_key_in_measures)
                         if voltage_text and voltage_text != "-":
                             voltage_data[i] = voltage_text
 
@@ -780,7 +797,7 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None, row_titles: dic
                 has_rows_data = bool(sub_data)  # มี key ใน rows
 
                 # สำหรับข้อ 4, 5, 6, 7 ที่มี voltage data - ต้องมีทั้ง voltage data และ rows data
-                if main_idx in {4, 5, 6, 7}:
+                if main_idx in measure_bucket:
                     if has_voltage and has_rows_data:
                         filtered_subs.append((i, sub_idx, sub_key))
                 # ข้ออื่นๆ - ถ้ามีข้อมูลอย่างใดอย่างหนึ่ง ให้เก็บไว้
@@ -819,39 +836,11 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None, row_titles: dic
                 # หาชื่อข้อย่อย
                 sub_title = sub_row_titles.get(sub_key)
 
-                # สำหรับข้อ 4, 5, 6, 9, 11 ที่เป็น dynamic - ใช้ชื่อตามลำดับ
-                if main_idx in DYNAMIC_SUB_ROWS:
-                    if main_idx == 4:
-                        if lang == "en":
-                            sub_title = f"Breaker Main #{sub_idx}"
-                        else:
-                            sub_title = f"Breaker Main ตัวที่ {sub_idx}"
-                    elif main_idx == 5:
-                        if lang == "en":
-                            sub_title = f"Breaker Charger #{sub_idx}"
-                        else:
-                            sub_title = f"Breaker Charger ตัวที่ {sub_idx}"
-                    elif main_idx == 6:
-                        if lang == "en":
-                            sub_title = f"Breaker CCB #{sub_idx}"
-                        else:
-                            sub_title = f"Breaker CCB ตัวที่ {sub_idx}"
-                    elif main_idx == 7:
-                        if lang == "en":
-                            sub_title = f"RCD #{sub_idx}"
-                        else:
-                            sub_title = f"RCD ตัวที่ {sub_idx}"
-                    elif main_idx == 9:
-                        if lang == "en":
-                            sub_title = f"Trip Test Breaker CCB #{sub_idx}"
-                        else:
-                            sub_title = f"Breaker CCB ตัวที่ {sub_idx}"
-                    elif main_idx == 11:
-                        if lang == "en":
-                            sub_title = f"Trip Test Breaker Main #{sub_idx}"
-                        else:
-                            sub_title = f"Breaker Main ตัวที่ {sub_idx}"
-                
+                # ข้อที่ข้อย่อยถูกสร้างตามจำนวนอุปกรณ์จริง - ใช้ชื่อตามลำดับ
+                if main_idx in dynamic_sub_title:
+                    en_fmt, th_fmt = dynamic_sub_title[main_idx]
+                    sub_title = (en_fmt if lang == "en" else th_fmt).format(i=sub_idx)
+
                 # # แสดงเป็น 3.1), 3.2), 4.1), 4.2) etc. - เยื้อง 4 ช่องว่าง
                 # lines.append(f"    {main_idx}.{sub_idx}) {sub_title}")
 
@@ -1444,16 +1433,27 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
     issue_id = str(doc.get("issue_id", "-"))
     charger_no = doc.get("job", {}).get("chargerNo", "-")
 
-    # ========== เลือก row titles ตามภาษา ==========
-    if lang == "en":
-        row_titles = ROW_TITLES_EN
-        sub_row_titles = SUB_ROW_TITLES_EN
-    else:
-        row_titles = ROW_TITLES_TH
-        sub_row_titles = SUB_ROW_TITLES_TH
+    # ========== เลือก row titles ตามภาษา + รุ่นของฟอร์มที่ใบนี้ใช้ ==========
+    # ใบที่ไม่มี form_version = รุ่นที่ 1 (13 ข้อ) คีย์ r1..r13 คนละหัวข้อกับรุ่นที่ 2
+    form_version = int(doc.get("form_version") or 1)
+    shift = FORM_VERSION_SHIFT if form_version >= 2 else 0
 
-    checks = _rows_to_checks(doc.get("rows") or {}, doc.get("measures") or {}, row_titles, sub_row_titles, lang)
-    checks_pre = _rows_to_checks(doc.get("rows_pre") or {}, doc.get("measures_pre") or {}, row_titles, sub_row_titles, lang)
+    if lang == "en":
+        row_titles = ROW_TITLES_EN_V2 if shift else ROW_TITLES_EN
+        sub_row_titles = SUB_ROW_TITLES_EN_V2 if shift else SUB_ROW_TITLES_EN
+    else:
+        row_titles = ROW_TITLES_TH_V2 if shift else ROW_TITLES_TH
+        sub_row_titles = SUB_ROW_TITLES_TH_V2 if shift else SUB_ROW_TITLES_TH
+
+    checks = _rows_to_checks(doc.get("rows") or {}, doc.get("measures") or {}, row_titles, sub_row_titles, lang, shift)
+    # rows_pre มีเฉพาะใบรุ่นที่ 1 (สมัยยังมีด่านก่อน PM) เลขข้อจึงไม่ shift
+    # แต่หัวข้อต้องใช้ชุดรุ่นที่ 1 ด้วย ไม่งั้นตารางรูปก่อน PM จะขึ้นหัวข้อผิด
+    checks_pre = _rows_to_checks(
+        doc.get("rows_pre") or {}, doc.get("measures_pre") or {},
+        ROW_TITLES_EN if lang == "en" else ROW_TITLES_TH,
+        SUB_ROW_TITLES_EN if lang == "en" else SUB_ROW_TITLES_TH,
+        lang,
+    )
 
     # ========== เลือกข้อความตามภาษา ==========
     if lang == "en":
