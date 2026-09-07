@@ -14,7 +14,6 @@ import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import PmApprovalBar from "@/app/dashboard/pm-report/components/PmApprovalBar";
 import PmCompareTable from "@/app/dashboard/pm-report/components/PmCompareTable";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
-import { Tabs, TabsHeader, Tab } from "@material-tailwind/react";
 import { putPhoto, getPhotoByDbKey, delPhoto, type PhotoRef } from "../lib/draftPhotos";
 import { isFileReadable, isImageDecodable, resolveUsableFile, reportMissingDraftPhoto, reportPhotoStorageFailure } from "@/utils/upload-safety";
 import { collectPending, unrecoverablePhotos, expectedCountByGroup, findShortfall, shortfallMessage, pendingMessage, unrecoverableMessage } from "@/utils/pm-photo-sync";
@@ -189,16 +188,6 @@ function enqueueBgUploads(tasks: BgUploadTask[]) {
     void _bgProcessQueue();
 }
 
-type TabId = "pre" | "post";
-
-const TABS: { id: TabId; label: string; slug: "pre" | "post" }[] = [
-    { id: "pre", label: "Pre\u2011PM", slug: "pre" },
-    { id: "post", label: "Post\u2011PM", slug: "post" },
-];
-
-function slugToTab(slug: string | null): TabId { return slug === "post" ? "post" : "pre"; }
-function tabToSlug(tab: TabId): "pre" | "post" { return TABS.find(t => t.id === tab)!.slug; }
-
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 const LOGO_SRC = "/img/logo_egat.png";
 
@@ -231,9 +220,6 @@ const T = {
     maxPhotos: { th: "สูงสุด", en: "Max" },
     photos: { th: "รูป", en: "photos" },
     noPhotos: { th: "ยังไม่มีรูปแนบ", en: "No photos attached" },
-    prePM: { th: "ก่อน PM", en: "Pre-PM" },
-    postPM: { th: "หลัง PM", en: "Post-PM" },
-    preRemarkLabel: { th: "หมายเหตุ (ก่อน PM)", en: "Remark (Pre-PM)" },
     breakerMainCount: { th: "จำนวน Breaker Main:", en: "Breaker Main count:" },
     unit: { th: "ตัว", en: "units" },
     addBreakerMain: { th: "เพิ่ม", en: "Add" },
@@ -248,10 +234,9 @@ const T = {
     alertNoStation: { th: "ยังไม่ทราบ station_id", en: "Station ID not found" },
     alertFillVoltage: { th: "กรุณากรอกค่าแรงดันไฟฟ้าให้ครบก่อนบันทึก", en: "Please fill all voltage values" },
     alertFillRemark: { th: "กรุณากรอกหมายเหตุข้อ:", en: "Please fill remarks:" },
-    alertFillPreFirst: { th: "กรุณากรอกข้อมูลในส่วน Pre ให้ครบก่อน", en: "Please complete Pre-PM first" },
     alertSaveFailed: { th: "บันทึกไม่สำเร็จ:", en: "Save failed:" },
     dustFilterChanged: { th: "เปลี่ยนแผ่นกรองระบายอากาศ", en: "Ventilation filter replaced" },
-    photoNotComplete: { th: "กรุณาแนบรูปในส่วน Pre ให้ครบก่อนบันทึก", en: "Please attach all Pre-PM photos" },
+    photoNotComplete: { th: "กรุณาแนบรูปให้ครบก่อนบันทึก", en: "Please attach all photos" },
     inputNotComplete: { th: "กรุณากรอกค่าข้อ 4-8 ให้ครบก่อนบันทึก", en: "Please fill items 4-8" },
     allNotComplete: { th: "กรุณากรอกข้อมูล / แนบรูป และสรุปผลให้ครบก่อนบันทึก", en: "Please complete all data" },
     remarkLabel: { th: "หมายเหตุ", en: "Remark" },
@@ -290,6 +275,11 @@ const T = {
     contractorName: { th: "ชื่อผู้รับเหมา", en: "Contractor name" },
     contractorPlaceholder: { th: "ระบุชื่อผู้รับเหมาที่มาทำงานจริง", en: "Name of the contractor who did the work" },
     contractorRequired: { th: "เลือกผู้รับเหมาแล้วต้องระบุชื่อด้วย", en: "Enter the contractor name" },
+    legacyFormTitle: { th: "ใบงานฟอร์มรุ่นเก่า — เปิดดูได้อย่างเดียว", en: "Older form version — view only" },
+    legacyFormHint: {
+        th: "ใบนี้บันทึกไว้ก่อนฟอร์มจะเพิ่มข้อ 1-2 (ก่อนบำรุงรักษา) เลขข้อจึงคนละชุดกับฟอร์มปัจจุบัน แก้ไขต่อในฟอร์มใหม่ไม่ได้ ดูรายละเอียดจากตารางด้านล่างหรือออก PDF ได้ตามปกติ",
+        en: "This report was saved before items 1-2 (before maintenance) were added, so its item numbering differs from the current form. It cannot be edited here — read it from the table below or open the PDF.",
+    },
 };
 
 const t = (key: keyof typeof T, lang: Lang): string => T[key][lang];
@@ -301,31 +291,56 @@ const getInputIdFromKey = (key: string | number): string => { if (typeof key ===
 const getPfIdFromKey = (key: string | number): string => { if (typeof key === "number") return `${ID_PREFIX}-pf-${key}`; const m = String(key).match(/^r(\d+)(?:_(\d+))?$/); return m ? (m[2] ? `${ID_PREFIX}-pf-${m[1]}-${m[2]}` : `${ID_PREFIX}-pf-${m[1]}`) : `${ID_PREFIX}-pf-${key}`; };
 
 // Questions
+// เลขข้อ = คีย์ที่เก็บลง DB (rows.r{n} / photos.g{n}) — ห้ามสลับลำดับโดยไม่ขึ้น
+// form_version ใหม่ ไม่งั้นใบเก่าจะถูกอ่านผิดหัวข้อ ดู FORM_VERSION ด้านล่าง
 const QUESTIONS_DATA = [
-    { no: 1, key: "r1", label: { th: "1) ตรวจสอบสภาพทั่วไป", en: "1) General condition inspection" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบโครงสร้างตู้ ระบบล็อกและบานพับรวมถึงป้ายชื่อวงจร (Labeling)", en: "Check cabinet structure, lock system, hinges and circuit labeling" } },
-    { no: 2, key: "r2", label: { th: "2) ตรวจสอบดักซีล, ซิลิโคนกันซึม", en: "2) Check sealant and silicone" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบสภาพดักซีลที่ปิดหรืออุดตามรอยต่อและช่องทางเข้าสาย", en: "Check sealant condition at joints and cable entry points" } },
-    { no: 3, key: "r3", label: { th: "3) ตรวจสอบ Power Meter", en: "3) Check Power Meter" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบการแสดงของจอ Power Meter และความถูกต้องของค่าพารามิเตอร์ไฟฟ้า (V, A, Hz, PF)", en: "Check Power Meter display and parameters (V, A, Hz, PF)" } },
-    { no: 4, key: "r4", label: { th: "4) ตรวจสอบแรงดันไฟฟ้า Breaker Main", en: "4) Check Breaker Main voltage" }, kind: "dynamic_measure", hasPhoto: true, tooltip: { th: "วัดค่าแรงดันไฟฟ้าด้านเข้าของ Breaker Main", en: "Measure input voltage of Breaker Main" } },
-    { no: 5, key: "r5", label: { th: "5) ตรวจสอบแรงดันไฟฟ้า Breaker Charger", en: "5) Check Breaker Charger voltage" }, kind: "charger_measure", hasPhoto: true, tooltip: { th: "วัดค่าแรงดันไฟฟ้าด้านเข้าของ Breaker Charger", en: "Measure input voltage of Breaker Charger" } },
-    { no: 6, key: "r6", label: { th: "6) ตรวจสอบแรงดันไฟฟ้า Breaker CCB", en: "6) Check Breaker CCB voltage" }, kind: "ccb_measure", hasPhoto: true, tooltip: { th: "วัดค่าแรงดันไฟฟ้าด้านเข้าของ Breaker CCB", en: "Measure input voltage of Breaker CCB" } },
-    { no: 7, key: "r7", label: { th: "7) ตรวจสอบแรงดันไฟฟ้า RCD", en: "7) Check RCD voltage" }, kind: "rcd_measure", hasPhoto: true, tooltip: { th: "วัดค่าแรงดันไฟฟ้าด้าน Load ของอุปกรณ์ป้องกันไฟรั่ว (RCD)", en: "Measure load side voltage of RCD" } },
-    { no: 8, key: "r8", label: { th: "8) ทดสอบปุ่ม Trip Test RCD", en: "8) Test RCD Trip button" }, kind: "trip_rcd", hasPhoto: true, tooltip: { th: "กดปุ่ม Test เพื่อทดสอบกลไกการตัดกระแสไฟรั่วของ RCD", en: "Press Test button to test RCD trip mechanism" } },
-    { no: 9, key: "r9", label: { th: "9) ทดสอบปุ่ม Trip Test Breaker CCB", en: "9) Test Breaker CCB Trip button" }, kind: "trip_ccb", hasPhoto: true, tooltip: { th: "กดปุ่ม Test เพื่อทดสอบกลไกการตัดวงจรของ Breaker CCB", en: "Press Test button to test Breaker CCB trip mechanism" } },
-    { no: 10, key: "r10", label: { th: "10) ทดสอบปุ่ม Trip Test Breaker Charger", en: "10) Test Breaker Charger Trip button" }, kind: "trip_charger", hasPhoto: true, tooltip: { th: "กดปุ่ม Test เพื่อทดสอบกลไกการตัดวงจรของ Breaker Charger", en: "Press Test button to test Breaker Charger trip mechanism" } },
-    { no: 11, key: "r11", label: { th: "11) ทดสอบปุ่ม Trip Test Breaker Main", en: "11) Test Breaker Main Trip button" }, kind: "trip_main", hasPhoto: true, tooltip: { th: "กดปุ่ม Test เพื่อทดสอบกลไกการตัดวงจรของ Breaker Main", en: "Press Test button to test Breaker Main trip mechanism" } },
-    { no: 12, key: "r12", label: { th: "12) ตรวจสอบจุดต่อทางไฟฟ้า", en: "12) Check electrical connections" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบการขันแน่นของน็อตบริเวณจุดต่อสายและตรวจเช็ครอยไหม้ด้วยกล้องถ่ายภาพความร้อน", en: "Check bolt tightness at connection points and inspect for burn marks using thermal camera" } },
-    { no: 13, key: "r13", label: { th: "13) ทำความสะอาดตู้ MDB", en: "13) Clean MDB cabinet" }, kind: "simple", hasPhoto: true, tooltip: { th: "ทำความสะอาดโดยการขจัดฝุ่นและสิ่งสกปรกภายในตู้ด้วยเครื่องดูดฝุ่นหรือเป่าลมแห้ง", en: "Clean by removing dust inside cabinet with vacuum or dry air" } },
+    { no: 1, key: "r1", label: { th: "1) ตรวจสอบสภาพทั่วไป (ก่อนบำรุงรักษา)", en: "1) General condition (before maintenance)" }, kind: "simple", hasPhoto: true, tooltip: { th: "บันทึกสภาพตู้ MDB โดยรวมก่อนลงมือ — ถ่ายรูปสภาพก่อนบำรุงรักษาไว้เป็นหลักฐาน", en: "Record the overall MDB condition before starting work" } },
+    { no: 2, key: "r2", label: { th: "2) อุปกรณ์ชำรุดเสียหาย (ก่อนบำรุงรักษา)", en: "2) Damaged equipment (before maintenance)" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจและบันทึกอุปกรณ์ที่ชำรุดเสียหายที่พบก่อนเริ่มบำรุงรักษา", en: "Record any damaged equipment found before maintenance" } },
+    { no: 3, key: "r3", label: { th: "3) ตรวจสอบสภาพทั่วไป", en: "3) General condition inspection" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบโครงสร้างตู้ ระบบล็อกและบานพับรวมถึงป้ายชื่อวงจร (Labeling)", en: "Check cabinet structure, lock system, hinges and circuit labeling" } },
+    { no: 4, key: "r4", label: { th: "4) ตรวจสอบดักซีล, ซิลิโคนกันซึม", en: "4) Check sealant and silicone" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบสภาพดักซีลที่ปิดหรืออุดตามรอยต่อและช่องทางเข้าสาย", en: "Check sealant condition at joints and cable entry points" } },
+    { no: 5, key: "r5", label: { th: "5) ตรวจสอบ Power Meter", en: "5) Check Power Meter" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบการแสดงของจอ Power Meter และความถูกต้องของค่าพารามิเตอร์ไฟฟ้า (V, A, Hz, PF)", en: "Check Power Meter display and parameters (V, A, Hz, PF)" } },
+    { no: 6, key: "r6", label: { th: "6) ตรวจสอบแรงดันไฟฟ้า Breaker Main", en: "6) Check Breaker Main voltage" }, kind: "dynamic_measure", hasPhoto: true, tooltip: { th: "วัดค่าแรงดันไฟฟ้าด้านเข้าของ Breaker Main", en: "Measure input voltage of Breaker Main" } },
+    { no: 7, key: "r7", label: { th: "7) ตรวจสอบแรงดันไฟฟ้า Breaker Charger", en: "7) Check Breaker Charger voltage" }, kind: "charger_measure", hasPhoto: true, tooltip: { th: "วัดค่าแรงดันไฟฟ้าด้านเข้าของ Breaker Charger", en: "Measure input voltage of Breaker Charger" } },
+    { no: 8, key: "r8", label: { th: "8) ตรวจสอบแรงดันไฟฟ้า Breaker CCB", en: "8) Check Breaker CCB voltage" }, kind: "ccb_measure", hasPhoto: true, tooltip: { th: "วัดค่าแรงดันไฟฟ้าด้านเข้าของ Breaker CCB", en: "Measure input voltage of Breaker CCB" } },
+    { no: 9, key: "r9", label: { th: "9) ตรวจสอบแรงดันไฟฟ้า RCD", en: "9) Check RCD voltage" }, kind: "rcd_measure", hasPhoto: true, tooltip: { th: "วัดค่าแรงดันไฟฟ้าด้าน Load ของอุปกรณ์ป้องกันไฟรั่ว (RCD)", en: "Measure load side voltage of RCD" } },
+    { no: 10, key: "r10", label: { th: "10) ทดสอบปุ่ม Trip Test RCD", en: "10) Test RCD Trip button" }, kind: "trip_rcd", hasPhoto: true, tooltip: { th: "กดปุ่ม Test เพื่อทดสอบกลไกการตัดกระแสไฟรั่วของ RCD", en: "Press Test button to test RCD trip mechanism" } },
+    { no: 11, key: "r11", label: { th: "11) ทดสอบปุ่ม Trip Test Breaker CCB", en: "11) Test Breaker CCB Trip button" }, kind: "trip_ccb", hasPhoto: true, tooltip: { th: "กดปุ่ม Test เพื่อทดสอบกลไกการตัดวงจรของ Breaker CCB", en: "Press Test button to test Breaker CCB trip mechanism" } },
+    { no: 12, key: "r12", label: { th: "12) ทดสอบปุ่ม Trip Test Breaker Charger", en: "12) Test Breaker Charger Trip button" }, kind: "trip_charger", hasPhoto: true, tooltip: { th: "กดปุ่ม Test เพื่อทดสอบกลไกการตัดวงจรของ Breaker Charger", en: "Press Test button to test Breaker Charger trip mechanism" } },
+    { no: 13, key: "r13", label: { th: "13) ทดสอบปุ่ม Trip Test Breaker Main", en: "13) Test Breaker Main Trip button" }, kind: "trip_main", hasPhoto: true, tooltip: { th: "กดปุ่ม Test เพื่อทดสอบกลไกการตัดวงจรของ Breaker Main", en: "Press Test button to test Breaker Main trip mechanism" } },
+    { no: 14, key: "r14", label: { th: "14) ตรวจสอบจุดต่อทางไฟฟ้า", en: "14) Check electrical connections" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบการขันแน่นของน็อตบริเวณจุดต่อสายและตรวจเช็ครอยไหม้ด้วยกล้องถ่ายภาพความร้อน", en: "Check bolt tightness at connection points and inspect for burn marks using thermal camera" } },
+    { no: 15, key: "r15", label: { th: "15) ทำความสะอาดตู้ MDB", en: "15) Clean MDB cabinet" }, kind: "simple", hasPhoto: true, tooltip: { th: "ทำความสะอาดโดยการขจัดฝุ่นและสิ่งสกปรกภายในตู้ด้วยเครื่องดูดฝุ่นหรือเป่าลมแห้ง", en: "Clean by removing dust inside cabinet with vacuum or dry air" } },
 ] as const;
 
+// ใบที่บันทึกด้วยฟอร์มชุดนี้ถูกสตัมป์ form_version ไว้ ใบที่ไม่มี (หรือ < 2)
+// คือฟอร์มรุ่นเก่าที่ยังไม่มี 2 ข้อแรก — คีย์ r1..r13 ของใบพวกนั้นคนละหัวข้อกัน
+const FORM_VERSION = 2;
+
+// หัวข้อของฟอร์มรุ่นก่อน — ใช้แปลคีย์ของใบเก่าตอนเปิดดูเท่านั้น
+const LEGACY_ROW_LABELS: Record<string, { th: string; en: string }> = {
+    r1: { th: "1) ตรวจสอบสภาพทั่วไป", en: "1) General condition inspection" },
+    r2: { th: "2) ตรวจสอบดักซีล, ซิลิโคนกันซึม", en: "2) Check sealant and silicone" },
+    r3: { th: "3) ตรวจสอบ Power Meter", en: "3) Check Power Meter" },
+    r4: { th: "4) ตรวจสอบแรงดันไฟฟ้า Breaker Main", en: "4) Check Breaker Main voltage" },
+    r5: { th: "5) ตรวจสอบแรงดันไฟฟ้า Breaker Charger", en: "5) Check Breaker Charger voltage" },
+    r6: { th: "6) ตรวจสอบแรงดันไฟฟ้า Breaker CCB", en: "6) Check Breaker CCB voltage" },
+    r7: { th: "7) ตรวจสอบแรงดันไฟฟ้า RCD", en: "7) Check RCD voltage" },
+    r8: { th: "8) ทดสอบปุ่ม Trip Test RCD", en: "8) Test RCD Trip button" },
+    r9: { th: "9) ทดสอบปุ่ม Trip Test Breaker CCB", en: "9) Test Breaker CCB Trip button" },
+    r10: { th: "10) ทดสอบปุ่ม Trip Test Breaker Charger", en: "10) Test Breaker Charger Trip button" },
+    r11: { th: "11) ทดสอบปุ่ม Trip Test Breaker Main", en: "11) Test Breaker Main Trip button" },
+    r12: { th: "12) ตรวจสอบจุดต่อทางไฟฟ้า", en: "12) Check electrical connections" },
+    r13: { th: "13) ทำความสะอาดตู้ MDB", en: "13) Clean MDB cabinet" },
+};
+
 const getDynamicLabel = {
-    breakerMain: (idx: number, lang: Lang) => lang === "th" ? `4.${idx}) Breaker Main ตัวที่ ${idx}` : `4.${idx}) Breaker Main #${idx}`,
-    breakerCharger: (idx: number, lang: Lang) => lang === "th" ? `5.${idx}) Breaker Charger ตัวที่ ${idx}` : `5.${idx}) Breaker Charger #${idx}`,
-    breakerCCB: (idx: number, lang: Lang) => lang === "th" ? `6.${idx}) Breaker CCB ตัวที่ ${idx}` : `6.${idx}) Breaker CCB #${idx}`,
-    rcd: (idx: number, lang: Lang) => lang === "th" ? `7.${idx}) RCD ตัวที่ ${idx}` : `7.${idx}) RCD #${idx}`,
-    tripRCD: (idx: number, lang: Lang) => lang === "th" ? `8.${idx}) Trip Test RCD ตัวที่ ${idx}` : `8.${idx}) Trip Test RCD #${idx}`,
-    tripCCB: (idx: number, lang: Lang) => lang === "th" ? `9.${idx}) Trip Test Breaker CCB ตัวที่ ${idx}` : `9.${idx}) Trip Test Breaker CCB #${idx}`,
-    tripCharger: (idx: number, lang: Lang) => lang === "th" ? `10.${idx}) Trip Test Breaker Charger ตัวที่ ${idx}` : `10.${idx}) Trip Test Breaker Charger #${idx}`,
-    tripMain: (idx: number, lang: Lang) => lang === "th" ? `11.${idx}) Trip Test Breaker Main ตัวที่ ${idx}` : `11.${idx}) Trip Test Breaker Main #${idx}`,
+    breakerMain: (idx: number, lang: Lang) => lang === "th" ? `6.${idx}) Breaker Main ตัวที่ ${idx}` : `6.${idx}) Breaker Main #${idx}`,
+    breakerCharger: (idx: number, lang: Lang) => lang === "th" ? `7.${idx}) Breaker Charger ตัวที่ ${idx}` : `7.${idx}) Breaker Charger #${idx}`,
+    breakerCCB: (idx: number, lang: Lang) => lang === "th" ? `8.${idx}) Breaker CCB ตัวที่ ${idx}` : `8.${idx}) Breaker CCB #${idx}`,
+    rcd: (idx: number, lang: Lang) => lang === "th" ? `9.${idx}) RCD ตัวที่ ${idx}` : `9.${idx}) RCD #${idx}`,
+    tripRCD: (idx: number, lang: Lang) => lang === "th" ? `10.${idx}) Trip Test RCD ตัวที่ ${idx}` : `10.${idx}) Trip Test RCD #${idx}`,
+    tripCCB: (idx: number, lang: Lang) => lang === "th" ? `11.${idx}) Trip Test Breaker CCB ตัวที่ ${idx}` : `11.${idx}) Trip Test Breaker CCB #${idx}`,
+    tripCharger: (idx: number, lang: Lang) => lang === "th" ? `12.${idx}) Trip Test Breaker Charger ตัวที่ ${idx}` : `12.${idx}) Trip Test Breaker Charger #${idx}`,
+    tripMain: (idx: number, lang: Lang) => lang === "th" ? `13.${idx}) Trip Test Breaker Main ตัวที่ ${idx}` : `13.${idx}) Trip Test Breaker Main #${idx}`,
 };
 
 type StationPublic = { station_id: string; station_name: string; status?: boolean; };
@@ -371,18 +386,6 @@ const VOLTAGE_FIELDS = ["L1-N", "L2-N", "L3-N", "L1-G", "L2-G", "L3-G", "L1-L2",
 const VOLTAGE_FIELDS_CCB = ["L1-N", "L1-G", "N-G"] as const;
 const LABELS: Record<string, string> = { "L1-L2": "L1-L2", "L2-L3": "L2-L3", "L3-L1": "L3-L1", "L1-N": "L1-N", "L2-N": "L2-N", "L3-N": "L3-N", "L1-G": "L1-G", "L2-G": "L2-G", "L3-G": "L3-G", "N-G": "N-G" };
 const QUESTIONS = QUESTIONS_DATA as unknown as Question[];
-
-function getQuestionLabel(q: Question, mode: TabId, lang: Lang): string {
-    const b = q.label[lang];
-    return mode === "pre" ? (lang === "th" ? `${b} (ก่อน PM)` : `${b} (Pre-PM)`) : (lang === "th" ? `${b} (หลัง PM)` : `${b} (Post-PM)`);
-}
-
-const FIELD_GROUPS: Record<number, { keys: readonly string[]; unitType: "voltage" } | undefined> = {
-    4: { keys: VOLTAGE_FIELDS, unitType: "voltage" },
-    5: { keys: VOLTAGE_FIELDS, unitType: "voltage" },
-    6: { keys: VOLTAGE_FIELDS_CCB, unitType: "voltage" },
-    7: { keys: VOLTAGE_FIELDS_CCB, unitType: "voltage" },
-};
 
 type MeasureRow<U extends string> = { value: string; unit: U };
 type MeasureState<U extends string> = Record<string, MeasureRow<U>>;
@@ -613,16 +616,15 @@ function SectionCard({ title, subtitle, children, tooltip, id }: { title?: strin
 interface ValidationError { section: string; sectionIcon: string; itemName: string; message: string; scrollId?: string; }
 interface MissingInputItem { qNo: number; subNo?: number; label: string; fieldKey: string; }
 interface PMValidationCardProps {
-    lang: Lang; displayTab: TabId; isPostMode: boolean;
+    lang: Lang;
     allPhotosAttached: boolean; missingPhotoItems: string[];
     allRequiredInputsFilled: boolean; missingInputsDetailed: MissingInputItem[];
-    allRemarksFilledPre: boolean; missingRemarksPre: string[];
-    allPFAnsweredPost: boolean; missingPFItemsPost: string[];
-    allRemarksFilledPost: boolean; missingRemarksPost: string[];
+    allPFAnswered: boolean; missingPFItems: string[];
+    allRemarksFilled: boolean; missingRemarks: string[];
     isSummaryFilled: boolean; isSummaryCheckFilled: boolean;
 }
 
-function PMValidationCard({ lang, displayTab, isPostMode, allPhotosAttached, missingPhotoItems, allRequiredInputsFilled, missingInputsDetailed, allRemarksFilledPre, missingRemarksPre, allPFAnsweredPost, missingPFItemsPost, allRemarksFilledPost, missingRemarksPost, isSummaryFilled, isSummaryCheckFilled }: PMValidationCardProps) {
+function PMValidationCard({ lang, allPhotosAttached, missingPhotoItems, allRequiredInputsFilled, missingInputsDetailed, allPFAnswered, missingPFItems, allRemarksFilled, missingRemarks, isSummaryFilled, isSummaryCheckFilled }: PMValidationCardProps) {
     const [isExpanded, setIsExpanded] = useState(false);
 
     const getPhotoScrollId = (item: string) => { const p = item.split('.'); return p.length === 2 ? `${ID_PREFIX}-photo-${p[0]}-${p[1]}` : `${ID_PREFIX}-photo-${p[0]}`; };
@@ -639,17 +641,14 @@ function PMValidationCard({ lang, displayTab, isPostMode, allPhotosAttached, mis
                 errors.push({ section: lang === "th" ? "ค่าที่ต้องกรอก" : "Required Inputs", sectionIcon: "📝", itemName: `${t("itemLabel", lang)} ${subNo ? `${qNo}.${subNo}` : qNo}`, message: lang === "th" ? `ยังไม่ได้กรอกค่า ${label}` : `${label} value not filled`, scrollId: subNo ? `${ID_PREFIX}-input-${qNo}-${subNo}` : `${ID_PREFIX}-question-${qNo}` });
             });
         }
-        if (displayTab === "pre" && !allRemarksFilledPre) {
-            missingRemarksPre.forEach(item => errors.push({ section: lang === "th" ? "หมายเหตุ" : "Remarks", sectionIcon: "💬", itemName: `${t("itemLabel", lang)} ${item}`, message: lang === "th" ? "ยังไม่ได้กรอกหมายเหตุ" : "Remark not filled", scrollId: getRemarkScrollId(item) }));
-        }
-        if (isPostMode) {
-            if (!allPFAnsweredPost) missingPFItemsPost.forEach(item => errors.push({ section: lang === "th" ? "สถานะ PASS/FAIL/N/A" : "PASS/FAIL/N/A Status", sectionIcon: "✅", itemName: `${t("itemLabel", lang)} ${item}`, message: lang === "th" ? "ยังไม่ได้เลือกสถานะ" : "Status not selected", scrollId: getPfScrollId(item) }));
-            if (!allRemarksFilledPost) missingRemarksPost.forEach(item => errors.push({ section: lang === "th" ? "หมายเหตุ" : "Remarks", sectionIcon: "💬", itemName: `${t("itemLabel", lang)} ${item}`, message: lang === "th" ? "ยังไม่ได้กรอกหมายเหตุ" : "Remark not filled", scrollId: getRemarkScrollId(item) }));
+        {
+            if (!allPFAnswered) missingPFItems.forEach(item => errors.push({ section: lang === "th" ? "สถานะ PASS/FAIL/N/A" : "PASS/FAIL/N/A Status", sectionIcon: "✅", itemName: `${t("itemLabel", lang)} ${item}`, message: lang === "th" ? "ยังไม่ได้เลือกสถานะ" : "Status not selected", scrollId: getPfScrollId(item) }));
+            if (!allRemarksFilled) missingRemarks.forEach(item => errors.push({ section: lang === "th" ? "หมายเหตุ" : "Remarks", sectionIcon: "💬", itemName: `${t("itemLabel", lang)} ${item}`, message: lang === "th" ? "ยังไม่ได้กรอกหมายเหตุ" : "Remark not filled", scrollId: getRemarkScrollId(item) }));
             if (!isSummaryFilled) errors.push({ section: lang === "th" ? "สรุปผลการตรวจสอบ" : "Inspection Summary", sectionIcon: "📋", itemName: "Comment", message: t("missingSummaryText", lang), scrollId: "mdb-pm-summary-section" });
             if (!isSummaryCheckFilled) errors.push({ section: lang === "th" ? "สรุปผลการตรวจสอบ" : "Inspection Summary", sectionIcon: "📋", itemName: lang === "th" ? "สถานะสรุปผล" : "Summary Status", message: t("missingSummaryStatus", lang), scrollId: "mdb-pm-summary-section" });
         }
         return errors;
-    }, [lang, displayTab, isPostMode, allPhotosAttached, missingPhotoItems, allRequiredInputsFilled, missingInputsDetailed, allRemarksFilledPre, missingRemarksPre, allPFAnsweredPost, missingPFItemsPost, allRemarksFilledPost, missingRemarksPost, isSummaryFilled, isSummaryCheckFilled]);
+    }, [lang, allPhotosAttached, missingPhotoItems, allRequiredInputsFilled, missingInputsDetailed, allPFAnswered, missingPFItems, allRemarksFilled, missingRemarks, isSummaryFilled, isSummaryCheckFilled]);
 
     const groupedErrors = useMemo(() => {
         const m = new Map<string, ValidationError[]>();
@@ -910,31 +909,6 @@ async function compressImage(
     );
 }
 
-function SkippedNAItem({ label, remark, lang }: { label: string; remark?: string; lang: Lang }) {
-    return (
-        <div className="tw-py-4 first:tw-pt-2 tw-bg-amber-50/50">
-            <div className="tw-flex tw-items-center tw-justify-between">
-                <Typography className="tw-font-semibold tw-text-sm tw-text-gray-800">{label}</Typography>
-                <span className="tw-text-xs tw-text-amber-600 tw-font-medium">N/A</span>
-            </div>
-            {remark && <Typography variant="small" className="tw-text-gray-600 tw-mt-1">{t("remarkLabel", lang)}: {remark}</Typography>}
-        </div>
-    );
-}
-
-function PreRemarkElement({ remark, lang }: { remark?: string; lang: Lang }) {
-    if (!remark) return null;
-    return (
-        <div className="tw-mb-3 tw-p-3 tw-bg-gray-100 tw-rounded-lg">
-            <div className="tw-flex tw-items-center tw-gap-2 tw-mb-1">
-                <svg className="tw-w-4 tw-h-4 tw-text-gray-500" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" /></svg>
-                <Typography variant="small" className="tw-font-semibold tw-text-gray-600">{t("preRemarkLabel", lang)}</Typography>
-            </div>
-            <Typography variant="small" className="tw-text-gray-700 tw-ml-6">{remark}</Typography>
-        </div>
-    );
-}
-
 // ==================== BACKGROUND UPLOAD BANNER ====================
 function BackgroundUploadBanner({ lang }: { lang: Lang }) {
     const [progress, setProgress] = useState<BgUploadProgress>({ total: 0, completed: 0, failed: 0, inProgress: false, failures: [] });
@@ -1010,24 +984,22 @@ export default function MDBPMForm() {
         if (back) router.push(back);
         else router.back();
     }, [router, searchParams]);
+    // ใบที่เปิดจาก List (แก้ใบที่โดนตีกลับ / ใบเก่าที่ยังเป็น draft) — ใบใหม่เปิดมาไม่มี id
     const editId = searchParams.get("edit_id") ?? "";
-    const action = searchParams.get("action");
-    const isPostMode = action === "post";
 
-    const [postApiLoaded, setPostApiLoaded] = useState(false);
+    const [docApiLoaded, setDocApiLoaded] = useState(false);
     const [photos, setPhotos] = useState<Record<string | number, PhotoItem[]>>({});
     const [summary, setSummary] = useState<string>("");
-    const [summaryPre, setSummaryPre] = useState<string>("");
     const [stationId, setStationId] = useState<string | null>(null);
 
-    const key = useMemo(() => draftKey(stationId), [stationId]);
-    const postKey = useMemo(() => `${draftKey(stationId)}:${editId}:post`, [stationId, editId]);
-    const currentDraftKey = isPostMode ? postKey : key;
+    // draft ในเครื่อง: ใบใหม่ผูกกับสถานี ใบที่เปิดจาก List ผูกกับ id ของใบนั้น
+    const newDraftKey = useMemo(() => draftKey(stationId), [stationId]);
+    const editDraftKey = useMemo(() => `${draftKey(stationId)}:${editId}:post`, [stationId, editId]);
+    const currentDraftKey = editId ? editDraftKey : newDraftKey;
 
-    const preReportIdRef = useRef<string | null>(null);
-    const postReportIdRef = useRef<string | null>(null);
+    const reportIdRef = useRef<string | null>(null);
 
-    useEffect(() => { postReportIdRef.current = null; }, [editId]);
+    useEffect(() => { reportIdRef.current = null; }, [editId]);
 
     const photosRef = useRef(photos);
     useEffect(() => { photosRef.current = photos; }, [photos]);
@@ -1103,124 +1075,125 @@ export default function MDBPMForm() {
 
     useEffect(() => { void prefetchLocation(); }, []);
 
+    // เฉพาะใบเก่าที่กรอกสมัยยังมี 2 ด่าน — ฟอร์มไม่มีด่าน "ก่อน PM" แล้ว แต่เอกสารเก่า
+    // ที่มี rows_pre/photos_pre อยู่ ยังต้องเปิดตรวจแบบตารางเทียบก่อน/หลังได้เหมือนเดิม
+    // จึงอ่านมาเก็บไว้อย่างเดียว ไม่มีอะไรในฟอร์มเขียนค่าพวกนี้อีกแล้ว
     const [rowsPre, setRowsPre] = useState<Record<string, { pf: PF; remark: string }>>({});
-
-    // รูปทั้งสองฝั่งจากเอกสาร (ใช้ในตารางเทียบตอนตรวจอนุมัติ)
-    // state รูปปกติของฟอร์มมีเฉพาะฝั่งที่กำลังกรอกอยู่ จึงต้องเก็บของ document ไว้ต่างหาก
+    const [summaryPre, setSummaryPre] = useState<string>("");
     const [cmpPhotos, setCmpPhotos] = useState<{ pre: any; post: any }>({ pre: {}, post: {} });
+
+    // ใบที่ไม่มี form_version (หรือต่ำกว่าปัจจุบัน) ใช้เลขข้อคนละชุด — คีย์ r1..r13
+    // ของใบพวกนั้นคือหัวข้อ 1-13 แบบเก่า ถ้าเอามาเปิดในฟอร์มนี้จะจับคู่ผิดหัวข้อทั้งใบ
+    // จึงให้เปิดดูผ่านตารางสรุป/PDF อย่างเดียว แก้ไขต่อไม่ได้
+    const [docFormVersion, setDocFormVersion] = useState<number>(FORM_VERSION);
+    const legacyDoc = !!editId && docFormVersion < FORM_VERSION;
     const [rows, setRows] = useState<Record<string, { pf: PF; remark: string }>>(() => {
         const initial: Record<string, { pf: PF; remark: string }> = {};
         QUESTIONS.forEach(q => { if (q.kind === "simple" || q.kind === "measure") initial[q.key] = { pf: "", remark: "" }; else if (q.kind === "group" && q.items) q.items.forEach(it => { initial[it.key] = { pf: "", remark: "" }; }); });
         return initial;
     });
 
-    const [m4Pre, setM4Pre] = useState<Record<string, MeasureState<UnitVoltage>>>({});
-    const [m5Pre, setM5Pre] = useState<Record<string, MeasureState<UnitVoltage>>>({});
-    const [m6Pre, setM6Pre] = useState<Record<string, MeasureState<UnitVoltage>>>({});
-    const [m7Pre, setM7Pre] = useState<Record<string, MeasureState<UnitVoltage>>>({});
-
     const [m4State, setM4State] = useState<Record<string, MeasureState<UnitVoltage>>>({});
     const [m5State, setM5State] = useState<Record<string, MeasureState<UnitVoltage>>>({});
     const [m6State, setM6State] = useState<Record<string, MeasureState<UnitVoltage>>>({});
     const [m7State, setM7State] = useState<Record<string, MeasureState<UnitVoltage>>>({});
 
-    const [q4Items, setQ4Items] = useState<{ key: string; label: string }[]>([{ key: "r4_1", label: getDynamicLabel.breakerMain(1, lang) }]);
-    const [q6Items, setQ6Items] = useState<{ key: string; label: string }[]>([{ key: "r6_1", label: getDynamicLabel.breakerCCB(1, lang) }]);
+    const [q6Items, setQ6Items] = useState<{ key: string; label: string }[]>([{ key: "r6_1", label: getDynamicLabel.breakerMain(1, lang) }]);
+    const [q8Items, setQ8Items] = useState<{ key: string; label: string }[]>([{ key: "r8_1", label: getDynamicLabel.breakerCCB(1, lang) }]);
     const [chargerCount, setChargerCount] = useState<number>(1);
 
     useEffect(() => {
-        setQ4Items(prev => prev.map((item, i) => ({ ...item, label: getDynamicLabel.breakerMain(i + 1, lang) })));
-        setQ6Items(prev => prev.map((item, i) => ({ ...item, label: getDynamicLabel.breakerCCB(i + 1, lang) })));
+        setQ6Items(prev => prev.map((item, i) => ({ ...item, label: getDynamicLabel.breakerMain(i + 1, lang) })));
+        setQ8Items(prev => prev.map((item, i) => ({ ...item, label: getDynamicLabel.breakerCCB(i + 1, lang) })));
     }, [lang]);
 
-    const q5Items = useMemo(() => Array.from({ length: chargerCount }, (_, i) => ({ key: `r5_${i + 1}`, label: getDynamicLabel.breakerCharger(i + 1, lang) })), [chargerCount, lang]);
-    const q7Items = useMemo(() => Array.from({ length: chargerCount }, (_, i) => ({ key: `r7_${i + 1}`, label: getDynamicLabel.rcd(i + 1, lang) })), [chargerCount, lang]);
-    const q8Items = useMemo(() => Array.from({ length: chargerCount }, (_, i) => ({ key: `r8_${i + 1}`, label: getDynamicLabel.tripRCD(i + 1, lang) })), [chargerCount, lang]);
-    const q9Items = useMemo(() => q6Items.map((_, i) => ({ key: `r9_${i + 1}`, label: getDynamicLabel.tripCCB(i + 1, lang) })), [q6Items, lang]);
-    const q10Items = useMemo(() => Array.from({ length: chargerCount }, (_, i) => ({ key: `r10_${i + 1}`, label: getDynamicLabel.tripCharger(i + 1, lang) })), [chargerCount, lang]);
-    const q11Items = useMemo(() => q4Items.map((_, i) => ({ key: `r11_${i + 1}`, label: getDynamicLabel.tripMain(i + 1, lang) })), [q4Items, lang]);
+    const q7Items = useMemo(() => Array.from({ length: chargerCount }, (_, i) => ({ key: `r7_${i + 1}`, label: getDynamicLabel.breakerCharger(i + 1, lang) })), [chargerCount, lang]);
+    const q9Items = useMemo(() => Array.from({ length: chargerCount }, (_, i) => ({ key: `r9_${i + 1}`, label: getDynamicLabel.rcd(i + 1, lang) })), [chargerCount, lang]);
+    const q10Items = useMemo(() => Array.from({ length: chargerCount }, (_, i) => ({ key: `r10_${i + 1}`, label: getDynamicLabel.tripRCD(i + 1, lang) })), [chargerCount, lang]);
+    const q11Items = useMemo(() => q8Items.map((_, i) => ({ key: `r11_${i + 1}`, label: getDynamicLabel.tripCCB(i + 1, lang) })), [q8Items, lang]);
+    const q12Items = useMemo(() => Array.from({ length: chargerCount }, (_, i) => ({ key: `r12_${i + 1}`, label: getDynamicLabel.tripCharger(i + 1, lang) })), [chargerCount, lang]);
+    const q13Items = useMemo(() => q6Items.map((_, i) => ({ key: `r13_${i + 1}`, label: getDynamicLabel.tripMain(i + 1, lang) })), [q6Items, lang]);
 
-    useEffect(() => { setM4State(prev => { const n = { ...prev }; q4Items.forEach(item => { if (!n[item.key]) n[item.key] = initMeasureState(VOLTAGE_FIELDS, "V"); }); return n; }); }, [q4Items]);
-    useEffect(() => { setM5State(prev => { const n = { ...prev }; q5Items.forEach(item => { if (!n[item.key]) n[item.key] = initMeasureState(VOLTAGE_FIELDS, "V"); }); return n; }); }, [q5Items]);
-    useEffect(() => { setM6State(prev => { const n = { ...prev }; q6Items.forEach(item => { if (!n[item.key]) n[item.key] = initMeasureState(VOLTAGE_FIELDS_CCB, "V"); }); return n; }); }, [q6Items]);
-    useEffect(() => { setM7State(prev => { const n = { ...prev }; q7Items.forEach(item => { if (!n[item.key]) n[item.key] = initMeasureState(VOLTAGE_FIELDS_CCB, "V"); }); return n; }); }, [q7Items]);
+    useEffect(() => { setM4State(prev => { const n = { ...prev }; q6Items.forEach(item => { if (!n[item.key]) n[item.key] = initMeasureState(VOLTAGE_FIELDS, "V"); }); return n; }); }, [q6Items]);
+    useEffect(() => { setM5State(prev => { const n = { ...prev }; q7Items.forEach(item => { if (!n[item.key]) n[item.key] = initMeasureState(VOLTAGE_FIELDS, "V"); }); return n; }); }, [q7Items]);
+    useEffect(() => { setM6State(prev => { const n = { ...prev }; q8Items.forEach(item => { if (!n[item.key]) n[item.key] = initMeasureState(VOLTAGE_FIELDS_CCB, "V"); }); return n; }); }, [q8Items]);
+    useEffect(() => { setM7State(prev => { const n = { ...prev }; q9Items.forEach(item => { if (!n[item.key]) n[item.key] = initMeasureState(VOLTAGE_FIELDS_CCB, "V"); }); return n; }); }, [q9Items]);
 
     useEffect(() => {
         setRows(prev => {
             const next = { ...prev }; let changed = false;
-            [q4Items, q5Items, q6Items, q7Items, q8Items, q9Items, q10Items, q11Items].forEach(items => {
+            [q6Items, q7Items, q8Items, q9Items, q10Items, q11Items, q12Items, q13Items].forEach(items => {
                 items.forEach(item => { if (!next[item.key]) { next[item.key] = { pf: "", remark: "" }; changed = true; } });
             });
             return changed ? next : prev;
         });
-    }, [q4Items, q5Items, q6Items, q7Items, q8Items, q9Items, q10Items, q11Items]);
+    }, [q6Items, q7Items, q8Items, q9Items, q10Items, q11Items, q12Items, q13Items]);
 
-    const addQ4Item = () => { const i = q4Items.length + 1; setQ4Items(prev => [...prev, { key: `r4_${i}`, label: getDynamicLabel.breakerMain(i, lang) }]); };
-    const removeQ4Item = (idx: number) => {
-        if (q4Items.length <= 1) return;
-        const oldKeys = q4Items.map(it => it.key);
-        const remainingOldKeys = oldKeys.filter((_, i) => i !== idx);
-        const newItems = remainingOldKeys.map((_, i) => ({ key: `r4_${i + 1}`, label: getDynamicLabel.breakerMain(i + 1, lang) }));
-        setQ4Items(newItems);
-        setRows(prev => { const n = { ...prev }; oldKeys.forEach(k => delete n[k]); remainingOldKeys.forEach((oldKey, i) => { if (prev[oldKey] !== undefined) n[`r4_${i + 1}`] = prev[oldKey]; }); return n; });
-        setM4State(prev => { const n = { ...prev }; oldKeys.forEach(k => delete n[k]); remainingOldKeys.forEach((oldKey, i) => { if (prev[oldKey] !== undefined) n[`r4_${i + 1}`] = prev[oldKey]; }); return n; });
-        setPhotos(prev => { const n = { ...prev }; oldKeys.forEach(k => delete n[k]); remainingOldKeys.forEach((oldKey, i) => { if (prev[oldKey] !== undefined) n[`r4_${i + 1}`] = prev[oldKey]; }); return n; });
-    };
-
-    const addQ6Item = () => { if (q6Items.length >= 4) return; const i = q6Items.length + 1; setQ6Items(prev => [...prev, { key: `r6_${i}`, label: getDynamicLabel.breakerCCB(i, lang) }]); };
+    const addQ6Item = () => { const i = q6Items.length + 1; setQ6Items(prev => [...prev, { key: `r6_${i}`, label: getDynamicLabel.breakerMain(i, lang) }]); };
     const removeQ6Item = (idx: number) => {
         if (q6Items.length <= 1) return;
         const oldKeys = q6Items.map(it => it.key);
         const remainingOldKeys = oldKeys.filter((_, i) => i !== idx);
-        const newItems = remainingOldKeys.map((_, i) => ({ key: `r6_${i + 1}`, label: getDynamicLabel.breakerCCB(i + 1, lang) }));
+        const newItems = remainingOldKeys.map((_, i) => ({ key: `r6_${i + 1}`, label: getDynamicLabel.breakerMain(i + 1, lang) }));
         setQ6Items(newItems);
         setRows(prev => { const n = { ...prev }; oldKeys.forEach(k => delete n[k]); remainingOldKeys.forEach((oldKey, i) => { if (prev[oldKey] !== undefined) n[`r6_${i + 1}`] = prev[oldKey]; }); return n; });
-        setM6State(prev => { const n = { ...prev }; oldKeys.forEach(k => delete n[k]); remainingOldKeys.forEach((oldKey, i) => { if (prev[oldKey] !== undefined) n[`r6_${i + 1}`] = prev[oldKey]; }); return n; });
+        setM4State(prev => { const n = { ...prev }; oldKeys.forEach(k => delete n[k]); remainingOldKeys.forEach((oldKey, i) => { if (prev[oldKey] !== undefined) n[`r6_${i + 1}`] = prev[oldKey]; }); return n; });
         setPhotos(prev => { const n = { ...prev }; oldKeys.forEach(k => delete n[k]); remainingOldKeys.forEach((oldKey, i) => { if (prev[oldKey] !== undefined) n[`r6_${i + 1}`] = prev[oldKey]; }); return n; });
+    };
+
+    const addQ8Item = () => { if (q8Items.length >= 4) return; const i = q8Items.length + 1; setQ8Items(prev => [...prev, { key: `r8_${i}`, label: getDynamicLabel.breakerCCB(i, lang) }]); };
+    const removeQ8Item = (idx: number) => {
+        if (q8Items.length <= 1) return;
+        const oldKeys = q8Items.map(it => it.key);
+        const remainingOldKeys = oldKeys.filter((_, i) => i !== idx);
+        const newItems = remainingOldKeys.map((_, i) => ({ key: `r8_${i + 1}`, label: getDynamicLabel.breakerCCB(i + 1, lang) }));
+        setQ8Items(newItems);
+        setRows(prev => { const n = { ...prev }; oldKeys.forEach(k => delete n[k]); remainingOldKeys.forEach((oldKey, i) => { if (prev[oldKey] !== undefined) n[`r8_${i + 1}`] = prev[oldKey]; }); return n; });
+        setM6State(prev => { const n = { ...prev }; oldKeys.forEach(k => delete n[k]); remainingOldKeys.forEach((oldKey, i) => { if (prev[oldKey] !== undefined) n[`r8_${i + 1}`] = prev[oldKey]; }); return n; });
+        setPhotos(prev => { const n = { ...prev }; oldKeys.forEach(k => delete n[k]); remainingOldKeys.forEach((oldKey, i) => { if (prev[oldKey] !== undefined) n[`r8_${i + 1}`] = prev[oldKey]; }); return n; });
     };
 
     // ==================== EFFECTS ====================
     useEffect(() => {
-        if (!isPostMode || !editId || !stationId) return;
-        setPostApiLoaded(false);
+        if (!editId || !stationId) return;
+        setDocApiLoaded(false);
         setM4State({}); setM5State({}); setM6State({}); setM7State({});
         setRows(() => { const init: Record<string, { pf: PF; remark: string }> = {}; QUESTIONS.forEach(q => { init[q.key] = { pf: "", remark: "" }; }); return init; });
         (async () => {
             try {
                 const data = await fetchReport(editId, stationId);
+                setDocFormVersion(Number(data.form_version) || 1);
                 if (data.job) setJob(prev => ({ ...prev, ...data.job, issue_id: data.issue_id ?? prev.issue_id }));
                 if (data.pm_date) setJob(prev => ({ ...prev, date: data.pm_date }));
                 if (data.charger_count) setChargerCount(data.charger_count);
-                if (data.q4_items) setQ4Items(data.q4_items.map((it: any, i: number) => ({ ...it, label: getDynamicLabel.breakerMain(i + 1, lang) })));
-                if (data.q6_items) setQ6Items(data.q6_items.map((it: any, i: number) => ({ ...it, label: getDynamicLabel.breakerCCB(i + 1, lang) })));
-                if (data?.measures_pre?.m4) setM4Pre(data.measures_pre.m4);
-                if (data?.measures_pre?.m5) setM5Pre(data.measures_pre.m5);
-                if (data?.measures_pre?.m6) setM6Pre(data.measures_pre.m6);
-                if (data?.measures_pre?.m7) setM7Pre(data.measures_pre.m7);
+                if (data.q4_items) setQ6Items(data.q4_items.map((it: any, i: number) => ({ ...it, label: getDynamicLabel.breakerMain(i + 1, lang) })));
+                if (data.q6_items) setQ8Items(data.q6_items.map((it: any, i: number) => ({ ...it, label: getDynamicLabel.breakerCCB(i + 1, lang) })));
                 if (data.doc_name) setDocName(data.doc_name);
                 if (data.inspector) setInspector(data.inspector);
                 setCmpPhotos({ pre: data.photos_pre ?? {}, post: data.photos ?? {} });
-                // สรุปผล/หมายเหตุเดิมอ่านจาก draft ในเครื่องอย่างเดียว คนที่ไม่ได้เป็นคนกรอก
-                // (ผู้อนุมัติ) จึงเปิดมาเจอช่องว่าง ต้องดึงจากตัวเอกสารด้วย
-                if (reviewMode) {
-                    // เวลาทำงาน/laborcode ก็เก็บอยู่ใน draft ของเครื่องช่างเหมือนกัน
-                    // ผู้อนุมัติต้องอ่านจากตัวเอกสาร ไม่งั้นเห็นเป็นช่องว่าง
-                    if (typeof data.work_start === "string") setWorkStart(data.work_start);
-                    if (typeof data.work_finish === "string") setWorkFinish(data.work_finish);
-                    if (Array.isArray(data.maximo_labor)) setMaximoLabor(data.maximo_labor);
-                    if (typeof data.maximo_contractor === "string") setMaximoContractor(data.maximo_contractor);
-                    if (typeof data.summary_pre === "string") setSummaryPre(data.summary_pre);
-                    if (typeof data.summary === "string") setSummary(data.summary);
-                    if (data.summaryCheck) setSummaryCheck(data.summaryCheck as PF);
-                }
+                // ค่าที่ช่างกรอกไว้เก็บอยู่ใน draft ของเครื่องช่างด้วย แต่คนอื่นที่เปิดใบเดียวกัน
+                // (ผู้อนุมัติ / ช่างที่มาแก้ใบโดนตีกลับจากอีกเครื่อง) ไม่มี draft นั้น
+                // ต้องอ่านจากตัวเอกสารเสมอ ไม่งั้นเปิดมาเจอช่องว่าง
+                if (typeof data.work_start === "string") setWorkStart(data.work_start);
+                if (typeof data.work_finish === "string") setWorkFinish(data.work_finish);
+                if (Array.isArray(data.maximo_labor)) setMaximoLabor(data.maximo_labor);
+                if (typeof data.maximo_contractor === "string") setMaximoContractor(data.maximo_contractor);
+                if (typeof data.summary === "string") setSummary(data.summary);
+                if (data.summaryCheck) setSummaryCheck(data.summaryCheck as PF);
+                if (typeof data.dust_filter?.changed === "boolean") setDustFilterChanged(data.dust_filter.changed);
+                if (data?.measures?.m4) setM4State(data.measures.m4);
+                if (data?.measures?.m5) setM5State(data.measures.m5);
+                if (data?.measures?.m6) setM6State(data.measures.m6);
+                if (data?.measures?.m7) setM7State(data.measures.m7);
+                if (typeof data.summary_pre === "string") setSummaryPre(data.summary_pre);
                 if (data.rows_pre) setRowsPre(data.rows_pre);
                 if (data.rows) setRows(prev => { const n = { ...prev }; Object.entries(data.rows).forEach(([k, v]) => { n[k] = v as { pf: PF; remark: string }; }); return n; });
-                setPostApiLoaded(true);
-            } catch (err) { console.error("load report failed:", err); setPostApiLoaded(true); }
+                setDocApiLoaded(true);
+            } catch (err) { console.error("load report failed:", err); setDocApiLoaded(true); }
         })();
-    }, [isPostMode, editId, stationId, lang]);
+    }, [editId, stationId, lang]);
 
-    useEffect(() => { if (isPostMode && postApiLoaded) setPageLoading(false); }, [isPostMode, postApiLoaded]);
+    useEffect(() => { if (editId && docApiLoaded) setPageLoading(false); }, [editId, docApiLoaded]);
 
     useEffect(() => {
         (async () => {
@@ -1235,31 +1208,31 @@ export default function MDBPMForm() {
     }, []);
 
     useEffect(() => {
-        if (isPostMode || !stationId || !job.date) return;
+        if (editId || !stationId || !job.date) return;
         let canceled = false;
         (async () => { try { const p = await fetchPreviewIssueId(stationId, job.date); if (!canceled && p) setJob(prev => ({ ...prev, issue_id: p })); } catch { } })();
         return () => { canceled = true; };
-    }, [stationId, job.date, isPostMode]);
+    }, [stationId, job.date, editId]);
 
     useEffect(() => {
-        if (isPostMode || !stationId || !job.date) return;
+        if (editId || !stationId || !job.date) return;
         let canceled = false;
         (async () => { try { const p = await fetchPreviewDocName(stationId, job.date); if (!canceled && p) setDocName(p); } catch { } })();
         return () => { canceled = true; };
-    }, [stationId, job.date, isPostMode]);
+    }, [stationId, job.date, editId]);
 
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
         const sid = params.get("station_id") || localStorage.getItem("selected_station_id");
         if (sid) setStationId(sid);
-        if (!sid || isPostMode) { setPageLoading(false); return; }
+        if (!sid || editId) { setPageLoading(false); return; }
         setJob(prev => { if (prev.date) return prev; return { ...prev, date: new Date().toISOString().slice(0, 10) }; });
         getStationInfoPublic(sid)
             .then(st => setJob(prev => ({ ...prev, station_name: st.station_name ?? prev.station_name })))
             .catch(err => console.error("load station info failed:", err))
             .finally(() => setPageLoading(false));
         getChargerCountByStation(sid).then(count => setChargerCount(count)).catch(err => console.error(err));
-    }, [isPostMode]);
+    }, [editId]);
 
     useEffect(() => {
         if (typeof window === "undefined") return;
@@ -1267,20 +1240,23 @@ export default function MDBPMForm() {
         if (params.has("draft_id")) { params.delete("draft_id"); window.history.replaceState({}, "", `${window.location.pathname}?${params.toString()}`); }
     }, []);
 
-    // Load draft (Pre)
+    // โหลด draft ในเครื่อง — ใบใหม่ใช้ draft ของสถานี ใบที่เปิดจาก List ใช้ draft ของใบนั้น
+    // ใบที่เปิดจาก List ต้องรอโหลดเอกสารเสร็จก่อน draft ถึงจะทับค่าจาก server ได้ถูกลำดับ
     useEffect(() => {
-        if (!stationId || isPostMode) return;
-        const draft = loadDraftLocal<any>(key);
+        if (!stationId) return;
+        if (editId && !docApiLoaded) return;
+        const draft = loadDraftLocal<any>(currentDraftKey);
         if (!draft) return;
         if (draft.rows) setRows(prev => ({ ...prev, ...draft.rows }));
-        if (draft.m4) setM4State(draft.m4);
-        if (draft.m5) setM5State(draft.m5);
-        if (draft.m6) setM6State(draft.m6);
-        if (draft.m7) setM7State(draft.m7);
+        if (draft.m4) setM4State(prev => ({ ...prev, ...draft.m4 }));
+        if (draft.m5) setM5State(prev => ({ ...prev, ...draft.m5 }));
+        if (draft.m6) setM6State(prev => ({ ...prev, ...draft.m6 }));
+        if (draft.m7) setM7State(prev => ({ ...prev, ...draft.m7 }));
+        if (draft.summary) setSummary(draft.summary);
+        if (draft.summaryCheck) setSummaryCheck(draft.summaryCheck);
         if (typeof draft.dustFilterChanged === "boolean") setDustFilterChanged(draft.dustFilterChanged);
-        if (draft.summary) setSummaryPre(draft.summary); // เปลี่ยน
-        if (draft.q4_items) setQ4Items(draft.q4_items.map((it: any, i: number) => ({ ...it, label: getDynamicLabel.breakerMain(i + 1, lang) })));
-        if (draft.q6_items) setQ6Items(draft.q6_items.map((it: any, i: number) => ({ ...it, label: getDynamicLabel.breakerCCB(i + 1, lang) })));
+        if (draft.q4_items) setQ6Items(draft.q4_items.map((it: any, i: number) => ({ ...it, label: getDynamicLabel.breakerMain(i + 1, lang) })));
+        if (draft.q6_items) setQ8Items(draft.q6_items.map((it: any, i: number) => ({ ...it, label: getDynamicLabel.breakerCCB(i + 1, lang) })));
         if (draft.charger_count) setChargerCount(draft.charger_count);
         if (draft.photoRefs) {
             let canceled = false;
@@ -1307,7 +1283,7 @@ export default function MDBPMForm() {
                                 preview: URL.createObjectURL(file),
                                 remark: (ref as PhotoRef).remark,
                                 ref: ref as PhotoRef,
-                                uploaded: (ref as any).uploaded === true, // เพิ่มบรรทัดนี้
+                                uploaded: (ref as any).uploaded === true,
                             });
                         }
                     }
@@ -1317,210 +1293,114 @@ export default function MDBPMForm() {
             })();
             return cleanup;
         }
-    }, [stationId, key, isPostMode, lang]);
-
-    // Load draft (Post)
-    useEffect(() => {
-        if (!isPostMode || !postApiLoaded || !stationId || !editId) return;
-        const draft = loadDraftLocal<any>(postKey);
-        if (!draft) return;
-        if (draft.rows) setRows(prev => ({ ...prev, ...draft.rows }));
-        if (draft.m4) setM4State(prev => ({ ...prev, ...draft.m4 }));
-        if (draft.m5) setM5State(prev => ({ ...prev, ...draft.m5 }));
-        if (draft.m6) setM6State(prev => ({ ...prev, ...draft.m6 }));
-        if (draft.m7) setM7State(prev => ({ ...prev, ...draft.m7 }));
-        if (draft.summary) setSummary(draft.summary);
-        if (draft.summaryCheck) setSummaryCheck(draft.summaryCheck);
-        if (typeof draft.dustFilterChanged === "boolean") setDustFilterChanged(draft.dustFilterChanged);
-        if (draft.photoRefs) {
-            let canceled = false;
-            const cleanup = () => { canceled = true; };
-            (async () => {
-                const loadedPhotos: Record<string | number, PhotoItem[]> = {};
-                for (const [photoKey, refs] of Object.entries(draft.photoRefs as Record<string, (PhotoRef | { isNA: true })[]>)) {
-                    if (canceled) return;
-                    if (!refs || refs.length === 0) continue;
-                    const items: PhotoItem[] = [];
-                    for (const ref of refs) {
-                        if (canceled) return;
-                        if ('isNA' in ref && ref.isNA) { items.push({ id: `na-${photoKey}`, isNA: true }); }
-                        else if ('dbKey' in ref) {
-                            const file = await getPhotoByDbKey((ref as PhotoRef).dbKey);
-                            if (!file || file.size === 0) {
-                                console.warn("Photo missing/empty in IndexedDB:", (ref as PhotoRef).dbKey);
-                                reportMissingDraftPhoto(lang);
-                                continue;
-                            }
-                            if (file && !canceled) items.push({
-                                id: (ref as PhotoRef).id,
-                                file,
-                                preview: URL.createObjectURL(file),
-                                remark: (ref as PhotoRef).remark,
-                                ref: ref as PhotoRef,
-                                uploaded: (ref as any).uploaded === true, // เพิ่มบรรทัดนี้
-                            });
-                        }
-                    }
-                    if (items.length > 0) loadedPhotos[photoKey] = items;
-                }
-                if (!canceled) setPhotos(prev => ({ ...prev, ...loadedPhotos }));
-            })();
-            return cleanup;
-        }
-    }, [isPostMode, postApiLoaded, stationId, editId, postKey]);
+    }, [stationId, currentDraftKey, editId, docApiLoaded, lang]);
 
     // ==================== VALIDATIONS ====================
-    const validPhotoKeysPre = useMemo(() => {
+    // ตอบ N/A แล้วไม่ต้องแนบรูป — เดิมดูจากคำตอบด่าน Pre ตอนนี้ดูจากคำตอบในใบเดียวกัน
+    const validPhotoKeys = useMemo(() => {
         const keys: { key: string | number; label: string }[] = [];
-        QUESTIONS.filter(q => q.hasPhoto && q.no !== 13).forEach(q => {
-            if (q.kind === "simple" || q.kind === "measure") keys.push({ key: q.no, label: `${q.no}` });
-            else if (q.kind === "dynamic_measure") q4Items.forEach((item, idx) => keys.push({ key: item.key, label: `4.${idx + 1}` }));
-            else if (q.kind === "charger_measure") q5Items.forEach((item, idx) => keys.push({ key: item.key, label: `5.${idx + 1}` }));
-            else if (q.kind === "ccb_measure") q6Items.forEach((item, idx) => keys.push({ key: item.key, label: `6.${idx + 1}` }));
-            else if (q.kind === "rcd_measure") q7Items.forEach((item, idx) => keys.push({ key: item.key, label: `7.${idx + 1}` }));
-            else if (q.kind === "trip_rcd") q8Items.forEach((item, idx) => keys.push({ key: item.key, label: `8.${idx + 1}` }));
-            else if (q.kind === "trip_ccb") q9Items.forEach((item, idx) => keys.push({ key: item.key, label: `9.${idx + 1}` }));
-            else if (q.kind === "trip_charger") q10Items.forEach((item, idx) => keys.push({ key: item.key, label: `10.${idx + 1}` }));
-            else if (q.kind === "trip_main") q11Items.forEach((item, idx) => keys.push({ key: item.key, label: `11.${idx + 1}` }));
-        });
-        return keys;
-    }, [q4Items, q5Items, q6Items, q7Items, q8Items, q9Items, q10Items, q11Items]);
-
-    const validPhotoKeysPost = useMemo(() => {
-        const keys: { key: string | number; label: string }[] = [];
+        const na = (k: string) => rows[k]?.pf === "NA";
         QUESTIONS.filter(q => q.hasPhoto).forEach(q => {
-            if (q.kind === "simple" || q.kind === "measure") { if (rowsPre[q.key]?.pf === "NA") return; keys.push({ key: q.no, label: `${q.no}` }); }
-            else if (q.kind === "dynamic_measure") q4Items.forEach((item, idx) => { if (rowsPre[item.key]?.pf === "NA") return; keys.push({ key: item.key, label: `4.${idx + 1}` }); });
-            else if (q.kind === "charger_measure") q5Items.forEach((item, idx) => { if (rowsPre[item.key]?.pf === "NA") return; keys.push({ key: item.key, label: `5.${idx + 1}` }); });
-            else if (q.kind === "ccb_measure") q6Items.forEach((item, idx) => { if (rowsPre[item.key]?.pf === "NA") return; keys.push({ key: item.key, label: `6.${idx + 1}` }); });
-            else if (q.kind === "rcd_measure") q7Items.forEach((item, idx) => { if (rowsPre[item.key]?.pf === "NA") return; keys.push({ key: item.key, label: `7.${idx + 1}` }); });
-            else if (q.kind === "trip_rcd") q8Items.forEach((item, idx) => { if (rowsPre[item.key]?.pf === "NA") return; keys.push({ key: item.key, label: `8.${idx + 1}` }); });
-            else if (q.kind === "trip_ccb") q9Items.forEach((item, idx) => { if (rowsPre[item.key]?.pf === "NA") return; keys.push({ key: item.key, label: `9.${idx + 1}` }); });
-            else if (q.kind === "trip_charger") q10Items.forEach((item, idx) => { if (rowsPre[item.key]?.pf === "NA") return; keys.push({ key: item.key, label: `10.${idx + 1}` }); });
-            else if (q.kind === "trip_main") q11Items.forEach((item, idx) => { if (rowsPre[item.key]?.pf === "NA") return; keys.push({ key: item.key, label: `11.${idx + 1}` }); });
+            if (q.kind === "simple" || q.kind === "measure") { if (na(q.key)) return; keys.push({ key: q.no, label: `${q.no}` }); }
+            else if (q.kind === "dynamic_measure") q6Items.forEach((item, idx) => { if (na(item.key)) return; keys.push({ key: item.key, label: `6.${idx + 1}` }); });
+            else if (q.kind === "charger_measure") q7Items.forEach((item, idx) => { if (na(item.key)) return; keys.push({ key: item.key, label: `7.${idx + 1}` }); });
+            else if (q.kind === "ccb_measure") q8Items.forEach((item, idx) => { if (na(item.key)) return; keys.push({ key: item.key, label: `8.${idx + 1}` }); });
+            else if (q.kind === "rcd_measure") q9Items.forEach((item, idx) => { if (na(item.key)) return; keys.push({ key: item.key, label: `9.${idx + 1}` }); });
+            else if (q.kind === "trip_rcd") q10Items.forEach((item, idx) => { if (na(item.key)) return; keys.push({ key: item.key, label: `10.${idx + 1}` }); });
+            else if (q.kind === "trip_ccb") q11Items.forEach((item, idx) => { if (na(item.key)) return; keys.push({ key: item.key, label: `11.${idx + 1}` }); });
+            else if (q.kind === "trip_charger") q12Items.forEach((item, idx) => { if (na(item.key)) return; keys.push({ key: item.key, label: `12.${idx + 1}` }); });
+            else if (q.kind === "trip_main") q13Items.forEach((item, idx) => { if (na(item.key)) return; keys.push({ key: item.key, label: `13.${idx + 1}` }); });
         });
         return keys;
-    }, [rowsPre, q4Items, q5Items, q6Items, q7Items, q8Items, q9Items, q10Items, q11Items]);
+    }, [rows, q6Items, q7Items, q8Items, q9Items, q10Items, q11Items, q12Items, q13Items]);
 
     const sortLabels = (arr: string[]) => arr.sort((a, b) => { const [aM, aS] = a.split('.').map(Number); const [bM, bS] = b.split('.').map(Number); return aM !== bM ? aM - bM : (aS || 0) - (bS || 0); });
 
-    const missingPhotoItemsPre = useMemo(() => sortLabels(validPhotoKeysPre.filter(({ key }) => (photos[key]?.length ?? 0) < 1).map(({ label }) => label)), [photos, validPhotoKeysPre]);
-    const missingPhotoItemsPost = useMemo(() => sortLabels(validPhotoKeysPost.filter(({ key }) => (photos[key]?.length ?? 0) < 1).map(({ label }) => label)), [photos, validPhotoKeysPost]);
-    const allPhotosAttachedPre = missingPhotoItemsPre.length === 0;
-    const allPhotosAttachedPost = missingPhotoItemsPost.length === 0;
-    const missingPhotoItems = isPostMode ? missingPhotoItemsPost : missingPhotoItemsPre;
-    const allPhotosAttached = isPostMode ? allPhotosAttachedPost : allPhotosAttachedPre;
+    const missingPhotoItems = useMemo(() => sortLabels(validPhotoKeys.filter(({ key }) => (photos[key]?.length ?? 0) < 1).map(({ label }) => label)), [photos, validPhotoKeys]);
+    const allPhotosAttached = missingPhotoItems.length === 0;
 
-    const validRemarkKeysPre = useMemo(() => {
+    // หมายเหตุยังบังคับทุกข้อ รวมข้อที่ตอบ N/A (ต้องเขียนว่าทำไมถึงไม่มี/ไม่ได้ตรวจ)
+    const validRemarkKeys = useMemo(() => {
         const keys: string[] = [];
-        QUESTIONS.filter(q => q.no !== 13).forEach(q => {
+        QUESTIONS.forEach(q => {
             if (q.kind === "simple" || q.kind === "measure") keys.push(q.key);
-            else if (q.kind === "dynamic_measure") q4Items.forEach(it => keys.push(it.key));
-            else if (q.kind === "charger_measure") q5Items.forEach(it => keys.push(it.key));
-            else if (q.kind === "ccb_measure") q6Items.forEach(it => keys.push(it.key));
-            else if (q.kind === "rcd_measure") q7Items.forEach(it => keys.push(it.key));
-            else if (q.kind === "trip_rcd") q8Items.forEach(it => keys.push(it.key));
-            else if (q.kind === "trip_ccb") q9Items.forEach(it => keys.push(it.key));
-            else if (q.kind === "trip_charger") q10Items.forEach(it => keys.push(it.key));
-            else if (q.kind === "trip_main") q11Items.forEach(it => keys.push(it.key));
+            else if (q.kind === "dynamic_measure") q6Items.forEach(it => keys.push(it.key));
+            else if (q.kind === "charger_measure") q7Items.forEach(it => keys.push(it.key));
+            else if (q.kind === "ccb_measure") q8Items.forEach(it => keys.push(it.key));
+            else if (q.kind === "rcd_measure") q9Items.forEach(it => keys.push(it.key));
+            else if (q.kind === "trip_rcd") q10Items.forEach(it => keys.push(it.key));
+            else if (q.kind === "trip_ccb") q11Items.forEach(it => keys.push(it.key));
+            else if (q.kind === "trip_charger") q12Items.forEach(it => keys.push(it.key));
+            else if (q.kind === "trip_main") q13Items.forEach(it => keys.push(it.key));
             else if (q.kind === "group" && q.items) q.items.forEach(it => keys.push(it.key));
         });
         return keys;
-    }, [q4Items, q5Items, q6Items, q7Items, q8Items, q9Items, q10Items, q11Items]);
+    }, [q6Items, q7Items, q8Items, q9Items, q10Items, q11Items, q12Items, q13Items]);
 
-    const missingRemarksPre = useMemo(() => {
+    const missingRemarks = useMemo(() => {
         const missing: string[] = [];
-        validRemarkKeysPre.forEach(k => { const val = rows[k]; if (!val?.remark?.trim()) { const m = k.match(/^r(\d+)(?:_(\d+))?$/); if (m) missing.push(m[2] ? `${m[1]}.${m[2]}` : m[1]); } });
+        validRemarkKeys.forEach(k => { const val = rows[k]; if (!val?.remark?.trim()) { const m = k.match(/^r(\d+)(?:_(\d+))?$/); if (m) missing.push(m[2] ? `${m[1]}.${m[2]}` : m[1]); } });
         return sortLabels(missing);
-    }, [rows, validRemarkKeysPre]);
-    const allRemarksFilledPre = missingRemarksPre.length === 0;
-
-    const validRemarkKeysPost = useMemo(() => {
-        const keys: string[] = [];
-        QUESTIONS.forEach(q => {
-            if (q.kind === "simple" || q.kind === "measure") { if (rowsPre[q.key]?.pf === "NA") return; keys.push(q.key); }
-            else if (q.kind === "dynamic_measure") q4Items.forEach(it => { if (rowsPre[it.key]?.pf === "NA") return; keys.push(it.key); });
-            else if (q.kind === "charger_measure") q5Items.forEach(it => { if (rowsPre[it.key]?.pf === "NA") return; keys.push(it.key); });
-            else if (q.kind === "ccb_measure") q6Items.forEach(it => { if (rowsPre[it.key]?.pf === "NA") return; keys.push(it.key); });
-            else if (q.kind === "rcd_measure") q7Items.forEach(it => { if (rowsPre[it.key]?.pf === "NA") return; keys.push(it.key); });
-            else if (q.kind === "trip_rcd") q8Items.forEach(it => { if (rowsPre[it.key]?.pf === "NA") return; keys.push(it.key); });
-            else if (q.kind === "trip_ccb") q9Items.forEach(it => { if (rowsPre[it.key]?.pf === "NA") return; keys.push(it.key); });
-            else if (q.kind === "trip_charger") q10Items.forEach(it => { if (rowsPre[it.key]?.pf === "NA") return; keys.push(it.key); });
-            else if (q.kind === "trip_main") q11Items.forEach(it => { if (rowsPre[it.key]?.pf === "NA") return; keys.push(it.key); });
-            else if (q.kind === "group" && q.items) q.items.forEach(it => { if (rowsPre[it.key]?.pf === "NA") return; keys.push(it.key); });
-        });
-        return keys;
-    }, [rowsPre, q4Items, q5Items, q6Items, q7Items, q8Items, q9Items, q10Items, q11Items]);
-
-    const missingRemarksPost = useMemo(() => {
-        const missing: string[] = [];
-        validRemarkKeysPost.forEach(k => { const val = rows[k]; if (!val?.remark?.trim()) { const m = k.match(/^r(\d+)(?:_(\d+))?$/); if (m) missing.push(m[2] ? `${m[1]}.${m[2]}` : m[1]); } });
-        return sortLabels(missing);
-    }, [rows, validRemarkKeysPost]);
-    const allRemarksFilledPost = missingRemarksPost.length === 0;
+    }, [rows, validRemarkKeys]);
+    const allRemarksFilled = missingRemarks.length === 0;
 
     const PF_KEYS_ALL = useMemo(() => {
         const keys: string[] = [];
         QUESTIONS.forEach(q => {
             if (q.kind === "simple" || q.kind === "measure") keys.push(q.key);
-            else if (q.kind === "dynamic_measure") q4Items.forEach(it => keys.push(it.key));
-            else if (q.kind === "charger_measure") q5Items.forEach(it => keys.push(it.key));
-            else if (q.kind === "ccb_measure") q6Items.forEach(it => keys.push(it.key));
-            else if (q.kind === "rcd_measure") q7Items.forEach(it => keys.push(it.key));
-            else if (q.kind === "trip_rcd") q8Items.forEach(it => keys.push(it.key));
-            else if (q.kind === "trip_ccb") q9Items.forEach(it => keys.push(it.key));
-            else if (q.kind === "trip_charger") q10Items.forEach(it => keys.push(it.key));
-            else if (q.kind === "trip_main") q11Items.forEach(it => keys.push(it.key));
+            else if (q.kind === "dynamic_measure") q6Items.forEach(it => keys.push(it.key));
+            else if (q.kind === "charger_measure") q7Items.forEach(it => keys.push(it.key));
+            else if (q.kind === "ccb_measure") q8Items.forEach(it => keys.push(it.key));
+            else if (q.kind === "rcd_measure") q9Items.forEach(it => keys.push(it.key));
+            else if (q.kind === "trip_rcd") q10Items.forEach(it => keys.push(it.key));
+            else if (q.kind === "trip_ccb") q11Items.forEach(it => keys.push(it.key));
+            else if (q.kind === "trip_charger") q12Items.forEach(it => keys.push(it.key));
+            else if (q.kind === "trip_main") q13Items.forEach(it => keys.push(it.key));
             else if (q.kind === "group" && q.items) q.items.forEach(it => keys.push(it.key));
         });
         return keys;
-    }, [q4Items, q5Items, q6Items, q7Items, q8Items, q9Items, q10Items, q11Items]);
+    }, [q6Items, q7Items, q8Items, q9Items, q10Items, q11Items, q12Items, q13Items]);
 
-    const PF_KEYS_POST = useMemo(() => PF_KEYS_ALL.filter(k => { const base = k.replace(/_\d+$/, "").replace(/^r/, "r"); return rowsPre[k]?.pf !== "NA"; }), [PF_KEYS_ALL, rowsPre]);
-    const allPFAnsweredPost = useMemo(() => PF_KEYS_POST.every(k => rows[k]?.pf !== ""), [rows, PF_KEYS_POST]);
-    const missingPFItemsPost = useMemo(() => sortLabels(PF_KEYS_POST.filter(k => !rows[k]?.pf).map(k => { const m = k.match(/^r(\d+)(?:_(\d+))?$/); return m ? (m[2] ? `${m[1]}.${m[2]}` : m[1]) : k; })), [rows, PF_KEYS_POST]);
+    const allPFAnswered = useMemo(() => PF_KEYS_ALL.every(k => rows[k]?.pf !== ""), [rows, PF_KEYS_ALL]);
+    const missingPFItems = useMemo(() => sortLabels(PF_KEYS_ALL.filter(k => !rows[k]?.pf).map(k => { const m = k.match(/^r(\d+)(?:_(\d+))?$/); return m ? (m[2] ? `${m[1]}.${m[2]}` : m[1]) : k; })), [rows, PF_KEYS_ALL]);
 
     const missingInputs = useMemo(() => {
         const r: Record<string, string[]> = {};
-        const checkItems = (items: typeof q4Items, state: Record<string, MeasureState<UnitVoltage>>, fields: readonly string[]) => {
+        const checkItems = (items: typeof q6Items, state: Record<string, MeasureState<UnitVoltage>>, fields: readonly string[]) => {
             items.forEach(item => {
-                if (rowsPre[item.key]?.pf === "NA" || rows[item.key]?.pf === "NA") return;
+                if (rows[item.key]?.pf === "NA") return;
                 const s = state[item.key];
                 const missing = fields.filter(k => !String(s?.[k]?.value ?? "").trim());
                 if (missing.length > 0) r[item.label] = missing;
             });
         };
-        checkItems(q4Items, m4State, VOLTAGE_FIELDS);
-        checkItems(q5Items, m5State, VOLTAGE_FIELDS);
-        checkItems(q6Items, m6State, VOLTAGE_FIELDS_CCB);
-        checkItems(q7Items, m7State, VOLTAGE_FIELDS_CCB);
+        checkItems(q6Items, m4State, VOLTAGE_FIELDS);
+        checkItems(q7Items, m5State, VOLTAGE_FIELDS);
+        checkItems(q8Items, m6State, VOLTAGE_FIELDS_CCB);
+        checkItems(q9Items, m7State, VOLTAGE_FIELDS_CCB);
         return r;
-    }, [m4State, m5State, m6State, m7State, q4Items, q5Items, q6Items, q7Items, rows, rowsPre]);
+    }, [m4State, m5State, m6State, m7State, q6Items, q7Items, q8Items, q9Items, rows]);
 
     const allRequiredInputsFilled = useMemo(() => Object.values(missingInputs).every(a => a.length === 0), [missingInputs]);
 
     const missingInputsDetailed: MissingInputItem[] = useMemo(() => {
         const items: MissingInputItem[] = [];
-        const check = (list: typeof q4Items, state: Record<string, MeasureState<UnitVoltage>>, fields: readonly string[], qNo: number) => {
+        const check = (list: typeof q6Items, state: Record<string, MeasureState<UnitVoltage>>, fields: readonly string[], qNo: number) => {
             list.forEach((item, idx) => {
-                if (rowsPre[item.key]?.pf === "NA" || rows[item.key]?.pf === "NA") return;
+                if (rows[item.key]?.pf === "NA") return;
                 fields.forEach(fieldKey => { if (!String(state[item.key]?.[fieldKey]?.value ?? "").trim()) items.push({ qNo, subNo: idx + 1, label: LABELS[fieldKey] ?? fieldKey, fieldKey }); });
             });
         };
-        check(q4Items, m4State, VOLTAGE_FIELDS, 4);
-        check(q5Items, m5State, VOLTAGE_FIELDS, 5);
-        check(q6Items, m6State, VOLTAGE_FIELDS_CCB, 6);
-        check(q7Items, m7State, VOLTAGE_FIELDS_CCB, 7);
+        check(q6Items, m4State, VOLTAGE_FIELDS, 6);
+        check(q7Items, m5State, VOLTAGE_FIELDS, 7);
+        check(q8Items, m6State, VOLTAGE_FIELDS_CCB, 8);
+        check(q9Items, m7State, VOLTAGE_FIELDS_CCB, 9);
         return items;
-    }, [m4State, m5State, m6State, m7State, q4Items, q5Items, q6Items, q7Items, rows, rowsPre]);
+    }, [m4State, m5State, m6State, m7State, q6Items, q7Items, q8Items, q9Items, rows]);
 
     const isSummaryFilled = summary.trim().length > 0;
     const isSummaryCheckFilled = summaryCheck !== "";
-    const canGoAfter = isPostMode ? true : (allPhotosAttachedPre && allRequiredInputsFilled && allRemarksFilledPre);
-    const canFinalSave = allPhotosAttachedPost && allPFAnsweredPost && allRequiredInputsFilled && allRemarksFilledPost && isSummaryFilled && isSummaryCheckFilled;
-
-    const active: TabId = useMemo(() => slugToTab(searchParams.get("pmtab")), [searchParams]);
-    const displayTab: TabId = isPostMode ? "post" : (active === "post" && !canGoAfter ? "pre" : active);
+    const canFinalSave = allPhotosAttached && allPFAnswered && allRequiredInputsFilled && allRemarksFilled && isSummaryFilled && isSummaryCheckFilled;
 
     // ==================== DRAFT SAVE ====================
     const photoRefs = useMemo(() => {
@@ -1538,45 +1418,39 @@ export default function MDBPMForm() {
     }, [photos]);
 
     useDebouncedEffect(() => {
-        if (!stationId || isPostMode) return;
-        saveDraftLocal(key, {
+        if (!stationId) return;
+        saveDraftLocal(currentDraftKey, {
+            // เอกสารถูกสร้างไปแล้วแต่ยังอัปรูปไม่จบ — id ต้องอยู่ใน draft ตลอด
+            // ไม่งั้น debounce ตัวนี้เขียนทับแล้วกดบันทึกใหม่จะได้ใบใหม่แทนที่จะลงใบเดิม
+            ...(reportIdRef.current ? { pendingReportId: reportIdRef.current } : {}),
             rows, m4: m4State, m5: m5State, m6: m6State, m7: m7State,
-            summary: summaryPre,
-            dustFilterChanged, photoRefs,
-            q4_items: q4Items, q6_items: q6Items, charger_count: chargerCount
+            summary, summaryCheck, dustFilterChanged, photoRefs,
+            q4_items: q6Items, q6_items: q8Items, charger_count: chargerCount
         });
-    }, [key, stationId, rows, m4State, m5State, m6State, m7State, summaryPre,
-        dustFilterChanged, photoRefs, q4Items, q6Items, chargerCount, isPostMode]);
-
-    useDebouncedEffect(() => {
-        if (!stationId || !isPostMode || !editId) return;
-        saveDraftLocal(postKey, { rows, m4: m4State, m5: m5State, m6: m6State, m7: m7State, summary, summaryCheck, dustFilterChanged, photoRefs });
-    }, [postKey, stationId, rows, m4State, m5State, m6State, m7State, summary, summaryCheck, dustFilterChanged, photoRefs, isPostMode, editId]);
+    }, [currentDraftKey, stationId, rows, m4State, m5State, m6State, m7State, summary, summaryCheck,
+        dustFilterChanged, photoRefs, q6Items, q8Items, chargerCount]);
 
     // ==================== UPLOAD HELPERS ====================
-    // key ที่ backend ใช้เก็บใน photos_pre / photos — ต้องใช้สูตรเดียวกันทั้งตอน upload และตอน verify
+    // key ที่ backend ใช้เก็บใน photos — ต้องใช้สูตรเดียวกันทั้งตอน upload และตอน verify
     const normalizePhotoGroup = (group: string | number) => {
         const k = String(group);
         if (/^\d+$/.test(k)) return `g${k}`;       // "1" -> "g1"
-        if (/^r\d+_\d+$/.test(k)) return k;         // "r4_1" -> "r4_1" (MDB backend accepts r\d+_\d+)
+        if (/^r\d+_\d+$/.test(k)) return k;         // "r6_1" -> "r6_1" (MDB backend accepts r\d+_\d+)
         if (k.startsWith("g")) return k;             // "g1" -> "g1"
         return `g${k}`;
     };
 
-    async function uploadSinglePhoto(reportId: string, stationId: string, group: string, file: File, side: TabId) {
+    async function uploadSinglePhoto(reportId: string, stationId: string, group: string, file: File) {
         if (!file || file.size === 0) throw new Error(`Empty file: ${file?.name ?? "unknown"}`);
         const normalizedGroup = normalizePhotoGroup(group);
 
-        console.log("[upload] reportId:", reportId, "| group:", normalizedGroup, "| side:", side);
-        console.log("[upload] URL:", side === "pre"
-            ? `${API_BASE}/mdbpmreport/${reportId}/pre/photos`
-            : `${API_BASE}/mdbpmreport/${reportId}/post/photos`);
+        const url = `${API_BASE}/mdbpmreport/${reportId}/post/photos`;
+        console.log("[upload] reportId:", reportId, "| group:", normalizedGroup);
         const form = new FormData();
         form.append("station_id", stationId);
         form.append("group", normalizedGroup);
-        form.append("side", side);
+        form.append("side", "post");
         form.append("files", file, ensureJpgFilename(file.name));
-        const url = side === "pre" ? `${API_BASE}/mdbpmreport/${reportId}/pre/photos` : `${API_BASE}/mdbpmreport/${reportId}/post/photos`;
         const res = await apiFetch(url, { method: "POST", body: form, credentials: "include" });
         if (!res.ok) { const e = await res.text().catch(() => ""); throw new Error(`[${res.status}] ${normalizedGroup}: ${e || res.statusText}`); }
         const resJson = await res.json().catch(() => null);
@@ -1587,9 +1461,9 @@ export default function MDBPMForm() {
         if (resJson.count === 0) throw new Error(`[upload empty] group ${normalizedGroup}: backend saved 0 files`);
     }
 
-    async function uploadSinglePhotoWithRetry(reportId: string, stationId: string, group: string, file: File, side: TabId, maxRetries = 3): Promise<void> {
+    async function uploadSinglePhotoWithRetry(reportId: string, stationId: string, group: string, file: File, maxRetries = 3): Promise<void> {
         for (let attempt = 1; attempt <= maxRetries; attempt++) {
-            try { await uploadSinglePhoto(reportId, stationId, group, file, side); return; }
+            try { await uploadSinglePhoto(reportId, stationId, group, file); return; }
             catch (err: any) {
                 if (attempt === maxRetries) throw err;
                 await new Promise(r => setTimeout(r, Math.min(1000 * 2 ** (attempt - 1), 8000)));
@@ -1601,7 +1475,7 @@ export default function MDBPMForm() {
     const flattenRows = () => {
         const result: Record<string, { pf: PF; remark: string }> = {};
         const simpleKeys = QUESTIONS.filter(q => q.kind === "simple" || q.kind === "measure").map(q => q.key);
-        const dynamicKeys = [...q4Items, ...q5Items, ...q6Items, ...q7Items, ...q8Items, ...q9Items, ...q10Items, ...q11Items].map(i => i.key);
+        const dynamicKeys = [...q6Items, ...q7Items, ...q8Items, ...q9Items, ...q10Items, ...q11Items, ...q12Items, ...q13Items].map(i => i.key);
         const validKeys = [...simpleKeys, ...dynamicKeys];
         for (const k of validKeys) {
             result[k] = rows[k] ? { pf: rows[k].pf ?? "", remark: rows[k].remark ?? "" } : { pf: "", remark: "" };
@@ -1618,205 +1492,49 @@ export default function MDBPMForm() {
         });
     };
 
-    const onPreSave = async () => {
-        if (!stationId) { alert(t("alertNoStation", lang)); return; }
-        if (!allPhotosAttachedPre) { alert(t("photoNotComplete", lang)); return; } // เพิ่ม guard
-        if (!allRequiredInputsFilled) { alert(t("alertFillVoltage", lang)); return; }
-        if (!allRemarksFilledPre) { alert(`${t("alertFillRemark", lang)} ${missingRemarksPre.join(", ")}`); return; }
-        if (submitting) return;
-        setSubmitting(true);
-        try {
-            let report_id = preReportIdRef.current;
-            if (!report_id) {
-                const draft = loadDraftLocal<any>(key);
-                if (draft?.pendingReportId) { report_id = draft.pendingReportId; preReportIdRef.current = report_id; }
-            }
-            if (!report_id) {
-                const { issue_id: issueIdFromJob, ...jobWithoutIssueId } = job;
-                const payload = {
-                    station_id: stationId, issue_id: issueIdFromJob, job: jobWithoutIssueId, inspector,
-                    measures_pre: { m4: m4State, m5: m5State, m6: m6State, m7: m7State },
-                    rows_pre: flattenRows(), pm_date: job.date?.trim() || "",
-                    doc_name: docName, side: "pre" as TabId,
-                    q4_items: q4Items, q6_items: q6Items, charger_count: chargerCount,
-                };
-                const res = await apiFetch(`${API_BASE}/mdbpmreport/pre/submit`, {
-                    method: "POST", headers: { "Content-Type": "application/json" },
-                    credentials: "include", body: JSON.stringify(payload)
-                });
-                if (!res.ok) throw new Error(await res.text());
-                const jsonRes = await res.json() as { report_id: string; doc_name?: string };
-                if (!jsonRes?.report_id) throw new Error(`pre/submit did not return report_id. Response: ${JSON.stringify(jsonRes)}`);
-                report_id = jsonRes.report_id;
-                if (jsonRes.doc_name) setDocName(jsonRes.doc_name);
-                preReportIdRef.current = report_id;
-                saveDraftLocal(key, {
-                    ...loadDraftLocal(key),
-                    pendingReportId: report_id,
-                    rows, m4: m4State, m5: m5State, m6: m6State, m7: m7State,
-                    summary: summaryPre, dustFilterChanged, photoRefs
-                });
-            }
-
-            const uploadedIdsPre = new Set<string>();
-
-            // เก็บ uploaded flag ลง draft ทันที — กัน user refresh ก่อน debounce ทำงาน แล้วต้องอัปซ้ำทั้งชุด
-            const flushPreDraft = () => {
-                const latestPhotoRefs: Record<string, any> = {};
-                Object.entries(photosRef.current).forEach(([k, list]) => {
-                    latestPhotoRefs[k] = (list || []).map(p => {
-                        if (p.isNA) return { isNA: true };
-                        if (!p.ref) return null;
-                        return { ...p.ref, uploaded: p.uploaded === true || uploadedIdsPre.has(p.id) };
-                    }).filter(Boolean);
-                });
-                saveDraftLocal(key, {
-                    ...loadDraftLocal(key), pendingReportId: report_id,
-                    rows, m4: m4State, m5: m5State, m6: m6State, m7: m7State,
-                    summary: summaryPre, dustFilterChanged, photoRefs: latestPhotoRefs
-                });
-            };
-
-            // ⚡ อัปโหลดหลายรอบ — รูปที่ processFile เสร็จ "หลัง" กดบันทึก จะถูกจับเข้ารอบถัดไป
-            // แทนที่จะถูกข้ามแล้วโดน cleanup ลบทิ้ง
-            const MAX_UPLOAD_PASSES = 3;
-            for (let pass = 1; pass <= MAX_UPLOAD_PASSES; pass++) {
-                if (unrecoverablePhotos(photosRef.current, uploadedIdsPre).length > 0) {
-                    throw new Error(unrecoverableMessage(lang));
-                }
-
-                const allPreTasks = collectPending(photosRef.current, uploadedIdsPre);
-                if (allPreTasks.length === 0) break;
-
-                const totalPhotos = allPreTasks.length;
-                setPreUploadState({ show: true, total: totalPhotos, completed: 0, failed: 0 });
-                let completedCount = 0, failedCount = 0;
-                const failures: { group: string; error: string }[] = [];
-
-                const CONCURRENCY = 3;
-                const finalReportId = report_id!;
-                const finalStationId = stationId;
-
-                const tasksByGroup = new Map<string, typeof allPreTasks>();
-                for (const task of allPreTasks) {
-                    if (!tasksByGroup.has(task.group)) tasksByGroup.set(task.group, []);
-                    tasksByGroup.get(task.group)!.push(task);
-                }
-                const groupEntries = Array.from(tasksByGroup.entries());
-                let groupIdx = 0;
-
-                const runNextGroup = async (): Promise<void> => {
-                    while (groupIdx < groupEntries.length) {
-                        const myIdx = groupIdx++;
-                        const [group, tasks] = groupEntries[myIdx];
-                        for (const task of tasks) {
-                            try {
-                                const usable = await resolveUploadFile(task);
-                                const compressed = await compressImage(usable);
-                                await uploadSinglePhotoWithRetry(finalReportId, finalStationId, task.group, compressed, "pre");
-                                uploadedIdsPre.add(task.photoId);
-                                setPhotos(prev => ({
-                                    ...prev,
-                                    [group]: (prev[group] || []).map(p =>
-                                        p.id === task.photoId ? { ...p, uploaded: true } : p
-                                    ),
-                                }));
-                            } catch (err: any) {
-                                failedCount++;
-                                failures.push({ group, error: err?.message || "unknown" });
-                            }
-                            completedCount++;
-                            setPreUploadState({ show: true, total: totalPhotos, completed: completedCount, failed: failedCount });
-                        }
-                    }
-                };
-
-                await Promise.all(Array.from({ length: CONCURRENCY }, () => runNextGroup()));
-                setPreUploadState({ show: false, total: 0, completed: 0, failed: 0 });
-
-                if (failures.length > 0) {
-                    flushPreDraft();
-                    const details = failures.map(f => `${t("uploadFailedItem", lang)} ${f.group}: ${f.error}`).join("\n");
-                    alert(
-                        `${lang === "th" ? "อัปโหลดรูปไม่สำเร็จ" : "Photo upload failed"} ${failures.length} ${lang === "th" ? "รูป" : "photos"}\n\n`
-                        + `${lang === "th" ? "รูปในเครื่องยังอยู่ครบ กดบันทึกอีกครั้งเพื่ออัปเฉพาะรูปที่ค้าง" : "Your photos are still saved on this device. Click save again to retry only the failed photos"}\n\n${details}`
-                    );
-                    return;
-                }
-            }
-
-            // ยังมีรูปค้างหลังครบทุกรอบ → หยุดไว้เฉย ๆ ห้ามลบอะไรทั้งนั้น
-            const stillPendingPre = collectPending(photosRef.current, uploadedIdsPre);
-            if (stillPendingPre.length > 0) {
-                flushPreDraft();
-                alert(pendingMessage(stillPendingPre.length, lang));
-                return;
-            }
-
-            // ⚡ ยืนยันกับ server ว่าได้รูป "ครบจำนวน" ทุกข้อ ก่อนแตะรูปในเครื่อง
-            const expectedPre = expectedCountByGroup(photosRef.current, normalizePhotoGroup);
-            if (Object.keys(expectedPre).length > 0) {
-                const verifyRes = await apiFetch(`${API_BASE}/${PM_PREFIX}/get?station_id=${encodeURIComponent(stationId)}&report_id=${report_id}`, { credentials: "include" });
-                if (!verifyRes.ok) throw new Error(await verifyRes.text());
-                const verifyDoc = await verifyRes.json() as { photos_pre?: Record<string, unknown[]> };
-                const shortfall = findShortfall(expectedPre, verifyDoc?.photos_pre);
-                if (shortfall.length > 0) {
-                    console.error("[Pre-PM verify] shortfall:", shortfall);
-                    flushPreDraft();
-                    alert(shortfallMessage(shortfall, lang));
-                    return;
-                }
-            }
-
-            preReportIdRef.current = null;
-            // ใช้ photosRef เพื่ออ่านสถานะล่าสุด — closure ของ handler ถือ photos ค่าเก่าไว้
-            // ทำให้รูปที่เพิ่ม/อัปเดตหลัง render ล่าสุด ไม่ถูกลบ กลายเป็นขยะค้างใน IndexedDB
-            const allPhotos = Object.values(photosRef.current).flat();
-            Promise.all(allPhotos.map(p => delPhoto(key, p.id))).catch(() => { });
-            clearDraftLocal(key);
-            setPhotos({});
-            const nextParams = new URLSearchParams(searchParams.toString());
-            nextParams.set("station_id", stationId);
-            nextParams.set("action", "post");
-            nextParams.set("edit_id", report_id);
-            nextParams.set("pmtab", "post");
-            router.replace(`${pathname}?${nextParams.toString()}`);
-        } catch (err: any) { alert(`${t("alertSaveFailed", lang)} ${err?.message ?? err}`); }
-        finally { setSubmitting(false); }
-    };
-
     const onFinalSave = async () => {
         if (!stationId) { alert(t("alertNoStation", lang)); return; }
-        if (!allPhotosAttachedPost) { alert(t("photoNotComplete", lang)); return; }
+        if (!allPhotosAttached) { alert(t("photoNotComplete", lang)); return; }
         if (!allRequiredInputsFilled) { alert(t("alertFillVoltage", lang)); return; }
-        if (!allRemarksFilledPost) { alert(`${t("alertFillRemark", lang)} ${missingRemarksPost.join(", ")}`); return; }
+        if (!allRemarksFilled) { alert(`${t("alertFillRemark", lang)} ${missingRemarks.join(", ")}`); return; }
         if (!isSummaryFilled || !isSummaryCheckFilled) { alert(t("allNotComplete", lang)); return; }
         if (submitting) return;
         setSubmitting(true);
         try {
-            let report_id = postReportIdRef.current;
+            let report_id = reportIdRef.current;
             if (!report_id) {
-                const draft = loadDraftLocal<any>(postKey);
-                if (draft?.pendingReportId) { report_id = draft.pendingReportId; postReportIdRef.current = report_id; }
+                const draft = loadDraftLocal<any>(currentDraftKey);
+                if (draft?.pendingReportId) { report_id = draft.pendingReportId; reportIdRef.current = report_id; }
             }
             if (!report_id) {
+                // ใบใหม่: /submit เป็นตัวสร้างเอกสาร + ออก issue_id/doc_name ให้เอง
+                // (เดิมงานนี้อยู่ที่ /pre/submit ซึ่งตัดออกไปพร้อมด่านก่อน PM)
+                const { issue_id: issueIdFromJob, ...jobWithoutIssueId } = job;
                 const payload = {
                     station_id: stationId, rows: flattenRows(),
                     measures: { m4: m4State, m5: m5State, m6: m6State, m7: m7State },
                     summary, ...(summaryCheck ? { summaryCheck } : {}),
                     dust_filter: dustFilterChanged ? { changed: true } : null,
-                    work_start: workStart, work_finish: workFinish, maximo_labor: maximoLabor, maximo_contractor: contractorPicked ? maximoContractor.trim() : "", wonum: searchParams.get("wonum") ?? "", side: "post" as TabId, report_id: editId
+                    work_start: workStart, work_finish: workFinish, maximo_labor: maximoLabor,
+                    maximo_contractor: contractorPicked ? maximoContractor.trim() : "",
+                    wonum: searchParams.get("wonum") ?? "", side: "post" as const, report_id: editId,
+                    job: jobWithoutIssueId, issue_id: issueIdFromJob, doc_name: docName,
+                    pm_date: job.date?.trim() || "", inspector,
+                    q4_items: q6Items, q6_items: q8Items, charger_count: chargerCount,
                 };
                 const res = await apiFetch(`${API_BASE}/${PM_PREFIX}/submit`, {
                     method: "POST", headers: { "Content-Type": "application/json" },
                     credentials: "include", body: JSON.stringify(payload)
                 });
                 if (!res.ok) throw new Error(await res.text());
-                const jsonRes = await res.json() as { report_id: string };
+                const jsonRes = await res.json() as { report_id: string; doc_name?: string; issue_id?: string };
+                if (!jsonRes?.report_id) throw new Error(`submit did not return report_id. Response: ${JSON.stringify(jsonRes)}`);
                 report_id = jsonRes.report_id;
-                postReportIdRef.current = report_id;
-                saveDraftLocal(postKey, {
-                    ...loadDraftLocal(postKey), pendingReportId: report_id,
+                if (jsonRes.doc_name) setDocName(jsonRes.doc_name);
+                if (jsonRes.issue_id) setJob(prev => ({ ...prev, issue_id: jsonRes.issue_id! }));
+                reportIdRef.current = report_id;
+                saveDraftLocal(currentDraftKey, {
+                    ...loadDraftLocal(currentDraftKey), pendingReportId: report_id,
                     rows, m4: m4State, m5: m5State, m6: m6State, m7: m7State,
                     summary, summaryCheck, dustFilterChanged, photoRefs
                 });
@@ -1833,8 +1551,8 @@ export default function MDBPMForm() {
                         return { ...p.ref, uploaded: p.uploaded === true || uploadedIdsPost.has(p.id) };
                     }).filter(Boolean);
                 });
-                saveDraftLocal(postKey, {
-                    ...loadDraftLocal(postKey), pendingReportId: report_id,
+                saveDraftLocal(currentDraftKey, {
+                    ...loadDraftLocal(currentDraftKey), pendingReportId: report_id,
                     rows, m4: m4State, m5: m5State, m6: m6State, m7: m7State,
                     summary, summaryCheck, dustFilterChanged, photoRefs: latestPhotoRefs
                 });
@@ -1874,7 +1592,7 @@ export default function MDBPMForm() {
                             try {
                                 const usable = await resolveUploadFile(task);
                                 const compressed = await compressImage(usable);
-                                await uploadSinglePhotoWithRetry(finalReportId, finalStationId, task.group, compressed, "post");
+                                await uploadSinglePhotoWithRetry(finalReportId, finalStationId, task.group, compressed);
                                 uploadedIdsPost.add(task.photoId);
                                 setPhotos(prev => ({
                                     ...prev,
@@ -1943,12 +1661,12 @@ export default function MDBPMForm() {
                 body: new URLSearchParams({ station_id: stationId })
             });
             if (!finalizeRes.ok) throw new Error(await finalizeRes.text());
-            postReportIdRef.current = null;
+            reportIdRef.current = null;
             // ใช้ photosRef เพื่ออ่านสถานะล่าสุด — closure ของ handler ถือ photos ค่าเก่าไว้
             // ทำให้รูปที่เพิ่ม/อัปเดตหลัง render ล่าสุด ไม่ถูกลบ กลายเป็นขยะค้างใน IndexedDB
             const allPhotos = Object.values(photosRef.current).flat();
-            Promise.all(allPhotos.map(p => delPhoto(postKey, p.id))).catch(() => { });
-            clearDraftLocal(postKey);
+            Promise.all(allPhotos.map(p => delPhoto(currentDraftKey, p.id))).catch(() => { });
+            clearDraftLocal(currentDraftKey);
             const listParams = new URLSearchParams();
             listParams.set("station_id", stationId);
             const viewParam = searchParams.get("view");
@@ -1956,29 +1674,6 @@ export default function MDBPMForm() {
             router.replace(`${pathname}?${listParams.toString()}`);
         } catch (err: any) { alert(`${t("alertSaveFailed", lang)} ${err?.message ?? err}`); }
         finally { setSubmitting(false); }
-    };
-
-    // ==================== TAB NAVIGATION ====================
-    useEffect(() => {
-        const tabParam = searchParams.get("pmtab");
-        let desired: "pre" | "post";
-        if (isPostMode) desired = "post";
-        else if (!tabParam) desired = "pre";
-        else if (tabParam === "after" && !canGoAfter) desired = "pre";
-        else desired = tabParam === "post" ? "post" : "pre";
-        if (tabParam !== desired) {
-            const params = new URLSearchParams(searchParams.toString());
-            params.set("pmtab", desired);
-            router.replace(`${pathname}?${params.toString()}`, { scroll: false });
-        }
-    }, [searchParams, canGoAfter, pathname, router, isPostMode]);
-
-    const go = (next: TabId) => {
-        if (isPostMode && next === "pre") return;
-        if (next === "post" && !canGoAfter) { alert(t("alertFillPreFirst", lang)); return; }
-        const params = new URLSearchParams(searchParams.toString());
-        params.set("pmtab", tabToSlug(next));
-        router.push(`${pathname}?${params.toString()}`, { scroll: false });
     };
 
     // ==================== RENDER HELPERS ====================
@@ -1990,11 +1685,12 @@ export default function MDBPMForm() {
     const renderDynamicMeasureGrid = (qNo: number, itemKey: string) => {
         type PF_State = Record<string, MeasureState<UnitVoltage>>;
         type PF_Patch = (itemKey: string, fieldKey: string, value: Partial<MeasureRow<UnitVoltage>>) => void;
+        // m4..m7 = ชื่อ bucket ใน measures ของ DB (ไม่ผูกกับเลขข้อ) — ข้อ 6-9 ของฟอร์ม
         const configs: Record<number, { state: PF_State; patchFn: PF_Patch; fields: readonly string[] }> = {
-            4: { state: m4State, patchFn: patchM4, fields: VOLTAGE_FIELDS },
-            5: { state: m5State, patchFn: patchM5, fields: VOLTAGE_FIELDS },
-            6: { state: m6State, patchFn: patchM6, fields: VOLTAGE_FIELDS_CCB },
-            7: { state: m7State, patchFn: patchM7, fields: VOLTAGE_FIELDS_CCB },
+            6: { state: m4State, patchFn: patchM4, fields: VOLTAGE_FIELDS },
+            7: { state: m5State, patchFn: patchM5, fields: VOLTAGE_FIELDS },
+            8: { state: m6State, patchFn: patchM6, fields: VOLTAGE_FIELDS_CCB },
+            9: { state: m7State, patchFn: patchM7, fields: VOLTAGE_FIELDS_CCB },
         };
         const cfg = configs[qNo];
         if (!cfg) return null;
@@ -2005,249 +1701,77 @@ export default function MDBPMForm() {
         );
     };
 
-    const renderDynamicMeasureGridWithPre = (qNo: number, itemKey: string) => {
-        type PF_State = Record<string, MeasureState<UnitVoltage>>;
-        type PF_Patch = (itemKey: string, fieldKey: string, value: Partial<MeasureRow<UnitVoltage>>) => void;
-        const configs: Record<number, { state: PF_State; preState: PF_State; patchFn: PF_Patch; fields: readonly string[] }> = {
-            4: { state: m4State, preState: m4Pre, patchFn: patchM4, fields: VOLTAGE_FIELDS },
-            5: { state: m5State, preState: m5Pre, patchFn: patchM5, fields: VOLTAGE_FIELDS },
-            6: { state: m6State, preState: m6Pre, patchFn: patchM6, fields: VOLTAGE_FIELDS_CCB },
-            7: { state: m7State, preState: m7Pre, patchFn: patchM7, fields: VOLTAGE_FIELDS_CCB },
-        };
-        const cfg = configs[qNo];
-        if (!cfg) return null;
-        return (
-            <div className="tw-space-y-3">
-                <Typography variant="small" className="tw-font-medium tw-text-blue-gray-700">{t("prePM", lang)}</Typography>
-                <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-2 md:tw-grid-cols-5 tw-gap-3">
-                    {cfg.fields.map(k => (<div key={`pre-${qNo}-${itemKey}-${k}`} className="tw-pointer-events-none tw-opacity-60"><InputWithUnit<UnitVoltage> label={LABELS[k] ?? k} value={cfg.preState[itemKey]?.[k]?.value || ""} unit={(cfg.preState[itemKey]?.[k]?.unit as UnitVoltage) || "V"} units={UNITS.voltage} onValueChange={() => { }} onUnitChange={() => { }} readOnly required={false} /></div>))}
-                </div>
-                <Typography variant="small" className="tw-font-medium tw-text-blue-gray-700 tw-mt-2">{t("postPM", lang)}</Typography>
-                <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-2 md:tw-grid-cols-5 tw-gap-3">
-                    {cfg.fields.map(k => (<InputWithUnit<UnitVoltage> key={`post-${qNo}-${itemKey}-${k}`} label={LABELS[k] ?? k} value={cfg.state[itemKey]?.[k]?.value || ""} unit={(cfg.state[itemKey]?.[k]?.unit as UnitVoltage) || "V"} units={UNITS.voltage} onValueChange={v => cfg.patchFn(itemKey, k, { value: v })} onUnitChange={u => cfg.patchFn(itemKey, k, { unit: u })} />))}
-                </div>
-            </div>
-        );
-    };
-
-    const renderQuestionBlock = (q: Question, mode: TabId) => {
-        const qLabel = getQuestionLabel(q, mode, lang);
+    const renderQuestionBlock = (q: Question) => {
         const qTooltip = q.tooltip?.[lang];
         const sectionId = `${ID_PREFIX}-question-${q.no}`;
 
-        // PRE MODE
-        if (mode === "pre") {
-            // Dynamic measure Q4
-            if (q.kind === "dynamic_measure") {
-                return (
-                    <SectionCard key={q.key} id={sectionId} title={qLabel} tooltip={qTooltip}>
-                        <div className="tw-space-y-0">
-                            <div className="tw-flex tw-items-center tw-justify-between tw-pb-3 tw-border-b tw-border-gray-200">
-                                <div className="tw-flex tw-items-center tw-gap-2">
-                                    <Typography variant="small" className="tw-text-blue-gray-600">{t("breakerMainCount", lang)}</Typography>
-                                    <Typography variant="small" className="tw-font-bold tw-text-blue-600">{q4Items.length} {t("unit", lang)}</Typography>
-                                </div>
-                                <Button size="sm" color="gray" variant="outlined" onClick={addQ4Item} className="tw-flex tw-items-center tw-gap-1"><span className="tw-text-lg tw-leading-none">+</span><span className="tw-text-xs">{t("addBreakerMain", lang)}</span></Button>
-                            </div>
-                            <div className="tw-divide-y tw-divide-gray-200">
-                                {q4Items.map((item, idx) => {
-                                    const isNA = rows[item.key]?.pf === "NA";
-                                    return (
-                                        <div key={item.key} className={`tw-py-4 first:tw-pt-2 ${isNA ? "tw-bg-amber-50/50" : ""}`}>
-                                            <div className="tw-flex tw-items-center tw-justify-between tw-mb-3">
-                                                <Typography className="tw-font-semibold tw-text-sm tw-text-gray-800">{item.label}</Typography>
-                                                <div className="tw-flex tw-items-center tw-gap-2">
-                                                    <Button id={getPfIdFromKey(item.key)} size="sm" color={isNA ? "amber" : "gray"} variant={isNA ? "filled" : "outlined"} onClick={() => setRows(p => ({ ...p, [item.key]: { ...p[item.key], pf: isNA ? "" : "NA" } }))} className="tw-text-xs tw-transition-all tw-duration-300">{isNA ? t("cancelNA", lang) : t("na", lang)}</Button>
-                                                    {q4Items.length > 1 && (<button type="button" onClick={() => removeQ4Item(idx)} className="tw-h-6 tw-w-6 tw-flex tw-items-center tw-justify-center tw-rounded tw-bg-red-50 tw-text-red-600 hover:tw-bg-red-100"><svg className="tw-w-3.5 tw-h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" /></svg></button>)}
-                                                </div>
-                                            </div>
-                                            <div className="tw-mb-3"><PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(item.key)} /></div>
-                                            <div id={getInputIdFromKey(item.key)} className={`tw-mb-3 tw-transition-all tw-duration-300 ${isNA ? "tw-opacity-50 tw-pointer-events-none" : ""}`}>{renderDynamicMeasureGrid(4, item.key)}</div>
-                                            <div id={getRemarkIdFromKey(item.key)} className="tw-transition-all tw-duration-300"><Textarea label={t("remark", lang)} value={rows[item.key]?.remark ?? ""} onChange={e => setRows(p => ({ ...p, [item.key]: { ...(p[item.key] ?? { pf: "" }), remark: e.target.value } }))} rows={3} required containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full resize-none" /></div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    </SectionCard>
-                );
-            }
-
-            // Charger measure Q5
-            if (q.kind === "charger_measure") {
-                return (
-                    <SectionCard key={q.key} id={sectionId} title={qLabel} tooltip={qTooltip}>
-                        <div className="tw-space-y-0">
-                            <div className="tw-flex tw-items-center tw-pb-3 tw-border-b tw-border-gray-200">
-                                <div className="tw-flex tw-items-center tw-gap-2">
-                                    <Typography variant="small" className="tw-text-blue-gray-600">{t("chargerCountLabel", lang)}</Typography>
-                                    <Typography variant="small" className="tw-font-bold tw-text-blue-600">{chargerCount} {t("chargerUnit", lang)}</Typography>
-                                </div>
-                            </div>
-                            <div className="tw-divide-y tw-divide-gray-200">
-                                {q5Items.map(item => {
-                                    const isNA = rows[item.key]?.pf === "NA";
-                                    return (
-                                        <div key={item.key} className={`tw-py-4 first:tw-pt-2 ${isNA ? "tw-bg-amber-50/50" : ""}`}>
-                                            <div className="tw-flex tw-items-center tw-justify-between tw-mb-3">
-                                                <Typography className="tw-font-semibold tw-text-sm tw-text-gray-800">{item.label}</Typography>
-                                                <Button id={getPfIdFromKey(item.key)} size="sm" color={isNA ? "amber" : "gray"} variant={isNA ? "filled" : "outlined"} onClick={() => setRows(p => ({ ...p, [item.key]: { ...p[item.key], pf: isNA ? "" : "NA" } }))} className="tw-text-xs tw-transition-all tw-duration-300">{isNA ? t("cancelNA", lang) : t("na", lang)}</Button>
-                                            </div>
-                                            <div className="tw-mb-3"><PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(item.key)} /></div>
-                                            <div id={getInputIdFromKey(item.key)} className={`tw-mb-3 tw-transition-all tw-duration-300 ${isNA ? "tw-opacity-50 tw-pointer-events-none" : ""}`}>{renderDynamicMeasureGrid(5, item.key)}</div>
-                                            <div id={getRemarkIdFromKey(item.key)} className="tw-transition-all tw-duration-300"><Textarea label={t("remark", lang)} value={rows[item.key]?.remark ?? ""} onChange={e => setRows(p => ({ ...p, [item.key]: { ...(p[item.key] ?? { pf: "" }), remark: e.target.value } }))} rows={3} required containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full resize-none" /></div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    </SectionCard>
-                );
-            }
-
-            // CCB measure Q6
-            if (q.kind === "ccb_measure") {
-                return (
-                    <SectionCard key={q.key} id={sectionId} title={qLabel} tooltip={qTooltip}>
-                        <div className="tw-space-y-0">
-                            <div className="tw-flex tw-items-center tw-justify-between tw-pb-3 tw-border-b tw-border-gray-200">
-                                <div className="tw-flex tw-items-center tw-gap-2">
-                                    <Typography variant="small" className="tw-text-blue-gray-600">{t("breakerCCBCount", lang)}</Typography>
-                                    <Typography variant="small" className="tw-font-bold tw-text-blue-600">{q6Items.length} {t("breakerCCBMax", lang)}</Typography>
-                                </div>
-                                <Button size="sm" color="gray" variant="outlined" onClick={addQ6Item} disabled={q6Items.length >= 4} className="tw-flex tw-items-center tw-gap-1"><span className="tw-text-lg tw-leading-none">+</span><span className="tw-text-xs">{t("addBreakerCCB", lang)}</span></Button>
-                            </div>
-                            <div className="tw-divide-y tw-divide-gray-200">
-                                {q6Items.map((item, idx) => {
-                                    const isNA = rows[item.key]?.pf === "NA";
-                                    return (
-                                        <div key={item.key} className={`tw-py-4 first:tw-pt-2 ${isNA ? "tw-bg-amber-50/50" : ""}`}>
-                                            <div className="tw-flex tw-items-center tw-justify-between tw-mb-3">
-                                                <Typography className="tw-font-semibold tw-text-sm tw-text-gray-800">{item.label}</Typography>
-                                                <div className="tw-flex tw-items-center tw-gap-2">
-                                                    <Button id={getPfIdFromKey(item.key)} size="sm" color={isNA ? "amber" : "gray"} variant={isNA ? "filled" : "outlined"} onClick={() => setRows(p => ({ ...p, [item.key]: { ...p[item.key], pf: isNA ? "" : "NA" } }))} className="tw-text-xs tw-transition-all tw-duration-300">{isNA ? t("cancelNA", lang) : t("na", lang)}</Button>
-                                                    {q6Items.length > 1 && (<button type="button" onClick={() => removeQ6Item(idx)} className="tw-h-6 tw-w-6 tw-flex tw-items-center tw-justify-center tw-rounded tw-bg-red-50 tw-text-red-600 hover:tw-bg-red-100"><svg className="tw-w-3.5 tw-h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" /></svg></button>)}
-                                                </div>
-                                            </div>
-                                            <div className="tw-mb-3"><PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(item.key)} /></div>
-                                            <div id={getInputIdFromKey(item.key)} className={`tw-mb-3 tw-transition-all tw-duration-300 ${isNA ? "tw-opacity-50 tw-pointer-events-none" : ""}`}>{renderDynamicMeasureGrid(6, item.key)}</div>
-                                            <div id={getRemarkIdFromKey(item.key)} className="tw-transition-all tw-duration-300"><Textarea label={t("remark", lang)} value={rows[item.key]?.remark ?? ""} onChange={e => setRows(p => ({ ...p, [item.key]: { ...(p[item.key] ?? { pf: "" }), remark: e.target.value } }))} rows={3} required containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full resize-none" /></div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    </SectionCard>
-                );
-            }
-
-            // RCD measure Q7
-            if (q.kind === "rcd_measure") {
-                return (
-                    <SectionCard key={q.key} id={sectionId} title={qLabel} tooltip={qTooltip}>
-                        <div className="tw-space-y-0">
-                            <div className="tw-flex tw-items-center tw-pb-3 tw-border-b tw-border-gray-200">
-                                <div className="tw-flex tw-items-center tw-gap-2">
-                                    <Typography variant="small" className="tw-text-blue-gray-600">{t("rcdCount", lang)}</Typography>
-                                    <Typography variant="small" className="tw-font-bold tw-text-blue-600">{chargerCount} {t("unit", lang)}</Typography>
-                                </div>
-                            </div>
-                            <div className="tw-divide-y tw-divide-gray-200">
-                                {q7Items.map(item => {
-                                    const isNA = rows[item.key]?.pf === "NA";
-                                    return (
-                                        <div key={item.key} className={`tw-py-4 first:tw-pt-2 ${isNA ? "tw-bg-amber-50/50" : ""}`}>
-                                            <div className="tw-flex tw-items-center tw-justify-between tw-mb-3">
-                                                <Typography className="tw-font-semibold tw-text-sm tw-text-gray-800">{item.label}</Typography>
-                                                <Button id={getPfIdFromKey(item.key)} size="sm" color={isNA ? "amber" : "gray"} variant={isNA ? "filled" : "outlined"} onClick={() => setRows(p => ({ ...p, [item.key]: { ...p[item.key], pf: isNA ? "" : "NA" } }))} className="tw-text-xs tw-transition-all tw-duration-300">{isNA ? t("cancelNA", lang) : t("na", lang)}</Button>
-                                            </div>
-                                            <div className="tw-mb-3"><PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(item.key)} /></div>
-                                            <div id={getInputIdFromKey(item.key)} className={`tw-mb-3 tw-transition-all tw-duration-300 ${isNA ? "tw-opacity-50 tw-pointer-events-none" : ""}`}>{renderDynamicMeasureGrid(7, item.key)}</div>
-                                            <div id={getRemarkIdFromKey(item.key)} className="tw-transition-all tw-duration-300"><Textarea label={t("remark", lang)} value={rows[item.key]?.remark ?? ""} onChange={e => setRows(p => ({ ...p, [item.key]: { ...(p[item.key] ?? { pf: "" }), remark: e.target.value } }))} rows={3} required containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full resize-none" /></div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    </SectionCard>
-                );
-            }
-
-            // Trip tests Q8-Q11
-            const tripConfigs: Record<string, { items: { key: string; label: string }[]; countLabel: string; count: number; countUnit: string }> = {
-                trip_rcd: { items: q8Items, countLabel: t("rcdCount", lang), count: chargerCount, countUnit: t("unit", lang) },
-                trip_ccb: { items: q9Items, countLabel: t("breakerCCBCount", lang), count: q6Items.length, countUnit: t("unit", lang) },
-                trip_charger: { items: q10Items, countLabel: t("breakerChargerCount", lang), count: chargerCount, countUnit: t("unit", lang) },
-                trip_main: { items: q11Items, countLabel: t("breakerMainCount", lang), count: q4Items.length, countUnit: t("unit", lang) },
-            };
-            if (tripConfigs[q.kind]) {
-                const cfg = tripConfigs[q.kind];
-                return (
-                    <SectionCard key={q.key} id={sectionId} title={qLabel} tooltip={qTooltip}>
-                        <div className="tw-space-y-0">
-                            <div className="tw-flex tw-items-center tw-pb-3 tw-border-b tw-border-gray-200">
-                                <div className="tw-flex tw-items-center tw-gap-2">
-                                    <Typography variant="small" className="tw-text-blue-gray-600">{cfg.countLabel}</Typography>
-                                    <Typography variant="small" className="tw-font-bold tw-text-blue-600">{cfg.count} {cfg.countUnit}</Typography>
-                                </div>
-                            </div>
-                            <div className="tw-divide-y tw-divide-gray-200">
-                                {cfg.items.map(item => {
-                                    const isNA = rows[item.key]?.pf === "NA";
-                                    return (
-                                        <div key={item.key} className={`tw-py-4 first:tw-pt-2 ${isNA ? "tw-bg-amber-50/50" : ""}`}>
-                                            <div className="tw-flex tw-items-center tw-justify-between tw-mb-3">
-                                                <Typography className="tw-font-semibold tw-text-sm tw-text-gray-800">{item.label}</Typography>
-                                                <Button id={getPfIdFromKey(item.key)} size="sm" color={isNA ? "amber" : "gray"} variant={isNA ? "filled" : "outlined"} onClick={() => setRows(p => ({ ...p, [item.key]: { ...p[item.key], pf: isNA ? "" : "NA" } }))} className="tw-text-xs tw-transition-all tw-duration-300">{isNA ? t("cancelNA", lang) : t("na", lang)}</Button>
-                                            </div>
-                                            <div className="tw-mb-3"><PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(item.key)} /></div>
-                                            <div id={getRemarkIdFromKey(item.key)} className="tw-transition-all tw-duration-300"><Textarea label={t("remark", lang)} value={rows[item.key]?.remark ?? ""} onChange={e => setRows(p => ({ ...p, [item.key]: { ...(p[item.key] ?? { pf: "" }), remark: e.target.value } }))} rows={3} required containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full resize-none" /></div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    </SectionCard>
-                );
-            }
-
-            // Simple/measure (Q1,Q2,Q3,Q12 in Pre / Q13 excluded)
-            return (
-                <SectionCard key={q.key} id={sectionId} title={qLabel} tooltip={qTooltip}>
-                    <div className={`tw-py-2 ${rows[q.key]?.pf === "NA" ? "tw-bg-amber-50/50" : ""}`}>
-                        <div id={getPfIdFromKey(q.key)} className="tw-flex tw-justify-end tw-mb-3 tw-transition-all tw-duration-300">
-                            <Button size="sm" color={rows[q.key]?.pf === "NA" ? "amber" : "gray"} variant={rows[q.key]?.pf === "NA" ? "filled" : "outlined"} onClick={() => setRows(p => ({ ...p, [q.key]: { ...p[q.key], pf: rows[q.key]?.pf === "NA" ? "" : "NA" } }))}>{rows[q.key]?.pf === "NA" ? t("cancelNA", lang) : t("na", lang)}</Button>
-                        </div>
-                        <div className="tw-mb-3"><PhotoMultiInput photos={photos[q.no] || []} setPhotos={makePhotoSetter(q.no)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(q.no)} /></div>
-                        <div id={getRemarkIdFromKey(q.key)} className="tw-transition-all tw-duration-300"><Textarea label={t("remark", lang)} value={rows[q.key]?.remark ?? ""} onChange={e => setRows(p => ({ ...p, [q.key]: { ...(p[q.key] ?? { pf: "" }), remark: e.target.value } }))} rows={3} required containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full resize-none" /></div>
-                    </div>
-                </SectionCard>
-            );
-        }
-
-        // POST MODE
-        if ((q.kind === "simple" || q.kind === "measure") && rowsPre[q.key]?.pf === "NA") {
-            return (<SectionCard key={q.key} id={sectionId} title={q.label[lang]} tooltip={qTooltip}><SkippedNAItem label={getQuestionLabel(q, "post", lang)} remark={rowsPre[q.key]?.remark} lang={lang} /></SectionCard>);
-        }
-
-        const checkboxElement = q.no === 13 ? (
+        const checkboxElement = q.no === 15 ? (
             <label className="tw-flex tw-items-center tw-gap-2 tw-text-xs sm:tw-text-sm tw-text-blue-gray-700 tw-py-2">
                 <input type="checkbox" className="tw-h-4 tw-w-4 tw-rounded tw-border-blue-gray-300" checked={dustFilterChanged} onChange={e => setDustFilterChanged(e.target.checked)} />
                 <span>{t("dustFilterChanged", lang)}</span>
             </label>
         ) : null;
 
-        const postMeasureMap: Record<string, { items: typeof q4Items; qNo: number; countLabel: string; count: number; countUnit: string }> = {
-            dynamic_measure: { items: q4Items, qNo: 4, countLabel: t("breakerMainCount", lang), count: q4Items.length, countUnit: t("unit", lang) },
-            charger_measure: { items: q5Items, qNo: 5, countLabel: t("chargerCountLabel", lang), count: chargerCount, countUnit: t("chargerUnit", lang) },
-            ccb_measure: { items: q6Items, qNo: 6, countLabel: t("breakerCCBCount", lang), count: q6Items.length, countUnit: t("breakerCCBMax", lang) },
-            rcd_measure: { items: q7Items, qNo: 7, countLabel: t("rcdCount", lang), count: chargerCount, countUnit: t("unit", lang) },
+        const measureMap: Record<string, { items: typeof q6Items; qNo: number; countLabel: string; count: number; countUnit: string }> = {
+            dynamic_measure: { items: q6Items, qNo: 6, countLabel: t("breakerMainCount", lang), count: q6Items.length, countUnit: t("unit", lang) },
+            charger_measure: { items: q7Items, qNo: 7, countLabel: t("chargerCountLabel", lang), count: chargerCount, countUnit: t("chargerUnit", lang) },
+            ccb_measure: { items: q8Items, qNo: 8, countLabel: t("breakerCCBCount", lang), count: q8Items.length, countUnit: t("breakerCCBMax", lang) },
+            rcd_measure: { items: q9Items, qNo: 9, countLabel: t("rcdCount", lang), count: chargerCount, countUnit: t("unit", lang) },
         };
 
-        if (postMeasureMap[q.kind]) {
-            const cfg = postMeasureMap[q.kind];
-            const activeItems = cfg.items.filter(item => rowsPre[item.key]?.pf !== "NA");
-            const skippedItems = cfg.items.filter(item => rowsPre[item.key]?.pf === "NA");
+        if (measureMap[q.kind]) {
+            const cfg = measureMap[q.kind];
+            // จำนวน Breaker Main / Breaker CCB ช่างปรับเองได้ตามตู้จริง (เดิมอยู่ในด่านก่อน PM)
+            const onAdd = q.kind === "dynamic_measure" ? addQ6Item : q.kind === "ccb_measure" ? addQ8Item : null;
+            const addDisabled = q.kind === "ccb_measure" && q8Items.length >= 4;
+            const addLabel = q.kind === "dynamic_measure" ? t("addBreakerMain", lang) : t("addBreakerCCB", lang);
+            const onRemove = q.kind === "dynamic_measure" ? removeQ6Item : q.kind === "ccb_measure" ? removeQ8Item : null;
+            return (
+                <SectionCard key={q.key} id={sectionId} title={q.label[lang]} tooltip={qTooltip}>
+                    <div className="tw-space-y-0">
+                        <div className="tw-flex tw-items-center tw-justify-between tw-pb-3 tw-border-b tw-border-gray-200">
+                            <div className="tw-flex tw-items-center tw-gap-2">
+                                <Typography variant="small" className="tw-text-blue-gray-600">{cfg.countLabel}</Typography>
+                                <Typography variant="small" className="tw-font-bold tw-text-blue-600">{cfg.count} {cfg.countUnit}</Typography>
+                            </div>
+                            {onAdd && (
+                                <Button size="sm" color="gray" variant="outlined" onClick={onAdd} disabled={addDisabled} className="tw-flex tw-items-center tw-gap-1">
+                                    <span className="tw-text-lg tw-leading-none">+</span><span className="tw-text-xs">{addLabel}</span>
+                                </Button>
+                            )}
+                        </div>
+                        <div className="tw-divide-y tw-divide-gray-200">
+                            {cfg.items.map((item, idx) => (
+                                <div key={item.key} className="tw-py-4 first:tw-pt-2">
+                                    <PassFailRow label={item.label} value={rows[item.key]?.pf ?? ""} lang={lang}
+                                        onChange={v => setRows({ ...rows, [item.key]: { ...(rows[item.key] ?? { remark: "" }), pf: v } })}
+                                        remark={rows[item.key]?.remark ?? ""}
+                                        onRemarkChange={v => setRows({ ...rows, [item.key]: { ...(rows[item.key] ?? { pf: "" }), remark: v } })}
+                                        pfButtonsId={getPfIdFromKey(item.key)} remarkId={getRemarkIdFromKey(item.key)}
+                                        inlineLeft={onRemove && cfg.items.length > 1 ? (
+                                            <button type="button" onClick={() => onRemove(idx)} className="tw-h-6 tw-w-6 tw-flex tw-items-center tw-justify-center tw-rounded tw-bg-red-50 tw-text-red-600 hover:tw-bg-red-100">
+                                                <svg className="tw-w-3.5 tw-h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" /></svg>
+                                            </button>
+                                        ) : undefined}
+                                        aboveRemark={<div className="tw-pb-4 tw-border-b tw-border-gray-100"><PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(item.key)} /></div>}
+                                        beforeRemark={<div id={getInputIdFromKey(item.key)} className={`tw-mb-3 tw-transition-all tw-duration-300 ${rows[item.key]?.pf === "NA" ? "tw-opacity-50 tw-pointer-events-none" : ""}`}>{renderDynamicMeasureGrid(cfg.qNo, item.key)}</div>}
+                                    />
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </SectionCard>
+            );
+        }
+
+        const tripMap: Record<string, { items: typeof q10Items; countLabel: string; count: number; countUnit: string }> = {
+            trip_rcd: { items: q10Items, countLabel: t("rcdCount", lang), count: chargerCount, countUnit: t("unit", lang) },
+            trip_ccb: { items: q11Items, countLabel: t("breakerCCBCount", lang), count: q8Items.length, countUnit: t("unit", lang) },
+            trip_charger: { items: q12Items, countLabel: t("breakerChargerCount", lang), count: chargerCount, countUnit: t("unit", lang) },
+            trip_main: { items: q13Items, countLabel: t("breakerMainCount", lang), count: q6Items.length, countUnit: t("unit", lang) },
+        };
+        if (tripMap[q.kind]) {
+            const cfg = tripMap[q.kind];
             return (
                 <SectionCard key={q.key} id={sectionId} title={q.label[lang]} tooltip={qTooltip}>
                     <div className="tw-space-y-0">
@@ -2258,92 +1782,24 @@ export default function MDBPMForm() {
                             </div>
                         </div>
                         <div className="tw-divide-y tw-divide-gray-200">
-                            {cfg.items.map((item, idx) => {
-                                const isSkipped = rowsPre[item.key]?.pf === "NA";
-                                if (isSkipped) {
-                                    return (
-                                        <div key={item.key} className="tw-py-4 first:tw-pt-2 tw-bg-amber-50/50">
-                                            <div className="tw-flex tw-items-center tw-justify-between">
-                                                <Typography className="tw-font-semibold tw-text-sm tw-text-gray-800">{item.label}</Typography>
-                                                <span className="tw-text-xs tw-text-amber-600 tw-font-medium">N/A</span>
-                                            </div>
-                                            {rowsPre[item.key]?.remark && <Typography variant="small" className="tw-text-gray-600 tw-mt-1">{t("remarkLabel", lang)}: {rowsPre[item.key]?.remark}</Typography>}
-                                        </div>
-                                    );
-                                }
-                                return (
-                                    <div key={item.key} className="tw-py-4 first:tw-pt-2">
-                                        <PassFailRow label={item.label} value={rows[item.key]?.pf ?? ""} lang={lang}
-                                            onChange={v => setRows({ ...rows, [item.key]: { ...(rows[item.key] ?? { remark: "" }), pf: v } })}
-                                            remark={rows[item.key]?.remark ?? ""}
-                                            onRemarkChange={v => setRows({ ...rows, [item.key]: { ...(rows[item.key] ?? { pf: "" }), remark: v } })}
-                                            pfButtonsId={getPfIdFromKey(item.key)} remarkId={getRemarkIdFromKey(item.key)}
-                                            aboveRemark={<div className="tw-pb-4 tw-border-b tw-border-gray-100"><PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(item.key)} /></div>}
-                                            beforeRemark={<><div id={getInputIdFromKey(item.key)} className="tw-mb-3 tw-transition-all tw-duration-300">{renderDynamicMeasureGridWithPre(cfg.qNo, item.key)}</div><PreRemarkElement remark={rowsPre[item.key]?.remark} lang={lang} /></>}
-                                        />
-                                    </div>
-                                );
-                            })}
+                            {cfg.items.map((it) => (
+                                <div key={it.key} className="tw-py-4 first:tw-pt-2">
+                                    <PassFailRow label={it.label} value={rows[it.key]?.pf ?? ""} lang={lang}
+                                        onChange={v => setRows({ ...rows, [it.key]: { ...(rows[it.key] ?? { remark: "" }), pf: v } })}
+                                        remark={rows[it.key]?.remark ?? ""}
+                                        onRemarkChange={v => setRows({ ...rows, [it.key]: { ...(rows[it.key] ?? { pf: "" }), remark: v } })}
+                                        pfButtonsId={getPfIdFromKey(it.key)} remarkId={getRemarkIdFromKey(it.key)}
+                                        aboveRemark={<div className="tw-pb-4 tw-border-b tw-border-gray-100"><PhotoMultiInput photos={photos[it.key] || []} setPhotos={makePhotoSetter(it.key)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(it.key)} /></div>}
+                                    />
+                                </div>
+                            ))}
                         </div>
                     </div>
                 </SectionCard>
             );
         }
 
-        const postTripMap: Record<string, { items: typeof q8Items; countLabel: string; count: number; countUnit: string }> = {
-            trip_rcd: { items: q8Items, countLabel: t("rcdCount", lang), count: chargerCount, countUnit: t("unit", lang) },
-            trip_ccb: { items: q9Items, countLabel: t("breakerCCBCount", lang), count: q6Items.length, countUnit: t("unit", lang) },
-            trip_charger: { items: q10Items, countLabel: t("breakerChargerCount", lang), count: chargerCount, countUnit: t("unit", lang) },
-            trip_main: { items: q11Items, countLabel: t("breakerMainCount", lang), count: q4Items.length, countUnit: t("unit", lang) },
-        };
-        if (postTripMap[q.kind]) {
-            const cfg = postTripMap[q.kind];
-            const items = cfg.items;
-            const activeItems = items.filter(it => rowsPre[it.key]?.pf !== "NA");
-            const skippedItems = items.filter(it => rowsPre[it.key]?.pf === "NA");
-            return (
-                <SectionCard key={q.key} id={sectionId} title={q.label[lang]} tooltip={qTooltip}>
-                    <div className="tw-space-y-0">
-                        <div className="tw-flex tw-items-center tw-pb-3 tw-border-b tw-border-gray-200">
-                            <div className="tw-flex tw-items-center tw-gap-2">
-                                <Typography variant="small" className="tw-text-blue-gray-600">{cfg.countLabel}</Typography>
-                                <Typography variant="small" className="tw-font-bold tw-text-blue-600">{cfg.count} {cfg.countUnit}</Typography>
-                            </div>
-                        </div>
-                        <div className="tw-divide-y tw-divide-gray-200">
-                            {cfg.items.map((it, idx) => {
-                                const isSkipped = rowsPre[it.key]?.pf === "NA";
-                                if (isSkipped) {
-                                    return (
-                                        <div key={it.key} className="tw-py-4 first:tw-pt-2 tw-bg-amber-50/50">
-                                            <div className="tw-flex tw-items-center tw-justify-between">
-                                                <Typography className="tw-font-semibold tw-text-sm tw-text-gray-800">{it.label}</Typography>
-                                                <span className="tw-text-xs tw-text-amber-600 tw-font-medium">N/A</span>
-                                            </div>
-                                            {rowsPre[it.key]?.remark && <Typography variant="small" className="tw-text-gray-600 tw-mt-1">{t("remarkLabel", lang)}: {rowsPre[it.key]?.remark}</Typography>}
-                                        </div>
-                                    );
-                                }
-                                return (
-                                    <div key={it.key} className="tw-py-4 first:tw-pt-2">
-                                        <PassFailRow label={it.label} value={rows[it.key]?.pf ?? ""} lang={lang}
-                                            onChange={v => setRows({ ...rows, [it.key]: { ...(rows[it.key] ?? { remark: "" }), pf: v } })}
-                                            remark={rows[it.key]?.remark ?? ""}
-                                            onRemarkChange={v => setRows({ ...rows, [it.key]: { ...(rows[it.key] ?? { pf: "" }), remark: v } })}
-                                            pfButtonsId={getPfIdFromKey(it.key)} remarkId={getRemarkIdFromKey(it.key)}
-                                            aboveRemark={<div className="tw-pb-4 tw-border-b tw-border-gray-100"><PhotoMultiInput photos={photos[it.key] || []} setPhotos={makePhotoSetter(it.key)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(it.key)} /></div>}
-                                            beforeRemark={<PreRemarkElement remark={rowsPre[it.key]?.remark} lang={lang} />}
-                                        />
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </div>
-                </SectionCard>
-            );
-        }
-
-        // Simple POST
+        // ข้อธรรมดา (มีรูป + PASS/FAIL/N-A + หมายเหตุ)
         return (
             <SectionCard key={q.key} id={sectionId} title={q.label[lang]} tooltip={qTooltip}>
                 <div className="tw-py-2">
@@ -2354,7 +1810,6 @@ export default function MDBPMForm() {
                         pfButtonsId={getPfIdFromKey(q.key)} remarkId={getRemarkIdFromKey(q.key)}
                         aboveRemark={<>{q.hasPhoto && <div className="tw-pt-2 tw-pb-4 tw-border-b tw-mb-4 tw-border-gray-100"><PhotoMultiInput photos={photos[q.no] || []} setPhotos={makePhotoSetter(q.no)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(q.no)} /></div>}{checkboxElement && <div className="sm:tw-hidden tw-mb-3">{checkboxElement}</div>}</>}
                         inlineLeft={checkboxElement && <div className="tw-hidden sm:tw-flex">{checkboxElement}</div>}
-                        beforeRemark={<PreRemarkElement remark={rowsPre[q.key]?.remark} lang={lang} />}
                     />
                 </div>
             </SectionCard>
@@ -2391,9 +1846,11 @@ export default function MDBPMForm() {
             put(q?.key, labelOfItem(q));
             (q?.items ?? []).forEach((it: any) => put(it?.key, labelOfItem(it)));
         });
-        ([q4Items, q5Items, q6Items, q7Items, q8Items, q9Items, q10Items, q11Items] as any[]).forEach((arr: any) =>
+        ([q6Items, q7Items, q8Items, q9Items, q10Items, q11Items, q12Items, q13Items] as any[]).forEach((arr: any) =>
             (arr ?? []).forEach((it: any) => put(it?.key, labelOfItem(it))));
-        const labelOf = (key: string) => labels.get(key) ?? key;
+        // ใบรุ่นเก่า: คีย์ r1..r13 คือหัวข้อชุดเดิม ห้ามหยิบป้ายจาก QUESTIONS ปัจจุบัน
+        const labelOf = (key: string) =>
+            (legacyDoc ? LEGACY_ROW_LABELS[key]?.[lang] : undefined) ?? labels.get(key) ?? key;
         // เรียงตามลำดับข้อในฟอร์มกรอก ข้อย่อยที่ช่างเพิ่มเอง (r5_1, r5_2)
         // ต้องต่อท้ายข้อแม่ของมัน ไม่ใช่ไปกองรวมกันท้ายตาราง
         const answered = Array.from(new Set([...Object.keys(rowsPre ?? {}), ...Object.keys(rows ?? {})]));
@@ -2428,7 +1885,7 @@ export default function MDBPMForm() {
             out.push(mk(k, "", labelOf(k), Number(k.replace(/^r/, "").split("_")[0]) || undefined));
         });
         return out;
-    }, [rowsPre, rows, lang, q4Items, q5Items, q6Items, q7Items, q8Items, q9Items, q10Items, q11Items]);
+    }, [rowsPre, rows, lang, legacyDoc, q6Items, q7Items, q8Items, q9Items, q10Items, q11Items, q12Items, q13Items]);
 
 
     // กล่องหมายเหตุ + สรุปผลการตรวจสอบ — ประกาศครั้งเดียว วางได้สองที่
@@ -2437,45 +1894,29 @@ export default function MDBPMForm() {
                         <div id="mdb-pm-summary-section" className="tw-mt-6 sm:tw-mt-8 tw-space-y-3 tw-transition-all tw-duration-300">
                             <Typography variant="h6" className="tw-mb-1 tw-text-sm sm:tw-text-base">{t("comment", lang)}</Typography>
 
-                            {displayTab === "pre" ? (
-                                // Pre-PM: ใช้ summaryPre
-                                <Textarea
-                                    label={t("comment", lang)}
-                                    value={summaryPre}
-                                    onChange={e => setSummaryPre(e.target.value)}
-                                    rows={3}
-                                    autoComplete="off"
-                                    containerProps={{ className: "!tw-min-w-0" }}
-                                    className="!tw-w-full !tw-text-sm resize-none"
+                            <Textarea
+                                label={t("comment", lang)}
+                                value={summary}
+                                onChange={e => setSummary(e.target.value)}
+                                rows={3}
+                                required
+                                autoComplete="off"
+                                containerProps={{ className: "!tw-min-w-0" }}
+                                className="!tw-w-full !tw-text-sm resize-none"
+                            />
+                            <div className="tw-pt-3 sm:tw-pt-4 tw-border-t tw-border-gray-200">
+                                <PassFailRow
+                                    label={t("summaryResult", lang)}
+                                    value={summaryCheck}
+                                    onChange={v => setSummaryCheck(v)}
+                                    lang={lang}
+                                    labels={{
+                                        PASS: t("summaryPassLabel", lang),
+                                        FAIL: t("summaryFailLabel", lang),
+                                        NA: t("summaryNALabel", lang)
+                                    }}
                                 />
-                            ) : (
-                                // Post-PM: ใช้ summary
-                                <>
-                                    <Textarea
-                                        label={t("comment", lang)}
-                                        value={summary}
-                                        onChange={e => setSummary(e.target.value)}
-                                        rows={3}
-                                        required={isPostMode}
-                                        autoComplete="off"
-                                        containerProps={{ className: "!tw-min-w-0" }}
-                                        className="!tw-w-full !tw-text-sm resize-none"
-                                    />
-                                    <div className="tw-pt-3 sm:tw-pt-4 tw-border-t tw-border-gray-200">
-                                        <PassFailRow
-                                            label={t("summaryResult", lang)}
-                                            value={summaryCheck}
-                                            onChange={v => setSummaryCheck(v)}
-                                            lang={lang}
-                                            labels={{
-                                                PASS: t("summaryPassLabel", lang),
-                                                FAIL: t("summaryFailLabel", lang),
-                                                NA: t("summaryNALabel", lang)
-                                            }}
-                                        />
-                                    </div>
-                                </>
-                            )}
+                            </div>
                         </div>
     );
 
@@ -2485,40 +1926,19 @@ export default function MDBPMForm() {
             <LoadingOverlay
                 show={preUploadState.show}
                 text={lang === "th"
-                    ? `กำลังอัปโหลดรูป${isPostMode ? " Post-PM" : " Pre-PM"}... ${preUploadState.completed}/${preUploadState.total} รูป`
-                    : `Uploading ${isPostMode ? "Post-PM" : "Pre-PM"} photos... ${preUploadState.completed}/${preUploadState.total}`}
+                    ? `กำลังอัปโหลดรูป... ${preUploadState.completed}/${preUploadState.total} รูป`
+                    : `Uploading photos... ${preUploadState.completed}/${preUploadState.total}`}
             />
             <div className="tw-mx-auto tw-max-w-6xl tw-flex tw-items-center tw-justify-between tw-mb-4">
                 <Button variant="outlined" size="sm" onClick={goBackToList} title={t("backToList", lang)}>
                     <ArrowLeftIcon className="tw-w-4 tw-h-4 tw-stroke-blue-gray-900 tw-stroke-2" />
                 </Button>
-                {!reviewMode && (
-                    <Tabs value={displayTab} key={displayTab}>
-                        <TabsHeader className="tw-bg-blue-gray-50 tw-rounded-lg">
-                            {TABS.map(tb => {
-                                const isPreDisabled = isPostMode && tb.id === "pre";
-                                const isLockedAfter = tb.id === "post" && !canGoAfter;
-                                return (
-                                    <Tab key={tb.id} value={tb.id} disabled={isPreDisabled || isLockedAfter}
-                                        onClick={() => {
-                                            if (isPreDisabled) return;
-                                            if (isLockedAfter) { alert(t("alertFillPreFirst", lang)); return; }
-                                            go(tb.id);
-                                        }}
-                                        className={`tw-px-4 tw-py-2 tw-font-medium ${isPreDisabled || isLockedAfter ? "tw-opacity-50 tw-cursor-not-allowed" : ""}`}>
-                                        {tb.label}
-                                    </Tab>
-                                );
-                            })}
-                        </TabsHeader>
-                    </Tabs>
-                )}
             </div>
 
             
             <form action="#" noValidate onSubmit={e => { e.preventDefault(); return false; }} onKeyDown={e => { if (e.key === "Enter") e.preventDefault(); }}>
                 {/* ดูอย่างเดียว: fieldset ปิดทั้งช่องกรอกและปุ่มบันทึกในทีเดียว */}
-                <fieldset disabled={reviewMode} className="pm-readonly tw-m-0 tw-min-w-0 tw-border-0 tw-p-0">
+                <fieldset disabled={reviewMode || legacyDoc} className="pm-readonly tw-m-0 tw-min-w-0 tw-border-0 tw-p-0">
                 <div className="tw-mx-auto tw-max-w-6xl tw-bg-white tw-border tw-border-blue-gray-100 tw-rounded-xl tw-shadow-sm tw-p-6 md:tw-p-8 tw-print:tw-shadow-none tw-print:tw-border-0">
                     <div className="tw-flex tw-flex-col tw-gap-4 md:tw-flex-row md:tw-items-start md:tw-justify-between md:tw-gap-6">
                         <div className="tw-flex tw-items-start tw-gap-3 md:tw-gap-4">
@@ -2548,13 +1968,18 @@ export default function MDBPMForm() {
                     </div>
 
                     <div className="tw-mt-6 sm:tw-mt-8 tw-space-y-4 sm:tw-space-y-6">
-                        {/* โหมดตรวจ: ตัดเฉพาะรายการข้อที่ช่างกรอก ดูจากตารางเทียบก่อน/หลังด้านล่างแทน
-                            ส่วนหัวเอกสารกับข้อมูลสถานีคงไว้ ผู้อนุมัติต้องรู้ว่ากำลังดูใบไหน */}
-                        {!reviewMode && (QUESTIONS.filter(q => !(displayTab === "pre" && q.no === 13)).map(q => renderQuestionBlock(q, displayTab)))}
+                        {/* ใบรุ่นเก่าเลขข้อไม่ตรงกับ QUESTIONS ชุดนี้ ต้องอ่านจากตารางด้านล่างแทน
+                            ใบรุ่นปัจจุบันแสดงรายการข้อตรงนี้เสมอ โหมดตรวจก็อ่านจากตรงนี้ (fieldset ปิดการแก้ไว้) */}
+                        {legacyDoc ? (
+                            <div className="tw-rounded-xl tw-border tw-border-amber-200 tw-bg-amber-50 tw-px-5 tw-py-4">
+                                <Typography className="tw-font-semibold tw-text-amber-800 tw-text-sm">{t("legacyFormTitle", lang)}</Typography>
+                                <Typography variant="small" className="tw-text-amber-700 tw-mt-1">{t("legacyFormHint", lang)}</Typography>
+                            </div>
+                        ) : QUESTIONS.map(q => renderQuestionBlock(q))}
                     </div>
 
-                    {/* โหมดตรวจ: ย้ายไปไว้ล่างสุด ให้อ่านหลังดูตารางเทียบเสร็จ */}
-                    {!reviewMode && summaryBlock}
+                    {/* ใบรุ่นเก่า: ย้ายไปไว้ล่างสุด ให้อ่านหลังดูตารางสรุปเสร็จ */}
+                    {!legacyDoc && summaryBlock}
 
                     <div className="tw-mt-6 sm:tw-mt-8 tw-flex tw-flex-col tw-gap-3">
                     {/* ด่านก่อนเริ่มกรอก — ช่างอ่านข้อมูลใบงานก่อน แล้วค่อยกดเริ่ม (เหมือนหน้า CM)
@@ -2573,104 +1998,91 @@ export default function MDBPMForm() {
                     )}
 
                     {/* เวลาทำงานจริงของช่าง — ต้องกรอกก่อนส่งปิดใบงาน (ส่งเข้า Maximo IN09) */}
-                    {isPostMode && (
-                        <div className="tw-mt-6 tw-pt-4 tw-border-t tw-border-gray-200">
-                            <div className="tw-mb-2">
-                                <Typography variant="h6" className="tw-text-sm sm:tw-text-base">
-                                    {t("workTime", lang)} <span className="tw-text-red-500">*</span>
-                                </Typography>
-                                <Typography variant="small" className="tw-text-xs tw-font-normal tw-text-blue-gray-400">
-                                    {t("workTimeHint", lang)}
-                                </Typography>
+                    <div className="tw-mt-6 tw-pt-4 tw-border-t tw-border-gray-200">
+                        <div className="tw-mb-2">
+                            <Typography variant="h6" className="tw-text-sm sm:tw-text-base">
+                                {t("workTime", lang)} <span className="tw-text-red-500">*</span>
+                            </Typography>
+                            <Typography variant="small" className="tw-text-xs tw-font-normal tw-text-blue-gray-400">
+                                {t("workTimeHint", lang)}
+                            </Typography>
+                        </div>
+                        <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 tw-gap-3">
+                            <div>
+                                <label className="tw-mb-1.5 tw-block tw-text-xs tw-font-semibold tw-text-blue-gray-700">{t("workStart", lang)}</label>
+                                <input type="datetime-local" value={workStart} onChange={(e) => setWorkStart(e.target.value)}
+                                    className="tw-w-full tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-px-3 tw-py-2.5 tw-text-sm tw-text-blue-gray-800 focus:tw-outline-none focus:tw-border-blue-500" />
                             </div>
-                            <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 tw-gap-3">
-                                <div>
-                                    <label className="tw-mb-1.5 tw-block tw-text-xs tw-font-semibold tw-text-blue-gray-700">{t("workStart", lang)}</label>
-                                    <input type="datetime-local" value={workStart} onChange={(e) => setWorkStart(e.target.value)}
-                                        className="tw-w-full tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-px-3 tw-py-2.5 tw-text-sm tw-text-blue-gray-800 focus:tw-outline-none focus:tw-border-blue-500" />
-                                </div>
-                                <div>
-                                    <label className="tw-mb-1.5 tw-block tw-text-xs tw-font-semibold tw-text-blue-gray-700">{t("workFinish", lang)}</label>
-                                    {/* min กัน picker เลือกย้อนหลัง — ยังต้อง validate เพราะพิมพ์มือเลี่ยงได้ */}
-                                    <input type="datetime-local" value={workFinish} min={workStart || undefined} onChange={(e) => setWorkFinish(e.target.value)}
-                                        className={`tw-w-full tw-rounded-lg tw-border tw-bg-white tw-px-3 tw-py-2.5 tw-text-sm tw-text-blue-gray-800 focus:tw-outline-none ${workStart && workFinish && workFinish < workStart ? "tw-border-red-400 focus:tw-border-red-500" : "tw-border-blue-gray-200 focus:tw-border-blue-500"}`} />
-                                    {workStart && workFinish && workFinish < workStart && (
-                                        <p className="tw-mt-1.5 tw-text-xs tw-text-red-600">{t("alertWorkTimeOrder", lang)}</p>
-                                    )}
-                                </div>
+                            <div>
+                                <label className="tw-mb-1.5 tw-block tw-text-xs tw-font-semibold tw-text-blue-gray-700">{t("workFinish", lang)}</label>
+                                {/* min กัน picker เลือกย้อนหลัง — ยังต้อง validate เพราะพิมพ์มือเลี่ยงได้ */}
+                                <input type="datetime-local" value={workFinish} min={workStart || undefined} onChange={(e) => setWorkFinish(e.target.value)}
+                                    className={`tw-w-full tw-rounded-lg tw-border tw-bg-white tw-px-3 tw-py-2.5 tw-text-sm tw-text-blue-gray-800 focus:tw-outline-none ${workStart && workFinish && workFinish < workStart ? "tw-border-red-400 focus:tw-border-red-500" : "tw-border-blue-gray-200 focus:tw-border-blue-500"}`} />
+                                {workStart && workFinish && workFinish < workStart && (
+                                    <p className="tw-mt-1.5 tw-text-xs tw-text-red-600">{t("alertWorkTimeOrder", lang)}</p>
+                                )}
                             </div>
                         </div>
-                    )}
+                    </div>
 
                     {/* ช่างที่จะลงเวลาเข้า Maximo — laborcode คนละชุดกับ username ใน iMPS
                         จึงต้องให้เลือกเอง ไม่งั้น IN09 จะ unmapped ทั้งใบ (อยู่ล่างสุดของฟอร์ม) */}
-                    {isPostMode && (
-                        <div className="tw-mt-6 tw-pt-4 tw-border-t tw-border-gray-200">
-                            <div className="tw-mb-2">
-                                <Typography variant="h6" className="tw-text-sm sm:tw-text-base">{t("maximoLabor", lang)}</Typography>
-                                <Typography variant="small" className="tw-text-xs tw-font-normal tw-text-blue-gray-400">
-                                    {t("maximoLaborHint", lang)}
-                                </Typography>
-                            </div>
-                            {laborList.length === 0 ? (
-                                <p className="tw-text-xs tw-text-orange-600">
-                                                {reviewMode ? t("maximoLaborNone", lang) : t("maximoLaborEmpty", lang)}
-                                            </p>
-                            ) : (
-                                <div className="tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-divide-y tw-divide-blue-gray-50 tw-max-h-56 tw-overflow-y-auto">
-                                    {laborList.map((o) => (
-                                        <label key={o.laborcode} className="tw-flex tw-items-center tw-gap-2.5 tw-px-3 tw-py-2.5 tw-cursor-pointer hover:tw-bg-blue-gray-50/60 tw-transition-colors">
-                                            {!reviewMode && (<input type="checkbox" checked={maximoLabor.includes(o.laborcode)}
-                                                onChange={() => toggleMaximoLabor(o.laborcode)}
-                                                className="tw-h-4 tw-w-4 tw-shrink-0 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500 tw-cursor-pointer" />)}
-                                            <span className="tw-min-w-0 tw-truncate tw-text-sm tw-text-blue-gray-800">{o.name}</span>
-                                            <span className="tw-ml-auto tw-font-mono tw-text-xs tw-text-blue-gray-400">{o.laborcode}</span>
-                                        </label>
-                                    ))}
-                                </div>
-                            )}
-                            {(contractorPicked || (reviewMode && !!maximoContractor.trim())) && (
-                                <div className="tw-mt-3 tw-space-y-1.5">
-                                    <label className="tw-block tw-text-xs tw-font-semibold tw-text-blue-gray-700">
-                                        {t("contractorName", lang)} <span className="tw-text-red-500">*</span>
-                                    </label>
-                                    <input type="text" value={maximoContractor} onChange={(e) => setMaximoContractor(e.target.value)}
-                                        placeholder={t("contractorPlaceholder", lang)}
-                                        className={`tw-w-full tw-rounded-lg tw-border tw-px-3 tw-py-2.5 tw-text-sm tw-text-blue-gray-800 focus:tw-outline-none ${contractorMissing ? "tw-border-red-400 focus:tw-border-red-500" : "tw-border-blue-gray-200 focus:tw-border-blue-500"}`} />
-                                    {contractorMissing && <p className="tw-text-xs tw-text-red-600">{t("contractorRequired", lang)}</p>}
-                                </div>
-                            )}
+                    <div className="tw-mt-6 tw-pt-4 tw-border-t tw-border-gray-200">
+                        <div className="tw-mb-2">
+                            <Typography variant="h6" className="tw-text-sm sm:tw-text-base">{t("maximoLabor", lang)}</Typography>
+                            <Typography variant="small" className="tw-text-xs tw-font-normal tw-text-blue-gray-400">
+                                {t("maximoLaborHint", lang)}
+                            </Typography>
                         </div>
-                    )}
+                        {laborList.length === 0 ? (
+                            <p className="tw-text-xs tw-text-orange-600">
+                                            {reviewMode ? t("maximoLaborNone", lang) : t("maximoLaborEmpty", lang)}
+                                        </p>
+                        ) : (
+                            <div className="tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-divide-y tw-divide-blue-gray-50 tw-max-h-56 tw-overflow-y-auto">
+                                {laborList.map((o) => (
+                                    <label key={o.laborcode} className="tw-flex tw-items-center tw-gap-2.5 tw-px-3 tw-py-2.5 tw-cursor-pointer hover:tw-bg-blue-gray-50/60 tw-transition-colors">
+                                        {!reviewMode && (<input type="checkbox" checked={maximoLabor.includes(o.laborcode)}
+                                            onChange={() => toggleMaximoLabor(o.laborcode)}
+                                            className="tw-h-4 tw-w-4 tw-shrink-0 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500 tw-cursor-pointer" />)}
+                                        <span className="tw-min-w-0 tw-truncate tw-text-sm tw-text-blue-gray-800">{o.name}</span>
+                                        <span className="tw-ml-auto tw-font-mono tw-text-xs tw-text-blue-gray-400">{o.laborcode}</span>
+                                    </label>
+                                ))}
+                            </div>
+                        )}
+                        {(contractorPicked || (reviewMode && !!maximoContractor.trim())) && (
+                            <div className="tw-mt-3 tw-space-y-1.5">
+                                <label className="tw-block tw-text-xs tw-font-semibold tw-text-blue-gray-700">
+                                    {t("contractorName", lang)} <span className="tw-text-red-500">*</span>
+                                </label>
+                                <input type="text" value={maximoContractor} onChange={(e) => setMaximoContractor(e.target.value)}
+                                    placeholder={t("contractorPlaceholder", lang)}
+                                    className={`tw-w-full tw-rounded-lg tw-border tw-px-3 tw-py-2.5 tw-text-sm tw-text-blue-gray-800 focus:tw-outline-none ${contractorMissing ? "tw-border-red-400 focus:tw-border-red-500" : "tw-border-blue-gray-200 focus:tw-border-blue-500"}`} />
+                                {contractorMissing && <p className="tw-text-xs tw-text-red-600">{t("contractorRequired", lang)}</p>}
+                            </div>
+                        )}
+                    </div>
 
                         {/* โหมดตรวจไม่ต้องมี ฟอร์มฝั่งช่างดักความครบถ้วนไว้ตั้งแต่ตอนกรอกแล้ว */}
-                        {!reviewMode && (
+                        {!reviewMode && !legacyDoc && (
                             <PMValidationCard
-                                lang={lang} displayTab={displayTab} isPostMode={isPostMode}
+                                lang={lang}
                                 allPhotosAttached={allPhotosAttached} missingPhotoItems={missingPhotoItems}
                                 allRequiredInputsFilled={allRequiredInputsFilled} missingInputsDetailed={missingInputsDetailed}
-                                allRemarksFilledPre={allRemarksFilledPre} missingRemarksPre={missingRemarksPre}
-                                allPFAnsweredPost={allPFAnsweredPost} missingPFItemsPost={missingPFItemsPost}
-                                allRemarksFilledPost={allRemarksFilledPost} missingRemarksPost={missingRemarksPost}
+                                allPFAnswered={allPFAnswered} missingPFItems={missingPFItems}
+                                allRemarksFilled={allRemarksFilled} missingRemarks={missingRemarks}
                                 isSummaryFilled={isSummaryFilled} isSummaryCheckFilled={isSummaryCheckFilled}
                             />
                         )}
                         {/* ดูอย่างเดียว: ตรวจได้ แต่ไม่มีปุ่มบันทึกให้กด */}
-                        {!reviewMode && (
+                        {!reviewMode && !legacyDoc && (
                             <div className="tw-flex tw-flex-col sm:tw-flex-row tw-justify-end tw-gap-2 sm:tw-gap-3">
-                                {displayTab === "pre" ? (
-                                    <Button type="button" onClick={onPreSave} disabled={!canGoAfter || submitting}
-                                        className="tw-text-sm tw-py-2.5 tw-bg-gray-800 hover:tw-bg-gray-900"
-                                        title={!allPhotosAttachedPre ? t("photoNotComplete", lang) : !allRequiredInputsFilled ? t("inputNotComplete", lang) : !allRemarksFilledPre ? `${t("alertFillRemark", lang)} ${missingRemarksPre.join(", ")}` : undefined}>
-                                        {submitting ? t("saving", lang) : t("save", lang)}
-                                    </Button>
-                                ) : (
-                                    <Button type="button" onClick={onFinalSave} disabled={!canFinalSave || submitting}
-                                        className="tw-text-sm tw-py-2.5 tw-bg-gray-800 hover:tw-bg-gray-900"
-                                        title={!canFinalSave ? t("allNotComplete", lang) : undefined}>
-                                        {submitting ? t("saving", lang) : t("save", lang)}
-                                    </Button>
-                                )}
+                                <Button type="button" onClick={onFinalSave} disabled={!canFinalSave || submitting}
+                                    className="tw-text-sm tw-py-2.5 tw-bg-gray-800 hover:tw-bg-gray-900"
+                                    title={!canFinalSave ? t("allNotComplete", lang) : undefined}>
+                                    {submitting ? t("saving", lang) : t("save", lang)}
+                                </Button>
                             </div>
                         )}
                     </div>
@@ -2678,8 +2090,8 @@ export default function MDBPMForm() {
                 </fieldset>
             </form>
             <BackgroundUploadBanner lang={lang} />
-            {/* เทียบผลก่อน/หลังของหัวข้อเดียวกันในบรรทัดเดียว */}
-            {reviewMode && editId && (
+            {/* ใบรุ่นเก่า — อ่านคำตอบ/รูปจากตารางสรุป (ก่อน/หลัง PM ถ้าใบนั้นมีทั้งสองด่าน) */}
+            {legacyDoc && (
                 <PmCompareTable
                     rows={compareRows}
                     lang={lang}
@@ -2691,7 +2103,7 @@ export default function MDBPMForm() {
                     summaryPost={summary}
                 />
             )}
-            {reviewMode && editId && (
+            {legacyDoc && (
                 <div className="tw-mx-auto tw-max-w-6xl tw-mt-6 tw-rounded-xl tw-border tw-border-blue-gray-100 tw-bg-white tw-p-5 tw-shadow-sm sm:tw-p-6">
                     <fieldset disabled className="pm-readonly tw-m-0 tw-min-w-0 tw-border-0 tw-p-0">
                         {summaryBlock}
