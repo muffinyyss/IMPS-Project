@@ -2411,13 +2411,25 @@ async def cmreport_delete(
     coll = get_cmreport_collection_for(station_id)
     if not current.is_super_admin:
         assert_station_access(current, station_id)
-        doc = await coll.find_one({"_id": oid}, {"reported_by": 1, "job": 1})
+        doc = await coll.find_one({"_id": oid}, {"reported_by": 1, "job": 1, "status": 1, "stage": 1})
         reporter = ""
         if doc:
             job = doc.get("job") or {}
             reporter = (doc.get("reported_by") or job.get("reported_by") or "").strip().lower()
         if not doc or reporter != (current.username or "").strip().lower():
             raise HTTPException(status_code=403, detail="Not allowed to delete")
+
+        # cs ลบได้เฉพาะใบที่ยังเป็น "SR รออนุมัติ" (Wait for approve + stage cs_approval)
+        # ผ่านด่าน head cs ไปแล้ว = เป็น WO ที่มีคนอื่นทำงานต่อ — cs ยกเลิกได้ แต่ลบทิ้งไม่ได้
+        if (current.role or "").strip().lower() == "cs":
+            job = doc.get("job") or {}
+            cur_status = str(doc.get("status") or job.get("status") or "").strip().lower()
+            cur_stage = str(doc.get("stage") or job.get("stage") or "").strip().lower()
+            if not (cur_status == "wait for approve" and cur_stage == "cs_approval"):
+                raise HTTPException(
+                    status_code=403,
+                    detail="CS can only delete an SR that is still awaiting approval",
+                )
 
     # ลองลบจาก CM report ก่อน (จับคู่ station_id) → ถ้าไม่เจอลองแบบไม่ผูก station → สุดท้ายลองจาก cmurl (ไฟล์อัปโหลด)
     res = await coll.delete_one({"_id": oid, "station_id": station_id})
