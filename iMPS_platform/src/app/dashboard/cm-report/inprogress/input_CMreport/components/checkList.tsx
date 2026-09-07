@@ -21,6 +21,7 @@ import { ZoomableImg, AttachmentFileRow, isImageAttachment } from "@/app/dashboa
 import RepairRoundCard, { type RepairRound } from "@/app/dashboard/cm-report/components/RepairRoundCard";
 import LockBanner from "@/app/dashboard/cm-report/components/LockBanner";
 import { damageSymptomLabel } from "@/app/dashboard/cm-report/lib/damageSymptoms";
+import { WARRANTY_STATUS_OPTIONS, INVESTMENT_SCOPE_OPTIONS, labelOf } from "@/app/dashboard/stations/components/stationOptions";
 
 // ==================== DEVICE NAME FORMATTER ====================
 function formatDeviceName(name: string): string {
@@ -71,6 +72,9 @@ const T = {
     details: { th: "รายละเอียด", en: "Details" },
     jobStatus: { th: "สถานะงาน", en: "Job Status" },
     remarks: { th: "หมายเหตุ", en: "Remarks" },
+    warrantyStatus: { th: "การรับประกัน", en: "Warranty" },
+    investmentScope: { th: "สัดส่วนการลงทุน", en: "Investment Scope" },
+    ioCode: { th: "รหัสค่าใช้จ่าย (IO)", en: "Expense Code (IO)" },
     photos: { th: "รูปภาพ", en: "Photos" },
     noPhotos: { th: "ยังไม่มีรูปแนบ", en: "No photos attached" },
 
@@ -925,6 +929,12 @@ export default function CMInProgressForm() {
     const addCauseGroup = () => setExtraGroups(g => [...g, newGroup("cause")]);
     const addCorrectionGroup = () => setExtraGroups(g => [...g, newGroup("correction")]);
     const [reportedBy, setReportedBy] = useState("");
+    // ข้อมูลที่บันทึกจากหน้า Open — ช่างใช้ตรวจสอบก่อนเริ่มแก้ไข (อ่านอย่างเดียว)
+    const [openStationDetails, setOpenStationDetails] = useState({
+        warrantyStatus: "",
+        investmentScope: [] as string[],
+        ioCode: "",
+    });
     const [inspector, setInspector] = useState("");
     const [recordInspector, setRecordInspector] = useState(""); // inspector ที่บันทึกในใบงานแล้ว = เจ้าของใบงานเฟสซ่อม
     // ประวัติผลซ่อมรอบก่อน ๆ (อ่านอย่างเดียว) — flat fields คือรอบที่กำลังกรอก
@@ -2194,6 +2204,11 @@ export default function CMInProgressForm() {
                 loadedJobRef.current = normalizedJob;
 
                 setReportedBy(data.reported_by ?? "");
+                setOpenStationDetails({
+                    warrantyStatus: data.warranty_status ?? "",
+                    investmentScope: Array.isArray(data.investment_scope) ? data.investment_scope : [],
+                    ioCode: data.io_code ?? "",
+                });
                 setApprovedBy(data.approved_by ?? "");
                 setApprovalStage(data.stage ?? "");
                 setRejectedInfo({ remark: data.reject_remark ?? "", by: data.rejected_by ?? "" });
@@ -2966,7 +2981,7 @@ export default function CMInProgressForm() {
                             <div className="tw-w-8 tw-h-8 tw-rounded-full tw-bg-white tw-text-red-600 tw-flex tw-items-center tw-justify-center tw-font-bold tw-text-sm">1</div>
                             <span className="tw-font-semibold tw-text-base">{t("problemDetails", lang)}</span>
                             <span className="tw-ml-auto tw-text-xs tw-bg-white/20 tw-px-2.5 tw-py-1 tw-rounded-full tw-font-medium">
-                                {viewOnly ? (lang === "th" ? "อ่านอย่างเดียว" : "Read Only") : (lang === "th" ? "ระบุตำแหน่งที่ผิดปกติ" : "Select failure location")}
+                                {viewOnly || !repairStarted ? (lang === "th" ? "อ่านอย่างเดียว" : "Read Only") : (lang === "th" ? "ระบุตำแหน่งที่ผิดปกติ" : "Select failure location")}
                             </span>
                         </div>
 
@@ -3035,19 +3050,47 @@ export default function CMInProgressForm() {
                                 </div>
                             </div>
 
+                            {/* Station-level details saved from Open (read only) */}
+                            <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-3 tw-gap-4">
+                                <div>
+                                    <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-2">{t("warrantyStatus", lang)}</label>
+                                    <div className="tw-min-h-10 tw-flex tw-items-center tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-gray-100 tw-px-3 tw-py-2 tw-text-sm tw-text-blue-gray-700">
+                                        {openStationDetails.warrantyStatus
+                                            ? labelOf(WARRANTY_STATUS_OPTIONS, openStationDetails.warrantyStatus, lang)
+                                            : "-"}
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-2">{t("investmentScope", lang)}</label>
+                                    <div className="tw-min-h-10 tw-flex tw-flex-wrap tw-items-center tw-gap-2 tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-gray-100 tw-px-3 tw-py-2">
+                                        {openStationDetails.investmentScope.length > 0
+                                            ? openStationDetails.investmentScope.map(scope => (
+                                                <span key={scope} className="tw-rounded-full tw-bg-blue-50 tw-px-2.5 tw-py-1 tw-text-xs tw-font-medium tw-text-blue-700">
+                                                    {labelOf(INVESTMENT_SCOPE_OPTIONS, scope, lang)}
+                                                </span>
+                                            ))
+                                            : <span className="tw-text-sm tw-text-blue-gray-500">-</span>}
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-2">{t("ioCode", lang)}</label>
+                                    <div className="tw-min-h-10 tw-flex tw-items-center tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-gray-100 tw-px-3 tw-py-2 tw-text-sm tw-text-blue-gray-700 tw-break-all">
+                                        {openStationDetails.ioCode || "-"}
+                                    </div>
+                                </div>
+                            </div>
+
                             {/* Problem Details */}
                             <div>
                                 <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-2">{t("problemSummarySection", lang)}</label>
                                 <Textarea value={job.problem_details || ""} readOnly rows={2} className="!tw-w-full !tw-border-blue-gray-200 !tw-bg-gray-100 !tw-text-blue-gray-700 !tw-opacity-100" style={{ backgroundColor: "#f3f4f6", color: "#455a64" }} containerProps={{ className: "!tw-min-w-0" }} />
                             </div>
 
-                            {/* Remarks - ซ่อนถ้าไม่มีหมายเหตุ */}
-                            {(job.remarks || "").trim() && (job.remarks || "").trim() !== "-" && (
-                                <div>
-                                    <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-2">{t("remarks", lang)}</label>
-                                    <Textarea value={job.remarks || ""} readOnly rows={2} className="!tw-w-full !tw-border-blue-gray-200 !tw-bg-gray-100 !tw-text-blue-gray-700 !tw-opacity-100" style={{ backgroundColor: "#f3f4f6", color: "#455a64" }} containerProps={{ className: "!tw-min-w-0" }} />
-                                </div>
-                            )}
+                            {/* Remarks from Open — แสดงหัวข้อเสมอเพื่อให้รายละเอียดครบทุกช่อง */}
+                            <div>
+                                <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-2">{t("remarks", lang)}</label>
+                                <Textarea value={(job.remarks || "").trim() || "-"} readOnly rows={2} className="!tw-w-full !tw-border-blue-gray-200 !tw-bg-gray-100 !tw-text-blue-gray-700 !tw-opacity-100" style={{ backgroundColor: "#f3f4f6", color: "#455a64" }} containerProps={{ className: "!tw-min-w-0" }} />
+                            </div>
 
                             {/* Job Status */}
                             <div>
