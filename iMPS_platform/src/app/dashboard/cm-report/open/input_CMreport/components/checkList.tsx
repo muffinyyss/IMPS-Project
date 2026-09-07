@@ -10,8 +10,7 @@ import { useLanguage, type Lang } from "@/utils/useLanguage";
 import { draftKey as getDraftKey, saveDraftLocal, loadDraftLocal, clearDraftLocal, type CMDraftData } from "../lib/draft";
 import { putPhoto, getPhotosByDraftKey, delPhoto, delPhotosByDraftKey, createPreviewUrl, photoRefToFile, type PhotoRef } from "../lib/draftPhotos";
 import { apiFetch } from "@/utils/api";
-import { useMaximoFailureTree, failureClassOptions, failureClassRole } from "@/app/dashboard/cm-report/lib/maximo";
-import { failureCodeLabel } from "@/app/dashboard/cm-report/lib/failureCode";
+import { useMaximoFailureTree, failureClassRole } from "@/app/dashboard/cm-report/lib/maximo";
 import { useReportLock } from "@/app/dashboard/cm-report/lib/lock";
 import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
 import { cmBackRoute } from "@/app/dashboard/cm-report/lib/origin";
@@ -20,6 +19,7 @@ import ChargerIdentity, { type ChargerIdentityData } from "@/app/dashboard/cm-re
 import LockBanner from "@/app/dashboard/cm-report/components/LockBanner";
 import { WARRANTY_STATUS_OPTIONS, INVESTMENT_SCOPE_OPTIONS, MultiSelectDropdown } from "@/app/dashboard/stations/components/stationOptions";
 import { ZoomableImg, AttachmentFileRow, isImageAttachment, isVideoAttachment, isAllowedCmAttachment, CM_ACCEPT_ATTACH } from "@/app/dashboard/cm-report/components/photo-viewer";
+import { DAMAGE_SYMPTOM_OPTIONS } from "@/app/dashboard/cm-report/lib/damageSymptoms";
 
 // ==================== TRANSLATIONS ====================
 const T = {
@@ -38,6 +38,9 @@ const T = {
     reporteed_by: { th: "ผู้แจ้งปัญหา", en: "Reported by" },
     faultyEquipment: { th: "ตำแหน่งจุดที่มีความผิดปกติ", en: "FAILURECODE DESCRIPTION" },
     selectEquipmentPlaceholder: { th: "เลือกตำแหน่ง...", en: "Select location..." },
+    damageSymptoms: { th: "อาการชำรุด", en: "Damage Symptoms" },
+    selectDamageSymptoms: { th: "เลือกอาการชำรุด (เลือกได้หลายรายการ)...", en: "Select damage symptoms (multiple allowed)..." },
+    damageSymptomOther: { th: "โปรดระบุอาการชำรุดอื่น ๆ", en: "Please specify other damage symptoms" },
     loadingChargers: { th: "กำลังโหลด...", en: "Loading..." },
     noChargersFound: { th: "ไม่พบ Charger", en: "No chargers found" },
     problemDetails: { th: "รายละเอียดปัญหา", en: "Problem Details" },
@@ -119,7 +122,8 @@ const T = {
     allComplete: { th: "กรอกข้อมูลครบถ้วน พร้อมบันทึก ✓", en: "All fields completed. Ready to save ✓" },
     remaining: { th: "ยังขาดอีก", en: "Missing" },
     items: { th: "รายการ", en: "items" },
-    validEquipment: { th: "ตำแหน่งจุดที่มีความผิดปกติ", en: "FAILURECODE DESCRIPTION" },
+    validDamageSymptoms: { th: "อาการชำรุด", en: "Damage Symptoms" },
+    validDamageSymptomOther: { th: "รายละเอียดอาการชำรุดอื่น ๆ", en: "Other Damage Symptom Details" },
     validSeverity: { th: "ความเร่งด่วน", en: "Urgency" },
     validProblemFound: { th: "ปัญหาที่พบ", en: "Problem Found" },
     validPhotos: { th: "รูปภาพ / ไฟล์แนบ", en: "Photos / Files" },
@@ -130,7 +134,7 @@ const T = {
     clearDraft: { th: "ล้างร่าง", en: "Clear draft" },
     // ═══ Maximo ═══
     maximoSrCreated: { th: "สร้าง Maximo SR สำเร็จ", en: "Maximo SR Created" },
-    maximoSrFailed: { th: "ไม่สามารถสร้าง Maximo SR (บันทึก CM สำเร็จแล้ว)", en: "Maximo SR not created (CM saved)" },
+    maximoSrPending: { th: "Maximo SR จะถูกเปิดหลังผู้อนุมัติตรวจใบงานแล้ว", en: "Maximo SR will be created after the approver reviews this report." },
     maximoWoCreated: { th: "เปิดใบสั่งงานใน Maximo แล้ว เลขที่", en: "Maximo work order created:" },
     maximoWoFailed: {
         th: "บันทึกแผนสำเร็จ แต่เปิดใบสั่งงานใน Maximo ไม่สำเร็จ — สั่งยิงซ้ำได้จากหน้ารายละเอียดใบงาน",
@@ -451,8 +455,9 @@ function SuccessBanner({
                                     🎫 Maximo SR: <span className="tw-font-mono tw-font-bold tw-text-green-900 tw-bg-green-200 tw-px-2 tw-py-0.5 tw-rounded">{maximoTicketId}</span>
                                 </p>
                             ) : (
-                                <p className="tw-text-xs tw-text-amber-600 tw-mt-1">
-                                    {t("maximoSrFailed", lang)}
+                                <p className="tw-text-xs tw-text-blue-gray-500 tw-mt-1">
+                                    {/* ใบเปิดใหม่ยังไม่มี SR — ระบบจะยิงให้ตอน planner อนุมัติ */}
+                                    {t("maximoSrPending", lang)}
                                 </p>
                             )}
                         </div>
@@ -611,6 +616,8 @@ export default function CMOpenForm() {
     const [investmentScope, setInvestmentScope] = useState<string[]>([]);
     const [ioCode, setIoCode] = useState("");
     const [faultyEquipment, setFaultyEquipment] = useState("");
+    const [damageSymptoms, setDamageSymptoms] = useState<string[]>([]);
+    const [damageSymptomOther, setDamageSymptomOther] = useState("");
     const [selectedChargerNo, setSelectedChargerNo] = useState("");
     const [selectedChargerSn, setSelectedChargerSn] = useState("");
     const [chargerTypeHint, setChargerTypeHint] = useState("");
@@ -813,24 +820,6 @@ export default function CMOpenForm() {
         return type === "DC" || type === "AC" ? type : "";
     }, [chargers, selectedChargerNo, selectedChargerSn, chargerTypeHint]);
 
-    // FAILURECODE options — รายการมาจาก Maximo (IN04)
-    // • เข้ามาจากการ์ดตู้ชาร์จ → เห็นเฉพาะ failure class ของชนิดตู้นั้น (การ์ด AC ไม่ต้องเห็น DC Charger Failure)
-    // • เข้าแบบระดับสถานี → กรองตามชนิดตู้ที่สถานีนี้มีจริงเหมือนเดิม
-    //   (สถานีที่ยังไม่มีข้อมูลตู้ ถือว่าเป็น DC ไว้ก่อน)
-    const hasDC = pinnedChargerType
-        ? pinnedChargerType === "DC"
-        : (chargers.length === 0 || chargers.some(c => (c.chargerType || "DC").toUpperCase() === "DC"));
-    const hasAC = pinnedChargerType
-        ? pinnedChargerType === "AC"
-        : chargers.some(c => (c.chargerType || "").toUpperCase() === "AC");
-    const failureCodeOptions = useMemo(
-        () => failureClassOptions(maximoTree, { hasDC, hasAC }) ?? [],
-        [maximoTree, hasDC, hasAC],
-    );
-    // ตารางยังโหลดไม่เสร็จ หรือ backend ยังไม่เคย sync จาก Maximo — บอกให้รู้
-    // แทนที่จะปล่อย dropdown ว่างเปล่าโดยไม่มีคำอธิบาย
-    const failureCodesUnavailable = failureCodeOptions.length === 0;
-
     // ใบใหม่: ค่าที่ค้างมาจาก draft อาจเป็น failure class ของตู้คนละชนิดกับการ์ดที่กดเข้ามา
     // ต้องล้างทิ้ง ไม่งั้นเปิดใบ DC บนตู้ AC ได้ผ่านค่าเก่าที่ dropdown ไม่ได้แสดงแล้ว
     // (edit mode ห้ามแตะ — ต้องคงข้อมูลใบเดิมไว้)
@@ -897,14 +886,16 @@ export default function CMOpenForm() {
                 value != null && value !== "" && `charger_${String(value).trim().toLowerCase()}` === key
             );
         });
+        // เข้ามาจากการกดการ์ด Charger: แสดงตู้ที่กดทันที ไม่ต้องรอเลือก failure location
+        // (field นั้นถูกย้ายไปกรอกในหน้า In Progress แล้ว)
+        if (selected) return [toIdentity(selected)];
+
         const failureRole = failureClassRole(maximoTree, faultyEquipment);
-        const targets = selected
-            ? [selected]
-            : chargerTargets.length > 0
-                ? chargerTargets
-                : matched
-                    ? [matched]
-                    : [];
+        const targets = chargerTargets.length > 0
+            ? chargerTargets
+            : matched
+                ? [matched]
+                : [];
         if (failureRole === "dc" || failureRole === "ac") {
             return targets.map(toIdentity);
         }
@@ -915,11 +906,12 @@ export default function CMOpenForm() {
 
     // ==================== VALIDATION ====================
     const validations = useMemo<ValidationItem[]>(() => [
-        { key: "equipment", label: t("validEquipment", lang), isValid: !!faultyEquipment, message: t("notSelected", lang), isRequired: true, scrollId: "cm-equipment" },
+        { key: "damageSymptoms", label: t("validDamageSymptoms", lang), isValid: damageSymptoms.length > 0, message: t("notSelected", lang), isRequired: true, scrollId: "cm-damage-symptoms" },
+        { key: "damageSymptomOther", label: t("validDamageSymptomOther", lang), isValid: !!damageSymptomOther.trim(), message: t("notFilled", lang), isRequired: damageSymptoms.includes("other"), scrollId: "cm-damage-symptoms" },
         { key: "severity", label: t("validSeverity", lang), isValid: !!severity, message: t("notSelected", lang), isRequired: true, scrollId: "cm-severity" },
         { key: "problemFound", label: t("validProblemFound", lang), isValid: !!problemDetails.trim(), message: t("notFilled", lang), isRequired: true, scrollId: "cm-problem-found" },
         { key: "photos", label: t("validPhotos", lang), isValid: photos_open.length > 0, message: t("notAttached", lang), isRequired: true, scrollId: "cm-photos" },
-    ], [faultyEquipment, severity, problemDetails, photos_open, lang]);
+    ], [damageSymptoms, damageSymptomOther, severity, problemDetails, photos_open, lang]);
     // มีคนถือสิทธิ์กรอกอยู่ = กดบันทึกไม่ได้ (backend ตอบ 409 อยู่แล้ว ปิดปุ่มไว้ก่อนจะได้ไม่เสียเที่ยว)
     const canSave = useMemo(
         () => !lockedBy && validations.filter(v => v.isRequired).every(v => v.isValid),
@@ -963,7 +955,10 @@ export default function CMOpenForm() {
     const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
     const [deleting, setDeleting] = useState(false);
     // super admin ลบได้ทุกใบ / คนเปิดใบงานลบได้เฉพาะใบของตัวเอง
-    const canDeleteJob = (isSuperAdmin || isOwner) && isEdit && !!editId && !!stationId;
+    // cs ลบได้เฉพาะใบที่ยังเป็น "SR รออนุมัติ" (Wait for approve + cs_approval) — ผ่านด่าน head cs
+    // ไปแล้วถือเป็น WO ที่มีคนอื่นทำงานต่อ ให้ยกเลิกแทนการลบ (backend บังคับกฎเดียวกัน)
+    const canDeleteJob = (isSuperAdmin || isOwner) && isEdit && !!editId && !!stationId
+        && (!isCs || isCsPending);
 
     const handleDeleteJob = async () => {
         if (!canDeleteJob) return;
@@ -1111,14 +1106,14 @@ export default function CMOpenForm() {
             setDraftStatus("saving");
             saveDraftLocal(draftKey, {
                 issueId, docName, foundDate, foundTime, location, problemDetails,
-                severity, status, remarks_open, faultyEquipment,
+                severity, status, remarks_open, damageSymptoms, damageSymptomOther,
                 reported_by, warrantyStatus, investmentScope, ioCode,
             });
             setTimeout(() => setDraftStatus("saved"), 300);
             setTimeout(() => setDraftStatus("idle"), 2000);
         }, 1500);
         return () => clearTimeout(timer);
-    }, [issueId, docName, foundDate, foundTime, location, problemDetails, severity, status, remarks_open, faultyEquipment, reported_by, warrantyStatus, investmentScope, ioCode, draftKey, isEdit, stationId, draftLoaded]);
+    }, [issueId, docName, foundDate, foundTime, location, problemDetails, severity, status, remarks_open, damageSymptoms, damageSymptomOther, reported_by, warrantyStatus, investmentScope, ioCode, draftKey, isEdit, stationId, draftLoaded]);
 
     // ==================== DRAFT: LOAD ====================
     useEffect(() => {
@@ -1137,7 +1132,8 @@ export default function CMOpenForm() {
             if (draft.warrantyStatus) setWarrantyStatus(draft.warrantyStatus);
             if (Array.isArray(draft.investmentScope) && draft.investmentScope.length) setInvestmentScope(draft.investmentScope);
             if (draft.ioCode) setIoCode(draft.ioCode);
-            if (draft.faultyEquipment) setFaultyEquipment(draft.faultyEquipment);
+            if (Array.isArray(draft.damageSymptoms)) setDamageSymptoms(draft.damageSymptoms);
+            if (draft.damageSymptomOther) setDamageSymptomOther(draft.damageSymptomOther);
             if (draft.reported_by) setReportedBy(draft.reported_by);
             if (draft.summary) setSummary(draft.summary);
         }
@@ -1303,6 +1299,8 @@ export default function CMOpenForm() {
                 setInvestmentScope(Array.isArray(data.investment_scope) ? data.investment_scope : []);
                 setIoCode(data.io_code ?? "");
                 setFaultyEquipment(data.faulty_equipment ?? "");
+                setDamageSymptoms(Array.isArray(data.damage_symptoms) ? data.damage_symptoms : []);
+                setDamageSymptomOther(data.damage_symptom_other ?? "");
                 setLoadedCharger({
                     chargeBoxID: data.chargeBoxID ?? "",
                     charger_name: data.charger_name ?? "",
@@ -1498,6 +1496,8 @@ ${in01.error ?? ""}`);
                     // เคลียร์ reject_remark = ยืนยันแก้ไขแล้ว → ใบกลับเข้าคิว head cs อีกครั้ง
                     payload.job = {
                         faulty_equipment: faultyEquipment,
+                        damage_symptoms: damageSymptoms,
+                        damage_symptom_other: damageSymptomOther.trim(),
                         severity,
                         problem_details: problemDetails,
                         remarks_open,
@@ -1563,7 +1563,21 @@ ${in01.error ?? ""}`);
             } else {
                 // ถ้าเลือก failure class ระดับ Charger ระบบจะเปิดใบแยกตามตู้ที่ตรงประเภท
                 // ถ้าเป็นตำแหน่งระดับสถานี หรือไม่มีข้อมูลตู้ ให้ทำงานแบบเดิมคือเปิดใบเดียว
-                const splitTargets: Array<ChargerInfo | null> = chargerTargets.length > 0 ? chargerTargets : [null];
+                // เมื่อเปิดใบจากการ์ดตู้ ให้คงเลขตู้/SN ไว้แม้ย้ายการเลือก failure location
+                // ไปทำในหน้า In Progress แล้ว
+                const selectedNo = selectedChargerNo.trim().toLowerCase();
+                const selectedSn = selectedChargerSn.trim().toLowerCase();
+                const selectedTarget = chargers.find(charger => {
+                    if (!selectedNo && !selectedSn) return false;
+                    const no = String(charger.chargerNo ?? charger.charger_no ?? charger.charger_id ?? "").trim().toLowerCase();
+                    const sn = String(charger.SN || charger.sn || "").trim().toLowerCase();
+                    return selectedNo && selectedSn
+                        ? no === selectedNo && sn === selectedSn
+                        : no === selectedNo || sn === selectedSn;
+                });
+                const splitTargets: Array<ChargerInfo | null> = chargerTargets.length > 0
+                    ? chargerTargets
+                    : selectedTarget ? [selectedTarget] : [null];
                 for (const charger of splitTargets) {
                     const chargerNo = charger
                         ? (charger.chargerNo ?? charger.charger_no ?? charger.charger_id)
@@ -1578,6 +1592,8 @@ ${in01.error ?? ""}`);
                             found_date: displayToISO(foundDate),
                             found_time: foundTime || localNowHHMM(),
                             faulty_equipment: faultyEquipment,
+                            damage_symptoms: damageSymptoms,
+                            damage_symptom_other: damageSymptomOther.trim(),
                             charger_no: chargerNo == null ? null : String(chargerNo),
                             charger_sn: chargerSn,
                             severity,
@@ -1722,7 +1738,10 @@ ${in01.error ?? ""}`);
                 credentials: "include",
                 body: JSON.stringify({ remark: commentText.trim() }),
             });
-            if (!res.ok) throw new Error(((await res.json().catch(() => ({}))) as any).detail || `HTTP ${res.status}`);
+            const approved = (await res.json().catch(() => ({}))) as any;
+            if (!res.ok) throw new Error(approved?.detail || `HTTP ${res.status}`);
+            // SR ถูกเปิดตอนอนุมัติ — ถ้ายิงไม่ผ่าน backend คืน null (ยิงซ้ำได้จากหน้ารายละเอียดใบงาน)
+            if (approved?.maximo_ticket_id) setMaximoTicketId(approved.maximo_ticket_id);
             closeCommentModal();
             router.push(buildListUrl("open"));
         } catch (e: any) {
@@ -1971,29 +1990,33 @@ ${in01.error ?? ""}`);
 
                         {/* Section Content */}
                         <div className="tw-p-4 tw-space-y-4">
-                            {/* Problem Location / Damage Symptoms / Severity */}
+                            {/* Damage Symptoms / Severity */}
                             <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-4">
-                                {/* Problem Location (ตำแหน่งจุดที่มีปัญหา) */}
-                                <div id="cm-equipment">
-                                    <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-2">{t("faultyEquipment", lang)} <span className="tw-text-red-500">*</span></label>
-                                    <select value={faultyEquipment} disabled={fieldsLocked} onChange={e => setFaultyEquipment(e.target.value)}
-                                        style={fieldsLocked ? { backgroundColor: '#f3f4f6', color: '#455a64' } : {}}
-                                        className={`tw-w-full tw-h-10 tw-border tw-border-blue-gray-200 tw-rounded-lg tw-px-4 tw-text-sm tw-font-medium tw-transition-colors focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-blue-500 focus:tw-border-transparent ${fieldsLocked ? "tw-bg-gray-100 tw-text-blue-gray-700 tw-cursor-not-allowed tw-opacity-100" : "tw-bg-white tw-text-blue-gray-700 hover:tw-border-blue-gray-300"}`}>
-                                        <option value="">{t("selectEquipmentPlaceholder", lang)}</option>
-                                        {failureCodeOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                                        {/* ค่าเดิมของรายงานเก่าที่ไม่ใช่ failure code — ให้แสดงได้ตอน edit */}
-                                        {faultyEquipment && !failureCodeOptions.some(o => o.value === faultyEquipment) && (
-                                            <option value={faultyEquipment}>{failureCodeLabel(faultyEquipment)}</option>
-                                        )}
-                                    </select>
-                                    {failureCodesUnavailable && <p className="tw-text-xs tw-text-blue-gray-400 tw-mt-2">{t("failureCodesLoading", lang)}</p>}
-                                    {loadingChargers && <p className="tw-text-xs tw-text-blue-gray-400 tw-mt-2">{t("loadingChargers", lang)}</p>}
-                                    {!loadingChargers && chargers.length === 0 && <p className="tw-text-xs tw-text-orange-600 tw-mt-2">{t("noChargersFound", lang)}</p>}
-                                    {false && !isEdit && chargerTargets.length > 0 && (
-                                        <div className="tw-text-xs tw-text-blue-600 tw-mt-2">
-                                            {lang === "th"
-                                                ? `ระบบจะเปิดใบงานแยกตามตู้ชาร์จจำนวน ${chargerTargets.length} ใบ`
-                                                : ""}
+                                <div id="cm-damage-symptoms">
+                                    <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-2">{t("damageSymptoms", lang)} <span className="tw-text-red-500">*</span></label>
+                                    <MultiSelectDropdown
+                                        label=""
+                                        options={DAMAGE_SYMPTOM_OPTIONS}
+                                        selected={damageSymptoms}
+                                        onChange={next => {
+                                            setDamageSymptoms(next);
+                                            if (!next.includes("other")) setDamageSymptomOther("");
+                                        }}
+                                        lang={lang}
+                                        emptyLabel={t("selectDamageSymptoms", lang)}
+                                        disabled={fieldsLocked}
+                                    />
+                                    {damageSymptoms.includes("other") && (
+                                        <div className="tw-mt-3">
+                                            <Input
+                                                value={damageSymptomOther}
+                                                onChange={event => setDamageSymptomOther(event.target.value)}
+                                                disabled={fieldsLocked}
+                                                placeholder={t("damageSymptomOther", lang)}
+                                                crossOrigin=""
+                                                className="!tw-w-full !tw-border-blue-gray-200"
+                                                containerProps={{ className: "!tw-min-w-0" }}
+                                            />
                                         </div>
                                     )}
                                 </div>
