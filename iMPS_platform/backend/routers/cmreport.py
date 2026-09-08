@@ -13,6 +13,7 @@ from config import (
     normalize_pm_date, _ensure_utc_iso,
     CMReportDB, CMReportDB_sync, CMUrlDB, DCTestReportDB, DCUrlDB,
     station_collection, users_collection, charger_coll_async, users_coll_async,
+    stations_coll_async,
     _validate_station_id_th, th_tz,
 )
 from services.maximo import create_sr as maximo_create_sr          # ← A) เพิ่ม
@@ -1748,6 +1749,42 @@ async def cmreport_rollback_new(
             shutil.rmtree(report_dir, ignore_errors=True)
     return {"ok": True, "deleted": bool(result.deleted_count)}
 
+async def _station_company(station_id: str) -> str:
+    """
+    บริษัทเจ้าของสถานี — เกณฑ์เดียวกับ /cmreport/list-all
+    (สถานีรุ่นใหม่เก็บ company ตรง ๆ ส่วนข้อมูลเดิมอ้าง owner user)
+    """
+    station_id = (station_id or "").strip()
+    if not station_id:
+        return ""
+    try:
+        st = await stations_coll_async.find_one(
+            {"station_id": station_id},
+            {"_id": 0, "company": 1, "user_id": 1, "username": 1},
+        )
+    except Exception:
+        return ""
+    if not st:
+        return ""
+
+    company = str(st.get("company") or "").strip()
+    if company:
+        return company
+
+    owner_query = []
+    if isinstance(st.get("user_id"), ObjectId):
+        owner_query.append({"_id": st["user_id"]})
+    if str(st.get("username") or "").strip():
+        owner_query.append({"username": str(st["username"]).strip()})
+    if not owner_query:
+        return ""
+    try:
+        owner = await users_coll_async.find_one({"$or": owner_query}, {"_id": 0, "company": 1})
+    except Exception:
+        return ""
+    return str((owner or {}).get("company") or "").strip()
+
+
 @router.get("/cmreport/{report_id}")
 async def cmreport_detail_path(
     report_id: str,
@@ -1797,6 +1834,9 @@ async def cmreport_detail_path(
         "charger_sn": charger["charger_sn"],
         "charger_model": charger["charger_model"],
         "charger_brand": charger["charger_brand"],
+        # บริษัทเจ้าของใบงาน — ฟอร์มซ่อมใช้แยกงาน EGAT ออกจากงานผู้รับเหมา (laborcode ที่เลือกได้)
+        "company": str(doc.get("company") or nested_job.get("company") or "").strip()
+                   or await _station_company(doc.get("station_id") or station_id),
         "auto_generated": bool(doc.get("auto_generated")),
         "auto_trigger": doc.get("auto_trigger") or "",
         "doc_name": doc.get("doc_name") or "",

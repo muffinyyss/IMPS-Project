@@ -47,11 +47,19 @@ export const UNKNOWN_COMPANY = "Unknown";
 export const FLEXXFAST_BRAND = "FlexxFast";
 export const COMPANY_FILTER_OPTIONS = ["EGAT", "EDS"] as const;
 
-export function companyOf(r: CMRow): string {
+/**
+ * ฟิลด์ขั้นต่ำที่ใช้ตัดสิน brand/company ของใบงาน — ฟอร์ม CM มีข้อมูลแค่ชุดนี้ ไม่ได้มีทั้ง CMRow
+ * (CMRow ใส่แทนได้ตรง ๆ จึงไม่กระทบผู้เรียกเดิม)
+ */
+export type CompanyScopeRow = Partial<
+  Pick<CMRow, "company" | "charger_brand" | "faulty_equipment" | "charger_sn" | "charger_no">
+>;
+
+export function companyOf(r: CompanyScopeRow): string {
   return (r.company || "").trim() || UNKNOWN_COMPANY;
 }
 
-export function brandOf(r: CMRow): string {
+export function brandOf(r: CompanyScopeRow): string {
   const brand = (r.charger_brand || "").trim();
   if (brand.toLowerCase() === FLEXXFAST_BRAND.toLowerCase()) return FLEXXFAST_BRAND;
   return brand || UNKNOWN_BRAND;
@@ -63,7 +71,7 @@ const CHARGER_FAILURE_CODES = ["DCCHARGER", "ACCHARGER", "DCCHARFC", "ACCHARFC"]
 const STATION_FAILURE_CODES = ["STATION", "STATFC"];
 
 /** ใบนี้เปิดกับตู้ชาร์จหรือไม่ — ใบระดับสถานี/MDB ไม่นับ */
-export function isChargerWorkOrder(r: CMRow): boolean {
+export function isChargerWorkOrder(r: CompanyScopeRow): boolean {
   const code = (r.faulty_equipment || "").trim().toUpperCase();
   if (CHARGER_FAILURE_CODES.includes(code)) return true;
   if (STATION_FAILURE_CODES.includes(code)) return false;
@@ -79,11 +87,11 @@ export function isChargerWorkOrder(r: CMRow): boolean {
  * brand ของใบระดับสถานี backend เติมมาจากยี่ห้อของทั้งสถานี ใบพวกนั้นจึงอาจเป็น
  * FlexxFast ทั้งที่ไม่ใช่งานตู้ — ต้องเช็ค isChargerWorkOrder ควบคู่เสมอ
  */
-export function isEdsWorkOrder(r: CMRow): boolean {
+export function isEdsWorkOrder(r: CompanyScopeRow): boolean {
   return brandOf(r).toLowerCase() === FLEXXFAST_BRAND.toLowerCase() && isChargerWorkOrder(r);
 }
 
-export function matchesCompanyFilter(r: CMRow, company: string | null): boolean {
+export function matchesCompanyFilter(r: CompanyScopeRow, company: string | null): boolean {
   if (!company) return true;
   // EDS รับผิดชอบตู้ FlexxFast โดยไม่ขึ้นกับ company ของสถานี
   // จึงต้องใช้ brand ของตู้จากใบงานเป็นเกณฑ์เดียวกับ PM Dashboard
