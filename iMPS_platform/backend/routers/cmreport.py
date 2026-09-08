@@ -2018,6 +2018,13 @@ async def cmreport_update_status(
             if k in allowed_job_keys:
                 updates[k] = v
 
+        # A non-EGAT user always logs Maximo time under the shared contractor
+        # labor code. Enforce this server-side as well as in the form so a stale
+        # client or a crafted request cannot save a personal EGAT labor code.
+        current_company = (current.company or "").strip().lower()
+        if current_company and current_company != "egat":
+            updates["maximo_labor"] = [cm_maximo.CONTRACTOR_LABOR_CODE]
+
         if "found_date" in body.job and body.job.get("found_date"):
             try:
                 updates.setdefault("cm_date", normalize_pm_date(body.job["found_date"]))

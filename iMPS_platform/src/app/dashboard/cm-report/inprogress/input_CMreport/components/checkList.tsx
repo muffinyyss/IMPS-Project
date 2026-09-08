@@ -22,7 +22,6 @@ import RepairRoundCard, { type RepairRound } from "@/app/dashboard/cm-report/com
 import LockBanner from "@/app/dashboard/cm-report/components/LockBanner";
 import { damageSymptomLabel } from "@/app/dashboard/cm-report/lib/damageSymptoms";
 import { WARRANTY_STATUS_OPTIONS, INVESTMENT_SCOPE_OPTIONS, labelOf } from "@/app/dashboard/stations/components/stationOptions";
-import { isEdsWorkOrder, matchesCompanyFilter } from "@/utils/cm-dashboard";
 
 // ==================== DEVICE NAME FORMATTER ====================
 function formatDeviceName(name: string): string {
@@ -97,8 +96,8 @@ const T = {
     },
     maximoLaborEmpty: { th: "ยังไม่มีรหัสช่างจาก Maximo", en: "No Maximo labor codes available" },
     maximoLaborContractorOnly: {
-        th: "ใบงานนี้ไม่ใช่ของ กฟผ. — ลงเวลาได้เฉพาะรหัสกลางของผู้รับเหมา (EVCONTRACTOR)",
-        en: "Not an EGAT work order — time can only be logged under the contractor code (EVCONTRACTOR)",
+        th: "ผู้กรอกใบงานไม่ได้สังกัด กฟผ. — ระบบกำหนดรหัสลงเวลาเป็น EVCONTRACTOR",
+        en: "The current user is not under EGAT — the time-log code is fixed to EVCONTRACTOR",
     },
     maximoLaborContractorMissing: {
         th: "ยังไม่มีรหัสผู้รับเหมา (EVCONTRACTOR) จาก Maximo",
@@ -953,14 +952,13 @@ export default function CMInProgressForm() {
     // แยกจาก assignees เพราะ username ใน iMPS กับ laborcode ของ Maximo คนละชุดกัน
     const [laborOptions, setLaborOptions] = useState<{ laborcode: string; name: string; needs_name?: boolean }[]>([]);
     const [maximoLabor, setMaximoLabor] = useState<string[]>([]);
-    // บริษัทเจ้าของใบงาน (backend เติมจากสถานี) — ใช้แยกงาน กฟผ. ออกจากงานผู้รับเหมา
-    const [jobCompany, setJobCompany] = useState("");
     // EVCONTRACTOR เป็นรหัสกลาง ไม่ผูกกับคน — ต้องให้พิมพ์ชื่อผู้รับเหมาจริงเพิ่ม
     const [maximoContractor, setMaximoContractor] = useState<string>("");
     // ตาราง failure code จาก Maximo (IN04) — ผสมกับตารางในโค้ดเพื่อทำ dropdown ปัญหา→สาเหตุ→การแก้ไข
     const maximoTree = useMaximoFailureTree();
     const [currentUsername, setCurrentUsername] = useState("");
     const [currentRole, setCurrentRole] = useState("");
+    const [currentCompany, setCurrentCompany] = useState("");
     const [approvedBy, setApprovedBy] = useState("");
     const [approvalStage, setApprovalStage] = useState("");
     const [approving, setApproving] = useState(false);
@@ -1514,33 +1512,23 @@ export default function CMInProgressForm() {
         })
     ), [extraGroups, lang, isNoProblem, isWaitingForSiteCondition, isClosedResult]);
 
-    // ใบงานนี้เป็นของใคร — กฎเดียวกับตัวกรอง Company ของ CM List/Dashboard
-    // (ใบของตู้ FlexxFast = งาน EDS เสมอ แม้สถานีจะเป็นของ กฟผ.)
-    const companyScopeRow = useMemo(() => ({
-        company: jobCompany,
-        charger_brand: chargerIdentity?.charger_brand ?? "",
-        faulty_equipment: job.faulty_equipment,
-        charger_sn: job.charger_sn || chargerIdentity?.charger_sn || "",
-        charger_no: job.charger_no || chargerIdentity?.charger_no || "",
-    }), [jobCompany, chargerIdentity, job.faulty_equipment, job.charger_sn, job.charger_no]);
-    const isEdsJob = useMemo(() => isEdsWorkOrder(companyScopeRow), [companyScopeRow]);
-    const isEgatJob = useMemo(() => matchesCompanyFilter(companyScopeRow, "EGAT"), [companyScopeRow]);
-
-    // งานที่ไม่ใช่ของ กฟผ. ช่างไม่มี laborcode ของตัวเองใน Maximo — ลงเวลาใต้รหัสกลางผู้รับเหมา
-    // (needs_name = รหัสผู้รับเหมาที่ backend ตั้งไว้ ค่าเริ่มต้นคือ EVCONTRACTOR)
-    // ต้องรู้แน่ว่าไม่ใช่ของ กฟผ. จริง ๆ: ตู้ FlexxFast = EDS เสมอ ส่วนกรณีอื่นต้องมี company มายืนยัน
-    // — สถานีที่ยังไม่ได้กรอก company จึงไม่โดนบีบให้เป็นผู้รับเหมาโดยไม่ตั้งใจ
-    const contractorOnly = isEdsJob || (!!jobCompany.trim() && !isEgatJob);
+    // Maximo labor is determined by the company of the signed-in user, not by
+    // the station, work order, or charger owner.
+    const contractorOnly = !!currentCompany.trim() && currentCompany.trim().toLowerCase() !== "egat";
+    const contractorLaborOption = useMemo(
+        () => laborOptions.find((o) => o.laborcode.trim().toUpperCase() === CONTRACTOR_LABOR_CODE),
+        [laborOptions]
+    );
     const visibleLaborOptions = useMemo(
         () => (contractorOnly
-            ? laborOptions.filter((o) => o.needs_name || o.laborcode.trim().toUpperCase() === CONTRACTOR_LABOR_CODE)
+            ? [contractorLaborOption ?? { laborcode: CONTRACTOR_LABOR_CODE, name: CONTRACTOR_LABOR_CODE, needs_name: true }]
             : laborOptions),
-        [laborOptions, contractorOnly]
+        [laborOptions, contractorOnly, contractorLaborOption]
     );
 
     // ติ๊กรหัสกลางของผู้รับเหมาไว้ = ต้องมีชื่อจริงกำกับ
-    const contractorPicked = laborOptions.some(
-        (o) => o.needs_name && maximoLabor.includes(o.laborcode)
+    const contractorPicked = maximoLabor.some(
+        (code) => code.trim().toUpperCase() === CONTRACTOR_LABOR_CODE
     );
     const contractorMissing = contractorPicked && !maximoContractor.trim();
     // รายชื่อช่างจาก Maximo (IN08) ดึงไม่ได้ = ไม่มีอะไรให้เลือก บังคับไม่ได้
@@ -1959,7 +1947,6 @@ export default function CMInProgressForm() {
                 const data = await res.json();
                 const rawDate = data.cm_date ?? data.found_date ?? "";
 
-                setJobCompany(String(data.company ?? ""));
                 setChargerIdentity({
                     chargeBoxID: data.chargeBoxID ?? "",
                     charger_name: data.charger_name ?? "",
@@ -2340,6 +2327,7 @@ export default function CMInProgressForm() {
                         setInspector(prev => prev || data.username || "");
                         setCurrentUsername(data.username || "");
                         setCurrentRole(data.role || "");
+                        setCurrentCompany(String(data.company || ""));
                     }
                 }
             } catch { }
@@ -2364,13 +2352,15 @@ export default function CMInProgressForm() {
     const toggleMaximoLabor = (code: string) =>
         setMaximoLabor(prev => prev.includes(code) ? prev.filter(c => c !== code) : [...prev, code]);
 
-    // ใบของผู้รับเหมาที่เคยเลือก laborcode ของ กฟผ. ไว้ (หรือเปลี่ยนตู้จนใบเปลี่ยนเจ้าของ)
-    // — ตัดรหัสที่ไม่อยู่ในลิสต์ทิ้ง ไม่งั้นบันทึกไปแล้ว IN09 จะยิงรหัสที่ช่างมองไม่เห็น
+    // ผู้ใช้บริษัทอื่นถูกกำหนดรหัส Maximo ตายตัวเป็น EVCONTRACTOR
+    // หลังโหลดใบงานเสร็จด้วย เพื่อให้ค่าที่บันทึกไว้เดิมไม่เขียนทับกฎนี้จาก race ของสอง request
     useEffect(() => {
-        if (viewOnly || !contractorOnly || visibleLaborOptions.length === 0) return;
-        const allowed = new Set(visibleLaborOptions.map((o) => o.laborcode));
-        setMaximoLabor(prev => (prev.every(c => allowed.has(c)) ? prev : prev.filter(c => allowed.has(c))));
-    }, [viewOnly, contractorOnly, visibleLaborOptions]);
+        if (viewOnly || !jobLoaded || !contractorOnly) return;
+        const fixedCode = contractorLaborOption?.laborcode || CONTRACTOR_LABOR_CODE;
+        setMaximoLabor(prev => (
+            prev.length === 1 && prev[0] === fixedCode ? prev : [fixedCode]
+        ));
+    }, [viewOnly, jobLoaded, contractorOnly, contractorLaborOption]);
 
     // ==================== HANDLERS ====================
     // อนุมัติปิดใบงาน — ย้ายมาจากตาราง In Progress เพื่อให้ผู้อนุมัติเห็นรายละเอียดใบงานก่อนกด
@@ -3236,7 +3226,9 @@ export default function CMInProgressForm() {
                                     )
                                 ) : (
                                 <>
-                                    <p className="tw-text-xs tw-text-gray-500">{t("maximoLaborHint", lang)}</p>
+                                    {!contractorOnly && (
+                                        <p className="tw-text-xs tw-text-gray-500">{t("maximoLaborHint", lang)}</p>
+                                    )}
                                     {contractorOnly && (
                                         <p className="tw-text-xs tw-text-amber-700">{t("maximoLaborContractorOnly", lang)}</p>
                                     )}
@@ -3247,12 +3239,13 @@ export default function CMInProgressForm() {
                                     ) : (
                                         <div className="tw-rounded-xl tw-border tw-border-gray-200 tw-bg-white tw-divide-y tw-divide-gray-100 tw-max-h-56 tw-overflow-y-auto">
                                             {visibleLaborOptions.map((o) => (
-                                                <label key={o.laborcode} className="tw-flex tw-items-center tw-gap-2.5 tw-px-3 tw-py-2.5 tw-cursor-pointer hover:tw-bg-blue-50/60 tw-transition-colors">
+                                                <label key={o.laborcode} className={`tw-flex tw-items-center tw-gap-2.5 tw-px-3 tw-py-2.5 tw-transition-colors ${contractorOnly ? "tw-cursor-not-allowed tw-bg-gray-50" : "tw-cursor-pointer hover:tw-bg-blue-50/60"}`}>
                                                     <input
                                                         type="checkbox"
                                                         checked={maximoLabor.includes(o.laborcode)}
                                                         onChange={() => toggleMaximoLabor(o.laborcode)}
-                                                        className="tw-h-4 tw-w-4 tw-shrink-0 tw-rounded tw-border-gray-300 tw-text-blue-600 focus:tw-ring-blue-500 tw-cursor-pointer"
+                                                        disabled={contractorOnly}
+                                                        className="tw-h-4 tw-w-4 tw-shrink-0 tw-rounded tw-border-gray-300 tw-text-blue-600 focus:tw-ring-blue-500 tw-cursor-pointer disabled:tw-cursor-not-allowed"
                                                     />
                                                     <span className="tw-min-w-0 tw-truncate tw-text-sm tw-text-gray-800">{o.name}</span>
                                                     <span className="tw-ml-auto tw-font-mono tw-text-xs tw-text-gray-400">{o.laborcode}</span>
