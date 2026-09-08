@@ -22,6 +22,7 @@ import useLanguage from "@/utils/useLanguage";
 import { PM_ORIGIN_LIST } from "@/app/dashboard/pm-report/lib/origin";
 import { PM_PLANNING_ROLES } from "@/app/dashboard/pm-report/components/planning";
 import { PM_APPROVE_ROLES } from "@/app/dashboard/pm-report/components/flow";
+import { COMPANY_FILTER_OPTIONS, matchesCompanyFilter } from "@/utils/pm-dashboard";
 
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 500;
@@ -42,6 +43,10 @@ type PMRow = {
   chargeBoxID: string;
   station_id: string;
   station_name?: string;
+  /** บริษัทเจ้าของสถานี (backend เติมให้จาก iMPS.stations) */
+  company?: string;
+  /** ยี่ห้อของตู้ — EDS ดูแลตู้ FlexxFast โดยไม่ขึ้นกับ company ของสถานี */
+  charger_brand?: string;
   side: string;
   created_at: string;
   file_url: string;
@@ -117,6 +122,8 @@ function weeksInMonth(year: number, month: number): number {
 export default function PMListPage() {
   const [rows, setRows] = useState<PMRow[]>([]);
   const [me, setMe] = useState<{ username: string; role: string } | null>(null);
+  const [userCompany, setUserCompany] = useState("");
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -124,6 +131,8 @@ export default function PMListPage() {
   const [monthSel, setMonthSel] = useState<number | "all">("all");
   const [weekSel, setWeekSel] = useState<number | "all">("all");
   const [stationFilter, setStationFilter] = useState("All");
+  // null = ทุกบริษัท (ค่าเริ่มต้น เหมือนหน้า PM Dashboard — ไม่ซ่อนงานของใครตั้งแต่เปิดหน้า)
+  const [companyFilter, setCompanyFilter] = useState<string | null>(null);
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
   const [stageFilter, setStageFilter] = useState<PmStage | null>(null);
   const [search, setSearch] = useState("");
@@ -142,7 +151,13 @@ export default function PMListPage() {
         const res = await apiFetch("/me");
         if (!res.ok) return;
         const u = await res.json();
-        if (alive) setMe({ username: u?.username ?? "", role: String(u?.role ?? "").trim().toLowerCase() });
+        if (alive) {
+          const company = String(u?.company ?? "");
+          const superAdmin = !!u?.is_super_admin;
+          setMe({ username: u?.username ?? "", role: String(u?.role ?? "").trim().toLowerCase() });
+          setUserCompany(company);
+          setIsSuperAdmin(superAdmin);
+        }
       } catch (err) {
         console.error("fetch /me error:", err);
       }
@@ -213,6 +228,8 @@ export default function PMListPage() {
               chargeBoxID: "",
               station_id: String(w?.station_id || ""),
               station_name: String(w?.station_id || w?.location || ""),
+              company: String(w?.company || ""),
+              charger_brand: String(w?.charger_brand || ""),
               side: "",
               created_at: String(w?.receivedAt || ""),
               file_url: "",
@@ -239,6 +256,8 @@ export default function PMListPage() {
       weekOption: (n: number) => `สัปดาห์ที่ ${n}`,
       monthsLong: ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"],
       stationFilterLabel: "กรองตามสถานี",
+      companyFilterLabel: "บริษัท",
+      allCompanies: "ทุกบริษัท",
       typeFilterLabel: "ชนิดอุปกรณ์",
       allTypes: "ทุกชนิด",
       statusFilterLabel: "กรองตามสถานะ",
@@ -269,6 +288,8 @@ export default function PMListPage() {
       weekOption: (n: number) => `Week ${n}`,
       monthsLong: ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"],
       stationFilterLabel: "Station",
+      companyFilterLabel: "Company",
+      allCompanies: "All companies",
       typeFilterLabel: "Equipment type",
       allTypes: "All types",
       statusFilterLabel: "Status",
@@ -346,11 +367,12 @@ export default function PMListPage() {
     setTypeFilter(null);
     setStageFilter(null);
     setStationFilter("All");
+    setCompanyFilter(null);
     setSearch("");
     setPage(0);
   };
   const activeFilterCount =
-    (typeFilter ? 1 : 0) + (stageFilter ? 1 : 0) + (stationFilter !== "All" ? 1 : 0);
+    (typeFilter ? 1 : 0) + (stageFilter ? 1 : 0) + (stationFilter !== "All" ? 1 : 0) + (companyFilter ? 1 : 0);
 
   // ช่างเห็นเฉพาะงานที่ planner มอบหมายให้ตัวเอง — role อื่นเห็นทุกใบ
   const scopedRows = useMemo(() => {
@@ -363,19 +385,29 @@ export default function PMListPage() {
     );
   }, [rows, me]);
 
+  const isEgatCompany = userCompany.trim().toLowerCase() === "egat";
+  // EGAT ดูแลทุกบริษัท + super admin — คนบริษัทอื่นเห็นเฉพาะงานของตัวเองอยู่แล้ว ไม่ต้องมีดรอปดาวน์
+  const canSeeAllCompanies = isSuperAdmin || isEgatCompany;
+
+  // เกณฑ์เดียวกับ PM Dashboard: EDS = ใบของตู้ FlexxFast, บริษัทอื่นเทียบ company ของสถานี
+  const companyRows = useMemo(
+    () => (canSeeAllCompanies ? scopedRows.filter((r) => matchesCompanyFilter(r, companyFilter)) : scopedRows),
+    [scopedRows, companyFilter, canSeeAllCompanies]
+  );
+
   const stations = useMemo(() => {
-    const names = Array.from(new Set(scopedRows.map((r) => r.station_name || r.station_id))).filter(Boolean);
+    const names = Array.from(new Set(companyRows.map((r) => r.station_name || r.station_id))).filter(Boolean);
     return ["All", ...names.sort()];
-  }, [scopedRows]);
+  }, [companyRows]);
 
   const years = useMemo(() => {
     const set = new Set<number>();
-    for (const r of scopedRows) {
+    for (const r of companyRows) {
       const y = yearOf(r.pm_date);
       if (y) set.add(y);
     }
     return Array.from(set).sort((a, b) => b - a);
-  }, [scopedRows]);
+  }, [companyRows]);
 
   const weekCount = useMemo(
     () => (yearSel !== "all" && monthSel !== "all" ? weeksInMonth(yearSel, monthSel) : 0),
@@ -383,14 +415,14 @@ export default function PMListPage() {
   );
 
   const periodRows = useMemo(() => {
-    return scopedRows.filter((r) => {
+    return companyRows.filter((r) => {
       if (stationFilter !== "All" && (r.station_name || r.station_id) !== stationFilter) return false;
       if (yearSel !== "all" && yearOf(r.pm_date) !== yearSel) return false;
       if (monthSel !== "all" && monthOf(r.pm_date) !== monthSel) return false;
       if (weekSel !== "all" && weekOf(r.pm_date) !== weekSel) return false;
       return true;
     });
-  }, [scopedRows, stationFilter, yearSel, monthSel, weekSel]);
+  }, [companyRows, stationFilter, yearSel, monthSel, weekSel]);
 
   const applySearch = useCallback((list: PMRow[]) => {
     const q = search.trim().toLowerCase();
@@ -556,6 +588,22 @@ export default function PMListPage() {
             {stations.map((s) => <option key={s}>{s}</option>)}
           </select>
         </div>
+
+        {canSeeAllCompanies && (
+          <div className="tw-flex tw-items-center tw-gap-1.5">
+            <label htmlFor="company-filter" className="tw-text-xs tw-font-medium tw-text-gray-500">{t.companyFilterLabel}</label>
+            <select
+              id="company-filter" value={companyFilter ?? "all"}
+              onChange={(e) => { setCompanyFilter(e.target.value === "all" ? null : e.target.value); setStationFilter("All"); setPage(0); }}
+              className="tw-rounded-lg tw-border tw-border-gray-200 tw-bg-white tw-px-3 tw-py-1.5 tw-text-sm tw-text-gray-700 tw-shadow-sm focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-blue-400"
+            >
+              <option value="all">{t.allCompanies}</option>
+              {COMPANY_FILTER_OPTIONS.map((company) => (
+                <option key={company} value={company}>{company}</option>
+              ))}
+            </select>
+          </div>
+        )}
 
         <div className="tw-flex tw-items-center tw-gap-1.5">
           <label htmlFor="type-filter" className="tw-text-xs tw-font-medium tw-text-gray-500">{t.typeFilterLabel}</label>
