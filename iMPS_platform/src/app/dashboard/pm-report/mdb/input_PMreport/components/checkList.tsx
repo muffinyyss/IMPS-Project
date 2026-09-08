@@ -210,7 +210,7 @@ const T = {
     cancelNA: { th: "ยกเลิก N/A", en: "Cancel N/A" },
     pass: { th: "PASS", en: "PASS" },
     fail: { th: "FAIL", en: "FAIL" },
-    remark: { th: "หมายเหตุ *", en: "Remark *" },
+    remark: { th: "หมายเหตุ", en: "Remark" },
     testResult: { th: "ผลการทดสอบ", en: "Test Result" },
     comment: { th: "Comment", en: "Comment" },
     summaryResult: { th: "สรุปผลการตรวจสอบ", en: "Summary Result" },
@@ -233,7 +233,6 @@ const T = {
     allComplete: { th: "ครบเรียบร้อย ✅", en: "Complete ✅" },
     alertNoStation: { th: "ยังไม่ทราบ station_id", en: "Station ID not found" },
     alertFillVoltage: { th: "กรุณากรอกค่าแรงดันไฟฟ้าให้ครบก่อนบันทึก", en: "Please fill all voltage values" },
-    alertFillRemark: { th: "กรุณากรอกหมายเหตุข้อ:", en: "Please fill remarks:" },
     alertSaveFailed: { th: "บันทึกไม่สำเร็จ:", en: "Save failed:" },
     dustFilterChanged: { th: "เปลี่ยนแผ่นกรองระบายอากาศ", en: "Ventilation filter replaced" },
     photoNotComplete: { th: "กรุณาแนบรูปให้ครบก่อนบันทึก", en: "Please attach all photos" },
@@ -399,6 +398,12 @@ function useMeasure<U extends string>(keys: readonly string[], defaultUnit: U) {
 
 function useDebouncedEffect(effect: () => void, deps: any[], delay = 800) {
     useEffect(() => { const h = setTimeout(effect, delay); return () => clearTimeout(h); }, deps);
+}
+
+/** เวลาปัจจุบันในรูปแบบที่ input[type=datetime-local] รับ — เวลาเครื่อง ไม่ใช่ UTC */
+function nowLocalDatetime(): string {
+    return new Date(Date.now() - new Date().getTimezoneOffset() * 60000)
+        .toISOString().slice(0, 16);
 }
 
 // ==================== GPS ====================
@@ -615,15 +620,13 @@ interface PMValidationCardProps {
     allPhotosAttached: boolean; missingPhotoItems: string[];
     allRequiredInputsFilled: boolean; missingInputsDetailed: MissingInputItem[];
     allPFAnswered: boolean; missingPFItems: string[];
-    allRemarksFilled: boolean; missingRemarks: string[];
     isSummaryFilled: boolean; isSummaryCheckFilled: boolean;
 }
 
-function PMValidationCard({ lang, allPhotosAttached, missingPhotoItems, allRequiredInputsFilled, missingInputsDetailed, allPFAnswered, missingPFItems, allRemarksFilled, missingRemarks, isSummaryFilled, isSummaryCheckFilled }: PMValidationCardProps) {
+function PMValidationCard({ lang, allPhotosAttached, missingPhotoItems, allRequiredInputsFilled, missingInputsDetailed, allPFAnswered, missingPFItems, isSummaryFilled, isSummaryCheckFilled }: PMValidationCardProps) {
     const [isExpanded, setIsExpanded] = useState(false);
 
     const getPhotoScrollId = (item: string) => { const p = item.split('.'); return p.length === 2 ? `${ID_PREFIX}-photo-${p[0]}-${p[1]}` : `${ID_PREFIX}-photo-${p[0]}`; };
-    const getRemarkScrollId = (item: string) => { const p = item.split('.'); return p.length === 2 ? `${ID_PREFIX}-remark-${p[0]}-${p[1]}` : `${ID_PREFIX}-remark-${p[0]}`; };
     const getPfScrollId = (item: string) => { const p = item.split('.'); return p.length === 2 ? `${ID_PREFIX}-pf-${p[0]}-${p[1]}` : `${ID_PREFIX}-pf-${p[0]}`; };
 
     const allErrors: ValidationError[] = useMemo(() => {
@@ -638,12 +641,11 @@ function PMValidationCard({ lang, allPhotosAttached, missingPhotoItems, allRequi
         }
         {
             if (!allPFAnswered) missingPFItems.forEach(item => errors.push({ section: lang === "th" ? "สถานะ PASS/FAIL/N/A" : "PASS/FAIL/N/A Status", sectionIcon: "✅", itemName: `${t("itemLabel", lang)} ${item}`, message: lang === "th" ? "ยังไม่ได้เลือกสถานะ" : "Status not selected", scrollId: getPfScrollId(item) }));
-            if (!allRemarksFilled) missingRemarks.forEach(item => errors.push({ section: lang === "th" ? "หมายเหตุ" : "Remarks", sectionIcon: "💬", itemName: `${t("itemLabel", lang)} ${item}`, message: lang === "th" ? "ยังไม่ได้กรอกหมายเหตุ" : "Remark not filled", scrollId: getRemarkScrollId(item) }));
             if (!isSummaryFilled) errors.push({ section: lang === "th" ? "สรุปผลการตรวจสอบ" : "Inspection Summary", sectionIcon: "📋", itemName: "Comment", message: t("missingSummaryText", lang), scrollId: "mdb-pm-summary-section" });
             if (!isSummaryCheckFilled) errors.push({ section: lang === "th" ? "สรุปผลการตรวจสอบ" : "Inspection Summary", sectionIcon: "📋", itemName: lang === "th" ? "สถานะสรุปผล" : "Summary Status", message: t("missingSummaryStatus", lang), scrollId: "mdb-pm-summary-section" });
         }
         return errors;
-    }, [lang, allPhotosAttached, missingPhotoItems, allRequiredInputsFilled, missingInputsDetailed, allPFAnswered, missingPFItems, allRemarksFilled, missingRemarks, isSummaryFilled, isSummaryCheckFilled]);
+    }, [lang, allPhotosAttached, missingPhotoItems, allRequiredInputsFilled, missingInputsDetailed, allPFAnswered, missingPFItems, isSummaryFilled, isSummaryCheckFilled]);
 
     const groupedErrors = useMemo(() => {
         const m = new Map<string, ValidationError[]>();
@@ -1006,7 +1008,9 @@ export default function MDBPMForm() {
 
     // เวลาทำงานจริงของช่าง (datetime-local) — ส่งเข้า Maximo ทาง IN09 ตอนปิดใบงาน
 
-    const [workStart, setWorkStart] = useState<string>("");
+    // ตั้งต้นเป็นเวลาที่ช่างเปิดฟอร์ม — ปกติคือเวลาที่ถึงหน้างานพอดี แก้ทีหลังได้
+    // ใบที่เคยบันทึกเวลาไว้แล้วจะถูกทับด้วยค่าจากเอกสารตอนโหลด
+    const [workStart, setWorkStart] = useState<string>(() => nowLocalDatetime());
 
     const [workFinish, setWorkFinish] = useState<string>("");
 
@@ -1158,8 +1162,8 @@ export default function MDBPMForm() {
                 // ค่าที่ช่างกรอกไว้เก็บอยู่ใน draft ของเครื่องช่างด้วย แต่คนอื่นที่เปิดใบเดียวกัน
                 // (ผู้อนุมัติ / ช่างที่มาแก้ใบโดนตีกลับจากอีกเครื่อง) ไม่มี draft นั้น
                 // ต้องอ่านจากตัวเอกสารเสมอ ไม่งั้นเปิดมาเจอช่องว่าง
-                if (typeof data.work_start === "string") setWorkStart(data.work_start);
-                if (typeof data.work_finish === "string") setWorkFinish(data.work_finish);
+                if (data.work_start) setWorkStart(String(data.work_start));
+                if (data.work_finish) setWorkFinish(String(data.work_finish));
                 if (Array.isArray(data.maximo_labor)) setMaximoLabor(data.maximo_labor);
                 if (typeof data.maximo_contractor === "string") setMaximoContractor(data.maximo_contractor);
                 if (typeof data.summary === "string") setSummary(data.summary);
@@ -1303,31 +1307,6 @@ export default function MDBPMForm() {
     const missingPhotoItems = useMemo(() => sortLabels(validPhotoKeys.filter(({ key }) => (photos[key]?.length ?? 0) < 1).map(({ label }) => label)), [photos, validPhotoKeys]);
     const allPhotosAttached = missingPhotoItems.length === 0;
 
-    // หมายเหตุยังบังคับทุกข้อ รวมข้อที่ตอบ N/A (ต้องเขียนว่าทำไมถึงไม่มี/ไม่ได้ตรวจ)
-    const validRemarkKeys = useMemo(() => {
-        const keys: string[] = [];
-        QUESTIONS.forEach(q => {
-            if (q.kind === "simple" || q.kind === "measure") keys.push(q.key);
-            else if (q.kind === "dynamic_measure") q6Items.forEach(it => keys.push(it.key));
-            else if (q.kind === "charger_measure") q7Items.forEach(it => keys.push(it.key));
-            else if (q.kind === "ccb_measure") q8Items.forEach(it => keys.push(it.key));
-            else if (q.kind === "rcd_measure") q9Items.forEach(it => keys.push(it.key));
-            else if (q.kind === "trip_rcd") q10Items.forEach(it => keys.push(it.key));
-            else if (q.kind === "trip_ccb") q11Items.forEach(it => keys.push(it.key));
-            else if (q.kind === "trip_charger") q12Items.forEach(it => keys.push(it.key));
-            else if (q.kind === "trip_main") q13Items.forEach(it => keys.push(it.key));
-            else if (q.kind === "group" && q.items) q.items.forEach(it => keys.push(it.key));
-        });
-        return keys;
-    }, [q6Items, q7Items, q8Items, q9Items, q10Items, q11Items, q12Items, q13Items]);
-
-    const missingRemarks = useMemo(() => {
-        const missing: string[] = [];
-        validRemarkKeys.forEach(k => { const val = rows[k]; if (!val?.remark?.trim()) { const m = k.match(/^r(\d+)(?:_(\d+))?$/); if (m) missing.push(m[2] ? `${m[1]}.${m[2]}` : m[1]); } });
-        return sortLabels(missing);
-    }, [rows, validRemarkKeys]);
-    const allRemarksFilled = missingRemarks.length === 0;
-
     const PF_KEYS_ALL = useMemo(() => {
         const keys: string[] = [];
         QUESTIONS.forEach(q => {
@@ -1384,7 +1363,7 @@ export default function MDBPMForm() {
 
     const isSummaryFilled = summary.trim().length > 0;
     const isSummaryCheckFilled = summaryCheck !== "";
-    const canFinalSave = allPhotosAttached && allPFAnswered && allRequiredInputsFilled && allRemarksFilled && isSummaryFilled && isSummaryCheckFilled;
+    const canFinalSave = allPhotosAttached && allPFAnswered && allRequiredInputsFilled && isSummaryFilled && isSummaryCheckFilled;
 
     // ==================== DRAFT SAVE ====================
     const photoRefs = useMemo(() => {
@@ -1480,7 +1459,6 @@ export default function MDBPMForm() {
         if (!stationId) { alert(t("alertNoStation", lang)); return; }
         if (!allPhotosAttached) { alert(t("photoNotComplete", lang)); return; }
         if (!allRequiredInputsFilled) { alert(t("alertFillVoltage", lang)); return; }
-        if (!allRemarksFilled) { alert(`${t("alertFillRemark", lang)} ${missingRemarks.join(", ")}`); return; }
         if (!isSummaryFilled || !isSummaryCheckFilled) { alert(t("allNotComplete", lang)); return; }
         if (submitting) return;
         setSubmitting(true);
@@ -1636,8 +1614,7 @@ export default function MDBPMForm() {
             if (workFinish < workStart) { alert(t("alertWorkTimeOrder", lang)); setSubmitting(false); return; }
             // Maximo ตีกลับ IN09 ด้วย BMXAA2641E ถ้าเวลาทำงานยังมาไม่ถึง
             // ปล่อยผ่านตรงนี้ = ปิดใบงานได้แต่ปิด WO ในระบบเขาไม่ได้ ต้องมาแก้ย้อนหลัง
-            const nowLocal = new Date(Date.now() - new Date().getTimezoneOffset() * 60000)
-                .toISOString().slice(0, 16);
+            const nowLocal = nowLocalDatetime();
             if (workStart > nowLocal || workFinish > nowLocal) { alert(t("alertWorkTimeFuture", lang)); setSubmitting(false); return; }
 
             const finalizeRes = await apiFetch(`${API_BASE}/${PM_PREFIX}/${report_id}/finalize`, {
@@ -2040,7 +2017,6 @@ export default function MDBPMForm() {
                                 allPhotosAttached={allPhotosAttached} missingPhotoItems={missingPhotoItems}
                                 allRequiredInputsFilled={allRequiredInputsFilled} missingInputsDetailed={missingInputsDetailed}
                                 allPFAnswered={allPFAnswered} missingPFItems={missingPFItems}
-                                allRemarksFilled={allRemarksFilled} missingRemarks={missingRemarks}
                                 isSummaryFilled={isSummaryFilled} isSummaryCheckFilled={isSummaryCheckFilled}
                             />
                         )}

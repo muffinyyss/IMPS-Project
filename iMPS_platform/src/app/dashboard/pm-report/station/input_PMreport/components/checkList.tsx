@@ -276,7 +276,7 @@ const T = {
     noPhotos: { th: "ยังไม่มีรูปแนบ", en: "No photos attached" },
 
     // Remarks
-    remark: { th: "หมายเหตุ *", en: "Remark *" },
+    remark: { th: "หมายเหตุ", en: "Remark" },
     remarkLabel: { th: "หมายเหตุ", en: "Remark" },
     testResult: { th: "ผลการทดสอบ", en: "Test Result" },
     preRemarkLabel: { th: "หมายเหตุ (ก่อน PM)", en: "Remark (Pre-PM)" },
@@ -304,7 +304,6 @@ const T = {
     // Validation Messages
     allComplete: { th: "ครบเรียบร้อย ✅", en: "Complete ✅" },
     missingPhoto: { th: "ยังไม่ได้แนบรูปข้อ:", en: "Missing photos for:" },
-    missingRemark: { th: "ยังไม่ได้กรอกหมายเหตุข้อ:", en: "Missing remarks for:" },
     missingPF: { th: "ยังไม่ได้เลือกข้อ:", en: "Not selected:" },
     missingSummaryText: { th: "ยังไม่ได้กรอก Comment", en: "Comment not filled" },
     missingSummaryStatus: { th: "ยังไม่ได้เลือกสถานะสรุปผล (Pass/Fail/N/A)", en: "Summary status not selected (Pass/Fail/N/A)" },
@@ -323,7 +322,6 @@ const T = {
     alertSaveFailed: { th: "บันทึกไม่สำเร็จ:", en: "Save failed:" },
     alertCompleteAll: { th: "กรุณากรอกข้อมูลและแนบรูปให้ครบก่อนบันทึก", en: "Please complete all fields and attach photos before saving" },
     alertPhotoNotComplete: { th: "กรุณาแนบรูปในส่วน Pre-PM ให้ครบก่อน", en: "Please attach all photos in Pre-PM section" },
-    alertFillRemark: { th: "กรุณากรอกหมายเหตุข้อ:", en: "Please fill in remarks for:" },
     noReportId: { th: "ไม่มี report_id - กรุณาบันทึกข้อมูล Pre-PM ก่อน", en: "No report_id - Please save Pre-PM first" },
     workTime: { th: "เวลาทำงานจริง", en: "Actual work time" },
     workStart: { th: "เวลาเริ่มงาน", en: "Start time" },
@@ -568,12 +566,8 @@ interface PMValidationCardProps {
     isPostMode: boolean;
     allPhotosAttached: boolean;
     missingPhotoItems: string[];
-    allRemarksFilledPre: boolean;
-    missingRemarksPre: string[];
     allPFAnswered: boolean;
     missingPFItems: string[];
-    allRemarksFilledPost: boolean;
-    missingRemarksPost: string[];
     isSummaryFilled: boolean;
     isSummaryCheckFilled: boolean;
 }
@@ -581,9 +575,7 @@ interface PMValidationCardProps {
 function PMValidationCard({
     lang, displayTab, isPostMode,
     allPhotosAttached, missingPhotoItems,
-    allRemarksFilledPre, missingRemarksPre,
     allPFAnswered, missingPFItems,
-    allRemarksFilledPost, missingRemarksPost,
     isSummaryFilled, isSummaryCheckFilled,
 }: PMValidationCardProps) {
     const [isExpanded, setIsExpanded] = useState(true);
@@ -593,13 +585,6 @@ function PMValidationCard({
         const parts = item.split(".");
         if (parts.length === 2) return `${ID_PREFIX}-photo-${parts[0]}-${parts[1]}`;
         return `${ID_PREFIX}-photo-${parts[0]}`;
-    };
-
-    const getRemarkScrollId = (item: string): string => {
-        // "1" -> station-pm-remark-1, "7.1" -> station-pm-remark-7-1
-        const parts = item.split(".");
-        if (parts.length === 2) return `${ID_PREFIX}-remark-${parts[0]}-${parts[1]}`;
-        return `${ID_PREFIX}-remark-${parts[0]}`;
     };
 
     const getPfScrollId = (item: string): string => {
@@ -625,20 +610,7 @@ function PMValidationCard({
             });
         }
 
-        // 2) Remark errors (Pre mode)
-        if (displayTab === "pre" && !allRemarksFilledPre) {
-            missingRemarksPre.forEach((item) => {
-                errors.push({
-                    section: lang === "th" ? "หมายเหตุ" : "Remarks",
-                    sectionIcon: "💬",
-                    itemName: `${t("itemLabel", lang)} ${item}`,
-                    message: lang === "th" ? "ยังไม่ได้กรอกหมายเหตุ" : "Remark not filled",
-                    scrollId: getRemarkScrollId(item),
-                });
-            });
-        }
-
-        // 3) Post mode errors
+        // 2) Post mode errors
         if (isPostMode) {
             // PF status errors
             if (!allPFAnswered) {
@@ -649,19 +621,6 @@ function PMValidationCard({
                         itemName: `${t("itemLabel", lang)} ${item}`,
                         message: lang === "th" ? "ยังไม่ได้เลือก Pass/Fail" : "Pass/Fail not selected",
                         scrollId: getPfScrollId(item),
-                    });
-                });
-            }
-
-            // Remark errors (Post mode)
-            if (!allRemarksFilledPost) {
-                missingRemarksPost.forEach((item) => {
-                    errors.push({
-                        section: lang === "th" ? "หมายเหตุ (Post)" : "Remarks (Post)",
-                        sectionIcon: "💬",
-                        itemName: `${t("itemLabel", lang)} ${item}`,
-                        message: lang === "th" ? "ยังไม่ได้กรอกหมายเหตุ" : "Remark not filled",
-                        scrollId: getRemarkScrollId(item),
                     });
                 });
             }
@@ -691,9 +650,7 @@ function PMValidationCard({
     }, [
         lang, displayTab, isPostMode,
         allPhotosAttached, missingPhotoItems,
-        allRemarksFilledPre, missingRemarksPre,
         allPFAnswered, missingPFItems,
-        allRemarksFilledPost, missingRemarksPost,
         isSummaryFilled, isSummaryCheckFilled
     ]);
 
@@ -1461,72 +1418,11 @@ export default function StationPMReport() {
         return (aParts[1] ?? 0) - (bParts[1] ?? 0);
     }), [rows, PF_KEYS_POST]);
 
-    // Remark validation for Pre mode
-    const validRemarkKeysPre = useMemo(() => {
-        const keys: string[] = [];
-        QUESTIONS.filter((q) => q.no !== 11).forEach((q) => {
-            if (q.kind === "simple") { keys.push(q.key); }
-            else if (q.kind === "group") { q.items.forEach((item) => { keys.push(item.key); }); }
-        });
-        return keys;
-    }, []);
-
-    const missingRemarksPre = useMemo(() => {
-        const missing: string[] = [];
-        validRemarkKeysPre.forEach((key) => {
-            const val = rows[key];
-            if (val?.pf === "NA") return;
-            if (!val?.remark?.trim()) {
-                const match = key.match(/^r(\d+)(?:_(\d+))?$/);
-                if (match) {
-                    const [, qNo, subNo] = match;
-                    missing.push(subNo ? `${qNo}.${subNo}` : qNo);
-                }
-            }
-        });
-        return missing.sort((a, b) => {
-            const aParts = String(a).split(".").map(Number);
-            const bParts = String(b).split(".").map(Number);
-            if (aParts[0] !== bParts[0]) return aParts[0] - bParts[0];
-            return (aParts[1] ?? 0) - (bParts[1] ?? 0);
-        });
-    }, [rows, validRemarkKeysPre]);
-    const allRemarksFilledPre = missingRemarksPre.length === 0;
-
-    // Remark validation for Post mode
-    const validRemarkKeysPost = useMemo(() => {
-        return PF_REQUIRED_KEYS.filter((k) => {
-            if (rowsPre[k]?.pf === "NA") return false;
-            return true;
-        });
-    }, [PF_REQUIRED_KEYS, rowsPre]);
-
-    const missingRemarksPost = useMemo(() => {
-        const missing: string[] = [];
-        validRemarkKeysPost.forEach((key) => {
-            const val = rows[key];
-            if (!val?.remark?.trim()) {
-                const match = key.match(/^r(\d+)(?:_(\d+))?$/);
-                if (match) {
-                    const [, qNo, subNo] = match;
-                    missing.push(subNo ? `${qNo}.${subNo}` : qNo);
-                }
-            }
-        });
-        return missing.sort((a, b) => {
-            const aParts = String(a).split(".").map(Number);
-            const bParts = String(b).split(".").map(Number);
-            if (aParts[0] !== bParts[0]) return aParts[0] - bParts[0];
-            return (aParts[1] ?? 0) - (bParts[1] ?? 0);
-        });
-    }, [rows, validRemarkKeysPost]);
-    const allRemarksFilledPost = missingRemarksPost.length === 0;
-
     const isSummaryFilled = summary.trim().length > 0;
     const isSummaryCheckFilled = summaryCheck !== "";
 
-    const canGoAfter: boolean = isPostMode ? true : (allPhotosAttachedPre && allRemarksFilledPre);
-    const canFinalSave = allPhotosAttachedPost && allPFAnswered && allRemarksFilledPost && isSummaryFilled && isSummaryCheckFilled;
+    const canGoAfter: boolean = isPostMode ? true : allPhotosAttachedPre;
+    const canFinalSave = allPhotosAttachedPost && allPFAnswered && isSummaryFilled && isSummaryCheckFilled;
 
     // Helper functions for scroll IDs
     const getFirstMissingPhotoScrollId = (): string | null => {
@@ -1535,15 +1431,6 @@ export default function StationPMReport() {
         const parts = first.split(".");
         if (parts.length === 2) return `${ID_PREFIX}-photo-${parts[0]}-${parts[1]}`;
         return `${ID_PREFIX}-photo-${parts[0]}`;
-    };
-
-    const getFirstMissingRemarkScrollId = (): string | null => {
-        const missing = isPostMode ? missingRemarksPost : missingRemarksPre;
-        if (missing.length === 0) return null;
-        const first = missing[0];
-        const parts = first.split(".");
-        if (parts.length === 2) return `${ID_PREFIX}-remark-${parts[0]}-${parts[1]}`;
-        return `${ID_PREFIX}-remark-${parts[0]}`;
     };
 
     const getFirstMissingPFScrollId = (): string | null => {
@@ -1710,12 +1597,6 @@ export default function StationPMReport() {
             if (scrollId) scrollToFirstError(scrollId);
             return;
         }
-        if (!allRemarksFilledPre) {
-            alert(`${t("alertFillRemark", lang)} ${missingRemarksPre.join(", ")}`);
-            const scrollId = getFirstMissingRemarkScrollId();
-            if (scrollId) scrollToFirstError(scrollId);
-            return;
-        }
 
         if (submitting) return;
         setSubmitting(true);
@@ -1773,12 +1654,6 @@ export default function StationPMReport() {
         if (!allPFAnswered) {
             alert(lang === "th" ? "กรุณาเลือก PASS/FAIL/N/A ทุกข้อ" : "Please select PASS/FAIL/N/A for all items");
             const scrollId = getFirstMissingPFScrollId();
-            if (scrollId) scrollToFirstError(scrollId);
-            return;
-        }
-        if (!allRemarksFilledPost) {
-            alert(`${t("alertFillRemark", lang)} ${missingRemarksPost.join(", ")}`);
-            const scrollId = getFirstMissingRemarkScrollId();
             if (scrollId) scrollToFirstError(scrollId);
             return;
         }
@@ -2283,12 +2158,8 @@ export default function StationPMReport() {
                                 isPostMode={isPostMode}
                                 allPhotosAttached={allPhotosAttached}
                                 missingPhotoItems={missingPhotoItems}
-                                allRemarksFilledPre={allRemarksFilledPre}
-                                missingRemarksPre={missingRemarksPre}
                                 allPFAnswered={allPFAnswered}
                                 missingPFItems={missingPFItems}
-                                allRemarksFilledPost={allRemarksFilledPost}
-                                missingRemarksPost={missingRemarksPost}
                                 isSummaryFilled={isSummaryFilled}
                                 isSummaryCheckFilled={isSummaryCheckFilled}
                             />
@@ -2299,7 +2170,7 @@ export default function StationPMReport() {
                                 {displayTab === "pre" ? (
                                     <Button type="button" onClick={onPreSave} disabled={!canGoAfter || submitting}
                                         className="tw-text-sm tw-py-2.5 tw-bg-gray-800 hover:tw-bg-gray-900"
-                                        title={!allPhotosAttachedPre ? t("alertPhotoNotComplete", lang) : !allRemarksFilledPre ? `${t("alertFillRemark", lang)} ${missingRemarksPre.join(", ")}` : undefined}>
+                                        title={!allPhotosAttachedPre ? t("alertPhotoNotComplete", lang) : undefined}>
                                         {submitting ? t("saving", lang) : t("save", lang)}
                                     </Button>
                                 ) : (
