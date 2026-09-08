@@ -52,6 +52,17 @@ function isPlanningWait(value?: string, assignees?: string[]) {
   return WAITING_ON_REPLAN_RESULTS.includes(result) && !hasAssignedTechnician(assignees);
 }
 
+// ใบที่ถูกตีกลับยังเก็บ status จริงเป็น "Wait for approve" (ด่าน cs) เพื่อไม่ให้ flow ฝั่ง backend เพี้ยน
+// แต่ในตารางต้องโชว์ "Reject" ไม่ใช่ "SR wait for approve" — เคลียร์เองเมื่อ cs แก้แล้วบันทึกกลับ
+function isRejectedSr(r: CMRow): boolean {
+  const raw = (r.status || "").trim().toLowerCase();
+  const stage = (r.stage || "").trim().toLowerCase();
+  const atCsStage = raw === "open" || (raw === "wait for approve" && stage !== "close_approval");
+  return atCsStage && !!(r.reject_remark || "").trim();
+}
+
+const REJECTED_BADGE = { bg: "#fee2e2", text: "#991b1b" };
+
 // même règle que le CM Dashboard : status brut + stage → onglet de la fiche CM
 function statusSlug(status: string, stage?: string, repairResult?: string): "open" | "in-progress" | "closed" | "cancelled" {
   const raw = (status || "").trim().toLowerCase();
@@ -325,7 +336,8 @@ export default function CMListPage() {
       case "problem": return (r.problem_details || "").toLowerCase();
       case "severity": return SEVERITY_RANK[(r.severity || "").trim().toLowerCase()] ?? 0;
       case "date": return r.cm_date || "";
-      case "status": return workStatusOf(r);
+      // ใบที่ถูกตีกลับโชว์ป้าย "Reject" — เรียงให้อยู่ก้อนเดียวกัน ไม่ปนกับ SR ที่รออนุมัติจริง
+      case "status": return isRejectedSr(r) ? "rejected" : workStatusOf(r);
       default: return "";
     }
   }, [displayFaultyEquipment]);
@@ -394,6 +406,7 @@ export default function CMListPage() {
       noResults: (q?: string) => q ? `ไม่พบรายการที่ตรงกับ "${q}"` : "ไม่พบรายงาน",
       volumeWarning: (total: number, limit: number) => `ฐานข้อมูลมี ${total.toLocaleString()} รายการ — แสดงผล ${limit.toLocaleString()} รายการล่าสุด`,
       openReportTitle: "เปิดใบงาน CM",
+      rejectedStatus: "Reject",
       quickWaitCsApprove: "รอเปิดใบงาน",
       quickWaitApprove: "รออนุมัติ",
       quickInProgress: "รอดำเนินการ", quickComplete: "เสร็จสิ้น", quickCancelled: "ยกเลิก",
@@ -435,6 +448,7 @@ export default function CMListPage() {
       noResults: (q?: string) => q ? `No records matching "${q}"` : "No reports found",
       volumeWarning: (total: number, limit: number) => `Database has ${total.toLocaleString()} records — showing latest ${limit.toLocaleString()}.`,
       openReportTitle: "Open CM work order",
+      rejectedStatus: "Reject",
       quickWaitCsApprove: "SR wait for approve",
       quickWaitApprove: "WO wait for approve",
       quickInProgress: "In Progress", quickComplete: "Complete", quickCancelled: "Cancelled",
@@ -740,6 +754,7 @@ export default function CMListPage() {
                 </tr>
               ) : tableRows.map((r, i) => {
                 const badge = workStatusBadge(r);
+                const rejected = isRejectedSr(r);
                 const canOpenPdf = normalizeStatus(r.status, r.stage, r.repair_result) === "completed";
                 const brand = brandOf(r);
                 return (
@@ -803,9 +818,13 @@ export default function CMListPage() {
                       <button
                         onClick={(e) => { e.stopPropagation(); toggleFilter("workStatus", badge.ws); }}
                         className="tw-whitespace-nowrap tw-rounded-full tw-px-2.5 tw-py-0.5 tw-text-xs tw-font-medium tw-transition-all hover:tw-opacity-80"
-                        style={{ background: badge.bg, color: badge.text, outline: filters.workStatus === badge.ws ? `2px solid ${badge.text}` : "none" }}
+                        style={{
+                          background: rejected ? REJECTED_BADGE.bg : badge.bg,
+                          color: rejected ? REJECTED_BADGE.text : badge.text,
+                          outline: filters.workStatus === badge.ws ? `2px solid ${rejected ? REJECTED_BADGE.text : badge.text}` : "none",
+                        }}
                       >
-                        {workStatusLabel[badge.ws]}
+                        {rejected ? t.rejectedStatus : workStatusLabel[badge.ws]}
                       </button>
                     </td>
                     <td className="tw-px-4 tw-py-3 tw-text-center">
