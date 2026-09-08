@@ -383,7 +383,14 @@ def _load_image_source_from_urlpath(
 ) -> Tuple[Union[str, BytesIO, None], Optional[str]]:
     if not url_path:
         return None, None
-    
+
+    # path ที่ถูก resolve เป็น absolute มาแล้วจาก _get_photo_items_for_idx* ใช้ได้ตรง ๆ
+    # ห้ามเอาไปต่อท้าย uploads_root ซ้ำ — บน Linux lstrip("/") ทำให้กลายเป็น relative
+    # แล้วได้ <uploads>/home/... ที่ไม่มีจริง (บน Windows รอดเพราะ pathlib ทิ้งฝั่งซ้ายให้)
+    p_direct = Path(url_path)
+    if p_direct.is_absolute() and p_direct.is_file():
+        return p_direct.as_posix(), _guess_img_type_from_ext(p_direct.as_posix())
+
     # 1) backend/uploads (เช็คก่อน - เร็วที่สุด)
     if not url_path.startswith("https"):  # ข้าม http URL
         # print("[DEBUG] 📂 ลองหาใน backend/uploads...")
@@ -518,7 +525,10 @@ def _get_photo_items_for_idx(doc: dict, idx: int) -> List[dict]:
             continue
 
         p_abs = Path(raw)
-        if p_abs.is_absolute():
+        # บน Linux path เว็บอย่าง "/uploads/..." นับเป็น absolute แต่ไม่มีอยู่จริงบนดิสก์
+        # (บน Windows นับเป็น relative จึงไม่เคยเจอปัญหาตอน dev) — ต้องเช็ค exists()
+        # ไม่งั้นจะ continue ทิ้งก่อนถึงสาขาที่ประกอบ path ใต้ uploads_root
+        if p_abs.is_absolute() and p_abs.exists():
             if p_abs.is_dir():
                 files = []
                 for ext in _IMAGE_EXTS:
@@ -586,7 +596,10 @@ def _get_photo_items_for_idx_pre(doc: dict, idx: int) -> List[dict]:
             continue
 
         p_abs = Path(raw)
-        if p_abs.is_absolute():
+        # บน Linux path เว็บอย่าง "/uploads/..." นับเป็น absolute แต่ไม่มีอยู่จริงบนดิสก์
+        # (บน Windows นับเป็น relative จึงไม่เคยเจอปัญหาตอน dev) — ต้องเช็ค exists()
+        # ไม่งั้นจะ continue ทิ้งก่อนถึงสาขาที่ประกอบ path ใต้ uploads_root
+        if p_abs.is_absolute() and p_abs.exists():
             if p_abs.is_dir():
                 files = []
                 for ext in _IMAGE_EXTS:

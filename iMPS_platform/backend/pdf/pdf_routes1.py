@@ -39,6 +39,19 @@ TEMPLATE_MAP = {
 # template ที่มีรูปให้ลบหลัง export
 PM_TEMPLATES_WITH_PHOTOS = {"charger", "mdb", "ccb", "cbbox", "station"}
 
+# โฟลเดอร์เก็บรูปจริงของแต่ละ template (ต้องตรงกับ dest_dir ใน routers/pmreport_*.py)
+PM_PHOTO_DIRS = {
+    "charger": "pm",
+    "mdb": "mdbpm",
+    "ccb": "ccbpm",
+    "cbbox": "cbboxpm",
+    "station": "stationpm",
+}
+
+# ลบรูปต้นฉบับทิ้งหลัง export = ทำลายข้อมูลถาวร กู้คืนไม่ได้ จึงต้องเปิดเองด้วย
+# PM_PHOTO_AUTODELETE=1 เท่านั้น (default ปิด — รูปอยู่ครบทั้งใน DB และบนดิสก์)
+PM_PHOTO_AUTODELETE = os.getenv("PM_PHOTO_AUTODELETE") == "1"
+
 
 async def _add_cm_failure_label(data: dict, station_id: str) -> dict:
     """แนบคำอธิบาย Faulty Equipment จาก cache Maximo ให้ template PDF ใช้แสดงผล"""
@@ -106,11 +119,13 @@ async def _add_cm_maximo_failure_codes(data: dict) -> dict:
 
 def _delete_report_photos(template: str, coll_key: str, report_id: str, coll) -> None:
     """ลบรูปบน disk และ unset photos ใน MongoDB หลัง export PDF สำเร็จ"""
+    if not PM_PHOTO_AUTODELETE:
+        return
     if template not in PM_TEMPLATES_WITH_PHOTOS:
         return
 
-    # ลบโฟลเดอร์รูปบน disk
-    report_dir = pathlib.Path(UPLOADS_ROOT) / "pm" / coll_key / report_id
+    # ลบโฟลเดอร์รูปบน disk — แต่ละ template เก็บคนละ subdir ใช้ "pm" ทุกตัวไม่ได้
+    report_dir = pathlib.Path(UPLOADS_ROOT) / PM_PHOTO_DIRS[template] / coll_key / report_id
     if report_dir.exists():
         shutil.rmtree(report_dir, ignore_errors=True)
 

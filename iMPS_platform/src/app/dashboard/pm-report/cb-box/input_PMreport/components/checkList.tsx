@@ -38,7 +38,7 @@ const T = {
     photos: { th: "รูป", en: "photos" },
     cameraSupported: { th: "รองรับการถ่ายจากกล้องบนมือถือ", en: "Camera supported on mobile" },
     noPhotos: { th: "ยังไม่มีรูปแนบ", en: "No photos attached" },
-    remark: { th: "หมายเหตุ *", en: "Remark *" },
+    remark: { th: "หมายเหตุ", en: "Remark" },
     remarkLabel: { th: "หมายเหตุ", en: "Remark" },
     testResult: { th: "ผลการทดสอบ", en: "Test Result" },
     preRemarkLabel: { th: "หมายเหตุ (ก่อน PM)", en: "Remark (Pre-PM)" },
@@ -62,7 +62,6 @@ const T = {
     allComplete: { th: "ครบเรียบร้อย ✅", en: "Complete ✅" },
     missingPhoto: { th: "ยังไม่ได้แนบรูปข้อ:", en: "Missing photos for:" },
     missingInput: { th: "ยังขาดข้อ:", en: "Missing:" },
-    missingRemark: { th: "ยังไม่ได้กรอกหมายเหตุข้อ:", en: "Missing remarks for:" },
     missingPF: { th: "ยังไม่ได้เลือกข้อ:", en: "Not selected:" },
     missingSummaryText: { th: "ยังไม่ได้กรอก Comment", en: "Comment not filled" },
     missingSummaryStatus: { th: "ยังไม่ได้เลือกสถานะสรุปผล", en: "Summary status not selected" },
@@ -73,7 +72,6 @@ const T = {
     alertCompleteAll: { th: "กรุณากรอกข้อมูลและแนบรูปให้ครบก่อนบันทึก", en: "Please complete all fields" },
     alertPhotoNotComplete: { th: "กรุณาแนบรูปในส่วน Pre-PM ให้ครบก่อน", en: "Please attach all photos" },
     alertInputNotComplete: { th: "กรุณากรอกค่าข้อ 5 ให้ครบ", en: "Please fill in Item 5" },
-    alertFillRemark: { th: "กรุณากรอกหมายเหตุข้อ:", en: "Please fill in remarks for:" },
     noReportId: { th: "ไม่มี report_id", en: "No report_id" },
     // PMValidationCard translations
     itemLabel: { th: "ข้อ", en: "Item" },
@@ -527,12 +525,8 @@ interface PMValidationCardProps {
     missingPhotoItems: string[];
     allRequiredInputsFilled: boolean;
     missingInputsDetailed: MissingInputItem[];
-    allRemarksFilledPre: boolean;
-    missingRemarksPre: number[];
     allPFAnsweredPost: boolean;
     missingPFItemsPost: number[];
-    allRemarksFilledPost: boolean;
-    missingRemarksPost: number[];
     isSummaryFilled: boolean;
     isSummaryCheckFilled: boolean;
 }
@@ -541,9 +535,7 @@ function PMValidationCard({
     lang, displayTab, isPostMode,
     allPhotosAttached, missingPhotoItems,
     allRequiredInputsFilled, missingInputsDetailed,
-    allRemarksFilledPre, missingRemarksPre,
     allPFAnsweredPost, missingPFItemsPost,
-    allRemarksFilledPost, missingRemarksPost,
     isSummaryFilled, isSummaryCheckFilled,
 }: PMValidationCardProps) {
     const [isExpanded, setIsExpanded] = useState(true);
@@ -554,10 +546,6 @@ function PMValidationCard({
 
     const getPhotoScrollId = (item: string): string => {
         return `${ID_PREFIX}-photo-${item}`;
-    };
-
-    const getRemarkScrollId = (item: number): string => {
-        return `${ID_PREFIX}-remark-${item}`;
     };
 
     const getPfButtonsScrollId = (item: number): string => {
@@ -599,20 +587,7 @@ function PMValidationCard({
             });
         }
 
-        // 3) Remark errors (Pre mode)
-        if (displayTab === "pre" && !allRemarksFilledPre) {
-            missingRemarksPre.forEach((item) => {
-                errors.push({
-                    section: lang === "th" ? "หมายเหตุ" : "Remarks",
-                    sectionIcon: "💬",
-                    itemName: `${t("itemLabel", lang)} ${item}`,
-                    message: lang === "th" ? "ยังไม่ได้กรอกหมายเหตุ" : "Remark not filled",
-                    scrollId: getRemarkScrollId(item),
-                });
-            });
-        }
-
-        // 4) Post mode errors
+        // 3) Post mode errors
         if (isPostMode) {
             // PF status errors
             if (!allPFAnsweredPost) {
@@ -623,19 +598,6 @@ function PMValidationCard({
                         itemName: `${t("itemLabel", lang)} ${item}`,
                         message: lang === "th" ? "ยังไม่ได้เลือก Pass/Fail" : "Pass/Fail not selected",
                         scrollId: getPfButtonsScrollId(item),
-                    });
-                });
-            }
-
-            // Remark errors (Post mode)
-            if (!allRemarksFilledPost) {
-                missingRemarksPost.forEach((item) => {
-                    errors.push({
-                        section: lang === "th" ? "หมายเหตุ (Post)" : "Remarks (Post)",
-                        sectionIcon: "💬",
-                        itemName: `${t("itemLabel", lang)} ${item}`,
-                        message: lang === "th" ? "ยังไม่ได้กรอกหมายเหตุ" : "Remark not filled",
-                        scrollId: getRemarkScrollId(item),
                     });
                 });
             }
@@ -666,9 +628,7 @@ function PMValidationCard({
         lang, displayTab, isPostMode,
         allPhotosAttached, missingPhotoItems,
         allRequiredInputsFilled, missingInputsDetailed,
-        allRemarksFilledPre, missingRemarksPre,
         allPFAnsweredPost, missingPFItemsPost,
-        allRemarksFilledPost, missingRemarksPost,
         isSummaryFilled, isSummaryCheckFilled
     ]);
 
@@ -1228,22 +1188,6 @@ export default function CBBOXPMForm() {
     const allPFAnsweredForUI = isPostMode ? allPFAnsweredPost : allPFAnsweredPre;
     const missingPFItemsForUI = isPostMode ? missingPFItemsPost : missingPFItemsPre;
 
-    const validRemarkKeysPre = useMemo(() => QUESTIONS.filter(q => q.no !== 9).map(q => q.key), []);
-    const missingRemarksPre = useMemo(() => {
-        const missing: number[] = [];
-        validRemarkKeysPre.forEach(key => { const val = rows[key]; if (val?.pf === "NA") return; if (!val?.remark?.trim()) { const m = key.match(/^r(\d+)$/); if (m) missing.push(parseInt(m[1], 10)); } });
-        return missing.sort((a, b) => a - b);
-    }, [rows, validRemarkKeysPre]);
-    const allRemarksFilledPre = missingRemarksPre.length === 0;
-
-    const validRemarkKeysPost = useMemo(() => QUESTIONS.filter(q => rowsPre[q.key]?.pf !== "NA").map(q => q.key), [rowsPre]);
-    const missingRemarksPost = useMemo(() => {
-        const missing: number[] = [];
-        validRemarkKeysPost.forEach(key => { const val = rows[key]; if (!val?.remark?.trim()) { const m = key.match(/^r(\d+)$/); if (m) missing.push(parseInt(m[1], 10)); } });
-        return missing.sort((a, b) => a - b);
-    }, [rows, validRemarkKeysPost]);
-    const allRemarksFilledPost = missingRemarksPost.length === 0;
-
     const missingInputs = useMemo(() => {
         const r: string[] = [];
         if (rows["r5"]?.pf === "NA" || rowsPre["r5"]?.pf === "NA") return r;
@@ -1267,8 +1211,8 @@ export default function CBBOXPMForm() {
     const isSummaryFilled = summary.trim().length > 0;
     const isSummaryCheckFilled = summaryCheck !== "";
 
-    const canGoAfter = isPostMode ? true : (allPhotosAttachedPre && allRequiredInputsFilled && allRemarksFilledPre);
-    const canFinalSave = allPhotosAttachedPost && allPFAnsweredPost && allRequiredInputsFilled && allRemarksFilledPost && isSummaryFilled && isSummaryCheckFilled;
+    const canGoAfter = isPostMode ? true : (allPhotosAttachedPre && allRequiredInputsFilled);
+    const canFinalSave = allPhotosAttachedPost && allPFAnsweredPost && allRequiredInputsFilled && isSummaryFilled && isSummaryCheckFilled;
 
     // Auto-save draft
     const photoRefs = useMemo(() => {
@@ -1469,7 +1413,6 @@ export default function CBBOXPMForm() {
         // Validation checks with scroll to error
         if (!allPhotosAttachedPre) { alert(t("alertFillPhoto", lang)); return; }
         if (!allRequiredInputsFilled) { alert(t("alertInputNotComplete", lang)); return; }
-        if (!allRemarksFilledPre) { alert(`${t("alertFillRemark", lang)} ${missingRemarksPre.join(", ")}`); return; }
 
         if (submitting) return;
         setSubmitting(true);
@@ -1507,7 +1450,6 @@ export default function CBBOXPMForm() {
         if (!allPhotosAttachedPost) { alert(t("alertFillPhoto", lang)); return; }
         if (!allPFAnsweredPost) { alert(lang === "th" ? "กรุณาเลือก PASS/FAIL/N/A ทุกข้อ" : "Please select PASS/FAIL/N/A for all items"); return; }
         if (!allRequiredInputsFilled) { alert(t("alertInputNotComplete", lang)); return; }
-        if (!allRemarksFilledPost) { alert(`${t("alertFillRemark", lang)} ${missingRemarksPost.join(", ")}`); return; }
         if (!isSummaryFilled || !isSummaryCheckFilled) { alert(t("alertCompleteAll", lang)); return; }
 
         if (submitting) return;
@@ -1797,12 +1739,8 @@ export default function CBBOXPMForm() {
                                 missingPhotoItems={missingPhotoItemsFormatted}
                                 allRequiredInputsFilled={allRequiredInputsFilled}
                                 missingInputsDetailed={missingInputsDetailed}
-                                allRemarksFilledPre={allRemarksFilledPre}
-                                missingRemarksPre={missingRemarksPre}
                                 allPFAnsweredPost={allPFAnsweredForUI}
                                 missingPFItemsPost={missingPFItemsForUI}
-                                allRemarksFilledPost={allRemarksFilledPost}
-                                missingRemarksPost={missingRemarksPost}
                                 isSummaryFilled={isSummaryFilled}
                                 isSummaryCheckFilled={isSummaryCheckFilled}
                             />
