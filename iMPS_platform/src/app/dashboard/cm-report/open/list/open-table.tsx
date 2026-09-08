@@ -102,6 +102,19 @@ const t = (key: keyof typeof T, lang: Lang): string => T[key][lang];
 // หมายเลขตู้/SN แยกเป็นคอลัมน์ของตัวเองแล้ว ตำแหน่งที่พบจึงเหลือแค่ชื่อ failure class
 const chargerField = (v?: unknown) => String(v ?? "").trim();
 
+// ใบที่ถูกตีกลับยังคงสถานะจริงเป็น "Wait for approve" (ด่าน cs) เพื่อให้ backend flow เดิมทำงานได้
+// แต่ในตารางต้องโชว์ "Reject" ให้ cs รู้ว่าต้องแก้ไข ไม่ใช่รออนุมัติ (เคลียร์เมื่อ cs บันทึกกลับ)
+const isRejectedSr = (row: { status?: string; stage?: string; reject_remark?: string }) => {
+  const sl = String(row.status ?? "").trim().toLowerCase();
+  const stageLower = String(row.stage ?? "").trim().toLowerCase();
+  // ด่าน cs เท่านั้น — reject ด่านปิดงาน (close_approval) ดันสถานะเป็น In Progress อยู่แล้ว
+  const isCsStage = sl === "open" || (sl === "wait for approve" && stageLower !== "close_approval");
+  return isCsStage && !!String(row.reject_remark ?? "").trim();
+};
+
+const displayStatus = (row: { status?: string; stage?: string; reject_remark?: string }) =>
+  isRejectedSr(row) ? "Reject" : (String(row.status ?? "").trim() || "-");
+
 type TData = {
   id?: string;
   doc_name?: string;
@@ -677,19 +690,20 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
       meta: { headerAlign: "center", cellAlign: "left" },
     },
     {
-      accessorFn: (row) => row.status ?? "-",
+      accessorFn: (row) => displayStatus(row),
       id: "status",
       header: () => t("colStatus", lang),
       cell: (info: CellContext<TData, unknown>) => {
         const s = String(info.getValue() ?? "-");
         const sl = s.toLowerCase();
         const color =
-          sl === "open" ? "tw-bg-green-100 tw-text-green-800" :
-            sl === "wait for approve" ? "tw-bg-purple-100 tw-text-purple-800" :
-              sl === "wait for schedule" ? "tw-bg-indigo-100 tw-text-indigo-800" :
-                sl === "complete" || sl === "closed" || sl === "close" ? "tw-bg-gray-200 tw-text-gray-800" :
-                  sl === "in progress" || sl === "ongoing" ? "tw-bg-amber-100 tw-text-amber-800" :
-                    "tw-bg-blue-gray-100 tw-text-blue-gray-800";
+          sl === "reject" ? "tw-bg-red-100 tw-text-red-800" :
+            sl === "open" ? "tw-bg-green-100 tw-text-green-800" :
+              sl === "wait for approve" ? "tw-bg-purple-100 tw-text-purple-800" :
+                sl === "wait for schedule" ? "tw-bg-indigo-100 tw-text-indigo-800" :
+                  sl === "complete" || sl === "closed" || sl === "close" ? "tw-bg-gray-200 tw-text-gray-800" :
+                    sl === "in progress" || sl === "ongoing" ? "tw-bg-amber-100 tw-text-amber-800" :
+                      "tw-bg-blue-gray-100 tw-text-blue-gray-800";
         return (
           <span className={`tw-inline-block tw-px-2 sm:tw-px-2.5 tw-py-0.5 sm:tw-py-1 tw-rounded-full tw-text-[10px] sm:tw-text-xs tw-font-medium ${color}`}>
             {s}
