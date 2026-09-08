@@ -173,9 +173,11 @@ export default function CMListPage() {
           setUserRole(user?.role ?? "");
           setUserCompany(company);
           setIsSuperAdmin(superAdmin);
-          // ใส่ค่าเริ่มต้นให้เฉพาะคนที่เห็นดรอปดาวน์ Company (super admin / พนักงาน EGAT)
+          // ใส่ค่าเริ่มต้นให้เฉพาะคนที่เห็นดรอปดาวน์ Company (super admin / พนักงาน EGAT ที่ไม่ใช่ช่าง)
           // คนบริษัทอื่นดรอปดาวน์ถูกซ่อน ถ้าใส่ให้ด้วยจะโดนล็อกอยู่ที่ EGAT แล้วแก้กลับไม่ได้
-          if (superAdmin || company.trim().toLowerCase() === "egat") {
+          // ช่างถูกล็อกที่บริษัทตัวเองอยู่แล้ว (lockedCompany) ไม่ต้องมีตัวกรองซ้อนที่มองไม่เห็น
+          const technician = String(user?.role ?? "").trim().toLowerCase() === "technician";
+          if (!technician && (superAdmin || company.trim().toLowerCase() === "egat")) {
             // เช็ค prev.company กันเคสผู้ใช้กดเลือกบริษัทเองก่อน /me ตอบกลับ
             setFilters((prev) => (prev.company ? prev : { ...prev, company: DEFAULT_COMPANY_FILTER }));
           }
@@ -253,22 +255,32 @@ export default function CMListPage() {
 
   const activeFilterCount = Object.values(filters).filter(Boolean).length;
   const isEgatCompany = userCompany.trim().toLowerCase() === "egat";
-  const canSeeAllCompanies = isSuperAdmin || isEgatCompany;
+  const isTechnician = userRole.trim().toLowerCase() === "technician";
+  // ช่างเห็นเฉพาะงานบริษัทตัวเอง — ไม่ต้องมีดรอปดาวน์ให้สลับบริษัท แม้จะเป็นช่างของ EGAT
+  const canSeeAllCompanies = (isSuperAdmin || isEgatCompany) && !isTechnician;
+
+  // ล็อกที่ชั้นกรอง ไม่ใช่แค่ตั้งค่าเริ่มต้นใน filters — ปุ่ม "ล้างตัวกรอง" จะได้ไม่เผยงานบริษัทอื่น
+  // (ยังไม่รู้บริษัทของตัวเอง = ไม่กรอง รอ /me ตอบก่อน ดีกว่าโชว์ตารางว่างแบบไม่มีเหตุผล)
+  const lockedCompany = isTechnician && userCompany.trim() ? userCompany.trim() : null;
+  const scopedRows = useMemo(
+    () => (lockedCompany ? rows.filter((r) => matchesCompanyFilter(r, lockedCompany)) : rows),
+    [rows, lockedCompany]
+  );
 
   const stations = useMemo(() => {
-    const names = Array.from(new Set(rows.map((r) => r.station_name || r.station_id))).filter(Boolean);
+    const names = Array.from(new Set(scopedRows.map((r) => r.station_name || r.station_id))).filter(Boolean);
     return ["All", ...names];
-  }, [rows]);
+  }, [scopedRows]);
 
-  const years = useMemo(() => listYears(rows), [rows]);
+  const years = useMemo(() => listYears(scopedRows), [scopedRows]);
   const weekCount = useMemo(
     () => (yearSel !== "all" && monthSel !== "all" ? weeksInMonth(yearSel, monthSel) : 0),
     [yearSel, monthSel]
   );
 
   const stationRows = useMemo(
-    () => (stationFilter === "All" ? rows : rows.filter((r) => (r.station_name || r.station_id) === stationFilter)),
-    [rows, stationFilter]
+    () => (stationFilter === "All" ? scopedRows : scopedRows.filter((r) => (r.station_name || r.station_id) === stationFilter)),
+    [scopedRows, stationFilter]
   );
   const periodRows = useMemo(
     () => filterByDate(stationRows, yearSel, monthSel, weekSel),
@@ -307,8 +319,8 @@ export default function CMListPage() {
 
   const companies = COMPANY_FILTER_OPTIONS;
   const brandRows = useMemo(
-    () => rows.filter((r) => matchesCompanyFilter(r, filters.company)),
-    [rows, filters.company]
+    () => scopedRows.filter((r) => matchesCompanyFilter(r, filters.company)),
+    [scopedRows, filters.company]
   );
   const brands = useMemo(() => listBrands(brandRows), [brandRows]);
   const originCounts = useMemo(() => {
@@ -532,7 +544,7 @@ export default function CMListPage() {
         <div>
           <h1 className="tw-text-2xl tw-font-bold tw-text-gray-800">{t.pageTitle}</h1>
           <p className="tw-mt-0.5 tw-text-sm tw-text-gray-500">
-            {t.subtitle(rows.length)}
+            {t.subtitle(scopedRows.length)}
             <span className="tw-ml-2 tw-font-semibold tw-text-blue-600">{t.tableCount(searchFiltered.length, search || undefined)}</span>
           </p>
           <button
