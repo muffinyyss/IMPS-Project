@@ -173,11 +173,12 @@ export default function CMListPage() {
           setUserRole(user?.role ?? "");
           setUserCompany(company);
           setIsSuperAdmin(superAdmin);
-          // ใส่ค่าเริ่มต้นให้เฉพาะคนที่เห็นดรอปดาวน์ Company (super admin / พนักงาน EGAT ที่ไม่ใช่ช่าง)
-          // คนบริษัทอื่นดรอปดาวน์ถูกซ่อน ถ้าใส่ให้ด้วยจะโดนล็อกอยู่ที่ EGAT แล้วแก้กลับไม่ได้
-          // ช่างถูกล็อกที่บริษัทตัวเองอยู่แล้ว (lockedCompany) ไม่ต้องมีตัวกรองซ้อนที่มองไม่เห็น
+          // Technician must see every work item returned by their assignment scope,
+          // including jobs that have not been started yet and auto-created jobs.
           const technician = String(user?.role ?? "").trim().toLowerCase() === "technician";
-          if (!technician && (superAdmin || company.trim().toLowerCase() === "egat")) {
+          if (technician) {
+            setFilters((prev) => ({ ...prev, status: null, origin: null }));
+          } else if (superAdmin || company.trim().toLowerCase() === "egat") {
             // เช็ค prev.company กันเคสผู้ใช้กดเลือกบริษัทเองก่อน /me ตอบกลับ
             setFilters((prev) => (prev.company ? prev : { ...prev, company: DEFAULT_COMPANY_FILTER }));
           }
@@ -255,17 +256,11 @@ export default function CMListPage() {
 
   const activeFilterCount = Object.values(filters).filter(Boolean).length;
   const isEgatCompany = userCompany.trim().toLowerCase() === "egat";
-  const isTechnician = userRole.trim().toLowerCase() === "technician";
-  // ช่างเห็นเฉพาะงานบริษัทตัวเอง — ไม่ต้องมีดรอปดาวน์ให้สลับบริษัท แม้จะเป็นช่างของ EGAT
-  const canSeeAllCompanies = (isSuperAdmin || isEgatCompany) && !isTechnician;
-
-  // ล็อกที่ชั้นกรอง ไม่ใช่แค่ตั้งค่าเริ่มต้นใน filters — ปุ่ม "ล้างตัวกรอง" จะได้ไม่เผยงานบริษัทอื่น
-  // (ยังไม่รู้บริษัทของตัวเอง = ไม่กรอง รอ /me ตอบก่อน ดีกว่าโชว์ตารางว่างแบบไม่มีเหตุผล)
-  const lockedCompany = isTechnician && userCompany.trim() ? userCompany.trim() : null;
-  const scopedRows = useMemo(
-    () => (lockedCompany ? rows.filter((r) => matchesCompanyFilter(r, lockedCompany)) : rows),
-    [rows, lockedCompany]
-  );
+  // The API already limits technicians to work assigned to/reported by them.
+  // Do not scope those rows by the technician's company again: an assigned job
+  // may belong to a charger maintained by another company.
+  const canSeeAllCompanies = isSuperAdmin || isEgatCompany;
+  const scopedRows = rows;
 
   const stations = useMemo(() => {
     const names = Array.from(new Set(scopedRows.map((r) => r.station_name || r.station_id))).filter(Boolean);

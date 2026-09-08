@@ -242,18 +242,19 @@ def _assignee_scope(current: UserClaims) -> dict:
         return {}
     # username ว่าง = ระบุตัวไม่ได้ → ไม่ให้เห็นอะไรเลย ปลอดภัยกว่าเห็นหมด
     username = (current.username or "").strip() or "__no_assignee__"
+    username_rx = {"$regex": f"^{re.escape(username)}$", "$options": "i"}
     # รองรับทั้ง schema ปัจจุบัน (assignees) และข้อมูลเก่า/ข้อมูลที่ถูกเก็บใน job
     # โดยยังคงบังคับให้ match ผู้รับผิดชอบคนนี้เท่านั้น
     return {
         "$or": [
-            {"assignees": username},
-            {"job.assignees": username},
-            {"assignee": username},
-            {"job.assignee": username},
+            {"assignees": username_rx},
+            {"job.assignees": username_rx},
+            {"assignee": username_rx},
+            {"job.assignee": username_rx},
             # ใบที่ช่างเปิดเอง — ยังไม่มีใครถูก assign จนกว่า planner จะวางแผน
             # ไม่เผื่อไว้ = กดเปิดใบเสร็จปุ๊บใบหายจากตารางของตัวเองทันที แก้ต่อก็ไม่ได้
-            {"reported_by": username},
-            {"job.reported_by": username},
+            {"reported_by": username_rx},
+            {"job.reported_by": username_rx},
         ]
     }
 
