@@ -2110,12 +2110,15 @@ ${in01.error ?? ""}`);
                             <div>
                                 <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-3">{t("jobStatus", lang)}</label>
                                 <div className={`tw-inline-flex tw-items-center tw-px-4 tw-py-2.5 tw-rounded-full tw-text-white tw-font-semibold tw-text-sm tw-shadow-md tw-transition-all ${
-                                    isPlanningStage ? "tw-bg-indigo-600" :
-                                        statusLower === "wait for approve" ? "tw-bg-purple-600" :
-                                            statusLower === "in progress" ? "tw-bg-amber-600" :
-                                                "tw-bg-green-600"
+                                    isReturnedToCs ? "tw-bg-red-600" :
+                                        isPlanningStage ? "tw-bg-indigo-600" :
+                                            statusLower === "wait for approve" ? "tw-bg-purple-600" :
+                                                statusLower === "in progress" ? "tw-bg-amber-600" :
+                                                    "tw-bg-green-600"
                                 }`}>
-                                    <span>{status || "Open"}</span>
+                                    {/* ใบที่ถูกตีกลับยังเก็บสถานะจริงเป็น "Wait for approve" — แต่โชว์ "Reject"
+                                        ให้ cs รู้ว่าต้องแก้ไข ไม่ใช่รออนุมัติ (กลับเป็นสถานะเดิมเมื่อ cs บันทึกกลับ) */}
+                                    <span>{isReturnedToCs ? "Reject" : (status || "Open")}</span>
                                 </div>
                             </div>
 
