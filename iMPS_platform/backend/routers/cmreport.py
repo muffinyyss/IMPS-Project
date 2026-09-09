@@ -2327,14 +2327,30 @@ async def cmreport_planner_reject(
             "station_id": station_id,
             "status": {"$regex": "^wait for schedule$", "$options": "i"},
         },
-        {"$set": {
-            "status": "Wait for approve",
-            "stage": "cs_approval",
-            "reject_remark": remark,
-            "rejected_by": current.username,
-            "rejected_at": now,
-            "updatedAt": now,
-        }},
+        {
+            "$set": {
+                "status": "Wait for approve",
+                "stage": "cs_approval",
+                "reject_remark": remark,
+                "rejected_by": current.username,
+                "rejected_at": now,
+                "updatedAt": now,
+            },
+            # ตีกลับ = ใบกลับไปเป็น SR รออนุมัติ ยังไม่ใช่ WO — แผนที่ planner กรอกค้างไว้
+            # (ช่างที่เลือก/กำหนดการ/ผลรอ) ต้องถูกล้าง ไม่งั้นช่างยังเห็นใบผ่าน assignee scope
+            # และแผนเดิมจะค้างมาโผล่ตอน cs แก้แล้วใบถูกอนุมัติรอบใหม่
+            # (plan_history เก็บไว้เป็นประวัติการวางแผน)
+            # ใบรุ่นเก่าเก็บซ้ำไว้ใต้ job.* ด้วย — list/detail อ่าน fallback ไปที่นั่น จึงต้องล้างทั้งคู่
+            "$unset": {
+                "assignees": "", "job.assignees": "",
+                "sched_start": "", "job.sched_start": "",
+                "sched_finish": "", "job.sched_finish": "",
+                "planned_date": "", "job.planned_date": "",
+                "planned_time": "", "job.planned_time": "",
+                "repair_result": "", "job.repair_result": "",
+                "repair_result_remark": "", "job.repair_result_remark": "",
+            },
+        },
     )
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Report not found or not in 'Wait for schedule' status")
