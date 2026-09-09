@@ -23,6 +23,10 @@ import {
 
 const Chart = dynamic(() => import("react-apexcharts"), { ssr: false });
 
+// Company เริ่มต้นของหน้านี้ — ผู้ใช้ EGAT/super admin เปิดมาเห็นใบของ EGAT ก่อน
+// แล้วค่อยสลับเป็น EDS หรือ "ทุกบริษัท" เองได้จากดรอปดาวน์ (ตรงกับหน้า CM List)
+const DEFAULT_COMPANY_FILTER = "EGAT";
+
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 // Categorical palette for causes / equipment — blue/cool family, no RAG meaning
@@ -156,6 +160,7 @@ export default function CMDashboardPage() {
   const [monthSel, setMonthSel] = useState<DateSel>("all");
   const [weekSel, setWeekSel] = useState<DateSel>("all");
   const [stationFilter, setStationFilter] = useState<string>("All");
+  // (Company เริ่มต้นตั้งทีหลังใน effect ของ /me เพราะต้องรู้ก่อนว่าผู้ใช้เห็นดรอปดาวน์นั้นไหม)
   const [filters, setFilters] = useState<ActiveFilters>(EMPTY_FILTERS);
   // « Total » (camembert) vs « Par entreprise » (barre empilée) — indépendant pour
   // chaque bloc, on compare rarement les deux répartitions en même temps
@@ -191,9 +196,15 @@ export default function CMDashboardPage() {
         if (!res.ok) return;
         const user = await res.json();
         if (alive) {
+          const company = String(user?.company ?? "");
+          const superAdmin = !!user?.is_super_admin;
           setUserRole(user?.role ?? "");
-          setUserCompany(user?.company ?? "");
-          setIsSuperAdmin(!!user?.is_super_admin);
+          setUserCompany(company);
+          setIsSuperAdmin(superAdmin);
+          if (superAdmin || company.trim().toLowerCase() === "egat") {
+            // เช็ค prev.company กันเคสผู้ใช้กดเลือกบริษัทเองก่อน /me ตอบกลับ
+            setFilters((prev) => (prev.company ? prev : { ...prev, company: DEFAULT_COMPANY_FILTER }));
+          }
         }
       } catch (err) {
         console.error("fetch /me error:", err);
