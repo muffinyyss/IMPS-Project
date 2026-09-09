@@ -19,7 +19,7 @@ import useLanguage from "@/utils/useLanguage";
 import {
   CMRow, ActiveFilters, DateSel, STATUS_LABELS, WorkStatusFilter, EMPTY_FILTERS, CmOrigin,
   normalizeStatus, workStatusOf, workStatusBadge, filterByDate, listYears, listBrands,
-  weeksInMonth, applyFilters, applySearch, brandOf, originOf, matchesCompanyFilter, UNKNOWN_BRAND, UNKNOWN_COMPANY, COMPANY_FILTER_OPTIONS,
+  weeksInMonth, applyFilters, applySearch, brandOf, originOf, matchesCompanyFilter, UNKNOWN_BRAND, UNKNOWN_COMPANY, listCompanyFilterOptions,
 } from "@/utils/cm-dashboard";
 import { CM_ORIGIN_LIST } from "@/app/dashboard/cm-report/lib/origin";
 import { failureCodeLabel } from "@/app/dashboard/cm-report/lib/failureCode";
@@ -312,7 +312,8 @@ export default function CMListPage() {
     return counts;
   }, [statusButtonBase]);
 
-  const companies = COMPANY_FILTER_OPTIONS;
+  // ตัวเลือกบริษัท = ตัวเลือกมาตรฐาน + บริษัทที่ผู้ใช้พิมพ์เองตอนเปิดใบ
+  const companies = useMemo(() => listCompanyFilterOptions(scopedRows), [scopedRows]);
   const brandRows = useMemo(
     () => scopedRows.filter((r) => matchesCompanyFilter(r, filters.company)),
     [scopedRows, filters.company]

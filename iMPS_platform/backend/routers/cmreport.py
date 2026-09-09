@@ -781,6 +781,8 @@ async def _cm_items_for_station(station_id: str, station_name: str, status: str 
             "station_id": station_id,
             "station_name": station_name,
             "company": str(it.get("company") or job.get("company") or station_company).strip(),
+            # บริษัทที่ผู้เปิดใบเลือกไว้ตอนกด + เพิ่ม — ว่าง = ใบเก่าที่ไม่ได้เลือก (ให้ใช้กฎ brand/สถานีเหมือนเดิม)
+            "assigned_company": str(it.get("company") or job.get("company") or "").strip(),
             "doc_name": it.get("doc_name") or "",
             "issue_id": it.get("issue_id") or job.get("issue_id") or "",
             "cm_date": resolve_cm_date(it, job),
