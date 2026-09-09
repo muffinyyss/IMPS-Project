@@ -1556,6 +1556,8 @@ class CMSubmitIn(BaseModel):
     # ใบที่เลือก failure class ระดับ Charger จะถูกสร้างแยกต่อหนึ่งตู้
     charger_no: Optional[str] = None
     charger_sn: str = ""
+    # บริษัทที่เปิดใบงานนี้ให้ — ผู้ใช้เลือกตอนกด + เพิ่ม (ว่าง = ใช้บริษัทเจ้าของสถานีเหมือนเดิม)
+    company: str = ""
 
 
 async def _ensure_cm_indexes(coll):
@@ -1673,6 +1675,8 @@ async def cmreport_submit(body: CMSubmitIn, current: UserClaims = Depends(get_cu
         "damage_symptom_other": body.damage_symptom_other,
         "charger_no": body.charger_no,
         "charger_sn": (body.charger_sn or "").strip(),
+        # company ที่ผู้เปิดใบเลือกไว้ ทับบริษัทเจ้าของสถานีตอนแสดงผล/กรอง (ว่าง = ใช้ของสถานี)
+        "company": (body.company or "").strip(),
         "severity": body.severity,
         "problem_details": body.problem_details,
         "remarks_open": body.remarks_open,
