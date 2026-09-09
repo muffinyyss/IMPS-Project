@@ -4,7 +4,7 @@ import React, { useMemo, useState, useEffect, useRef, useCallback } from "react"
 import { Button, Input, Textarea } from "@material-tailwind/react";
 import Image from "next/image";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
-import { ArrowLeftIcon, ArrowUturnLeftIcon, PhotoIcon, XMarkIcon, CheckCircleIcon, ExclamationTriangleIcon, PencilIcon } from "@heroicons/react/24/solid";
+import { ArrowLeftIcon, ArrowUturnLeftIcon, PhotoIcon, XMarkIcon, CheckCircleIcon, ExclamationTriangleIcon, PencilIcon, DocumentArrowDownIcon } from "@heroicons/react/24/solid";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
 import CreatableSelect from "react-select/creatable";
 import { useDraft, type DraftData, type DraftImage, type DraftCorrectiveAction } from "../lib/draft";
@@ -133,6 +133,7 @@ const T = {
     rrStartedAt: { th: "วันที่เข้าแก้ไข", en: "Repair started" },
     rrFinishedAt: { th: "วันที่แก้ไขเสร็จ", en: "Repair finished" },
     backToList: { th: "กลับ", en: "Back" },
+    exportPdf: { th: "ออกไฟล์ PDF", en: "Export PDF" },
 
     // Alerts
     alertNoStationId: { th: "ไม่พบ station_id", en: "Station ID not found" },
@@ -1133,6 +1134,12 @@ export default function CMInProgressForm() {
     };
 
     const goBackToList = () => router.push(buildListUrl(currentTab));
+
+    // ปุ่ม PDF ข้างปุ่มกลับ — เปิดเฉพาะใบที่ปิดงานแล้ว (Closed/Complete) และเปิดจากใบที่บันทึกไว้จริง
+    const canExportPdf = isClosedStatus && !!editId && !!stationId;
+    const pdfUrl = canExportPdf
+        ? `${API_BASE}/pdf/cm/${encodeURIComponent(editId)}/export?station_id=${encodeURIComponent(stationId ?? "")}&lang=${lang}&dl=0`
+        : "";
 
     const returnToPlannerSchedule = () => {
         const params = new URLSearchParams(searchParams.toString());
@@ -2902,9 +2909,25 @@ export default function CMInProgressForm() {
 
             {/* Back Button */}
             <div className="tw-mx-auto tw-max-w-6xl tw-mb-6 tw-flex tw-items-center tw-justify-between">
-                <Button variant="outlined" size="sm" onClick={goBackToList} title={t("backToList", lang)} className="tw-border-blue-gray-200 tw-text-blue-gray-700 hover:tw-border-blue-gray-300">
-                    <ArrowLeftIcon className="tw-w-4 tw-h-4" />
-                </Button>
+                <div className="tw-flex tw-items-center tw-gap-2">
+                    <Button variant="outlined" size="sm" onClick={goBackToList} title={t("backToList", lang)} className="tw-border-blue-gray-200 tw-text-blue-gray-700 hover:tw-border-blue-gray-300">
+                        <ArrowLeftIcon className="tw-w-4 tw-h-4" />
+                    </Button>
+                    {/* ใบงานที่ปิดแล้วเท่านั้นถึงออกไฟล์ PDF ได้ — ใบที่ยังไม่จบข้อมูลยังไม่ครบ */}
+                    {canExportPdf && (
+                        <a
+                            href={pdfUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title={t("exportPdf", lang)}
+                            aria-label={t("exportPdf", lang)}
+                            className="tw-inline-flex tw-items-center tw-gap-1.5 tw-rounded-lg tw-border tw-border-red-200 tw-px-3 tw-py-2 tw-text-xs tw-font-bold tw-uppercase tw-text-red-600 hover:tw-border-red-300 hover:tw-bg-red-50 hover:tw-text-red-800 tw-transition-colors"
+                        >
+                            <DocumentArrowDownIcon className="tw-w-4 tw-h-4" />
+                            <span>PDF</span>
+                        </a>
+                    )}
+                </div>
             </div>
 
             <form noValidate onSubmit={e => e.preventDefault()} onKeyDown={e => e.key === "Enter" && e.target instanceof HTMLInputElement && e.preventDefault()}>
