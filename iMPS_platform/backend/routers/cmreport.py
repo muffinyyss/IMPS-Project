@@ -2428,15 +2428,18 @@ async def cmreport_cancel(
     if current_role == TECHNICIAN_CANCEL_ROLE:
         _merge_clause(cancel_filter, _assignee_scope(current))
 
+    # เก็บสถานะเดิมไว้ด้วย (aggregation pipeline update) — ใช้ตอนกด Restore
+    # เพื่อคืนใบงานกลับไปยังด่านที่ค้างอยู่ก่อนถูกยกเลิก
     res = await coll.update_one(
         cancel_filter,
-        {"$set": {
+        [{"$set": {
+            "status_before_cancel": "$status",
             "status": "Cancelled",
             "cancel_remark": remark,
             "cancelled_by": current.username,
             "cancelled_at": now,
             "updatedAt": now,
-        }},
+        }}],
     )
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Report not found or already closed/cancelled")
@@ -2448,6 +2451,79 @@ async def cmreport_cancel(
     )
 
     return {"ok": True, "status": "Cancelled", "maximo": maximo_result}
+
+
+# ── ยกเลิกการ Cancel → คืนใบงานกลับไปยังสถานะก่อนถูกยกเลิก
+class CMRestoreIn(BaseModel):
+    remark: str = Field("", description="เหตุผลที่กู้คืนใบงาน (ถ้ามี)")
+
+
+@router.post("/cmreport/{report_id}/restore")
+async def cmreport_restore(
+    report_id: str,
+    body: CMRestoreIn | None = None,
+    station_id: str = Query(...),
+    current: UserClaims = Depends(get_current_user),
+):
+    """คืนใบงานที่ถูกยกเลิกกลับไปยังสถานะก่อนหน้า (Cancelled → สถานะเดิม)
+
+    ฝั่ง Maximo ไม่ยิงตาม เพราะ WO ที่ขึ้น CAN แล้วย้อนสถานะจาก iMPS ไม่ได้ —
+    ถ้าใบนั้นเปิด WO ไว้ ต้องไปเปิดใหม่/แก้สถานะในระบบ Maximo เอง
+    """
+    current_role = (current.role or "").strip().lower()
+    if current_role not in PLANNER_CANCEL_ROLES and current_role != TECHNICIAN_CANCEL_ROLE:
+        raise HTTPException(
+            status_code=403,
+            detail="Only planner, admin, or assigned technician can restore",
+        )
+
+    station_id = station_id.strip()
+    coll = get_cmreport_collection_for(station_id)
+    try:
+        oid = ObjectId(report_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bad report_id")
+
+    restore_filter = {
+        "_id": oid,
+        "station_id": station_id,
+        "status": {"$regex": "^cancelled$", "$options": "i"},
+    }
+    if current_role == TECHNICIAN_CANCEL_ROLE:
+        _merge_clause(restore_filter, _assignee_scope(current))
+
+    doc = await coll.find_one(restore_filter, {"status_before_cancel": 1, "stage": 1})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Report not found or not cancelled")
+
+    # ใบที่ถูกยกเลิกก่อนมีฟีเจอร์นี้ไม่มี status_before_cancel → เดาจากด่านที่ค้างอยู่
+    previous = str(doc.get("status_before_cancel") or "").strip()
+    if previous.lower() in {"", "cancelled", "complete", "closed"}:
+        stage = str(doc.get("stage") or "").strip().lower()
+        previous = "Wait for approve" if stage == "cs_approval" else "Wait for schedule"
+
+    now = datetime.now(timezone.utc)
+    res = await coll.update_one(
+        restore_filter,
+        {
+            "$set": {
+                "status": previous,
+                "restored_by": current.username,
+                "restored_at": now,
+                "updatedAt": now,
+            },
+            "$unset": {
+                "cancel_remark": "",
+                "cancelled_by": "",
+                "cancelled_at": "",
+                "status_before_cancel": "",
+            },
+        },
+    )
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Report not found or not cancelled")
+
+    return {"ok": True, "status": previous, "maximo": {"skipped": "restore ไม่ยิง Maximo"}}
 
 
 @router.delete("/cmreport/{report_id}")

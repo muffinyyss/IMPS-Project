@@ -61,6 +61,7 @@ const T = {
     saving: { th: "กำลังบันทึก...", en: "Saving..." },
     assign: { th: "มอบหมาย", en: "Assign" },
     cancelJob: { th: "ยกเลิกงาน", en: "Cancel Job" },
+    restoreJob: { th: "Restore", en: "Restore" },
     approve: { th: "อนุมัติ", en: "Approve" },
     approveTitle: { th: "อนุมัติใบงาน", en: "Approve work order" },
     approveConfirmText: { th: "ยืนยันอนุมัติใบงานนี้? จะเดินหน้าเป็น Wait for schedule", en: "Approve this work order? It will move to \"Wait for schedule\"." },
@@ -81,6 +82,10 @@ const T = {
     cancelReason: { th: "เหตุผลที่ยกเลิก", en: "Cancel reason" },
     cancelReasonPlaceholder: { th: "ระบุเหตุผลที่ยกเลิกใบงานนี้", en: "Reason for cancelling this work order" },
     confirmCancel: { th: "ยืนยันยกเลิก", en: "Confirm cancel" },
+    restoreTitle: { th: "กู้คืนใบงาน", en: "Restore work order" },
+    restoreConfirmText: { th: "ใบงานจะกลับไปยังสถานะก่อนถูกยกเลิก และกลับเข้าคิวทำงานตามเดิม", en: "The work order returns to its status before cancellation and goes back into the queue." },
+    confirmRestore: { th: "ยืนยัน Restore", en: "Confirm restore" },
+    restoring: { th: "กำลังกู้คืน...", en: "Restoring..." },
     rejectedBannerTitle: { th: "ใบงานถูกตีกลับจากผู้วางแผน — กรุณาแก้ไขแล้วบันทึก", en: "Returned by planner — please revise and save" },
     rejectedBy: { th: "โดย", en: "by" },
     planningSection: { th: "การวางแผนงาน", en: "Planning" },
@@ -601,7 +606,7 @@ export default function CMOpenForm() {
     // แยกด่านของ "Wait for approve": "cs_approval" (รอ head cs) vs "close_approval" (รอปิดงาน)
     const [stage, setStage] = useState("");
     // modal ยืนยัน/ใส่ comment: reject & cancel = กรอกเหตุผล; approve/assign/save = ยืนยันเฉย ๆ
-    type CommentMode = "approve" | "reject" | "cancel" | "assign" | "save";
+    type CommentMode = "approve" | "reject" | "cancel" | "restore" | "assign" | "save";
     const [commentModal, setCommentModal] = useState<{ open: boolean; mode: CommentMode }>({ open: false, mode: "reject" });
     const [commentText, setCommentText] = useState("");
     const openCommentModal = (mode: CommentMode) => { setCommentText(""); setCommentModal({ open: true, mode }); };
@@ -782,6 +787,8 @@ export default function CMOpenForm() {
     // ยกเลิกได้เฉพาะ admin/planner ตอนรีวิวหรือวางแผน — cs มีหน้าที่เปิดใบงานเท่านั้น
     // ใบที่ตีกลับให้ cs แก้ = ยังไม่ใช่คิวของ planner จึงยกเลิกไม่ได้จนกว่า cs จะแก้กลับมา
     const showCancelBtn = isEdit && canCancelRole && (isCsStage || isPlanningStage) && !isReturnedToCs;
+    // ยกเลิกการยกเลิก — ใบที่ถูก cancel ไปแล้ว คืนกลับสถานะเดิมได้ด้วยสิทธิ์ชุดเดียวกับคนที่ยกเลิกได้
+    const showRestoreBtn = isEdit && isCancelled && canCancelRole;
     const showRejectBtn = isEdit && canRejectRole && isPlanningStage;
     // planner (หรือ admin) ตีกลับ SR ด่าน cs ได้ — ไม่มีปุ่มอนุมัติแล้ว (planner วางแผน/Assign SR ได้เลย)
     // ใบที่ถูกตีกลับแล้ว (มี reject_remark) = รอ cs ผู้เปิดแก้ → กดตีกลับซ้ำไม่ได้จนกว่า cs จะบันทึกกลับ
@@ -1774,6 +1781,31 @@ ${in01.error ?? ""}`);
         }
     };
 
+    // ── กู้คืนใบงานที่ถูกยกเลิก → กลับไปสถานะก่อน cancel (server เป็นคนตัดสินว่าสถานะไหน) ──
+    const handleRestoreJob = async () => {
+        if (!editId || !stationId) return;
+        setSaving(true);
+        try {
+            const res = await apiFetch(`${API_BASE}/cmreport/${encodeURIComponent(editId)}/restore?station_id=${encodeURIComponent(stationId)}`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                credentials: "include",
+                body: JSON.stringify({}),
+            });
+            const data = await res.json().catch(() => ({} as any));
+            if (!res.ok) throw new Error((data as any)?.detail || `HTTP ${res.status}`);
+            closeCommentModal();
+            // ใบกลับเข้าคิวไหนขึ้นกับสถานะที่ server คืนมา — ด่าน cs อยู่แท็บ Open ที่เหลืออยู่ In Progress
+            const restored = String((data as any)?.status ?? "").trim().toLowerCase();
+            const tab = restored === "wait for approve" || restored === "open" ? "open" : "inprogress";
+            router.push(buildListUrl(tab));
+        } catch (e: any) {
+            alert(`${t("alertSaveFailed", lang)} ${e.message || e}`);
+        } finally {
+            setSaving(false);
+        }
+    };
+
     // ── ตีกลับใบงานพร้อมเหตุผล — เลือก endpoint ตามด่าน:
     //    planner ตอนวางแผน → /planner-reject (กลับไปด่าน cs), head cs ตอนรีวิว → /cs-reject (กลับไปหา cs ผู้เปิด)
     const handleReject = async () => {
@@ -2282,6 +2314,12 @@ ${in01.error ?? ""}`);
                             <Button variant="outlined" onClick={goBackToList} className="tw-border-blue-gray-200 tw-text-blue-gray-700 hover:tw-border-blue-gray-300">
                                 {t("backToList", lang)}
                             </Button>
+                            {/* ใบที่ถูกยกเลิกแล้ว — กู้คืนกลับเข้าคิวเดิมได้ */}
+                            {showRestoreBtn && (
+                                <Button variant="outlined" onClick={() => openCommentModal("restore")} disabled={saving} className="tw-border-green-300 tw-text-green-700 hover:tw-border-green-400 hover:tw-bg-green-50">
+                                    {t("restoreJob", lang)}
+                                </Button>
+                            )}
                             {/* ยกเลิกใบงาน — ซ่อนตอนใบถูกตีกลับรอ cs แก้ (ยังไม่ใช่คิวของ planner) */}
                             {showCancelBtn && (
                                 <Button variant="outlined" onClick={() => openCommentModal("cancel")} disabled={saving} className="tw-border-amber-300 tw-text-amber-700 hover:tw-border-amber-400 hover:tw-bg-amber-50">
@@ -2353,6 +2391,7 @@ ${in01.error ?? ""}`);
                     save: { title: t("saveTitle", lang), body: t("saveConfirmText", lang), confirm: t("confirmSaveBtn", lang), onConfirm: () => { closeCommentModal(); onFinalSave(status || "Wait for approve"); }, color: "tw-bg-gray-800 hover:tw-bg-blue-600" },
                     reject: { title: t("rejectTitle", lang), body: t("rejectReason", lang), confirm: t("confirmReject", lang), onConfirm: handleReject, color: "tw-bg-red-600 hover:tw-bg-red-700" },
                     cancel: { title: t("cancelTitle", lang), body: t("cancelReason", lang), confirm: t("confirmCancel", lang), onConfirm: handleCancelJob, color: "tw-bg-amber-600 hover:tw-bg-amber-700" },
+                    restore: { title: t("restoreTitle", lang), body: t("restoreConfirmText", lang), confirm: saving ? t("restoring", lang) : t("confirmRestore", lang), onConfirm: handleRestoreJob, color: "tw-bg-green-600 hover:tw-bg-green-700" },
                 };
                 const c = cfg[mode];
                 const placeholder = mode === "cancel" ? t("cancelReasonPlaceholder", lang) : t("rejectReasonPlaceholder", lang);
