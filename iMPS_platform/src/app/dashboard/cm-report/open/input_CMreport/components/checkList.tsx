@@ -944,6 +944,9 @@ export default function CMOpenForm() {
     // หา current tab จาก URL
     const currentTab = searchParams.get("tab") ?? "open";
 
+    // บริษัทที่เลือกไว้ตอนกด + เพิ่ม (ส่งมาทาง query) — บันทึกลงใบงานตอน submit
+    const selectedCompany = (searchParams.get("company") ?? "").trim();
+
     // ปลายทางหลังจบ action ทุกแบบ (บันทึก/Assign/ตีกลับ/ยกเลิก/ย้อนกลับ)
     // — เข้ามาจากหน้าไหนก็กลับหน้านั้น: จาก CM Dashboard → dashboard, จากตาราง list → แท็บที่เกี่ยวข้อง
     const buildListUrl = (targetTab?: string) => {
@@ -1612,6 +1615,7 @@ ${in01.error ?? ""}`);
                             io_code: ioCode.trim(),
                             reported_by,
                             reporter_signature: reporterSignature,
+                            company: selectedCompany,
                         })
                     });
                     if (!submitRes.ok) throw new Error((await submitRes.json()).detail || `HTTP ${submitRes.status}`);

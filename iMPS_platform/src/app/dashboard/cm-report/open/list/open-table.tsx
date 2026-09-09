@@ -34,6 +34,11 @@ const T = {
   // Buttons
   upload: { th: "อัพโหลด", en: "Upload" },
   add: { th: "+ เพิ่ม", en: "+ Add" },
+  companyModalTitle: { th: "เปิดใบงานนี้ให้บริษัทไหน", en: "Open this work order for which company?" },
+  companyModalHint: { th: "เลือกบริษัทที่รับผิดชอบใบงานนี้ — ใช้แยกงานในหน้า CM List และ Dashboard", en: "Pick the company responsible for this work order — used to split work in CM List and Dashboard." },
+  companyOther: { th: "อื่น ๆ", en: "Other" },
+  companyOtherPlaceholder: { th: "ระบุชื่อบริษัท", en: "Enter company name" },
+  companyConfirm: { th: "เปิดใบงาน", en: "Open work order" },
   cancel: { th: "ยกเลิก", en: "Cancel" },
   uploadBtn: { th: "อัพโหลด", en: "Upload" },
 
@@ -848,12 +853,35 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
     }
   }
 
-  const goAdd = () => setView("form");
+  // ── เลือกบริษัทก่อนเปิดใบงานใหม่ — ค่าที่เลือกส่งต่อไปที่ฟอร์มผ่าน query แล้วบันทึกลงใบงาน
+  const COMPANY_CHOICES = ["EGAT", "EDS"] as const;
+  const [companyModalOpen, setCompanyModalOpen] = useState(false);
+  const [companyChoice, setCompanyChoice] = useState<string>(COMPANY_CHOICES[0]);
+  const [companyOther, setCompanyOther] = useState("");
+  const pickedCompany = companyChoice === "__other__" ? companyOther.trim() : companyChoice;
+
+  const goAdd = () => {
+    setCompanyChoice(COMPANY_CHOICES[0]);
+    setCompanyOther("");
+    setCompanyModalOpen(true);
+  };
+
+  const confirmCompanyAndAdd = () => {
+    if (!pickedCompany) return;
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("view", "form");
+    params.delete("edit_id");
+    params.set("company", pickedCompany);
+    setCompanyModalOpen(false);
+    router.push(`${pathname}?${params.toString()}`, { scroll: false });
+  };
+
   const goList = () => {
     const params = new URLSearchParams(searchParams.toString());
     params.delete("view");
     params.delete("edit_id");
     params.delete("self_close");
+    params.delete("company");
     router.push(`${pathname}?${params.toString()}`, { scroll: false });
   };
 
@@ -1149,9 +1177,69 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
         </div>
       </Card>
 
+      {/* เลือกบริษัทก่อนเข้าฟอร์มเปิดใบงานใหม่ */}
+      {companyModalOpen && (
+        <div
+          className="tw-fixed tw-inset-0 tw-z-[100] tw-flex tw-items-center tw-justify-center tw-bg-black/40 tw-p-4"
+          onClick={() => setCompanyModalOpen(false)}
+        >
+          <div className="tw-w-full tw-max-w-md tw-rounded-2xl tw-bg-white tw-p-6 tw-shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="tw-text-lg tw-font-bold tw-text-blue-gray-800">{t("companyModalTitle", lang)}</h3>
+            <p className="tw-mt-1 tw-text-sm tw-text-blue-gray-500">{t("companyModalHint", lang)}</p>
 
+            <div className="tw-mt-4 tw-flex tw-flex-col tw-gap-2">
+              {COMPANY_CHOICES.map((c) => (
+                <label
+                  key={c}
+                  className={`tw-flex tw-cursor-pointer tw-items-center tw-gap-3 tw-rounded-xl tw-border tw-px-4 tw-py-3 tw-transition-colors ${companyChoice === c ? "tw-border-gray-900 tw-bg-gray-50" : "tw-border-blue-gray-100 hover:tw-border-blue-gray-300"}`}
+                >
+                  <input
+                    type="radio"
+                    name="cm-company"
+                    className="tw-h-4 tw-w-4 tw-cursor-pointer tw-accent-gray-900"
+                    checked={companyChoice === c}
+                    onChange={() => setCompanyChoice(c)}
+                  />
+                  <span className="tw-text-sm tw-font-semibold tw-text-blue-gray-800">{c}</span>
+                </label>
+              ))}
 
+              <label
+                className={`tw-flex tw-cursor-pointer tw-items-center tw-gap-3 tw-rounded-xl tw-border tw-px-4 tw-py-3 tw-transition-colors ${companyChoice === "__other__" ? "tw-border-gray-900 tw-bg-gray-50" : "tw-border-blue-gray-100 hover:tw-border-blue-gray-300"}`}
+              >
+                <input
+                  type="radio"
+                  name="cm-company"
+                  className="tw-h-4 tw-w-4 tw-cursor-pointer tw-accent-gray-900"
+                  checked={companyChoice === "__other__"}
+                  onChange={() => setCompanyChoice("__other__")}
+                />
+                <span className="tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-whitespace-nowrap">{t("companyOther", lang)}</span>
+                <input
+                  type="text"
+                  value={companyOther}
+                  onChange={(e) => { setCompanyOther(e.target.value); setCompanyChoice("__other__"); }}
+                  placeholder={t("companyOtherPlaceholder", lang)}
+                  className="tw-min-w-0 tw-flex-1 tw-rounded-lg tw-border tw-border-blue-gray-200 tw-px-3 tw-py-1.5 tw-text-sm focus:tw-border-gray-900 focus:tw-outline-none"
+                />
+              </label>
+            </div>
 
+            <div className="tw-flex tw-items-center tw-justify-end tw-gap-3 tw-pt-5">
+              <Button variant="outlined" onClick={() => setCompanyModalOpen(false)} className="tw-border-blue-gray-200 tw-text-blue-gray-700">
+                {t("cancel", lang)}
+              </Button>
+              <Button
+                onClick={confirmCompanyAndAdd}
+                disabled={!pickedCompany}
+                className="tw-bg-gray-900 hover:tw-bg-black tw-text-white disabled:tw-opacity-50 disabled:tw-cursor-not-allowed"
+              >
+                {t("companyConfirm", lang)}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
