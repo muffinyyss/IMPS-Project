@@ -2921,10 +2921,9 @@ export default function CMInProgressForm() {
                             rel="noopener noreferrer"
                             title={t("exportPdf", lang)}
                             aria-label={t("exportPdf", lang)}
-                            className="tw-inline-flex tw-items-center tw-gap-1.5 tw-rounded-lg tw-border tw-border-red-200 tw-px-3 tw-py-2 tw-text-xs tw-font-bold tw-uppercase tw-text-red-600 hover:tw-border-red-300 hover:tw-bg-red-50 hover:tw-text-red-800 tw-transition-colors"
+                            className="tw-inline-flex tw-items-center tw-justify-center tw-rounded-lg tw-border tw-border-red-200 tw-px-3 tw-py-2 tw-text-red-600 hover:tw-border-red-300 hover:tw-bg-red-50 hover:tw-text-red-800 tw-transition-colors"
                         >
                             <DocumentArrowDownIcon className="tw-w-4 tw-h-4" />
-                            <span>PDF</span>
                         </a>
                     )}
                 </div>
