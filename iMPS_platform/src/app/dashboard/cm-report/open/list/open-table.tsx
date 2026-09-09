@@ -24,6 +24,7 @@ import { apiFetch } from "@/utils/api";
 import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
 import { failureCodeLabel } from "@/app/dashboard/cm-report/lib/failureCode";
 import { brandScopeOf, canOpenCmAtStation } from "@/utils/brandScope";
+import { COMPANY_FILTER_OPTIONS } from "@/utils/cm-dashboard";
 
 // ==================== TRANSLATIONS ====================
 const T = {
@@ -854,7 +855,8 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
   }
 
   // ── เลือกบริษัทก่อนเปิดใบงานใหม่ — ค่าที่เลือกส่งต่อไปที่ฟอร์มผ่าน query แล้วบันทึกลงใบงาน
-  const COMPANY_CHOICES = ["EGAT", "EDS"] as const;
+  // ใช้ลิสต์เดียวกับดรอปดาวน์กรองบริษัทใน CM List / CM Dashboard เพื่อไม่ให้สองที่หลุดกัน
+  const COMPANY_CHOICES = COMPANY_FILTER_OPTIONS;
   const [companyModalOpen, setCompanyModalOpen] = useState(false);
   const [companyChoice, setCompanyChoice] = useState<string>(COMPANY_CHOICES[0]);
   const [companyOther, setCompanyOther] = useState("");

@@ -6,6 +6,8 @@ export type CMRow = {
   station_name: string;
   /** บริษัทเจ้าของสถานี (แยกจาก brand ของ charger) */
   company?: string;
+  /** บริษัทที่ผู้เปิดใบเลือกไว้ตอนกด + เพิ่ม — ว่าง = ใบเก่าที่ไม่ได้เลือก */
+  assigned_company?: string;
   status: string;
   stage?: string;
   reject_remark?: string;
@@ -52,11 +54,19 @@ export const COMPANY_FILTER_OPTIONS = ["EGAT", "EDS"] as const;
  * (CMRow ใส่แทนได้ตรง ๆ จึงไม่กระทบผู้เรียกเดิม)
  */
 export type CompanyScopeRow = Partial<
-  Pick<CMRow, "company" | "charger_brand" | "faulty_equipment" | "charger_sn" | "charger_no">
+  Pick<CMRow, "company" | "assigned_company" | "charger_brand" | "faulty_equipment" | "charger_sn" | "charger_no">
 >;
 
+/**
+ * บริษัทที่ผู้เปิดใบเลือกไว้ตอนกด + เพิ่ม — ว่างเมื่อเป็นใบเก่าที่เปิดก่อนมีป๊อปอัพเลือกบริษัท
+ * ใบที่มีค่านี้ให้ยึดตามที่เลือกไว้ ไม่ต้องเดาจากยี่ห้อตู้/บริษัทเจ้าของสถานีอีก
+ */
+export function assignedCompanyOf(r: CompanyScopeRow): string {
+  return (r.assigned_company || "").trim();
+}
+
 export function companyOf(r: CompanyScopeRow): string {
-  return (r.company || "").trim() || UNKNOWN_COMPANY;
+  return assignedCompanyOf(r) || (r.company || "").trim() || UNKNOWN_COMPANY;
 }
 
 export function brandOf(r: CompanyScopeRow): string {
@@ -93,6 +103,9 @@ export function isEdsWorkOrder(r: CompanyScopeRow): boolean {
 
 export function matchesCompanyFilter(r: CompanyScopeRow, company: string | null): boolean {
   if (!company) return true;
+  // ใบที่เลือกบริษัทไว้ตอนเปิด — เทียบกับที่เลือกตรง ๆ กฎ brand → EDS ใช้เฉพาะใบเก่าที่ไม่ได้เลือก
+  const assigned = assignedCompanyOf(r);
+  if (assigned) return assigned.toLowerCase() === company.trim().toLowerCase();
   // EDS รับผิดชอบตู้ FlexxFast โดยไม่ขึ้นกับ company ของสถานี
   // จึงต้องใช้ brand ของตู้จากใบงานเป็นเกณฑ์เดียวกับ PM Dashboard
   if (company.trim().toLowerCase() === "eds") {
@@ -126,6 +139,22 @@ export function listBrands(rows: CMRow[]): string[] {
       return b[1] - a[1] || a[0].localeCompare(b[0]);
     })
     .map((e) => e[0]);
+}
+
+/**
+ * ตัวเลือกในดรอปดาวน์ "บริษัท" — ตัวเลือกมาตรฐาน + บริษัทที่ผู้ใช้พิมพ์เองในช่อง "อื่น ๆ"
+ * ตอนเปิดใบ (ไม่งั้นใบที่เลือกบริษัทนอกลิสต์จะกรองหาไม่เจอ)
+ */
+export function listCompanyFilterOptions(rows: CompanyScopeRow[]): string[] {
+  const seen = new Map<string, string>(
+    COMPANY_FILTER_OPTIONS.map((c) => [c.toLowerCase(), c] as const)
+  );
+  for (const r of rows) {
+    const assigned = assignedCompanyOf(r);
+    if (assigned && !seen.has(assigned.toLowerCase())) seen.set(assigned.toLowerCase(), assigned);
+  }
+  const extras = Array.from(seen.values()).slice(COMPANY_FILTER_OPTIONS.length).sort((a, b) => a.localeCompare(b));
+  return [...COMPANY_FILTER_OPTIONS, ...extras];
 }
 
 export function listCompanies(rows: CMRow[]): string[] {

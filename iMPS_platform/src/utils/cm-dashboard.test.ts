@@ -21,6 +21,7 @@ import {
   companyOf,
   listCompanies,
   matchesCompanyFilter,
+  listCompanyFilterOptions,
   isChargerWorkOrder,
   isEdsWorkOrder,
 } from "./cm-dashboard";
@@ -106,6 +107,33 @@ describe("company filter helpers", () => {
     expect(isEdsWorkOrder(legacyCharger)).toBe(true);
     expect(matchesCompanyFilter(legacyCharger, "EGAT")).toBe(false);
     expect(matchesCompanyFilter(legacyCharger, "EDS")).toBe(true);
+  });
+
+  it("uses the company picked when the work order was opened", () => {
+    // ใบตู้ FlexxFast ที่ผู้เปิดเลือก EGAT ไว้ → อยู่ในกลุ่ม EGAT ไม่ใช่ EDS ตามยี่ห้อ
+    const pickedEgat = makeRow({ company: "EGAT", assigned_company: "EGAT", charger_brand: "FlexxFast", faulty_equipment: "DCCHARGER" });
+    // ใบตู้ Delta ที่เลือก EDS ไว้ → เป็นงานของ EDS แม้ยี่ห้อไม่ใช่ FlexxFast
+    const pickedEds = makeRow({ company: "EDS", assigned_company: "EDS", charger_brand: "Delta", faulty_equipment: "DCCHARGER" });
+
+    expect(matchesCompanyFilter(pickedEgat, "EGAT")).toBe(true);
+    expect(matchesCompanyFilter(pickedEgat, "EDS")).toBe(false);
+    expect(matchesCompanyFilter(pickedEds, "EDS")).toBe(true);
+    expect(matchesCompanyFilter(pickedEds, "EGAT")).toBe(false);
+    expect(companyOf(pickedEds)).toBe("EDS");
+  });
+
+  it("matches a company typed into the Other box, case-insensitively", () => {
+    const row = makeRow({ company: "EGAT", assigned_company: "PTG" });
+    expect(matchesCompanyFilter(row, "PTG")).toBe(true);
+    expect(matchesCompanyFilter(row, "ptg")).toBe(true);
+    expect(matchesCompanyFilter(row, "EGAT")).toBe(false);
+    expect(matchesCompanyFilter(row, null)).toBe(true);
+  });
+
+  it("adds custom companies to the filter dropdown after the standard options", () => {
+    const rows = [makeRow({ assigned_company: "PTG" }), makeRow({ assigned_company: "eds" }), makeRow({ assigned_company: "" })];
+    expect(listCompanyFilterOptions(rows)).toEqual(["EGAT", "EDS", "PTG"]);
+    expect(listCompanyFilterOptions([])).toEqual(["EGAT", "EDS"]);
   });
 
   it("falls back to the resolved charger when the failure code is unknown", () => {
