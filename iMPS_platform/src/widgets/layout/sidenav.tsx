@@ -425,7 +425,10 @@ export default function Sidenav({ }: PropTypes) {
                   </ListItem>
 
                   <AccordionBody className="!tw-py-1 tw-text-inherit">
-                    <List className={`!tw-p-0 tw-text-inherit ${name === "EV Stations" ? "!tw-pl-4" : ""}`}>
+                    <List className={`!tw-p-0 tw-text-inherit ${name === "EV Stations"
+                      ? `!tw-ml-2 !tw-pl-4 tw-border-l ${sidenavType === "dark" ? "tw-border-white/20" : "tw-border-gray-300"}`
+                      : ""
+                      }`}>
                       {pages.map((page, idx) =>
                         page.pages ? (
                           <Accordion
