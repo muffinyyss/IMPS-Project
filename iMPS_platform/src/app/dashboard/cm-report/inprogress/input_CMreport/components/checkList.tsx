@@ -58,8 +58,8 @@ const T = {
     repairer: { th: "ผู้เข้าแก้ไข", en: "Repairer" },
     inspectorEntered: { th: "ผู้ตรวจสอบ", en: "Inspector" },
     damageSymptoms: { th: "อาการชำรุด", en: "Damage Symptoms" },
-    failureCodeDescription: { th: "FAILURECODE DESCRIPTION", en: "FAILURECODE DESCRIPTION" },
-    selectFailureCodeDescription: { th: "เลือก FAILURECODE DESCRIPTION...", en: "Select FAILURECODE DESCRIPTION..." },
+    failureCodeDescription: { th: "ตำแหน่งจุดที่พบปัญหา", en: "Failurecode Description" },
+    selectFailureCodeDescription: { th: "เลือกตำแหน่งจุดที่พบปัญหา...", en: "Select Failurecode Description..." },
     repairedEquipment: { th: "การแก้ไข", en: "Correction" },
     devicesGroup: { th: "อุปกรณ์ในตู้", en: "Cabinet Devices" },
     loadingDevices: { th: "กำลังโหลดอุปกรณ์...", en: "Loading devices..." },
@@ -1014,8 +1014,8 @@ export default function CMInProgressForm() {
     // ใช้ status จริงเป็นตัวกำหนด Read only เท่านั้น
     // การเลือก Repair Result = WO - wait for approve ยังต้องแก้ไข/บันทึกได้ก่อน
     const isWaitForApprove = normalizedJobStatus === "wait for approve";
-    // Planner แก้ไขข้อมูลของ Technician ได้เฉพาะใบที่ส่งมารออนุมัติปิดงานแล้ว
-    // ส่วน In Progress/Wait for schedule เป็นหน้าที่ของ Technician จึงเปิดดูได้อย่างเดียว
+    // Planner แก้ไขข้อมูลของ Technician ได้เมื่อใบอยู่ In Progress หรือรออนุมัติปิดงาน
+    const canEditInProgress = isPlanner && normalizedJobStatus === "in progress";
     const isWoCloseApproval =
         isWaitForApprove &&
         approvalStage.trim().toLowerCase() !== "cs_approval";
@@ -1031,7 +1031,7 @@ export default function CMInProgressForm() {
         isCancelledStatus ||
         isTechnicianWaitForApprove ||
         (isWaitForApprove && !canEditTechnicianData) ||
-        (isPlanner && !plannerSelfCloseMode && (!canEditTechnicianData || !plannerEditMode)) ||
+        (isPlanner && !plannerSelfCloseMode && !canEditInProgress && (!canEditTechnicianData || !plannerEditMode)) ||
         (!isPlanner && !isJobOwner);
 
     // ล็อกกันกรอกชนกัน — คนที่เปิดฟอร์มในโหมดกรอกก่อนได้สิทธิ์ ที่เหลือดูได้อย่างเดียว
@@ -1628,12 +1628,8 @@ export default function CMInProgressForm() {
         ? "Closed"
         : (isClosing || job.repair_result === "WO - wait for approve" ? "Wait for approve" : "In Progress");
     const targetTab = targetStatus === "Closed" ? "closed" : "in-progress";
-    // ป้าย Job Status ต้องบอก "สถานะตอนนี้" ของใบงาน ไม่ใช่สถานะที่จะกลายเป็นตอนกดบันทึก
-    // ด่านปิดงาน targetStatus ของ planner เป็น "Closed" ตั้งแต่เปิดหน้า (กดบันทึกแล้วปิดเลย)
-    // ถ้าเอามาโชว์ตรง ๆ จะดูเหมือนใบถูกปิดไปแล้วทั้งที่ยังรออนุมัติอยู่
-    const jobStatusLabel = isWoCloseApproval
-        ? "WO - wait for approve"
-        : (plannerSelfCloseMode ? "Wait for schedule" : targetStatus);
+    // แสดงสถานะปัจจุบันของใบงาน ไม่ใช่สถานะปลายทางที่จะเกิดขึ้นหลังบันทึก
+    const jobStatusLabel = job.status || "Open";
     // ใบที่ซ่อมจบแล้ว (รออนุมัติ หรือปิดเลย) → ต้องมีวันที่แก้ไขเสร็จเสมอ
     // (ครอบคลุมทั้ง แก้ไขสำเร็จ/ไม่สำเร็จ, ไม่พบปัญหา และ WO - wait for approve)
     const hasResolvedDate = targetStatus === "Wait for approve" || targetStatus === "Closed";
@@ -3106,9 +3102,11 @@ export default function CMInProgressForm() {
                             {/* Job Status */}
                             <div>
                                 <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-3">{t("jobStatus", lang)}</label>
-                                {/* สถานะปัจจุบันของใบงาน — ด่านรออนุมัติปิดงานโชว์ "WO - wait for approve"
-                                    ไม่ใช่ Closed (ดู jobStatusLabel) */}
-                                <div className={`tw-inline-flex tw-items-center tw-px-4 tw-py-2.5 tw-rounded-full tw-text-white tw-font-semibold tw-text-sm tw-shadow-md ${jobStatusLabel === "Closed" ? "tw-bg-gray-600" : jobStatusLabel === "In Progress" ? "tw-bg-amber-500" : "tw-bg-blue-500"
+                                <div className={`tw-inline-flex tw-items-center tw-px-4 tw-py-2.5 tw-rounded-full tw-text-white tw-font-semibold tw-text-sm tw-shadow-md ${
+                                    ["closed", "complete", "cancelled"].includes(normalizedJobStatus) ? "tw-bg-gray-600" :
+                                        normalizedJobStatus === "in progress" ? "tw-bg-amber-500" :
+                                            normalizedJobStatus === "wait for approve" ? "tw-bg-purple-600" :
+                                                normalizedJobStatus === "wait for schedule" ? "tw-bg-indigo-600" : "tw-bg-blue-500"
                                     }`}>
                                     <span>{jobStatusLabel}</span>
                                 </div>
@@ -3410,7 +3408,11 @@ export default function CMInProgressForm() {
                                             <option key={option.value} value={option.value}>{option.label}</option>
                                         ))}
                                         {job.faulty_equipment && !failureCodeDescriptionOptions.some(option => option.value === job.faulty_equipment) && (
-                                            <option value={job.faulty_equipment}>{failureCodeLabel(job.faulty_equipment)}</option>
+                                            <option value={job.faulty_equipment}>
+                                                {chargerIdentity?.auto_generated && job.faulty_equipment.startsWith("charger_")
+                                                    ? (lang === "th" ? "เครื่องชาร์จ" : "Charger")
+                                                    : failureCodeLabel(job.faulty_equipment)}
+                                            </option>
                                         )}
                                     </select>
                                 </div>
