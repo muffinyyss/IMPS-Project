@@ -43,9 +43,16 @@ const baseRoutes = [
       {
         layout: "dashboard",
         icon: <i className="fa fa-map-marker-alt" />,
-        name: "EV Stations",
+        name: "EV Stations (All)",
         path: "/dashboard/stations",
         allow: ["admin", "owner", "technician", "cs", "planner"],
+      },
+      {
+        layout: "dashboard",
+        icon: <i className="fa fa-robot" />,
+        name: "Ai Module",
+        path: "/dashboard/ai",
+        allow: ["admin", "owner", "planner"],
       },
       {
         layout: "dashboard",
@@ -101,8 +108,8 @@ const baseRoutes = [
   { name: "Solar Plant", icon: <i className="fa fa-solar-panel" />, path: "/dashboard/solar-plant", allow: ["admin", "owner", "planner"], showMode: "before" },
   { name: "Power Plant", icon: <i className="fa fa-industry" />, path: "/dashboard/power-plant", allow: ["admin", "owner", "planner"], showMode: "before" },
   // เมนู Company — เฉพาะ super_admin กับ admin เท่านั้น
-  { name: "Company", icon: <i className="fa fa-building" />, path: "/dashboard/company", allow: ["super_admin", "admin"], showMode: "before" },
-  { name: "Users", icon: <i className="fa fa-users" />, path: "/dashboard/users", allow: ["admin"], showMode: "before" },
+  { name: "Company Profile", icon: <i className="fa fa-building" />, path: "/dashboard/company", allow: ["super_admin", "admin"], showMode: "before" },
+  { name: "Users Management", icon: <i className="fa fa-users" />, path: "/dashboard/users", allow: ["admin"], showMode: "before" },
   { name: "My Charger", icon: <i className="fa fa-charging-station" />, path: "/dashboard/chargers", allow: ["admin", "owner"], showMode: "after" },
   { name: "Device", icon: <i className="fa fa-microchip" />, path: "/dashboard/device", allow: ["admin", "owner", "planner"], showMode: "after" },
   { name: "Configuration", icon: <i className="fa fa-cog" />, path: "/dashboard/setting", allow: ["admin", "owner", "planner"], showMode: "after" },
@@ -111,7 +118,6 @@ const baseRoutes = [
   { name: "PM report", icon: <i className="fa fa-file-alt" />, path: "/dashboard/pm-report", allow: ["admin", "owner", "technician", "planner"], showMode: "after" },
   { name: "CM report", icon: <i className="far fa-file" />, path: "/dashboard/cm-report", allow: ["admin", "owner", "technician", "cs", "planner"], showMode: "after" },
   { name: "Test report", icon: <i className="fa fa-check-square" />, path: "/dashboard/test-report", allow: ["admin", "owner", "technician", "planner"], showMode: "after" },
-  { name: "Ai Module", icon: <i className="fa fa-robot" />, path: "/dashboard/ai", allow: ["admin", "owner", "planner"], showMode: "after" },
 ];
 
 /** 2) อ่าน user/role จาก localStorage (ตาม payload ที่ backend ส่งมาใน /login) */
@@ -158,6 +164,15 @@ const canSeeByMode = (showMode, hasChargerSelected) => {
   if (showMode === "after") return hasChargerSelected;
   return true;
 };
+
+function removeAiModule(items) {
+  return items
+    .filter(item => item.path !== "/dashboard/ai")
+    .map(item => ({
+      ...item,
+      pages: Array.isArray(item.pages) ? removeAiModule(item.pages) : item.pages,
+    }));
+}
 
 function prune(items, roles, hasChargerSelected = false) {
   return items
@@ -229,7 +244,7 @@ export function getRoutes(roles, hasChargerSelected = false, stationParams = nul
 
   // ถ้า role = owner และ ai_package.enabled != true → ซ่อน Ai Module
   if (role === "owner" && !ai_package?.enabled) {
-    filtered = filtered.filter(
+    filtered = removeAiModule(filtered).filter(
       item => item.path !== "http://203.154.130.132:8001/dashboard"
         && item.path !== "/dashboard/cbm"
     );
