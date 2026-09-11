@@ -49,21 +49,21 @@ const baseRoutes = [
       },
       {
         layout: "dashboard",
-        icon: <i className="fa fa-file-alt" />,
-        // ตารางใบงาน PM รวมทุกสถานี — แพทเทิร์นเดียวกับ CM List
-        // technician ต้องเห็นด้วย (เหมือน CM List) จะได้ตามงานที่ถูกมอบหมายได้
-        name: "PM List",
-        path: "/dashboard/pm-list",
-        allow: ["admin", "owner", "planner", "technician"],
-      },
-      {
-        layout: "dashboard",
         icon: <i className="fa fa-chart-pie" />,
         // หน้าวิเคราะห์ PM — คู่กับ CM Dashboard, ข้อมูลชุดเดียวกับ PM List
         // cs/technician ไม่เห็นส่วนวิเคราะห์ (ถ้าเข้า URL ตรง เพจจะพาไป PM List ให้เอง)
         name: "PM Dashboard",
         path: "/dashboard/pm-dashboard",
         allow: ["admin", "owner", "planner"],
+      },
+      {
+        layout: "dashboard",
+        icon: <i className="fa fa-table-list" />,
+        // ตารางใบงาน PM รวมทุกสถานี — แพทเทิร์นเดียวกับ CM List
+        // technician ต้องเห็นด้วย (เหมือน CM List) จะได้ตามงานที่ถูกมอบหมายได้
+        name: "PM List",
+        path: "/dashboard/pm-list",
+        allow: ["admin", "owner", "planner", "technician"],
       },
       {
         layout: "dashboard",

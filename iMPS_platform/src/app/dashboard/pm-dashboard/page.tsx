@@ -50,11 +50,11 @@ const WO_PM_TYPE_LABEL: Record<string, string> = {
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
 /**
- * การ์ดสรุป — พื้นขาว ไอคอนวงกลมสีอ่อนทางซ้าย ตัวเลขใหญ่สีเดียวกับส่วนของโดนัท
- * คลิกเพื่อกรองทั้งแดชบอร์ด (การ์ด "งานทั้งหมด" = ล้างตัวกรอง)
+ * การ์ดสรุป — สไตล์เดียวกับการ์ด KPI ของ CM Dashboard : พื้นไล่สีเต็มใบ ตัวอักษรสีขาว
+ * ไอคอนอยู่ในกรอบโปร่งแสงทางขวา คลิกเพื่อกรองทั้งแดชบอร์ด (การ์ด "งานทั้งหมด" = ล้างตัวกรอง)
  */
-function SummaryCard({ label, value, tint, accent, Icon, dim, active, onClick }: {
-  label: string; value: number; tint: string; accent: string;
+function SummaryCard({ label, value, color, Icon, dim, active, onClick }: {
+  label: string; value: number; color: string;
   Icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
   dim: boolean; active: boolean; onClick: () => void;
 }) {
@@ -63,23 +63,20 @@ function SummaryCard({ label, value, tint, accent, Icon, dim, active, onClick }:
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className={`tw-flex tw-h-full tw-min-w-0 tw-items-center tw-gap-4 tw-rounded-2xl tw-border tw-border-blue-gray-100 tw-bg-white tw-px-5 tw-py-4 tw-text-left tw-shadow-sm tw-transition-all hover:tw-shadow-md focus:tw-outline-none focus-visible:tw-ring-2 focus-visible:tw-ring-blue-400 focus-visible:tw-ring-offset-2 ${
+      className={`tw-flex tw-h-full tw-min-w-0 tw-items-center tw-justify-between tw-gap-3 tw-rounded-2xl tw-px-4 tw-py-3 tw-text-left tw-text-white tw-shadow-md tw-transition-all hover:tw-shadow-xl hover:tw-brightness-105 focus:tw-outline-none focus-visible:tw-ring-2 focus-visible:tw-ring-blue-400 focus-visible:tw-ring-offset-2 ${
         active ? "tw-ring-2 tw-ring-blue-500 tw-ring-offset-2" : ""
       }`}
-      style={{ opacity: dim ? 0.45 : 1 }}
+      style={{ background: color, opacity: dim ? 0.45 : 1 }}
     >
+      <span className="tw-min-w-0">
+        <span className="tw-block tw-truncate tw-text-[12px] tw-font-semibold tw-leading-snug tw-opacity-95" title={label}>{label}</span>
+        <span className="tw-mt-1 tw-block tw-text-2xl tw-font-extrabold tw-leading-none">{value}</span>
+      </span>
       <span
         aria-hidden="true"
-        className="tw-flex tw-h-12 tw-w-12 tw-shrink-0 tw-items-center tw-justify-center tw-rounded-full"
-        style={{ background: tint }}
+        className="tw-flex tw-h-9 tw-w-9 tw-shrink-0 tw-items-center tw-justify-center tw-rounded-xl tw-bg-white/20"
       >
-        <Icon className="tw-h-6 tw-w-6" style={{ color: accent }} />
-      </span>
-      <span className="tw-min-w-0">
-        <span className="tw-block tw-truncate tw-text-[13px] tw-font-medium tw-text-gray-500" title={label}>{label}</span>
-        <span className="tw-mt-0.5 tw-block tw-text-3xl tw-font-extrabold tw-leading-none" style={{ color: accent }}>
-          {value}
-        </span>
+        <Icon className="tw-h-5 tw-w-5" />
       </span>
     </button>
   );
@@ -431,15 +428,17 @@ export default function PMDashboardPage() {
   }[lang]), [lang]);
 
   // ── Donut + cartes : une part par carte de bucket, même ordre et même couleur ──
+  // `color` = dégradé plein de la carte (style CM Dashboard) ; `accent` = teinte
+  // médiane de la même famille, utilisée par les parts du donut et sa légende.
   type BucketCard = {
     bucket: PmBucket | null; label: string; value: number;
-    tint: string; accent: string; Icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
+    color: string; accent: string; Icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
   };
   const bucketCards: BucketCard[] = useMemo(() => [
-    { bucket: null, label: t.cardTotal, value: bucketStats.total, tint: "#dbeafe", accent: "#2563eb", Icon: ClipboardDocumentListIcon },
-    { bucket: "completed", label: t.cardCompleted, value: bucketStats.completed, tint: "#dcfce7", accent: "#16a34a", Icon: CheckCircleIcon },
-    { bucket: "not_completed", label: t.cardNotCompleted, value: bucketStats.notCompleted, tint: "#ffedd5", accent: "#ea580c", Icon: ClockIcon },
-    { bucket: "cancelled", label: t.cardCancelled, value: bucketStats.cancelled, tint: "#fee2e2", accent: "#dc2626", Icon: NoSymbolIcon },
+    { bucket: null, label: t.cardTotal, value: bucketStats.total, color: "linear-gradient(135deg,#3b82f6,#1d4ed8)", accent: "#2563eb", Icon: ClipboardDocumentListIcon },
+    { bucket: "completed", label: t.cardCompleted, value: bucketStats.completed, color: "linear-gradient(135deg,#4ade80,#16a34a)", accent: "#16a34a", Icon: CheckCircleIcon },
+    { bucket: "not_completed", label: t.cardNotCompleted, value: bucketStats.notCompleted, color: "linear-gradient(135deg,#fb923c,#ea580c)", accent: "#ea580c", Icon: ClockIcon },
+    { bucket: "cancelled", label: t.cardCancelled, value: bucketStats.cancelled, color: "linear-gradient(135deg,#f87171,#dc2626)", accent: "#dc2626", Icon: NoSymbolIcon },
   ], [t, bucketStats]);
 
   /** Parts du donut = les 3 buckets réels (la carte « งานทั้งหมด » est leur somme) */
@@ -781,13 +780,14 @@ export default function PMDashboardPage() {
             </CardBody>
           </Card>
 
-          {/* การ์ดสรุป 4 ใบ — auto-rows-fr : ทั้ง 4 แถวแบ่งความสูงเท่ากับโดนัท
-              สองคอลัมน์ของ section จึงจบที่ระดับเดียวกัน */}
-          <div className="tw-grid tw-h-full tw-auto-rows-fr tw-grid-cols-1 tw-gap-3">
+          {/* การ์ดสรุป 4 ใบ — กริด 2 คอลัมน์เหมือนการ์ด KPI ของ CM Dashboard
+              auto-rows-fr : สองแถวแบ่งความสูงเท่ากับโดนัท สองคอลัมน์ของ section
+              จึงจบที่ระดับเดียวกัน */}
+          <div className="tw-grid tw-h-full tw-auto-rows-fr tw-grid-cols-1 tw-gap-3 sm:tw-grid-cols-2">
             {bucketCards.map((c) => (
               <SummaryCard
                 key={c.label}
-                label={c.label} value={c.value} tint={c.tint} accent={c.accent} Icon={c.Icon}
+                label={c.label} value={c.value} color={c.color} Icon={c.Icon}
                 active={c.bucket !== null && filters.bucket === c.bucket}
                 // la carte « งานทั้งหมด » englobe les trois autres — jamais grisée
                 dim={c.bucket !== null && filters.bucket !== null && filters.bucket !== c.bucket}
