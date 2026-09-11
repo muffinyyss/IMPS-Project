@@ -1041,8 +1041,9 @@ export default function CMInProgressForm() {
 
     // ช่างเปิดใบงานครั้งแรก = อ่านข้อมูลจาก CS/Planner ก่อน แล้วค่อยกด "เริ่มงาน" เพื่อเข้าสู่ฟอร์ม In Progress
     // ใบที่เคยเริ่มแก้ไขแล้ว (มีเวลาเริ่ม) เข้ามาก็กรอกต่อได้เลย — role อื่นไม่ต้องผ่านด่านนี้
+    const requiresRepairStart = isTechnician || canEditInProgress;
     const repairStarted =
-        !isTechnician || viewOnly || repairStartedManually || !!job.start_repair_date || !!job.start_repair_time;
+        !requiresRepairStart || viewOnly || repairStartedManually || !!job.start_repair_date || !!job.start_repair_time;
 
     // อนุมัติปิดใบงาน (Wait for approve → Closed) — เฉพาะ admin/planner และเฉพาะใบที่รออนุมัติอยู่จริง
     const canApprove =
@@ -2970,7 +2971,7 @@ export default function CMInProgressForm() {
                             </div>
                             <div>
                                 <div className="tw-font-bold tw-text-blue-gray-900 tw-text-base md:tw-text-lg">
-                                    {t("pageTitle", lang)} – {isTechnician && !repairStarted ? t("headerBeforeStart", lang) : t("headerEdit", lang)}
+                                    {t("pageTitle", lang)} – {(isTechnician || canEditInProgress) && !repairStarted ? t("headerBeforeStart", lang) : t("headerEdit", lang)}
                                 </div>
                                 <div className="tw-text-sm tw-text-blue-gray-600 tw-mt-2">{t("companyName", lang)}</div>
                                 <div className="tw-text-xs tw-text-blue-gray-500 tw-mt-1">{t("companyAddressLine1", lang)}</div>
@@ -3833,7 +3834,7 @@ export default function CMInProgressForm() {
                                 {approvalActions}
                             </>
                         ) : !repairStarted ? (
-                            /* ช่างยังไม่กดเริ่มงาน — มีเฉพาะข้อมูลแจ้งปัญหาและปุ่มเข้าสู่ In Progress */
+                            /* ช่างหรือ Planner ยังไม่กดเริ่มแก้ไข — มีเฉพาะข้อมูลแจ้งปัญหา */
                             <>
                                 {cancelAction}
                                 <Button
@@ -3841,7 +3842,9 @@ export default function CMInProgressForm() {
                                     onClick={startWork}
                                     className="tw-bg-amber-500 hover:tw-bg-amber-600 tw-text-white tw-font-semibold tw-text-base tw-px-8 tw-py-3 tw-rounded-xl hover:tw-shadow-xl hover:tw-shadow-amber-500/30 tw-transition-all"
                                 >
-                                    {repairHistory.length > 0
+                                    {canEditInProgress
+                                        ? (lang === "th" ? "เริ่มแก้ไข" : "Start Editing")
+                                        : repairHistory.length > 0
                                         ? (lang === "th"
                                             ? `เริ่มงานรอบที่ ${repairHistory.length + 1}`
                                             : `Start work round ${repairHistory.length + 1}`)
