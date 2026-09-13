@@ -9,7 +9,7 @@ import useLanguage from "@/utils/useLanguage";
 import {
   CMRow, ActiveFilters, DateSel, STATUS_LABELS, WorkStatusFilter, EMPTY_FILTERS, CmOrigin,
   normalizeStatus, workStatusOf, filterByDate, listYears, listBrands, brandOf, matchesCompanyFilter, UNKNOWN_BRAND, UNKNOWN_COMPANY, listCompanyFilterOptions,
-  excludeCancelled, isCancelled,
+  excludeCancelled, isCancelled, isWorkOrder,
   weeksInMonth, applyFilters, groupCount, groupCountMulti, groupCountMultiByBrand, groupByMonth,
   causeLabelsOf, remedyCodesOf, remedyDescriptionsOf,
 } from "@/utils/cm-dashboard";
@@ -357,7 +357,7 @@ export default function CMDashboardPage() {
     );
   }, [activeRows, filters, activeRemedy]);
 
-  // จำนวนใบที่ยกเลิก — ไม่ได้อยู่ใน srStats/kpiStats เพราะถูกตัดออกจากกราฟไปแล้ว
+  // จำนวนใบที่ยกเลิก — ไม่ได้อยู่ใน srStats เพราะถูกตัดออกจากกราฟไปแล้ว
   // นับจาก periodRows เต็ม โดยยกเว้นตัวกรองเดียวกับที่ผู้ใช้ตัวนั้นใช้ (ปุ่มกรองสถานะ vs การ์ด KPI)
   const cancelledCount = useMemo(
     () => applyFilters(periodRows, filters, "status").filter(isCancelled).length,
@@ -374,9 +374,9 @@ export default function CMDashboardPage() {
 
   // ── จำนวนใบหลังกรอง (โชว์ใต้หัวเรื่อง) — รวมใบที่ยกเลิกด้วย จึงใช้ periodRows เต็ม
   const allFiltered = useMemo(() => applyFilters(periodRows, filters), [periodRows, filters]);
-  // ── KPI stat cards (7 ใบ + completion rate): all chart-filters applied
-  // แถว KPI ไม่กรองด้วย workStatus ของตัวเอง — ตัวเลขครบทุก bucket เสมอ (เหมือน donut กับ status)
-  const kpiRows = useMemo(() => applyFilters(activeRows, filters, "workStatus"), [activeRows, filters]);
+  // ── KPI stat cards: SR ทั้งหมด = ใบงานทั้งหมดในระบบ รวมใบที่ยกเลิก
+  // แถว KPI ไม่กรองด้วย workStatus ของตัวเอง — ตัวเลขครบทุก bucket เสมอ
+  const kpiRows = useMemo(() => applyFilters(periodRows, filters, "workStatus"), [periodRows, filters]);
   const kpiStats = useMemo(() => {
     const counts = {
       total: kpiRows.length,
@@ -397,8 +397,8 @@ export default function CMDashboardPage() {
     // Completion rate = WO completed ÷ (Total SR − wait spare part − wait site access) × 100
     const denom = counts.total - counts.waitSparepart - counts.waitSiteAccess;
     const completionRate = denom > 0 ? Math.round((counts.completed / denom) * 100) : 0;
-    // « All work order » = toutes les SR devenues des WO (tout sauf le bucket "new")
-    const allWo = counts.total - counts.newSr - counts.waitCsApprove;
+    // « All work order » = toutes les fiches déjà devenues des WO
+    const allWo = kpiRows.filter(isWorkOrder).length;
     return { ...counts, allWo, completionRate };
   }, [kpiRows]);
 

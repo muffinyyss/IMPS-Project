@@ -5,6 +5,7 @@ import {
   isCancelled,
   excludeCancelled,
   workStatusOf,
+  isWorkOrder,
   filterByPeriod,
   applyFilters,
   applySearch,
@@ -296,6 +297,16 @@ describe("workStatusOf", () => {
     ];
     const kept = applyFilters(rows, { ...noFilters, workStatus: "wo_all" });
     expect(kept.map((r) => r.id)).toEqual(["b"]);
+  });
+});
+
+describe("isWorkOrder", () => {
+  it("นับเฉพาะใบที่เป็น WO แล้ว ไม่รวม SR ใหม่หรือใบยกเลิก", () => {
+    expect(isWorkOrder(makeRow({ status: "Open" }))).toBe(false);
+    expect(isWorkOrder(makeRow({ status: "Wait for approve", stage: "cs_approval" }))).toBe(false);
+    expect(isWorkOrder(makeRow({ status: "Wait for schedule" }))).toBe(true);
+    expect(isWorkOrder(makeRow({ status: "In Progress" }))).toBe(true);
+    expect(isWorkOrder(makeRow({ status: "Cancelled" }))).toBe(false);
   });
 });
 
