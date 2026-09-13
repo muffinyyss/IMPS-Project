@@ -348,6 +348,12 @@ export function workStatusOf(r: CMRow): WorkStatus {
   return byStatus;
 }
 
+/** ใบงานที่ผ่านด่าน CS แล้วและเป็น WO จริง โดยไม่รวม SR ใหม่หรือใบยกเลิก */
+export function isWorkOrder(r: CMRow): boolean {
+  const ws = workStatusOf(r);
+  return ws !== "new" && ws !== "wait_cs_approve" && ws !== "cancelled";
+}
+
 /** สีป้ายสถานะละเอียด (8 bucket) — ใช้ในตารางใบงาน ให้ตรงกับสีการ์ด KPI ด้านบน */
 const WORK_STATUS_COLORS: Record<WorkStatus, { bg: string; text: string }> = {
   new: { bg: "#fee2e2", text: "#dc2626" },
@@ -452,10 +458,7 @@ export function applyFilters(
     }
     if (filters.workStatus && exclude !== "workStatus") {
       const ws = workStatusOf(r);
-      // wo_all = SR ที่กลายเป็น WO แล้วทั้งหมด — ตัดถัง "new", SR ที่รอ head CS อนุมัติ
-      // (ยังไม่ขึ้นเป็น WO) และใบที่ยกเลิกออก
-      const notWo = ws === "new" || ws === "wait_cs_approve" || ws === "cancelled";
-      if (filters.workStatus === "wo_all" ? notWo : ws !== filters.workStatus) return false;
+      if (filters.workStatus === "wo_all" ? !isWorkOrder(r) : ws !== filters.workStatus) return false;
     }
     if (filters.cause && exclude !== "cause") {
       if (!causeLabelsOf(r).includes(filters.cause)) return false;
