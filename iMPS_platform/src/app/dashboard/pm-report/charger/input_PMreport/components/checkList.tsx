@@ -3466,7 +3466,8 @@ export default function ChargerPMForm() {
                                         containerProps={{ className: "!tw-min-w-0" }}
                                         className="!tw-w-full !tw-text-sm resize-none"
                                     />
-                                    <div className="tw-pt-3 sm:tw-pt-4 tw-border-t tw-border-gray-200">
+                                    {/* Temporarily disabled: Maximo labor input is hidden on all pages. */}
+                                    {false && <div className="tw-pt-3 sm:tw-pt-4 tw-border-t tw-border-gray-200">
                                         <PassFailRow
                                             label={t("summaryResult", lang)}
                                             value={summaryCheck}
@@ -3474,7 +3475,7 @@ export default function ChargerPMForm() {
                                             labels={{ PASS: t("summaryPass", lang), FAIL: t("summaryFail", lang), NA: t("summaryNA", lang) }}
                                             lang={lang}
                                         />
-                                    </div>
+                                    </div>}
 
                         {/* ด่านก่อนเริ่มกรอก — ช่างอ่านข้อมูลใบงานก่อน แล้วค่อยกดเริ่ม (เหมือนหน้า CM)
                             ใบที่เคยเริ่มกรอกไปแล้วเข้ามาก็ทำต่อได้เลย ไม่ต้องกดซ้ำ */}

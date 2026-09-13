@@ -130,8 +130,8 @@ export default function RepairRoundCard({
                     </div>
                 )}
             </div>
-            {/* ช่างที่ลงเวลาเข้า Maximo ของรอบนั้น — ใบเก่าที่บันทึกก่อนมีฟิลด์นี้จะไม่มีให้แสดง */}
-            {labor.length ? block(t("rrLabor", lang),
+            {/* Temporarily disabled: Maximo labor display is hidden on all pages. */}
+            {false && labor.length ? block(t("rrLabor", lang),
                 <div className="tw-flex tw-flex-wrap tw-gap-2">
                     {labor.map((l, i) => (
                         <span key={`${l.laborcode}-${i}`}

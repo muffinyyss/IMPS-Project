@@ -2922,7 +2922,8 @@ export default function CCBPMReport() {
                     )}
 
                     {/* เวลาทำงานจริงของช่าง — ต้องกรอกก่อนส่งปิดใบงาน (ส่งเข้า Maximo IN09) */}
-                    {isPostMode && (
+                    {/* Temporarily disabled: Maximo labor input is hidden on all pages. */}
+                    {false && isPostMode && (
                         <div className="tw-mt-6 tw-pt-4 tw-border-t tw-border-gray-200">
                             <div className="tw-mb-2">
                                 <Typography variant="h6" className="tw-text-sm sm:tw-text-base">

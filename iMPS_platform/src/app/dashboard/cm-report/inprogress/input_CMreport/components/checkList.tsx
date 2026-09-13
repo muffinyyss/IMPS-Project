@@ -1541,7 +1541,8 @@ export default function CMInProgressForm() {
     const contractorMissing = contractorPicked && !maximoContractor.trim();
     // รายชื่อช่างจาก Maximo (IN08) ดึงไม่ได้ = ไม่มีอะไรให้เลือก บังคับไม่ได้
     // และด่านตรวจ/อนุมัติแก้ไม่ได้ ใบเก่าที่ช่างไม่ได้เลือกไว้จะกลายเป็นทางตันของ planner
-    const maximoLaborRequired = !isTechnician && !viewOnly && visibleLaborOptions.length > 0;
+    // Temporarily disabled on all pages: Maximo labor is not collected yet.
+    const maximoLaborRequired = false;
 
     const validations = useMemo<ValidationItem[]>(() => [
         { key: "failureCodeDescription", label: t("failureCodeDescription", lang), isValid: !!job.faulty_equipment.trim(), message: t("notSelected", lang), isRequired: !isWaitingForSiteCondition, scrollId: "cm-failure-code-description" },
@@ -3215,7 +3216,8 @@ export default function CMInProgressForm() {
                             </div>
 
                             {/* Temporarily disabled for technician: Maximo time logging is not in use yet. */}
-                            {!isTechnician && <div id="cm-maximo-labor" className="tw-space-y-2">
+                            {/* Temporarily disabled: Maximo labor input is hidden on all pages. */}
+                            {false && <div id="cm-maximo-labor" className="tw-space-y-2">
                                 <label className="tw-flex tw-items-center tw-gap-2 tw-text-sm tw-font-semibold tw-text-gray-700">
                                     <span className="tw-w-1.5 tw-h-1.5 tw-rounded-full tw-bg-blue-500"></span>
                                     {t("maximoLabor", lang)}
