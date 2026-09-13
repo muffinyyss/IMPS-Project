@@ -413,6 +413,7 @@ export default function CMDashboardPage() {
       clickToFilter: "คลิกที่ส่วนของกราฟเพื่อกรอง",
       cancelHint: "(คลิกอีกครั้งเพื่อยกเลิก)",
       kpiTotalSR: "SR ทั้งหมด",
+      kpiRejectedSR: "SR ตีกลับ",
       kpiAllWO: "WO ทั้งหมด",
       kpiNewSR: "SR ใหม่",
       kpiWaitManpower: "WO รอกำหนดการ",
@@ -496,6 +497,7 @@ export default function CMDashboardPage() {
       clickToFilter: "Click on the chart to filter",
       cancelHint: "(click again to cancel)",
       kpiTotalSR: "Total service requests",
+      kpiRejectedSR: "Rejected service requests",
       kpiAllWO: "Total work order",
       kpiNewSR: "New service requests",
       kpiWaitManpower: "WO wait for scheduled",
@@ -626,6 +628,7 @@ export default function CMDashboardPage() {
   const workStatusLabel: Record<WorkStatusFilter, string> = {
     wo_all: t.kpiAllWO,
     new: t.kpiNewSR,
+    rejected: t.kpiRejectedSR,
     wait_manpower: t.kpiWaitManpower,
     wait_sparepart: t.kpiWaitSparepart,
     wait_cs_approve: t.kpiCsWaitApprove,
