@@ -326,6 +326,19 @@ describe("isWorkOrder", () => {
   });
 });
 
+describe("rejected SR", () => {
+  it("อยู่ใน SR ทั้งหมด แต่ยังไม่เป็น WO", () => {
+    const rejected = makeRow({
+      status: "Wait for approve",
+      stage: "cs_approval",
+      reject_remark: "ต้องแก้ไขรายละเอียด",
+    });
+
+    expect(applyFilters([rejected], { ...noFilters })).toHaveLength(1);
+    expect(applyFilters([rejected], { ...noFilters, workStatus: "wo_all" })).toHaveLength(0);
+  });
+});
+
 // ─── filterByPeriod ──────────────────────────────────────────────────────────
 
 describe("filterByPeriod", () => {
