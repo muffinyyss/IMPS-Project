@@ -308,6 +308,20 @@ describe("isWorkOrder", () => {
     expect(isWorkOrder(makeRow({ status: "In Progress" }))).toBe(true);
     expect(isWorkOrder(makeRow({ status: "Cancelled" }))).toBe(false);
   });
+
+  it("นับ WO ทุกช่วงของกระบวนการ", () => {
+    const rows = [
+      makeRow({ status: "Wait for schedule" }),
+      makeRow({ status: "In Progress", repair_result: "WO - wait for material" }),
+      makeRow({ status: "In Progress", repair_result: "WO - wait for site condition" }),
+      makeRow({ status: "In Progress" }),
+      makeRow({ status: "Wait for approve" }),
+      makeRow({ status: "Closed" }),
+      makeRow({ status: "Open" }),
+      makeRow({ status: "Cancelled" }),
+    ];
+    expect(rows.filter(isWorkOrder)).toHaveLength(6);
+  });
 });
 
 // ─── filterByPeriod ──────────────────────────────────────────────────────────
