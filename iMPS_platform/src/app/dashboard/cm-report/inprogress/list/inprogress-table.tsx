@@ -335,6 +335,8 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
 
       // Temporarily disabled: keep rows visible even after Maximo time is logged.
       cmItems = cmItems.filter(filterByStatus);
+      // Re-enable when needed:
+      // cmItems = cmItems.filter((it) => filterByStatus(it) && !it.maximo_time_logged);
       urlItems = urlItems.filter(filterByStatus);
 
       const cmRows: TData[] = cmItems.map((it: any) => {
