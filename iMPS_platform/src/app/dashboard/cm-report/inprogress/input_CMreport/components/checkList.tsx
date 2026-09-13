@@ -871,7 +871,7 @@ function ProblemGroupBlock({ faultyEquipment, value, onChange, onRemove, onAddGr
                                                         ))}
                                                     </div>
                                                 ) : (
-                                                    <div className="tw-text-center tw-py-6 tw-text-blue-gray-400 tw-text-sm tw-font-medium">{th ? "ยังไม่มีรูปก่อนแก้ไข" : "No before image yet"}</div>
+                                                    <div className="tw-text-center tw-py-6 tw-text-blue-gray-400 tw-text-sm tw-font-medium">{th ? "ไม่มีรูปก่อนแก้ไข" : "No before image"}</div>
                                                 )}
                                             </div>
                                             {/* After Images */}
@@ -901,7 +901,7 @@ function ProblemGroupBlock({ faultyEquipment, value, onChange, onRemove, onAddGr
                                                         ))}
                                                     </div>
                                                 ) : (
-                                                    <div className="tw-text-center tw-py-6 tw-text-green-600 tw-text-sm tw-font-medium">{th ? "ยังไม่มีรูปหลังแก้ไข" : "No after image yet"}</div>
+                                                    <div className="tw-text-center tw-py-6 tw-text-green-600 tw-text-sm tw-font-medium">{th ? "ไม่มีรูปหลังแก้ไข" : "No after image"}</div>
                                                 )}
                                             </div>
                                         </div>
@@ -3617,7 +3617,7 @@ export default function CMInProgressForm() {
                                                                 </div>
                                                             ) : (
                                                                 <div className="tw-text-center tw-py-6 tw-text-blue-gray-400 tw-text-sm tw-font-medium">
-                                                                    {lang === "th" ? "ยังไม่มีรูปก่อนแก้ไข" : "No before image yet"}
+                                                                    {lang === "th" ? "ไม่มีรูปก่อนแก้ไข" : "No before image"}
                                                                 </div>
                                                             )}
                                                         </div>
@@ -3659,8 +3659,8 @@ export default function CMInProgressForm() {
                                                             ) : (
                                                                 <div className="tw-text-center tw-py-6 tw-text-green-600 tw-text-sm tw-font-medium">
                                                                     {isClosedResult
-                                                                        ? (lang === "th" ? "⚠️ กรุณาแนบรูปหลังแก้ไข" : "⚠️ Please attach after image")
-                                                                        : (lang === "th" ? "ยังไม่มีรูปหลังแก้ไข" : "No after image yet")
+                                                                        ? (lang === "th" ? "ไม่มีรูปหลังแก้ไข" : "No after image")
+                                                                        : (lang === "th" ? "ไม่มีรูปหลังแก้ไข" : "No after image")
                                                                     }
                                                                 </div>
                                                             )}
