@@ -335,8 +335,8 @@ describe("rejected SR", () => {
     });
 
     expect(applyFilters([rejected], { ...noFilters })).toHaveLength(1);
-    expect(workStatusOf(rejected)).toBe("rejected");
-    expect(applyFilters([rejected], { ...noFilters, workStatus: "wait_cs_approve" })).toHaveLength(0);
+    expect(workStatusOf(rejected)).toBe("wait_cs_approve");
+    expect(applyFilters([rejected], { ...noFilters, workStatus: "wait_cs_approve" })).toHaveLength(1);
     expect(applyFilters([rejected], { ...noFilters, workStatus: "wo_all" })).toHaveLength(0);
   });
 });
