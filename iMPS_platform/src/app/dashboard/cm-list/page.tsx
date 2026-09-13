@@ -256,11 +256,14 @@ export default function CMListPage() {
 
   const activeFilterCount = Object.values(filters).filter(Boolean).length;
   const isEgatCompany = userCompany.trim().toLowerCase() === "egat";
-  // The API already limits technicians to work assigned to/reported by them.
-  // Do not scope those rows by the technician's company again: an assigned job
-  // may belong to a charger maintained by another company.
+  // The API limits technicians to work assigned to/reported by them. EGAT
+  // technicians additionally stay within EGAT-owned work items.
   const canSeeAllCompanies = isSuperAdmin || isEgatCompany;
-  const scopedRows = rows;
+  const isEgatTechnician = userRole.trim().toLowerCase() === "technician" && isEgatCompany;
+  const scopedRows = useMemo(
+    () => isEgatTechnician ? rows.filter((row) => matchesCompanyFilter(row, "EGAT")) : rows,
+    [isEgatTechnician, rows]
+  );
 
   const stations = useMemo(() => {
     const names = Array.from(new Set(scopedRows.map((r) => r.station_name || r.station_id))).filter(Boolean);
