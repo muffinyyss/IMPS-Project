@@ -1540,7 +1540,8 @@ export default function CMForm() {
                                     </div>
                                 </div>
                                 {/* ช่างที่ลงเวลากับ Maximo ของรอบสุดท้าย — รอบก่อน ๆ อยู่ในการ์ดประวัติด้านบน */}
-                                {lastRoundLabor.length > 0 && (
+                                {/* Temporarily disabled: Maximo labor display is hidden on all pages. */}
+                                {false && lastRoundLabor.length > 0 && (
                                     <div>
                                         <div className="tw-text-xs tw-text-blue-gray-500 tw-mb-1">{t("rrLabor", lang)}</div>
                                         <div className="tw-flex tw-flex-wrap tw-gap-2">

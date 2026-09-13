@@ -1944,7 +1944,8 @@ export default function MDBPMForm() {
 
                     <div className="tw-mt-6 sm:tw-mt-8 tw-flex tw-flex-col tw-gap-3">
                     {/* เวลาทำงานจริงของช่าง — ต้องกรอกก่อนส่งปิดใบงาน (ส่งเข้า Maximo IN09) */}
-                    <div className="tw-mt-6 tw-pt-4 tw-border-t tw-border-gray-200">
+                    {/* Temporarily disabled: Maximo labor input is hidden on all pages. */}
+                    {false && <div className="tw-mt-6 tw-pt-4 tw-border-t tw-border-gray-200">
                         <div className="tw-mb-2">
                             <Typography variant="h6" className="tw-text-sm sm:tw-text-base">
                                 {t("workTime", lang)} <span className="tw-text-red-500">*</span>
@@ -1969,7 +1970,7 @@ export default function MDBPMForm() {
                                 )}
                             </div>
                         </div>
-                    </div>
+                    </div>}
 
                     {/* ช่างที่จะลงเวลาเข้า Maximo — laborcode คนละชุดกับ username ใน iMPS
                         จึงต้องให้เลือกเอง ไม่งั้น IN09 จะ unmapped ทั้งใบ (อยู่ล่างสุดของฟอร์ม) */}
