@@ -9,8 +9,8 @@ import useLanguage from "@/utils/useLanguage";
 import {
   CMRow, ActiveFilters, DateSel, STATUS_LABELS, WorkStatusFilter, EMPTY_FILTERS, CmOrigin,
   normalizeStatus, workStatusOf, filterByDate, listYears, listBrands, brandOf, matchesCompanyFilter, UNKNOWN_BRAND, UNKNOWN_COMPANY, listCompanyFilterOptions,
-  excludeCancelled, isCancelled, isWorkOrder,
-  weeksInMonth, applyFilters, groupCount, groupCountMulti, groupCountMultiByBrand, groupByMonth,
+  excludeCancelled, isCancelled,
+  weeksInMonth, applyFilters as applyBaseFilters, groupCount, groupCountMulti, groupCountMultiByBrand, groupByMonth,
   causeLabelsOf, remedyCodesOf, remedyDescriptionsOf,
 } from "@/utils/cm-dashboard";
 import { remedyLabel, remedyCodeOfDescription } from "@/utils/cm-failure-codes";
@@ -26,6 +26,32 @@ const Chart = dynamic(() => import("react-apexcharts"), { ssr: false });
 // Company เริ่มต้นของหน้านี้ — ผู้ใช้ EGAT/super admin เปิดมาเห็นใบของ EGAT ก่อน
 // แล้วค่อยสลับเป็น EDS หรือ "ทุกบริษัท" เองได้จากดรอปดาวน์ (ตรงกับหน้า CM List)
 const DEFAULT_COMPANY_FILTER = "EGAT";
+
+function dashboardWorkStatusOf(row: CMRow): WorkStatusFilter | "rejected" {
+  if (workStatusOf(row) === "wait_cs_approve" && (row.reject_remark || "").trim()) return "rejected";
+  return workStatusOf(row);
+}
+
+function dashboardIsWorkOrder(row: CMRow): boolean {
+  const status = dashboardWorkStatusOf(row);
+  if (status === "cancelled") {
+    if (!row.status_before_cancel) return true;
+    const before = normalizeStatus(row.status_before_cancel);
+    return before !== "open";
+  }
+  return status !== "new" && status !== "rejected" && status !== "wait_cs_approve";
+}
+
+function applyDashboardFilters(rows: CMRow[], filters: ActiveFilters, exclude?: keyof ActiveFilters): CMRow[] {
+  const workStatus = filters.workStatus;
+  const baseFilters = workStatus && exclude !== "workStatus" ? { ...filters, workStatus: null } : filters;
+  const filtered = applyBaseFilters(rows, baseFilters, exclude);
+  if (!workStatus || exclude === "workStatus") return filtered;
+  return filtered.filter((row) => {
+    const status = dashboardWorkStatusOf(row);
+    return workStatus === "wo_all" ? dashboardIsWorkOrder(row) : status === workStatus;
+  });
+}
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -291,7 +317,7 @@ export default function CMDashboardPage() {
   const brands = useMemo(() => listBrands(brandRows), [brandRows]);
   const brandCounts = useMemo(() => {
     const counts = new Map<string, number>();
-    for (const r of applyFilters(periodRows, filters, "brand")) {
+    for (const r of applyDashboardFilters(periodRows, filters, "brand")) {
       const b = brandOf(r);
       counts.set(b, (counts.get(b) ?? 0) + 1);
     }
@@ -300,7 +326,7 @@ export default function CMDashboardPage() {
 
   // ที่มาของใบ: ระบบเปิดเอง (auto_cm_watcher) vs ผู้ใช้กรอกเอง
   const originCounts = useMemo(() => {
-    const base = applyFilters(periodRows, filters, "origin");
+    const base = applyDashboardFilters(periodRows, filters, "origin");
     let auto = 0;
     for (const r of base) if (r.auto_generated) auto++;
     return { auto, user: base.length - auto };
@@ -312,13 +338,13 @@ export default function CMDashboardPage() {
   // séries doivent rester visibles pour pouvoir en choisir une autre (même règle que
   // le donut Success Rate et les cartes KPI)
   const monthRows = useMemo(
-    () => applyFilters(excludeCancelled(filterByDate(stationRows, yearSel, "all", "all")), filters, "status"),
+    () => applyDashboardFilters(excludeCancelled(filterByDate(stationRows, yearSel, "all", "all")), filters, "status"),
     [stationRows, yearSel, filters]
   );
   const monthData = useMemo(() => groupByMonth(monthRows), [monthRows]);
 
   // ── Success Rate: ignores its own status filter so donut shows context
-  const srRows = useMemo(() => applyFilters(activeRows, filters, "status"), [activeRows, filters]);
+  const srRows = useMemo(() => applyDashboardFilters(activeRows, filters, "status"), [activeRows, filters]);
   const srStats = useMemo(() => {
     let completed = 0, inProgress = 0, open = 0;
     for (const r of srRows) {
@@ -333,13 +359,13 @@ export default function CMDashboardPage() {
 
   // ── Cause donut (« Count of Cause of Issue ») : compte les CAUSE CODE des fiches CM,
   //    une fiche à deux causes compte dans les deux tranches. Ignore son propre filtre.
-  const causeRows = useMemo(() => applyFilters(activeRows, filters, "cause"), [activeRows, filters]);
+  const causeRows = useMemo(() => applyDashboardFilters(activeRows, filters, "cause"), [activeRows, filters]);
   const causeData = useMemo(() => groupCountMulti(causeRows, causeLabelsOf), [causeRows]);
   // même découpage, ventilé par marque — alimente la vue « par entreprise » du même bloc
   const causeByBrand = useMemo(() => groupCountMultiByBrand(causeRows, causeLabelsOf), [causeRows]);
 
   // ── Remedy donut : réparti par REMEDY CODE (Replace / Repair / Reset…). Ignore son propre filtre.
-  const remedyRows = useMemo(() => applyFilters(activeRows, filters, "remedy"), [activeRows, filters]);
+  const remedyRows = useMemo(() => applyDashboardFilters(activeRows, filters, "remedy"), [activeRows, filters]);
   const remedyData = useMemo(() => groupCountMulti(remedyRows, remedyCodesOf, 10), [remedyRows]);
   const remedyByBrand = useMemo(() => groupCountMultiByBrand(remedyRows, remedyCodesOf, 10), [remedyRows]);
 
@@ -347,7 +373,7 @@ export default function CMDashboardPage() {
   //    un clic sur une tranche du donut le restreint à cette seule catégorie.
   const activeRemedy = filters.remedy;
   const remedyDetail = useMemo(() => {
-    const rows = applyFilters(activeRows, filters);
+    const rows = applyDashboardFilters(activeRows, filters);
     return groupCountMulti(
       rows,
       activeRemedy
@@ -360,23 +386,23 @@ export default function CMDashboardPage() {
   // จำนวนใบที่ยกเลิก — ไม่ได้อยู่ใน srStats เพราะถูกตัดออกจากกราฟไปแล้ว
   // นับจาก periodRows เต็ม โดยยกเว้นตัวกรองเดียวกับที่ผู้ใช้ตัวนั้นใช้ (ปุ่มกรองสถานะ vs การ์ด KPI)
   const cancelledCount = useMemo(
-    () => applyFilters(periodRows, filters, "status").filter(isCancelled).length,
+    () => applyDashboardFilters(periodRows, filters, "status").filter(isCancelled).length,
     [periodRows, filters]
   );
   const kpiCancelled = useMemo(
-    () => applyFilters(periodRows, filters, "workStatus").filter(isCancelled).length,
+    () => applyDashboardFilters(periodRows, filters, "workStatus").filter(isCancelled).length,
     [periodRows, filters]
   );
 
   // ── Severity bar: ignores own severity filter
-  const sevRows = useMemo(() => applyFilters(activeRows, filters, "severity"), [activeRows, filters]);
+  const sevRows = useMemo(() => applyDashboardFilters(activeRows, filters, "severity"), [activeRows, filters]);
   const sevData = useMemo(() => groupCount(sevRows, "severity"), [sevRows]);
 
   // ── จำนวนใบหลังกรอง (โชว์ใต้หัวเรื่อง) — รวมใบที่ยกเลิกด้วย จึงใช้ periodRows เต็ม
-  const allFiltered = useMemo(() => applyFilters(periodRows, filters), [periodRows, filters]);
+  const allFiltered = useMemo(() => applyDashboardFilters(periodRows, filters), [periodRows, filters]);
   // ── KPI stat cards: SR ทั้งหมด = ใบงานทั้งหมดในระบบ รวมใบที่ยกเลิกและ SR reject
   // แถว KPI ไม่กรองด้วย workStatus ของตัวเอง — ตัวเลขครบทุก bucket เสมอ
-  const kpiRows = useMemo(() => applyFilters(periodRows, filters, "workStatus"), [periodRows, filters]);
+  const kpiRows = useMemo(() => applyDashboardFilters(periodRows, filters, "workStatus"), [periodRows, filters]);
   const kpiStats = useMemo(() => {
     const counts = {
       total: kpiRows.length,
@@ -384,7 +410,7 @@ export default function CMDashboardPage() {
       waitSiteAccess: 0, inProgress: 0, completed: 0,
     };
     for (const r of kpiRows) {
-      const s = workStatusOf(r);
+      const s = dashboardWorkStatusOf(r);
       if (s === "new") counts.newSr++;
       else if (s === "wait_cs_approve") counts.waitCsApprove++;
       else if (s === "wait_manpower") counts.waitManpower++;
@@ -398,7 +424,7 @@ export default function CMDashboardPage() {
     const denom = counts.total - counts.waitSparepart - counts.waitSiteAccess;
     const completionRate = denom > 0 ? Math.round((counts.completed / denom) * 100) : 0;
     // « All work order » = toutes les fiches déjà devenues des WO
-    const allWo = kpiRows.filter(isWorkOrder).length;
+    const allWo = kpiRows.filter(dashboardIsWorkOrder).length;
     return { ...counts, allWo, completionRate };
   }, [kpiRows]);
 
@@ -628,7 +654,6 @@ export default function CMDashboardPage() {
   const workStatusLabel: Record<WorkStatusFilter, string> = {
     wo_all: t.kpiAllWO,
     new: t.kpiNewSR,
-    rejected: t.kpiRejectedSR,
     wait_manpower: t.kpiWaitManpower,
     wait_sparepart: t.kpiWaitSparepart,
     wait_cs_approve: t.kpiCsWaitApprove,

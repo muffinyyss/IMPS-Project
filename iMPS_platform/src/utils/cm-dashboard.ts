@@ -292,8 +292,6 @@ export function filterByPeriod(rows: CMRow[], period: Period): CMRow[] {
 // จะถูกจับด้วย keyword เพื่อรองรับข้อมูลจาก Maximo ในอนาคต
 export type WorkStatus =
   | "new"
-  /** SR ถูกตีกลับให้แก้ไข — ยังไม่ใช่ SR ที่รออนุมัติ */
-  | "rejected"
   /** SR รอ head CS อนุมัติ (status "Wait for approve" + stage "cs_approval") — ยังไม่เป็น WO */
   | "wait_cs_approve"
   | "wait_manpower"
@@ -340,10 +338,7 @@ export function workStatusOf(r: CMRow): WorkStatus {
   // "Wait for approve" มี 2 ด่าน แยกกันด้วย stage — ด่าน cs คือ SR ที่รอ head CS อนุมัติ
   // (ยังไม่เป็น WO) ส่วนด่าน close_approval คือ WO ที่ช่างซ่อมเสร็จแล้วรอปิดงาน
   if (byStatus === "wait_approve"
-    && (r.stage || "").trim().toLowerCase() === "cs_approval") {
-    if ((r.reject_remark || "").trim()) return "rejected";
-    return "wait_cs_approve";
-  }
+    && (r.stage || "").trim().toLowerCase() === "cs_approval") return "wait_cs_approve";
   const byResult = normalizeWorkStatus(r.repair_result || "");
   if (byResult === "wait_manpower" || byResult === "wait_sparepart" || byResult === "wait_site_access") {
     return byResult;
@@ -370,7 +365,6 @@ export function isWorkOrder(r: CMRow): boolean {
 /** สีป้ายสถานะละเอียด (8 bucket) — ใช้ในตารางใบงาน ให้ตรงกับสีการ์ด KPI ด้านบน */
 const WORK_STATUS_COLORS: Record<WorkStatus, { bg: string; text: string }> = {
   new: { bg: "#fee2e2", text: "#dc2626" },
-  rejected: { bg: "#fef2f2", text: "#b91c1c" },
   wait_cs_approve: { bg: "#ffedd5", text: "#c2410c" },
   wait_approve: { bg: "#e0e7ff", text: "#4338ca" },
   wait_manpower: { bg: "#ffe4e6", text: "#e11d48" },
