@@ -594,6 +594,8 @@ async def cmreport_list(
         "sched_finish": 1,
         "repair_result": 1,
         "repair_result_remark": 1,
+        # Temporarily disabled: do not use Maximo time to hide In Progress rows.
+        # "maximo_sync": 1,
         "maximo_ticket_id": 1,                                     # ← C) เพิ่ม
         "maximo_wonum": 1,
         "createdAt": 1
@@ -641,6 +643,12 @@ async def cmreport_list(
                 "label": it.get("charger_name") or job.get("charger_name") or "",
             },
         )
+        # Temporarily disabled: Maximo time must not affect the In Progress list.
+        # maximo_in09 = (it.get("maximo_sync") or {}).get("IN09") or {}
+        # maximo_time_logged = bool(
+        #     isinstance(maximo_in09, dict)
+        #     and (maximo_in09.get("ok") or bool(maximo_in09.get("sent")))
+        # )
         items.append({
             "id": str(it["_id"]),
             "doc_name": it.get("doc_name") or "",
@@ -668,6 +676,8 @@ async def cmreport_list(
             "sched_finish": it.get("sched_finish") or job.get("sched_finish") or "",
             "repair_result": it.get("repair_result") or job.get("repair_result") or "",
             "repair_result_remark": it.get("repair_result_remark") or "",
+            # Temporarily disabled: keep the list independent from Maximo time.
+            # "maximo_time_logged": maximo_time_logged,
             "maximo_ticket_id": it.get("maximo_ticket_id") or "",  # ← C) เพิ่ม
             "maximo_wonum": it.get("maximo_wonum") or "",
             "createdAt": _ensure_utc_iso(it.get("createdAt")),

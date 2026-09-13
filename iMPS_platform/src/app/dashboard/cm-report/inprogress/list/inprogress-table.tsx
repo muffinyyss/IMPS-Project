@@ -104,6 +104,8 @@ type TData = {
   status: string;
   inspector?: string;
   assignees?: string[];
+  // Temporarily disabled: Maximo time must not hide In Progress rows.
+  // maximo_time_logged?: boolean;
   source?: "cm" | "url"; // cm = ใบงานจากฟอร์ม (กดอนุมัติได้), url = ไฟล์ PDF ที่อัปโหลด
 };
 
@@ -331,6 +333,7 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
         return false;
       };
 
+      // Temporarily disabled: keep rows visible even after Maximo time is logged.
       cmItems = cmItems.filter(filterByStatus);
       urlItems = urlItems.filter(filterByStatus);
 
