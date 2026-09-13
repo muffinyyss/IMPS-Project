@@ -374,7 +374,7 @@ export default function CMDashboardPage() {
 
   // ── จำนวนใบหลังกรอง (โชว์ใต้หัวเรื่อง) — รวมใบที่ยกเลิกด้วย จึงใช้ periodRows เต็ม
   const allFiltered = useMemo(() => applyFilters(periodRows, filters), [periodRows, filters]);
-  // ── KPI stat cards: SR ทั้งหมด = ใบงานทั้งหมดในระบบ รวมใบที่ยกเลิก
+  // ── KPI stat cards: SR ทั้งหมด = ใบงานทั้งหมดในระบบ รวมใบที่ยกเลิกและ SR reject
   // แถว KPI ไม่กรองด้วย workStatus ของตัวเอง — ตัวเลขครบทุก bucket เสมอ
   const kpiRows = useMemo(() => applyFilters(periodRows, filters, "workStatus"), [periodRows, filters]);
   const kpiStats = useMemo(() => {
