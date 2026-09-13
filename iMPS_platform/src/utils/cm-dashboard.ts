@@ -9,6 +9,8 @@ export type CMRow = {
   /** บริษัทที่ผู้เปิดใบเลือกไว้ตอนกด + เพิ่ม — ว่าง = ใบเก่าที่ไม่ได้เลือก */
   assigned_company?: string;
   status: string;
+  /** สถานะก่อนยกเลิก ใช้แยก SR ที่ยกเลิกก่อนสร้าง WO ออกจาก WO ที่ยกเลิก */
+  status_before_cancel?: string;
   stage?: string;
   reject_remark?: string;
   faulty_equipment: string;
@@ -348,9 +350,15 @@ export function workStatusOf(r: CMRow): WorkStatus {
   return byStatus;
 }
 
-/** ใบงานที่ผ่านด่าน CS แล้วและเป็น WO จริง โดยไม่รวม SR ใหม่หรือใบยกเลิก */
+/** ใบงานที่ผ่านด่าน CS แล้วและเป็น WO จริง รวม WO ที่ถูกยกเลิก */
 export function isWorkOrder(r: CMRow): boolean {
   const ws = workStatusOf(r);
+  if (ws === "cancelled") {
+    // ข้อมูลเก่าที่ไม่มีสถานะก่อนยกเลิก ถือเป็น WO เพื่อไม่ให้ยอด WO ย้อนหลังหาย
+    if (!r.status_before_cancel) return true;
+    const before = normalizeWorkStatus(r.status_before_cancel);
+    return before !== "new" && before !== "wait_cs_approve";
+  }
   return ws !== "new" && ws !== "wait_cs_approve" && ws !== "cancelled";
 }
 

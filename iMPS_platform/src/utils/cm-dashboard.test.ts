@@ -236,13 +236,13 @@ describe("cancelled rows", () => {
     expect(groupByMonth(rows).open[0]).toBe(1);
   });
 
-  it("le filtre « wo_all » exclut les fiches annulées", () => {
+  it("le filtre « wo_all » inclut les WO annulées", () => {
     const rows = [
       makeRow({ id: "a", status: "In Progress" }),
       makeRow({ id: "b", status: "Cancelled" }),
     ];
     const kept = applyFilters(rows, { ...noFilters, workStatus: "wo_all" });
-    expect(kept.map((r) => r.id)).toEqual(["a"]);
+    expect(kept.map((r) => r.id)).toEqual(["a", "b"]);
   });
 
   it('statusBadge affiche « Cancelled » et non « Open »', () => {
@@ -301,12 +301,14 @@ describe("workStatusOf", () => {
 });
 
 describe("isWorkOrder", () => {
-  it("นับเฉพาะใบที่เป็น WO แล้ว ไม่รวม SR ใหม่หรือใบยกเลิก", () => {
+  it("นับ WO ที่ยกเลิกแล้ว และไม่รวม SR ที่ยกเลิกก่อนเป็น WO", () => {
     expect(isWorkOrder(makeRow({ status: "Open" }))).toBe(false);
     expect(isWorkOrder(makeRow({ status: "Wait for approve", stage: "cs_approval" }))).toBe(false);
     expect(isWorkOrder(makeRow({ status: "Wait for schedule" }))).toBe(true);
     expect(isWorkOrder(makeRow({ status: "In Progress" }))).toBe(true);
-    expect(isWorkOrder(makeRow({ status: "Cancelled" }))).toBe(false);
+    expect(isWorkOrder(makeRow({ status: "Cancelled", status_before_cancel: "Open" }))).toBe(false);
+    expect(isWorkOrder(makeRow({ status: "Cancelled", status_before_cancel: "In Progress" }))).toBe(true);
+    expect(isWorkOrder(makeRow({ status: "Cancelled" }))).toBe(true);
   });
 
   it("นับ WO ทุกช่วงของกระบวนการ", () => {
@@ -318,9 +320,9 @@ describe("isWorkOrder", () => {
       makeRow({ status: "Wait for approve" }),
       makeRow({ status: "Closed" }),
       makeRow({ status: "Open" }),
-      makeRow({ status: "Cancelled" }),
+      makeRow({ status: "Cancelled", status_before_cancel: "In Progress" }),
     ];
-    expect(rows.filter(isWorkOrder)).toHaveLength(6);
+    expect(rows.filter(isWorkOrder)).toHaveLength(7);
   });
 });
 
