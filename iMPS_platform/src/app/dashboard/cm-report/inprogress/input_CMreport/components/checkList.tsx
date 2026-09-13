@@ -301,8 +301,8 @@ const NO_PROBLEM_REPAIR_RESULT = "ไม่พบปัญหา";
 // ตัวเลือกท้าย dropdown ปัญหา — แสดงเสมอทุก failure code
 const PROGRESS_REQUIRED_KEYS = ["failureCodeDescription", "problemType", "problemTypeOther", "cause"];
 
-// เลือก "แก้ไขสำเร็จ" = ปิดงาน ต้องมีหลักฐานครบ
-const COMPLETED_REQUIRED_KEYS = ["failureCodeDescription", "problemType", "cause", "correction", "correctiveAction", "afterPhoto", "repairResult"];
+// เลือก "แก้ไขสำเร็จ" = ปิดงาน ต้องมีข้อมูลหลักครบ; รูปก่อน/หลังเป็น optional
+const COMPLETED_REQUIRED_KEYS = ["failureCodeDescription", "problemType", "cause", "correction", "correctiveAction", "repairResult"];
 
 // รูปของแต่ละรอบซ่อมต้องไม่ไปกองรวมกลุ่มเดียวกัน — index ของ corrective action
 // รีเซ็ตทุกรอบ จึงบวก offset ตามจำนวนรอบที่เก็บเข้าประวัติแล้ว (คงรูปแบบ before_<เลข> ไว้)
@@ -1553,7 +1553,7 @@ export default function CMInProgressForm() {
         { key: "correction", label: t("repairedEquipment", lang), isValid: validationGroupState.allCorrectionsFilled, message: t("notSelected", lang), isRequired: isClosedResult && !isNoProblem, scrollId: "cm-correction" },
         { key: "correctiveAction", label: t("validCorrectiveAction", lang), isValid: validationGroupState.allActionTextsFilled, message: t("notFilled", lang), isRequired: !isNoProblem && !isWaitingForMaterial && !isWaitingForSiteCondition, scrollId: "cm-corrective" },
         { key: "beforePhoto", label: t("validBeforePhoto", lang), isValid: validationGroupState.allBeforePhotosFilled, message: t("notFilled", lang), isRequired: false, scrollId: "cm-corrective" },
-        { key: "afterPhoto", label: t("validAfterPhoto", lang), isValid: validationGroupState.allAfterPhotosFilled, message: t("notFilled", lang), isRequired: isClosedResult && !isNoProblem, scrollId: "cm-corrective" },
+        { key: "afterPhoto", label: t("validAfterPhoto", lang), isValid: validationGroupState.allAfterPhotosFilled, message: t("notFilled", lang), isRequired: false, scrollId: "cm-corrective" },
         { key: "repairResult", label: t("validRepairResult", lang), isValid: !!job.repair_result, message: t("notSelected", lang), isRequired: !isNoProblem, scrollId: "cm-repair-result" },
         // { key: "preventiveAction", label: t("preventiveAction", lang), isValid: job.preventive_action.some((p: string) => p.trim() !== ""), message: t("notFilled", lang), isRequired: isClosedResult && !isNoProblem, scrollId: "cm-preventive" },
         { key: "inprogressRemarks", label: lang === "th" ? "หมายเหตุผลหลังซ่อม" : "Repair Result Remark", isValid: !!job.repair_result_remark.trim(), message: t("notFilled", lang), isRequired: needsRepairRemark, scrollId: "cm-repair-result" },
@@ -3627,7 +3627,7 @@ export default function CMInProgressForm() {
                                                             <div className="tw-flex tw-items-center tw-justify-between tw-mb-3">
                                                                 <span className="tw-text-sm tw-font-semibold tw-text-green-700 tw-flex tw-items-center tw-gap-2">
                                                                     <span className="tw-w-2 tw-h-2 tw-rounded-full tw-bg-green-500"></span>
-                                                                    {t("afterPhoto", lang)} {isClosedResult && <span className="tw-text-red-500">*</span>}
+                                                                    {t("afterPhoto", lang)}
                                                                 </span>
                                                                 {!viewOnly && (
                                                                     <label className="tw-inline-flex tw-items-center tw-gap-1.5 tw-px-3 tw-py-1.5 tw-rounded-lg tw-bg-white tw-border tw-border-green-300 tw-text-green-600 tw-font-medium tw-text-xs tw-cursor-pointer hover:tw-bg-green-50 tw-shadow-sm tw-transition-all">
