@@ -1541,7 +1541,7 @@ export default function CMInProgressForm() {
     const contractorMissing = contractorPicked && !maximoContractor.trim();
     // รายชื่อช่างจาก Maximo (IN08) ดึงไม่ได้ = ไม่มีอะไรให้เลือก บังคับไม่ได้
     // และด่านตรวจ/อนุมัติแก้ไม่ได้ ใบเก่าที่ช่างไม่ได้เลือกไว้จะกลายเป็นทางตันของ planner
-    const maximoLaborRequired = !viewOnly && visibleLaborOptions.length > 0;
+    const maximoLaborRequired = !isTechnician && !viewOnly && visibleLaborOptions.length > 0;
 
     const validations = useMemo<ValidationItem[]>(() => [
         { key: "failureCodeDescription", label: t("failureCodeDescription", lang), isValid: !!job.faulty_equipment.trim(), message: t("notSelected", lang), isRequired: !isWaitingForSiteCondition, scrollId: "cm-failure-code-description" },
@@ -2320,6 +2320,7 @@ export default function CMInProgressForm() {
     }, [jobLoaded, startRepairStamped, job.start_repair_date, job.start_repair_time, localTodayISO, localNowHHMM, saveDraftWithImages, hasEditedJob, viewOnly]);
 
     useEffect(() => {
+        if (currentRole.trim().toLowerCase() === "technician") return;
         let alive = true;
         (async () => {
             try {
@@ -2337,8 +2338,9 @@ export default function CMInProgressForm() {
             } catch { }
         })();
         return () => { alive = false; };
-    }, []);
+    }, [currentRole]);
     useEffect(() => {
+        if (isTechnician) return;
         let alive = true;
         (async () => {
             try {
@@ -2351,7 +2353,7 @@ export default function CMInProgressForm() {
             }
         })();
         return () => { alive = false; };
-    }, []);
+    }, [isTechnician]);
 
     const toggleMaximoLabor = (code: string) =>
         setMaximoLabor(prev => prev.includes(code) ? prev.filter(c => c !== code) : [...prev, code]);
@@ -2359,12 +2361,12 @@ export default function CMInProgressForm() {
     // ผู้ใช้บริษัทอื่นถูกกำหนดรหัส Maximo ตายตัวเป็น EVCONTRACTOR
     // หลังโหลดใบงานเสร็จด้วย เพื่อให้ค่าที่บันทึกไว้เดิมไม่เขียนทับกฎนี้จาก race ของสอง request
     useEffect(() => {
-        if (viewOnly || !jobLoaded || !contractorOnly) return;
+        if (isTechnician || viewOnly || !jobLoaded || !contractorOnly) return;
         const fixedCode = contractorLaborOption?.laborcode || CONTRACTOR_LABOR_CODE;
         setMaximoLabor(prev => (
             prev.length === 1 && prev[0] === fixedCode ? prev : [fixedCode]
         ));
-    }, [viewOnly, jobLoaded, contractorOnly, contractorLaborOption]);
+    }, [isTechnician, viewOnly, jobLoaded, contractorOnly, contractorLaborOption]);
 
     // ==================== HANDLERS ====================
     // อนุมัติปิดใบงาน — ย้ายมาจากตาราง In Progress เพื่อให้ผู้อนุมัติเห็นรายละเอียดใบงานก่อนกด
@@ -3212,9 +3214,8 @@ export default function CMInProgressForm() {
                                     )}
                             </div>
 
-                            {/* ช่างที่จะลงเวลาเข้า Maximo — laborcode คนละชุดกับ username ใน iMPS
-                                จึงต้องให้เลือกเอง ไม่งั้น IN09 จะ unmapped ทั้งใบ */}
-                            <div id="cm-maximo-labor" className="tw-space-y-2">
+                            {/* Temporarily disabled for technician: Maximo time logging is not in use yet. */}
+                            {!isTechnician && <div id="cm-maximo-labor" className="tw-space-y-2">
                                 <label className="tw-flex tw-items-center tw-gap-2 tw-text-sm tw-font-semibold tw-text-gray-700">
                                     <span className="tw-w-1.5 tw-h-1.5 tw-rounded-full tw-bg-blue-500"></span>
                                     {t("maximoLabor", lang)}
@@ -3296,7 +3297,7 @@ export default function CMInProgressForm() {
                                     )}
                                 </>
                                 )}
-                            </div>
+                            </div>}
 
                             {/* Repair Result */}
                             {!isNoProblem && (
