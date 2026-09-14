@@ -453,6 +453,8 @@ const FIELD_GROUPS: Record<number, { keys: readonly string[]; unitType: "voltage
 
 // ==================== QUESTIONS (Bilingual) ====================
 const QUESTIONS: Question[] = [
+    { no: 101, key: "pre_r1", label: { th: "1) ตรวจสอบสภาพทั่วไป (ก่อนบำรุงรักษา)", en: "1) General condition (before maintenance)" }, kind: "simple", hasPhoto: true, tooltip: { th: "บันทึกสภาพเครื่องชาร์จก่อนเริ่มบำรุงรักษา", en: "Record the charger condition before maintenance" } },
+    { no: 102, key: "pre_r2", label: { th: "2) อุปกรณ์ชำรุดเสียหาย (ก่อนบำรุงรักษา)", en: "2) Damaged equipment (before maintenance)" }, kind: "simple", hasPhoto: true, tooltip: { th: "บันทึกอุปกรณ์ที่ชำรุดเสียหายก่อนเริ่มบำรุงรักษา", en: "Record damaged equipment before maintenance" } },
     { no: 1, key: "r1", label: { th: "1) ตรวจสอบสภาพทั่วไป", en: "1) Check general condition" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบความสมบูรณ์ของตู้, การยึดแน่นของน็อตยึดฐาน, รอยแตกร้าวและร่องรอยการกระแทก", en: "Check cabinet integrity, base bolt tightness, cracks and impact marks" } },
     { no: 2, key: "r2", label: { th: "2) ตรวจสอบดักซีล,ซิลิโคนกันซึม", en: "2) Check sealant and silicone" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบความยืดหยุ่นของขอบยางกันน้ำ, รอยต่อของเคเบิลแกลนด์และและสภาพซิลิโคนตามแนวตะเข็บตู้", en: "Check waterproof rubber flexibility, cable gland joints and silicone condition" } },
     { no: 3, key: "r3", label: { th: "3) ตรวจสอบสายอัดประจุ", en: "3) Check charging cables" }, kind: "group", hasPhoto: true, items: [{ label: { th: "3.1) สายที่ 1", en: "3.1) Cable 1" }, key: "r3_1" }], tooltip: { th: "ตรวจสอบความสมบูรณ์ของฉนวนหุ้มสาย, คอสายว่าไม่มีการบิดงอหรือปริแตกและตรวจสอบรอยไหม้", en: "Check cable insulation, bends or cracks, and burn marks" } },
@@ -3663,12 +3665,6 @@ export default function ChargerPMForm() {
                     <div className="tw-mt-6 sm:tw-mt-8 tw-space-y-4 sm:tw-space-y-6">
                         {/* โหมดตรวจ: ตัดเฉพาะรายการข้อที่ช่างกรอก ดูจากตารางเทียบก่อน/หลังด้านล่างแทน
                             ส่วนหัวเอกสารกับข้อมูลสถานีคงไว้ ผู้อนุมัติต้องรู้ว่ากำลังดูใบไหน */}
-                        {!reviewMode && (
-                            <div className="tw-rounded-xl tw-border tw-border-amber-200 tw-bg-amber-50 tw-p-4 sm:tw-p-5 tw-space-y-2">
-                                <Typography variant="h6" className="tw-text-sm sm:tw-text-base tw-font-semibold tw-text-amber-900">{lang === "th" ? "1) ตรวจสอบสภาพทั่วไป (ก่อนบำรุงรักษา)" : "1) General condition (before maintenance)"}</Typography>
-                                <Typography variant="h6" className="tw-text-sm sm:tw-text-base tw-font-semibold tw-text-amber-900">{lang === "th" ? "2) อุปกรณ์ชำรุดเสียหาย (ก่อนบำรุงรักษา)" : "2) Damaged equipment (before maintenance)"}</Typography>
-                            </div>
-                        )}
                         {!reviewMode && (QUESTIONS.filter((q) => !(displayTab === "pre" && q.postOnly)).map((q) => renderQuestionBlock(q, displayTab)))}
                     </div>
 

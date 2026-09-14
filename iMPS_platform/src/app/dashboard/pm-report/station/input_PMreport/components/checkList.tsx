@@ -422,10 +422,12 @@ function resolveUploadFile(p: PhotoItem): Promise<File> {
 type PF = "PASS" | "FAIL" | "NA" | "";
 
 type Question =
-    | { no: number; key: `r${number}`; label: { th: string; en: string }; labelPre?: { th: string; en: string }; labelPost?: { th: string; en: string }; kind: "simple"; hasPhoto?: boolean; tooltip?: { th: string; en: string } }
-    | { no: number; key: `r${number}`; label: { th: string; en: string }; labelPre?: { th: string; en: string }; labelPost?: { th: string; en: string }; kind: "group"; items: { key: string; label: { th: string; en: string } }[]; hasPhoto?: boolean; tooltip?: { th: string; en: string } };
+    | { no: number; key: string; label: { th: string; en: string }; labelPre?: { th: string; en: string }; labelPost?: { th: string; en: string }; kind: "simple"; hasPhoto?: boolean; tooltip?: { th: string; en: string } }
+    | { no: number; key: string; label: { th: string; en: string }; labelPre?: { th: string; en: string }; labelPost?: { th: string; en: string }; kind: "group"; items: { key: string; label: { th: string; en: string } }[]; hasPhoto?: boolean; tooltip?: { th: string; en: string } };
 
 const QUESTIONS_RAW = [
+    { no: 101, key: "pre_r1", label: { th: "1) ตรวจสอบสภาพทั่วไป (ก่อนบำรุงรักษา)", en: "1) General condition (before maintenance)" }, kind: "simple", hasPhoto: true, tooltip: { th: "บันทึกสภาพสถานีก่อนเริ่มบำรุงรักษา", en: "Record the station condition before maintenance" } },
+    { no: 102, key: "pre_r2", label: { th: "2) อุปกรณ์ชำรุดเสียหาย (ก่อนบำรุงรักษา)", en: "2) Damaged equipment (before maintenance)" }, kind: "simple", hasPhoto: true, tooltip: { th: "บันทึกอุปกรณ์ที่ชำรุดเสียหายก่อนเริ่มบำรุงรักษา", en: "Record damaged equipment before maintenance" } },
     { no: 1, key: "r1", label: { th: "1. ตรวจสอบโครงสร้างสถานี", en: "1. Check station structure" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบความมั่นคงแข็งแรงของเสาและหลังคาว่าไม่มีการทรุดตัวและไม่มีรอยร้าวในโครงสร้างหลักหรือรอยแยกบริเวณรอยต่อ", en: "Check the stability of pillars and roof for any subsidence, cracks in main structure, or separation at joints" } },
     { no: 2, key: "r2", label: { th: "2. ตรวจสอบสีโครงสร้างสถานี", en: "2. Check station structure paint" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบการหลุดร่อน พองตัว หรือการเกิดสนิมบนพื้นผิวโลหะ", en: "Check for peeling, blistering, or rust formation on metal surfaces" } },
     { no: 3, key: "r3", label: { th: "3. ตรวจสอบพื้นผิวสถานี", en: "3. Check station surface" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบสภาพพื้นผิวคอนกรีตหรือวัสดุปูพื้นต้องไม่มีรอยแตกร้าว", en: "Check concrete surface or flooring material for cracks or damage" } },
@@ -2056,12 +2058,6 @@ export default function StationPMReport() {
                     <div className="tw-mt-6 sm:tw-mt-8 tw-space-y-4 sm:tw-space-y-6">
                         {/* โหมดตรวจ: ตัดเฉพาะรายการข้อที่ช่างกรอก ดูจากตารางเทียบก่อน/หลังด้านล่างแทน
                             ส่วนหัวเอกสารกับข้อมูลสถานีคงไว้ ผู้อนุมัติต้องรู้ว่ากำลังดูใบไหน */}
-                        {!reviewMode && (
-                            <div className="tw-rounded-xl tw-border tw-border-amber-200 tw-bg-amber-50 tw-p-4 sm:tw-p-5 tw-space-y-2">
-                                <Typography variant="h6" className="tw-text-sm sm:tw-text-base tw-font-semibold tw-text-amber-900">{lang === "th" ? "1) ตรวจสอบสภาพทั่วไป (ก่อนบำรุงรักษา)" : "1) General condition (before maintenance)"}</Typography>
-                                <Typography variant="h6" className="tw-text-sm sm:tw-text-base tw-font-semibold tw-text-amber-900">{lang === "th" ? "2) อุปกรณ์ชำรุดเสียหาย (ก่อนบำรุงรักษา)" : "2) Damaged equipment (before maintenance)"}</Typography>
-                            </div>
-                        )}
                         {!reviewMode && (QUESTIONS.filter((q) => !(displayTab === "pre" && q.no === 11)).map((q) => renderQuestionBlock(q, displayTab)))}
                     </div>
 
