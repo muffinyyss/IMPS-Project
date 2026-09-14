@@ -728,9 +728,7 @@ const QUESTIONS: Question[] = [
 ];
 
 function getQuestionLabel(q: Question, mode: TabId, lang: Lang): string {
-    const baseLabel = t(q.labelKey, lang);
-    if (mode === "pre") return lang === "th" ? `${baseLabel} (ก่อน PM)` : `${baseLabel} (Pre-PM)`;
-    return lang === "th" ? `${baseLabel} (หลัง PM)` : `${baseLabel} (Post-PM)`;
+    return t(q.labelKey, lang);
 }
 
 type MeasureRow<U extends string> = { value: string; unit: U };
@@ -1061,9 +1059,9 @@ function InputWithUnit<U extends string>({ label, value, unit, units, onValueCha
     );
 }
 
-function PassFailRow({ label, value, onChange, remark, onRemarkChange, labels, aboveRemark, beforeRemark, inlineLeft, lang, id, remarkId }: {
+function PassFailRow({ label, value, onChange, remark, onRemarkChange, labels, aboveRemark, beforeRemark, inlineLeft, showPfButtons = true, lang, id, remarkId }: {
     label: string; value: PF; onChange: (v: Exclude<PF, "">) => void; remark?: string; onRemarkChange?: (v: string) => void;
-    labels?: Partial<Record<Exclude<PF, "">, React.ReactNode>>; aboveRemark?: React.ReactNode; beforeRemark?: React.ReactNode; inlineLeft?: React.ReactNode; lang: Lang; id?: string; remarkId?: string;
+    labels?: Partial<Record<Exclude<PF, "">, React.ReactNode>>; aboveRemark?: React.ReactNode; beforeRemark?: React.ReactNode; inlineLeft?: React.ReactNode; showPfButtons?: boolean; lang: Lang; id?: string; remarkId?: string;
 }) {
     const text = { PASS: labels?.PASS ?? t("pass", lang), FAIL: labels?.FAIL ?? t("fail", lang), NA: labels?.NA ?? t("na", lang) };
     const buttonGroup = (
@@ -1078,8 +1076,8 @@ function PassFailRow({ label, value, onChange, remark, onRemarkChange, labels, a
         <div className="tw-space-y-2 sm:tw-space-y-3 tw-py-2 sm:tw-py-3">
             <Typography className="tw-font-medium tw-text-xs sm:tw-text-sm lg:tw-text-base">{label}</Typography>
             {onRemarkChange ? (
-                <div className="tw-w-full tw-min-w-0 tw-space-y-2">{aboveRemark}{buttonsRow}{beforeRemark}<div id={remarkId}><Textarea label={t("remark", lang)} value={remark || ""} onChange={(e) => onRemarkChange(e.target.value)} containerProps={{ className: "!tw-w-full !tw-min-w-0" }} className="!tw-w-full !tw-text-xs sm:!tw-text-sm" /></div></div>
-            ) : (<div className="tw-flex tw-flex-col sm:tw-flex-row tw-gap-2 sm:tw-items-center sm:tw-justify-between">{buttonsRow}</div>)}
+                <div className="tw-w-full tw-min-w-0 tw-space-y-2">{aboveRemark}{showPfButtons && buttonsRow}{beforeRemark}<div id={remarkId}><Textarea label={t("remark", lang)} value={remark || ""} onChange={(e) => onRemarkChange(e.target.value)} containerProps={{ className: "!tw-w-full !tw-min-w-0" }} className="!tw-w-full !tw-text-xs sm:!tw-text-sm" /></div></div>
+            ) : (showPfButtons && <div className="tw-flex tw-flex-col sm:tw-flex-row tw-gap-2 sm:tw-items-center sm:tw-justify-between">{buttonsRow}</div>)}
         </div>
     );
 }
@@ -1901,7 +1899,7 @@ export default function CCBPMReport() {
     }, [subBreakerCount]);
 
     const PF_KEYS_PRE = useMemo(() => QUESTIONS.filter((q) => q.no !== 11).flatMap((q) => getRowKeysForQuestion(q, subBreakerCount)), [subBreakerCount]);
-    const PF_KEYS_POST = useMemo(() => QUESTIONS.filter((q) => {
+    const PF_KEYS_POST = useMemo(() => QUESTIONS.filter((q) => !q.key.startsWith("pre_")).filter((q) => {
         const rowKeys = getRowKeysForQuestion(q, subBreakerCount);
         return !rowKeys.every(k => rowsPre[k]?.pf === "NA");
     }).flatMap((q) => getRowKeysForQuestion(q, subBreakerCount)), [rowsPre, subBreakerCount]);
@@ -2483,7 +2481,7 @@ export default function CCBPMReport() {
                         <PassFailRow label={t("testResult", lang)} value={rows[q.key]?.pf ?? ""}
                             onChange={(v) => setRows({ ...rows, [q.key]: { ...rows[q.key], pf: v } })}
                             remark={rows[q.key]?.remark || ""} onRemarkChange={(v) => setRows({ ...rows, [q.key]: { ...rows[q.key], remark: v } })}
-                            lang={lang} id={getPfIdFromKey(q.key)} remarkId={getRemarkIdFromKey(q.key)}
+                            lang={lang} showPfButtons={!q.key.startsWith("pre_")} id={getPfIdFromKey(q.key)} remarkId={getRemarkIdFromKey(q.key)}
                             aboveRemark={
                                 q.hasPhoto && (
                                     <div className="tw-pb-4 tw-border-b tw-mb-4 tw-border-gray-100">

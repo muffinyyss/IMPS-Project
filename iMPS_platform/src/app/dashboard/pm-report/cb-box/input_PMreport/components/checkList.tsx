@@ -407,8 +407,7 @@ type Question = { no: number; key: string; label: { th: string; en: string }; ki
 const QUESTIONS = QUESTIONS_DATA as unknown as Question[];
 
 function getQuestionLabel(q: Question, mode: TabId, lang: Lang): string {
-    const baseLabel = q.label[lang];
-    return mode === "pre" ? (lang === "th" ? `${baseLabel} (ก่อน PM)` : `${baseLabel} (Pre-PM)`) : (lang === "th" ? `${baseLabel} (หลัง PM)` : `${baseLabel} (Post-PM)`);
+    return q.label[lang];
 }
 
 const FIELD_GROUPS: Record<number, { keys: readonly string[] } | undefined> = { 5: { keys: VOLTAGE_FIELDS } };
@@ -750,20 +749,20 @@ function InputWithUnit({ label, value, unit, onValueChange, readOnly, disabled, 
     );
 }
 
-function PassFailRow({ label, value, onChange, remark, onRemarkChange, labels, aboveRemark, beforeRemark, lang, id, remarkId }: {
+function PassFailRow({ label, value, onChange, remark, onRemarkChange, labels, aboveRemark, beforeRemark, showPfButtons = true, lang, id, remarkId }: {
     label: string; value: PF; onChange: (v: Exclude<PF, "">) => void; remark?: string; onRemarkChange?: (v: string) => void;
-    labels?: Partial<Record<Exclude<PF, "">, React.ReactNode>>; aboveRemark?: React.ReactNode; beforeRemark?: React.ReactNode; lang: Lang; id?: string; remarkId?: string;
+    labels?: Partial<Record<Exclude<PF, "">, React.ReactNode>>; aboveRemark?: React.ReactNode; beforeRemark?: React.ReactNode; showPfButtons?: boolean; lang: Lang; id?: string; remarkId?: string;
 }) {
     const text = { PASS: labels?.PASS ?? t("pass", lang), FAIL: labels?.FAIL ?? t("fail", lang), NA: labels?.NA ?? t("na", lang) };
     return (
         <div className="tw-space-y-3 tw-py-3">
             <div className="tw-flex tw-flex-col sm:tw-flex-row tw-items-start sm:tw-items-center tw-justify-between tw-gap-2">
                 <Typography className="tw-font-medium">{label}</Typography>
-                <div id={id} className="tw-flex tw-gap-2">
+                {showPfButtons && <div id={id} className="tw-flex tw-gap-2">
                     <Button size="sm" color="green" variant={value === "PASS" ? "filled" : "outlined"} className="tw-min-w-[72px]" onClick={() => onChange("PASS")}>{text.PASS}</Button>
                     <Button size="sm" color="red" variant={value === "FAIL" ? "filled" : "outlined"} className="tw-min-w-[72px]" onClick={() => onChange("FAIL")}>{text.FAIL}</Button>
                     <Button size="sm" color="blue-gray" variant={value === "NA" ? "filled" : "outlined"} className="tw-min-w-[72px]" onClick={() => onChange("NA")}>{text.NA}</Button>
-                </div>
+                </div>}
             </div>
             {onRemarkChange && <div className="tw-space-y-3">{aboveRemark}{beforeRemark}<div id={remarkId}><Textarea label={t("remark", lang)} value={remark || ""} onChange={(e) => onRemarkChange(e.target.value)} containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full" /></div></div>}
         </div>
@@ -1179,7 +1178,7 @@ export default function CBBOXPMForm() {
     }, [missingPhotoItems]);
 
     const PF_KEYS_PRE = useMemo(() => QUESTIONS.filter(q => q.no !== 9).map(q => q.key), []);
-    const PF_KEYS_POST = useMemo(() => QUESTIONS.filter(q => { if (q.no === 1 || q.no === 2) return false; if (rowsPre[q.key]?.pf === "NA") return false; return true; }).map(q => q.key), [rowsPre]);
+    const PF_KEYS_POST = useMemo(() => QUESTIONS.filter(q => { if (q.key.startsWith("pre_")) return false; if (q.no === 1 || q.no === 2) return false; if (rowsPre[q.key]?.pf === "NA") return false; return true; }).map(q => q.key), [rowsPre]);
 
     const allPFAnsweredPre = useMemo(() => true, []); // Pre mode doesn't require PF
     const missingPFItemsPre = useMemo(() => [] as number[], []);
@@ -1330,6 +1329,7 @@ export default function CBBOXPMForm() {
             <SectionCard key={q.key} title={getQuestionLabel(q, mode, lang)} tooltip={qTooltip}>
                 <PassFailRow
                     label={t("testResult", lang)}
+                    showPfButtons={!q.key.startsWith("pre_")}
                     value={rows[q.key]?.pf ?? ""}
                     lang={lang}
                     onChange={v => setRows(prev => ({ ...prev, [q.key]: { ...prev[q.key], pf: v } }))}

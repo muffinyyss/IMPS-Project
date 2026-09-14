@@ -475,9 +475,7 @@ const QUESTIONS: Question[] = QUESTIONS_RAW.filter(
 ) as Question[];
 
 function getQuestionLabel(q: Question, mode: TabId, lang: Lang): string {
-    const baseLabel = q.label[lang];
-    if (mode === "pre") return lang === "th" ? `${baseLabel} (ก่อน PM)` : `${baseLabel} (Pre-PM)`;
-    return lang === "th" ? `${baseLabel} (หลัง PM)` : `${baseLabel} (Post-PM)`;
+    return q.label[lang];
 }
 
 function useDebouncedEffect(effect: () => void, deps: any[], delay = 800) {
@@ -773,12 +771,12 @@ function scrollToFirstError(scrollId: string) {
 }
 
 function PassFailRow({
-    label, value, onChange, remark, onRemarkChange, labels, aboveRemark, beforeRemark, inlineLeft, lang, id, remarkId,
+    label, value, onChange, remark, onRemarkChange, labels, aboveRemark, beforeRemark, inlineLeft, showPfButtons = true, lang, id, remarkId,
 }: {
     label: string; value: PF; onChange: (v: Exclude<PF, "">) => void;
     remark?: string; onRemarkChange?: (v: string) => void;
     labels?: Partial<Record<Exclude<PF, "">, React.ReactNode>>;
-    aboveRemark?: React.ReactNode; beforeRemark?: React.ReactNode; inlineLeft?: React.ReactNode; lang: Lang;
+    aboveRemark?: React.ReactNode; beforeRemark?: React.ReactNode; inlineLeft?: React.ReactNode; showPfButtons?: boolean; lang: Lang;
     id?: string; remarkId?: string;
 }) {
     const text = { PASS: labels?.PASS ?? t("pass", lang), FAIL: labels?.FAIL ?? t("fail", lang), NA: labels?.NA ?? t("na", lang) };
@@ -801,7 +799,7 @@ function PassFailRow({
             {onRemarkChange ? (
                 <div className="tw-w-full tw-min-w-0 tw-space-y-2">
                     {aboveRemark}
-                    {buttonsRow}
+                    {showPfButtons !== false && buttonsRow}
                     {beforeRemark}
                     <div id={remarkId}>
                         <Textarea label={t("remark", lang)} value={remark || ""} onChange={(e) => onRemarkChange(e.target.value)}
@@ -809,7 +807,7 @@ function PassFailRow({
                     </div>
                 </div>
             ) : (
-                <div className="tw-flex tw-flex-col sm:tw-flex-row tw-gap-2 sm:tw-items-center sm:tw-justify-between">{buttonsRow}</div>
+                showPfButtons !== false && <div className="tw-flex tw-flex-col sm:tw-flex-row tw-gap-2 sm:tw-items-center sm:tw-justify-between">{buttonsRow}</div>
             )}
         </div>
     );
@@ -1117,7 +1115,7 @@ export default function StationPMReport() {
     const ALL_KEYS = useMemo(() => {
         const keys: string[] = [];
         QUESTIONS.forEach((q) => {
-            if (q.kind === "simple") { keys.push(q.key); }
+            if (q.kind === "simple") { if (!q.key.startsWith("pre_")) keys.push(q.key); }
             else if (q.kind === "group") { q.items.forEach((item) => { keys.push(item.key); }); }
         });
         return keys;
@@ -1801,7 +1799,7 @@ export default function StationPMReport() {
 
             return (
                 <SectionCard key={q.key} title={getQuestionLabel(q, mode, lang)}>
-                    <PassFailRow label={t("testResult", lang)} value={rows[q.key]?.pf ?? ""} lang={lang}
+                    <PassFailRow label={t("testResult", lang)} value={rows[q.key]?.pf ?? ""} lang={lang} showPfButtons={!q.key.startsWith("pre_")}
                         onChange={(v) => setRows({ ...rows, [q.key]: { ...rows[q.key], pf: v } })}
                         remark={rows[q.key]?.remark || ""}
                         onRemarkChange={(v) => setRows({ ...rows, [q.key]: { ...rows[q.key], remark: v } })}
