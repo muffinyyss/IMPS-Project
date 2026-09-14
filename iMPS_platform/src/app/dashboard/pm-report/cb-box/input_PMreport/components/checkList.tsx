@@ -54,7 +54,7 @@ const T = {
     powerSource: { th: "แหล่งรับไฟ", en: "Power source" },
     circuitDevice: { th: "อุปกรณ์ตัดวงจรไฟฟ้า", en: "Circuit breaker device" },
     validationPhotoTitle: { th: "1) ตรวจสอบการแนบรูปภาพ", en: "1) Photo Attachments" },
-    validationInputTitle: { th: "2) อินพุตข้อ 5", en: "2) Input Item 5" },
+    validationInputTitle: { th: "2) อินพุตข้อ 7", en: "2) Input Item 7" },
     validationRemarkTitle: { th: "3) หมายเหตุ", en: "3) Remarks" },
     validationPFTitle: { th: "3) สถานะ PASS / FAIL / N/A", en: "3) PASS / FAIL / N/A status" },
     validationRemarkTitlePost: { th: "4) หมายเหตุ", en: "4) Remarks" },
@@ -71,7 +71,7 @@ const T = {
     alertSaveFailed: { th: "บันทึกไม่สำเร็จ:", en: "Save failed:" },
     alertCompleteAll: { th: "กรุณากรอกข้อมูลและแนบรูปให้ครบก่อนบันทึก", en: "Please complete all fields" },
     alertPhotoNotComplete: { th: "กรุณาแนบรูปในส่วน Pre-PM ให้ครบก่อน", en: "Please attach all photos" },
-    alertInputNotComplete: { th: "กรุณากรอกค่าข้อ 5 ให้ครบ", en: "Please fill in Item 5" },
+    alertInputNotComplete: { th: "กรุณากรอกค่าข้อ 7 ให้ครบ", en: "Please fill in Item 7" },
     noReportId: { th: "ไม่มี report_id", en: "No report_id" },
     // PMValidationCard translations
     itemLabel: { th: "ข้อ", en: "Item" },
@@ -407,7 +407,13 @@ type Question = { no: number; key: string; label: { th: string; en: string }; ki
 const QUESTIONS = QUESTIONS_DATA as unknown as Question[];
 
 function getQuestionLabel(q: Question, mode: TabId, lang: Lang): string {
-    return q.label[lang];
+    if (q.no >= 101 && q.no <= 102) return q.label[lang];
+    return q.label[lang].replace(/^(\d+)/, (number) => String(Number(number) + 2));
+}
+
+function getDisplayedQuestionNo(qNo: number): number {
+    if (qNo >= 101 && qNo <= 102) return qNo - 100;
+    return qNo + 2;
 }
 
 const FIELD_GROUPS: Record<number, { keys: readonly string[] } | undefined> = { 5: { keys: VOLTAGE_FIELDS } };
@@ -546,11 +552,13 @@ function PMValidationCard({
     };
 
     const getPhotoScrollId = (item: string): string => {
-        return `${ID_PREFIX}-photo-${item}`;
+        const displayNo = Number(item);
+        const storageNo = displayNo <= 2 ? displayNo + 100 : displayNo - 2;
+        return `${ID_PREFIX}-photo-${storageNo}`;
     };
 
     const getPfButtonsScrollId = (item: number): string => {
-        return `${ID_PREFIX}-pf-${item}`;
+        return `${ID_PREFIX}-pf-${item - 2}`;
     };
 
     const getInputScrollId = (qNo: number, fieldKey: string): string => {
@@ -581,7 +589,7 @@ function PMValidationCard({
                 errors.push({
                     section: lang === "th" ? "ค่าที่ต้องกรอก" : "Required Inputs",
                     sectionIcon: "📝",
-                    itemName: `${t("itemLabel", lang)} ${qNo}`,
+                    itemName: `${t("itemLabel", lang)} ${getDisplayedQuestionNo(qNo)}`,
                     message,
                     scrollId,
                 });
@@ -1174,7 +1182,7 @@ export default function CBBOXPMForm() {
 
     // Format missingPhotoItems as string[] for PMValidationCard
     const missingPhotoItemsFormatted = useMemo(() => {
-        return missingPhotoItems.map(no => String(no));
+        return missingPhotoItems.map(no => String(getDisplayedQuestionNo(no)));
     }, [missingPhotoItems]);
 
     const PF_KEYS_PRE = useMemo(() => QUESTIONS.filter(q => q.no !== 9).map(q => q.key), []);
@@ -1183,7 +1191,7 @@ export default function CBBOXPMForm() {
     const allPFAnsweredPre = useMemo(() => true, []); // Pre mode doesn't require PF
     const missingPFItemsPre = useMemo(() => [] as number[], []);
     const allPFAnsweredPost = useMemo(() => PF_KEYS_POST.every(k => rows[k]?.pf !== ""), [rows, PF_KEYS_POST]);
-    const missingPFItemsPost = useMemo(() => PF_KEYS_POST.filter(k => !rows[k]?.pf).map(k => Number(k.replace("r", ""))).sort((a, b) => a - b), [rows, PF_KEYS_POST]);
+    const missingPFItemsPost = useMemo(() => PF_KEYS_POST.filter(k => !rows[k]?.pf).map(k => getDisplayedQuestionNo(Number(k.replace("r", "")))).sort((a, b) => a - b), [rows, PF_KEYS_POST]);
 
     // For UI display
     const allPFAnsweredForUI = isPostMode ? allPFAnsweredPost : allPFAnsweredPre;
@@ -1193,7 +1201,7 @@ export default function CBBOXPMForm() {
         const r: string[] = [];
         if (rows["r5"]?.pf === "NA" || rowsPre["r5"]?.pf === "NA") return r;
         const missingKeys = FIELD_GROUPS[5]?.keys.filter(k => !m5.state[k]?.value?.trim()) || [];
-        if (missingKeys.length > 0) r.push(`5: ${missingKeys.join(", ")}`);
+        if (missingKeys.length > 0) r.push(`7: ${missingKeys.join(", ")}`);
         return r;
     }, [m5.state, rowsPre, rows]);
 
@@ -1300,20 +1308,20 @@ export default function CBBOXPMForm() {
                 <SectionCard key={q.key} title={getQuestionLabel(q, mode, lang)} tooltip={qTooltip}>
                     <div className={isNA ? "tw-bg-amber-50/50" : ""}>
                         <div className="tw-flex tw-items-center tw-justify-end tw-gap-2 tw-mb-3">
-                            {isLockedByQ2 && <Typography variant="small" className="tw-text-amber-700 tw-italic">{lang === "th" ? "(N/A ตามข้อ 2)" : "(N/A from Q2)"}</Typography>}
+                            {isLockedByQ2 && <Typography variant="small" className="tw-text-amber-700 tw-italic">{lang === "th" ? "(N/A ตามข้อ 4)" : "(N/A from Q4)"}</Typography>}
                             <Button size="sm" color={isNA ? "amber" : "gray"} variant={isNA ? "filled" : "outlined"} disabled={isLockedByQ2} onClick={() => setRows(prev => ({ ...prev, [q.key]: { ...prev[q.key], pf: isNA ? "" : "NA" } }))}>{isNA ? t("cancelNA", lang) : t("na", lang)}</Button>
                         </div>
                         {q.hasPhoto && <div className="tw-mb-3"><PhotoMultiInput photos={photos[q.no] || []} setPhotos={makePhotoSetter(q.no)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(q.no)} /></div>}
                         {hasMeasure && <div className={`tw-mb-3 ${isNA ? "tw-opacity-50 tw-pointer-events-none" : ""}`}>{renderMeasureGrid(q.no)}</div>}
                         {q.no === 1 && <div className={`tw-mb-4 ${isNA ? "tw-opacity-50 tw-pointer-events-none" : ""}`}><select value={dropdownQ1} onChange={e => setDropdownQ1(e.target.value)} className="tw-w-full tw-max-w-sm tw-px-3 tw-py-2 tw-rounded-lg tw-border tw-border-gray-300 tw-bg-white tw-text-sm focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-blue-500/30"><option value="">{t("selectPowerSource", lang)}</option>{DROPDOWN_Q1_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt[lang]}</option>)}</select></div>}
-                        {q.no === 2 && <div className={`tw-mb-4 ${isNA ? "tw-opacity-50 tw-pointer-events-none" : ""}`}><select value={dropdownQ2} onChange={e => setDropdownQ2(e.target.value)} className="tw-w-full tw-max-w-sm tw-px-3 tw-py-2 tw-rounded-lg tw-border tw-border-gray-300 tw-bg-white tw-text-sm focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-blue-500/30"><option value="">{t("selectDevice", lang)}</option>{DROPDOWN_Q2_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt[lang]}</option>)}</select>{isNA && <Typography variant="small" className="tw-text-amber-700 tw-mt-2">{lang === "th" ? "* ข้อ 5, 6, 7 จะเป็น N/A ตามข้อนี้" : "* Q5, 6, 7 will be N/A accordingly"}</Typography>}</div>}
+                        {q.no === 2 && <div className={`tw-mb-4 ${isNA ? "tw-opacity-50 tw-pointer-events-none" : ""}`}><select value={dropdownQ2} onChange={e => setDropdownQ2(e.target.value)} className="tw-w-full tw-max-w-sm tw-px-3 tw-py-2 tw-rounded-lg tw-border tw-border-gray-300 tw-bg-white tw-text-sm focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-blue-500/30"><option value="">{t("selectDevice", lang)}</option>{DROPDOWN_Q2_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt[lang]}</option>)}</select>{isNA && <Typography variant="small" className="tw-text-amber-700 tw-mt-2">{lang === "th" ? "* ข้อ 7, 8, 9 จะเป็น N/A ตามข้อนี้" : "* Q7, 8, 9 will be N/A accordingly"}</Typography>}</div>}
                         <div id={getRemarkIdFromKey(q.no)}><Textarea label={t("remark", lang)} value={rows[q.key]?.remark || ""} onChange={e => setRows(prev => ({ ...prev, [q.key]: { ...prev[q.key], remark: e.target.value } }))} rows={3} containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full" /></div>
                     </div>
                 </SectionCard>
             );
         }
 
-        if (rowsPre[q.key]?.pf === "NA") return <SectionCard key={q.key} title={getQuestionLabel(q, mode, lang)} tooltip={qTooltip}><SkippedNAItem label={q.label[lang]} remark={rowsPre[q.key]?.remark} lang={lang} /></SectionCard>;
+        if (rowsPre[q.key]?.pf === "NA") return <SectionCard key={q.key} title={getQuestionLabel(q, mode, lang)} tooltip={qTooltip}><SkippedNAItem label={getQuestionLabel(q, mode, lang)} remark={rowsPre[q.key]?.remark} lang={lang} /></SectionCard>;
 
         if (mode === "post" && (q.no === 1 || q.no === 2)) {
             return (
@@ -1515,7 +1523,10 @@ export default function CBBOXPMForm() {
     // ใช้ state ที่โหลดเอกสารมาแล้ว: rowsPre = คำตอบก่อน PM, rows = หลัง PM
     // คีย์ที่ไม่ได้อยู่ใน QUESTIONS (ข้อย่อยแบบ r5_1) เอามาต่อท้ายด้วย จะได้ไม่ตกหล่น
     // cb-box ไม่มีข้อย่อย รูปผูกกับข้อหลักตรงๆ
-    const photoKeysOf = useCallback((row: { key: string }) => [`g${row.key.replace(/^r/, "")}`], []);
+    const photoKeysOf = useCallback((row: { key: string }) => {
+        const question = QUESTIONS.find(q => q.key === row.key);
+        return [`g${question?.no ?? row.key.replace(/^r/, "")}`];
+    }, []);
 
     const compareRows = useMemo(() => {
         // ป้ายหัวข้อต้องตรงกับที่ช่างเห็นตอนกรอก — ข้อย่อยอย่าง r3_1 ฟอร์มสร้างขึ้นมาเอง
@@ -1532,7 +1543,7 @@ export default function CBBOXPMForm() {
         const labelOfItem = (it: any) =>
             it?.label !== undefined ? it.label : it?.labelKey ? (t as any)(it.labelKey, lang) : "";
         (QUESTIONS as any[]).forEach((q: any) => {
-            put(q?.key, labelOfItem(q));
+            put(q?.key, getQuestionLabel(q, "post", lang));
             (q?.items ?? []).forEach((it: any) => put(it?.key, labelOfItem(it)));
         });
         ([] as any[]).forEach((arr: any) =>

@@ -440,7 +440,7 @@ const T = {
 
     // Validation sections
     validationPhotoTitle: { th: "1) ตรวจสอบการแนบรูปภาพ (ทุกข้อ)", en: "1) Photo Attachments (all items)" },
-    validationInputTitle: { th: "2) อินพุตข้อ 9 (ค่าที่วัด)", en: "2) Input Item 9 (measurements)" },
+    validationInputTitle: { th: "2) อินพุตข้อ 11 (ค่าที่วัด)", en: "2) Input Item 11 (measurements)" },
     validationRemarkTitle: { th: "3) หมายเหตุ (ทุกข้อ)", en: "3) Remarks (all items)" },
     validationPFTitle: { th: "3) สถานะ PASS / FAIL / N/A ทุกข้อ", en: "3) PASS / FAIL / N/A for all items" },
     validationRemarkTitlePost: { th: "4) หมายเหตุ (ทุกข้อ)", en: "4) Remarks (all items)" },
@@ -465,7 +465,7 @@ const T = {
     alertFillPreFirst: { th: "กรุณากรอกข้อมูลในส่วน Pre-PM ให้ครบก่อน", en: "Please complete all Pre-PM fields first" },
     alertFillPhoto: { th: "กรุณาแนบรูปในทุกข้อก่อนบันทึก", en: "Please attach photos for all items" },
     alertPhotoNotComplete: { th: "กรุณาแนบรูปในส่วน Pre-PM ให้ครบก่อน", en: "Please attach all photos in Pre-PM section" },
-    alertInputNotComplete: { th: "กรุณากรอกค่าข้อ 9 ให้ครบ", en: "Please fill in Item 9" },
+    alertInputNotComplete: { th: "กรุณากรอกค่าข้อ 11 ให้ครบ", en: "Please fill in Item 11" },
     alertCompleteAll: { th: "กรุณากรอกข้อมูลและแนบรูปให้ครบก่อนบันทึก", en: "Please complete all fields and attach photos before saving" },
     noReportId: { th: "ไม่มี report_id - กรุณาบันทึกข้อมูล Pre-PM ก่อน", en: "No report_id - Please save Pre-PM first" },
 
@@ -567,8 +567,10 @@ const t = (key: keyof typeof T, lang: Lang): string => T[key][lang];
 // Helper functions to generate scroll IDs
 const ID_PREFIX = "ccb-pm";
 
-// Convert CCB photo key number to formatted string (e.g., 101 → "10-1", 31 → "3-1", 90 → "9")
+// Convert CCB photo state key to the internal control ID used by the form.
 const formatPhotoKeyNumber = (key: number): string => {
+    if (key === 1001) return "1";
+    if (key === 1002) return "2";
     if (key === 90) return "9";
     if (key >= 101 && key <= 106) return `10-${key - 100}`;
     if (key >= 30 && key < 90) return `${Math.floor(key / 10)}-${key % 10}`;
@@ -728,8 +730,25 @@ const QUESTIONS: Question[] = [
 ];
 
 function getQuestionLabel(q: Question, mode: TabId, lang: Lang): string {
-    return t(q.labelKey, lang);
+    const label = t(q.labelKey, lang);
+    return label.replace(/^\d+(?=[.)])/, String(getDisplayedQuestionNo(q.no)));
 }
+
+const getDisplayedQuestionNo = (qNo: number): number => qNo >= 100 ? qNo - 100 : qNo + 2;
+
+const getDisplayedItemLabel = (label: string): string =>
+    label.replace(/^(\d+)(?=[.)])/, (_, qNo: string) => String(Number(qNo) + 2));
+
+const getDisplayedRowNo = (key: string): string => {
+    if (key === "pre_r1") return "1";
+    if (key === "pre_r2") return "2";
+    if (key === "r9_main") return "11";
+    const subBreaker = key.match(/^r10_sub(\d+)$/);
+    if (subBreaker) return `12.${subBreaker[1]}`;
+    const row = key.match(/^r(\d+)(?:_(\d+))?$/);
+    if (row) return row[2] ? `${Number(row[1]) + 2}.${row[2]}` : String(Number(row[1]) + 2);
+    return key;
+};
 
 type MeasureRow<U extends string> = { value: string; unit: U };
 type MeasureState<U extends string> = Record<string, MeasureRow<U>>;
@@ -859,14 +878,17 @@ function PMValidationCard({
 
     const getPhotoScrollId = (item: string): string => {
         const parts = item.split('.');
-        if (parts.length === 2) return `${ID_PREFIX}-photo-${parts[0]}-${parts[1]}`;
-        return `${ID_PREFIX}-photo-${parts[0]}`;
+        const displayedNo = Number(parts[0]);
+        const internalNo = displayedNo <= 2 ? displayedNo : displayedNo - 2;
+        if (parts.length === 2) return `${ID_PREFIX}-photo-${internalNo}-${parts[1]}`;
+        return `${ID_PREFIX}-photo-${internalNo}`;
     };
 
     const getPfButtonsScrollId = (item: string): string => {
         const parts = item.split('.');
-        if (parts.length === 2) return `${ID_PREFIX}-pf-${parts[0]}-${parts[1]}`;
-        return `${ID_PREFIX}-pf-${parts[0]}`;
+        const internalNo = Number(parts[0]) - 2;
+        if (parts.length === 2) return `${ID_PREFIX}-pf-${internalNo}-${parts[1]}`;
+        return `${ID_PREFIX}-pf-${internalNo}`;
     };
 
     const allErrors: ValidationError[] = useMemo(() => {
@@ -887,7 +909,7 @@ function PMValidationCard({
         if (!allRequiredInputsFilled) {
             missingInputsDetailed.forEach(({ qNo, subNo, label }) => {
                 const scrollId = subNo ? `${ID_PREFIX}-input-${qNo}-${subNo}` : `${ID_PREFIX}-input-${qNo}`;
-                const itemDisplay = subNo ? `${qNo}.${subNo}` : `${qNo}`;
+                const itemDisplay = subNo ? `${getDisplayedQuestionNo(qNo)}.${subNo}` : `${getDisplayedQuestionNo(qNo)}`;
                 const message = lang === "th" ? `ยังไม่ได้กรอกค่า ${label}` : `${label} value not filled`;
                 errors.push({
                     section: lang === "th" ? "ค่าที่ต้องกรอก" : "Required Inputs",
@@ -1303,6 +1325,8 @@ function getRowKeysForQuestion(q: Question, subBreakerCount?: number): string[] 
 }
 
 function getPhotoKeyForQuestion(q: Question, subKey?: string): number {
+    if (q.key === "pre_r1") return 1001;
+    if (q.key === "pre_r2") return 1002;
     if (q.kind === "mainBreaker") return 90;
     if (q.kind === "subBreakers" && subKey) {
         const match = subKey.match(/r10_sub(\d+)/);
@@ -1358,7 +1382,7 @@ export default function CCBPMReport() {
         QUESTIONS.forEach((q) => {
             if (!q.hasPhoto) return;
             if (q.kind === "simple") {
-                result[q.no] = [];
+                result[getPhotoKeyForQuestion(q)] = [];
             } else if (q.kind === "group") {
                 q.items.forEach((item) => {
                     const photoKey = getPhotoKeyForQuestion(q, item.key);
@@ -1824,7 +1848,7 @@ export default function CCBPMReport() {
         const keys: number[] = [];
         QUESTIONS.filter((q) => q.hasPhoto && q.no !== 11).forEach((q) => {
             if (q.kind === "simple") {
-                keys.push(q.no);
+                keys.push(getPhotoKeyForQuestion(q));
             } else if (q.kind === "group") {
                 q.items.forEach((item) => {
                     keys.push(getPhotoKeyForQuestion(q, item.key));
@@ -1844,7 +1868,7 @@ export default function CCBPMReport() {
         const keys: number[] = [];
         QUESTIONS.filter((q) => q.hasPhoto).forEach((q) => {
             if (q.kind === "simple") {
-                keys.push(q.no);
+                keys.push(getPhotoKeyForQuestion(q));
             } else if (q.kind === "group") {
                 q.items.forEach((item) => {
                     keys.push(getPhotoKeyForQuestion(q, item.key));
@@ -1862,7 +1886,9 @@ export default function CCBPMReport() {
 
     const missingPhotoItemsPre = useMemo(() => REQUIRED_PHOTO_KEYS_PRE.filter((key) => {
         let rowKey: string | null = null;
-        if (key === 90) { rowKey = "r9_main"; }
+        if (key === 1001) { rowKey = "pre_r1"; }
+        else if (key === 1002) { rowKey = "pre_r2"; }
+        else if (key === 90) { rowKey = "r9_main"; }
         else if (key >= 101 && key <= 106) { rowKey = `r10_sub${key - 100}`; }
         else if (key >= 30 && key < 90) { const qNo = Math.floor(key / 10); const subNo = key % 10; rowKey = `r${qNo}_${subNo}`; }
         else { rowKey = `r${key}`; }
@@ -1872,7 +1898,9 @@ export default function CCBPMReport() {
 
     const missingPhotoItemsPost = useMemo(() => REQUIRED_PHOTO_KEYS_POST.filter((key) => {
         let rowKey: string | null = null;
-        if (key === 90) { rowKey = "r9_main"; }
+        if (key === 1001) { rowKey = "pre_r1"; }
+        else if (key === 1002) { rowKey = "pre_r2"; }
+        else if (key === 90) { rowKey = "r9_main"; }
         else if (key >= 101 && key <= 106) { rowKey = `r10_sub${key - 100}`; }
         else if (key >= 30 && key < 90) { const qNo = Math.floor(key / 10); const subNo = key % 10; rowKey = `r${qNo}_${subNo}`; }
         else { rowKey = `r${key}`; }
@@ -1908,12 +1936,7 @@ export default function CCBPMReport() {
     const missingPFItemsPre = useMemo(() => [] as string[], []);
     const allPFAnsweredPost = useMemo(() => PF_KEYS_POST.every((k) => rowsPre[k]?.pf === "NA" || rows[k]?.pf !== ""), [rows, PF_KEYS_POST, rowsPre]);
     const missingPFItemsPost = useMemo(() => PF_KEYS_POST.filter((k) => rowsPre[k]?.pf !== "NA" && !rows[k]?.pf).map((k) => {
-        if (k === "r9_main") return "9";
-        const subMatch = k.match(/^r10_sub(\d+)$/);
-        if (subMatch) return `10.${subMatch[1]}`;
-        const match = k.match(/^r(\d+)_?(\d+)?$/);
-        if (match) { return match[2] ? `${match[1]}.${match[2]}` : match[1]; }
-        return k;
+        return getDisplayedRowNo(k);
     }), [rows, PF_KEYS_POST, rowsPre]);
 
     const missingInputsDetailed = useMemo(() => {
@@ -1972,6 +1995,7 @@ export default function CCBPMReport() {
     /** key ที่ backend ใช้เก็บใน photos_pre / photos — ต้องใช้สูตรเดียวกันทั้งตอน upload และตอน verify */
     const toGroupKey = (stateKey: string | number) => {
         const no = Number(stateKey);
+        if (no === 1001 || no === 1002) return `g${no}`;
         if (no === 90) return "g9";
         if (no >= 101 && no <= 106) return `g10_${no - 100}`;
         if (no >= 30 && no < 90) return `g${Math.floor(no / 10)}_${no % 10}`;
@@ -2280,8 +2304,8 @@ export default function CCBPMReport() {
                             </div>
                             {q.hasPhoto && (
                                 <div className="tw-mb-3">
-                                    <PhotoMultiInput photos={photos[q.no] || []} setPhotos={makePhotoSetter(q.no)}
-                                        max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(q.no)} />
+                                    <PhotoMultiInput photos={photos[getPhotoKeyForQuestion(q)] || []} setPhotos={makePhotoSetter(getPhotoKeyForQuestion(q))}
+                                        max={10} draftKey={currentDraftKey} qNo={getPhotoKeyForQuestion(q)} lang={lang} id={getPhotoIdFromKey(getPhotoKeyForQuestion(q))} />
                                 </div>
                             )}
                             <div id={getRemarkIdFromKey(q.key)}>
@@ -2485,8 +2509,8 @@ export default function CCBPMReport() {
                             aboveRemark={
                                 q.hasPhoto && (
                                     <div className="tw-pb-4 tw-border-b tw-mb-4 tw-border-gray-100">
-                                        <PhotoMultiInput photos={photos[q.no] || []} setPhotos={makePhotoSetter(q.no)}
-                                            max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(q.no)} />
+                                        <PhotoMultiInput photos={photos[getPhotoKeyForQuestion(q)] || []} setPhotos={makePhotoSetter(getPhotoKeyForQuestion(q))}
+                                            max={10} draftKey={currentDraftKey} qNo={getPhotoKeyForQuestion(q)} lang={lang} id={getPhotoIdFromKey(getPhotoKeyForQuestion(q))} />
                                     </div>
                                 )
                             }
@@ -2709,19 +2733,23 @@ export default function CCBPMReport() {
 
     const formatMissingPhotoItems = (items: number[]): string => {
         return items.map(no => {
-            if (no === 90) return "9";
-            if (no >= 101 && no <= 106) return `10.${no - 100}`;
-            if (no >= 30 && no < 90) return `${Math.floor(no / 10)}.${no % 10}`;
-            return String(no);
+            if (no === 1001) return "1";
+            if (no === 1002) return "2";
+            if (no === 90) return "11";
+            if (no >= 101 && no <= 106) return `12.${no - 100}`;
+            if (no >= 30 && no < 90) return `${Math.floor(no / 10) + 2}.${no % 10}`;
+            return String(no + 2);
         }).join(", ");
     };
 
     const missingPhotoItemsFormatted = useMemo(() => {
         return missingPhotoItems.map(no => {
-            if (no === 90) return "9";
-            if (no >= 101 && no <= 106) return `10.${no - 100}`;
-            if (no >= 30 && no < 90) return `${Math.floor(no / 10)}.${no % 10}`;
-            return String(no);
+            if (no === 1001) return "1";
+            if (no === 1002) return "2";
+            if (no === 90) return "11";
+            if (no >= 101 && no <= 106) return `12.${no - 100}`;
+            if (no >= 30 && no < 90) return `${Math.floor(no / 10) + 2}.${no % 10}`;
+            return String(no + 2);
         });
     }, [missingPhotoItems]);
 
@@ -2751,8 +2779,10 @@ export default function CCBPMReport() {
             const text = textOf(v);
             if (typeof k === "string" && text.trim() && !labels.has(k)) labels.set(k, text.trim());
         };
-        const labelOfItem = (it: any) =>
-            it?.label !== undefined ? it.label : it?.labelKey ? (t as any)(it.labelKey, lang) : "";
+        const labelOfItem = (it: any) => {
+            const label = it?.label !== undefined ? it.label : it?.labelKey ? (t as any)(it.labelKey, lang) : "";
+            return typeof label === "string" ? getDisplayedItemLabel(label) : label;
+        };
         (QUESTIONS as any[]).forEach((q: any) => {
             put(q?.key, labelOfItem(q));
             (q?.items ?? []).forEach((it: any) => put(it?.key, labelOfItem(it)));
@@ -2781,7 +2811,7 @@ export default function CCBPMReport() {
             if (!q?.key) return;
             const section = labelOf(q.key);
             // เลขข้อ — ใช้รวมรูปของทั้งข้อในตารางเทียบ แบบเดียวกับที่ PDF ทำ
-            const qNo: number | undefined = typeof q?.no === "number" ? q.no
+            const qNo: number | undefined = typeof q?.no === "number" ? getDisplayedQuestionNo(q.no)
                 : Number(String(q?.key ?? "").replace(/^r/, "")) || undefined;
             out.push(mk(q.key, section, "", qNo));
             answered
@@ -2791,7 +2821,8 @@ export default function CCBPMReport() {
         });
         answered.forEach((k) => {
             if (out.some((r) => r.key === k)) return;
-            out.push(mk(k, "", labelOf(k), Number(k.replace(/^r/, "").split("_")[0]) || undefined));
+            const rawNo = Number(k.replace(/^r/, "").split("_")[0]) || undefined;
+            out.push(mk(k, "", labelOf(k), rawNo ? getDisplayedQuestionNo(rawNo) : undefined));
         });
         return out;
     }, [rowsPre, rows, lang]);
