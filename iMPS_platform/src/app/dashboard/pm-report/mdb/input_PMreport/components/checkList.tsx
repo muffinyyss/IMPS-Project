@@ -290,19 +290,25 @@ const getPfIdFromKey = (key: string | number): string => { if (typeof key === "n
 const QUESTIONS_DATA = [
     { no: 1, key: "r1", label: { th: "1) ตรวจสอบสภาพทั่วไป (ก่อนบำรุงรักษา)", en: "1) General condition (before maintenance)" }, kind: "simple", hasPhoto: true, tooltip: { th: "บันทึกสภาพตู้ MDB โดยรวมก่อนลงมือ — ถ่ายรูปสภาพก่อนบำรุงรักษาไว้เป็นหลักฐาน", en: "Record the overall MDB condition before starting work" } },
     { no: 2, key: "r2", label: { th: "2) อุปกรณ์ชำรุดเสียหาย (ก่อนบำรุงรักษา)", en: "2) Damaged equipment (before maintenance)" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจและบันทึกอุปกรณ์ที่ชำรุดเสียหายที่พบก่อนเริ่มบำรุงรักษา", en: "Record any damaged equipment found before maintenance" } },
-    { no: 3, key: "r3", label: { th: "3) ตรวจสอบสภาพทั่วไป", en: "3) General condition inspection" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบโครงสร้างตู้ ระบบล็อกและบานพับรวมถึงป้ายชื่อวงจร (Labeling)", en: "Check cabinet structure, lock system, hinges and circuit labeling" } },
-    { no: 4, key: "r4", label: { th: "4) ตรวจสอบดักซีล, ซิลิโคนกันซึม", en: "4) Check sealant and silicone" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบสภาพดักซีลที่ปิดหรืออุดตามรอยต่อและช่องทางเข้าสาย", en: "Check sealant condition at joints and cable entry points" } },
-    { no: 5, key: "r5", label: { th: "5) ตรวจสอบ Power Meter", en: "5) Check Power Meter" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบการแสดงของจอ Power Meter และความถูกต้องของค่าพารามิเตอร์ไฟฟ้า (V, A, Hz, PF)", en: "Check Power Meter display and parameters (V, A, Hz, PF)" } },
-    { no: 6, key: "r6", label: { th: "6) ตรวจสอบแรงดันไฟฟ้า Breaker Main", en: "6) Check Breaker Main voltage" }, kind: "dynamic_measure", hasPhoto: true, tooltip: { th: "วัดค่าแรงดันไฟฟ้าด้านเข้าของ Breaker Main", en: "Measure input voltage of Breaker Main" } },
-    { no: 7, key: "r7", label: { th: "7) ตรวจสอบแรงดันไฟฟ้า Breaker Charger", en: "7) Check Breaker Charger voltage" }, kind: "charger_measure", hasPhoto: true, tooltip: { th: "วัดค่าแรงดันไฟฟ้าด้านเข้าของ Breaker Charger", en: "Measure input voltage of Breaker Charger" } },
-    { no: 8, key: "r8", label: { th: "8) ตรวจสอบแรงดันไฟฟ้า Breaker CCB", en: "8) Check Breaker CCB voltage" }, kind: "ccb_measure", hasPhoto: true, tooltip: { th: "วัดค่าแรงดันไฟฟ้าด้านเข้าของ Breaker CCB", en: "Measure input voltage of Breaker CCB" } },
-    { no: 9, key: "r9", label: { th: "9) ตรวจสอบแรงดันไฟฟ้า RCD", en: "9) Check RCD voltage" }, kind: "rcd_measure", hasPhoto: true, tooltip: { th: "วัดค่าแรงดันไฟฟ้าด้าน Load ของอุปกรณ์ป้องกันไฟรั่ว (RCD)", en: "Measure load side voltage of RCD" } },
-    { no: 10, key: "r10", label: { th: "10) ทดสอบปุ่ม Trip Test RCD", en: "10) Test RCD Trip button" }, kind: "trip_rcd", hasPhoto: true, tooltip: { th: "กดปุ่ม Test เพื่อทดสอบกลไกการตัดกระแสไฟรั่วของ RCD", en: "Press Test button to test RCD trip mechanism" } },
-    { no: 11, key: "r11", label: { th: "11) ทดสอบปุ่ม Trip Test Breaker CCB", en: "11) Test Breaker CCB Trip button" }, kind: "trip_ccb", hasPhoto: true, tooltip: { th: "กดปุ่ม Test เพื่อทดสอบกลไกการตัดวงจรของ Breaker CCB", en: "Press Test button to test Breaker CCB trip mechanism" } },
-    { no: 12, key: "r12", label: { th: "12) ทดสอบปุ่ม Trip Test Breaker Charger", en: "12) Test Breaker Charger Trip button" }, kind: "trip_charger", hasPhoto: true, tooltip: { th: "กดปุ่ม Test เพื่อทดสอบกลไกการตัดวงจรของ Breaker Charger", en: "Press Test button to test Breaker Charger trip mechanism" } },
-    { no: 13, key: "r13", label: { th: "13) ทดสอบปุ่ม Trip Test Breaker Main", en: "13) Test Breaker Main Trip button" }, kind: "trip_main", hasPhoto: true, tooltip: { th: "กดปุ่ม Test เพื่อทดสอบกลไกการตัดวงจรของ Breaker Main", en: "Press Test button to test Breaker Main trip mechanism" } },
-    { no: 14, key: "r14", label: { th: "14) ตรวจสอบจุดต่อทางไฟฟ้า", en: "14) Check electrical connections" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบการขันแน่นของน็อตบริเวณจุดต่อสายและตรวจเช็ครอยไหม้ด้วยกล้องถ่ายภาพความร้อน", en: "Check bolt tightness at connection points and inspect for burn marks using thermal camera" } },
-    { no: 15, key: "r15", label: { th: "15) ทำความสะอาดตู้ MDB", en: "15) Clean MDB cabinet" }, kind: "simple", hasPhoto: true, tooltip: { th: "ทำความสะอาดโดยการขจัดฝุ่นและสิ่งสกปรกภายในตู้ด้วยเครื่องดูดฝุ่นหรือเป่าลมแห้ง", en: "Clean by removing dust inside cabinet with vacuum or dry air" } },
+    { no: 103, key: "r3_power_source", label: { th: "3) ตรวจสอบสภาพแหล่งจ่ายไฟ MDB", en: "3) Inspect MDB power supply condition" }, kind: "power_source", hasPhoto: true, items: [
+        { key: "r3_power_main_cb", label: { th: "a. Main CB", en: "a. Main CB" } },
+        { key: "r3_power_cb", label: { th: "b. CB", en: "b. CB" } },
+        { key: "r3_power_meter", label: { th: "c. Power Meter (Voltage)", en: "c. Power Meter (Voltage)" } },
+        { key: "r3_power_transformer", label: { th: "d. Transformer", en: "d. Transformer" } },
+    ], tooltip: { th: "ตรวจสอบสภาพอุปกรณ์แหล่งจ่ายไฟของตู้ MDB", en: "Inspect the MDB power supply equipment" } },
+    { no: 3, key: "r3", label: { th: "4) ตรวจสอบสภาพทั่วไป", en: "4) General condition inspection" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบโครงสร้างตู้ ระบบล็อกและบานพับรวมถึงป้ายชื่อวงจร (Labeling)", en: "Check cabinet structure, lock system, hinges and circuit labeling" } },
+    { no: 4, key: "r4", label: { th: "5) ตรวจสอบดักซีล, ซิลิโคนกันซึม", en: "5) Check sealant and silicone" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบสภาพดักซีลที่ปิดหรืออุดตามรอยต่อและช่องทางเข้าสาย", en: "Check sealant condition at joints and cable entry points" } },
+    { no: 5, key: "r5", label: { th: "6) ตรวจสอบ Power Meter", en: "6) Check Power Meter" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบการแสดงของจอ Power Meter และความถูกต้องของค่าพารามิเตอร์ไฟฟ้า (V, A, Hz, PF)", en: "Check Power Meter display and parameters (V, A, Hz, PF)" } },
+    { no: 6, key: "r6", label: { th: "7) ตรวจสอบแรงดันไฟฟ้า Breaker Main", en: "7) Check Breaker Main voltage" }, kind: "dynamic_measure", hasPhoto: true, tooltip: { th: "วัดค่าแรงดันไฟฟ้าด้านเข้าของ Breaker Main", en: "Measure input voltage of Breaker Main" } },
+    { no: 7, key: "r7", label: { th: "8) ตรวจสอบแรงดันไฟฟ้า Breaker Charger", en: "8) Check Breaker Charger voltage" }, kind: "charger_measure", hasPhoto: true, tooltip: { th: "วัดค่าแรงดันไฟฟ้าด้านเข้าของ Breaker Charger", en: "Measure input voltage of Breaker Charger" } },
+    { no: 8, key: "r8", label: { th: "9) ตรวจสอบแรงดันไฟฟ้า Breaker CCB", en: "9) Check Breaker CCB voltage" }, kind: "ccb_measure", hasPhoto: true, tooltip: { th: "วัดค่าแรงดันไฟฟ้าด้านเข้าของ Breaker CCB", en: "Measure input voltage of Breaker CCB" } },
+    { no: 9, key: "r9", label: { th: "10) ตรวจสอบแรงดันไฟฟ้า RCD", en: "10) Check RCD voltage" }, kind: "rcd_measure", hasPhoto: true, tooltip: { th: "วัดค่าแรงดันไฟฟ้าด้าน Load ของอุปกรณ์ป้องกันไฟรั่ว (RCD)", en: "Measure load side voltage of RCD" } },
+    { no: 10, key: "r10", label: { th: "11) ทดสอบปุ่ม Trip Test RCD", en: "11) Test RCD Trip button" }, kind: "trip_rcd", hasPhoto: true, tooltip: { th: "กดปุ่ม Test เพื่อทดสอบกลไกการตัดกระแสไฟรั่วของ RCD", en: "Press Test button to test RCD trip mechanism" } },
+    { no: 11, key: "r11", label: { th: "12) ทดสอบปุ่ม Trip Test Breaker CCB", en: "12) Test Breaker CCB Trip button" }, kind: "trip_ccb", hasPhoto: true, tooltip: { th: "กดปุ่ม Test เพื่อทดสอบกลไกการตัดวงจรของ Breaker CCB", en: "Press Test button to test Breaker CCB trip mechanism" } },
+    { no: 12, key: "r12", label: { th: "13) ทดสอบปุ่ม Trip Test Breaker Charger", en: "13) Test Breaker Charger Trip button" }, kind: "trip_charger", hasPhoto: true, tooltip: { th: "กดปุ่ม Test เพื่อทดสอบกลไกการตัดวงจรของ Breaker Charger", en: "Press Test button to test Breaker Charger Trip mechanism" } },
+    { no: 13, key: "r13", label: { th: "14) ทดสอบปุ่ม Trip Test Breaker Main", en: "14) Test Breaker Main Trip button" }, kind: "trip_main", hasPhoto: true, tooltip: { th: "กดปุ่ม Test เพื่อทดสอบกลไกการตัดวงจรของ Breaker Main", en: "Press Test button to test Breaker Main Trip mechanism" } },
+    { no: 14, key: "r14", label: { th: "15) ตรวจสอบจุดต่อทางไฟฟ้า", en: "15) Check electrical connections" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบการขันแน่นของน็อตบริเวณจุดต่อสายและตรวจเช็ครอยไหม้ด้วยกล้องถ่ายภาพความร้อน", en: "Check bolt tightness at connection points and inspect for burn marks using thermal camera" } },
+    { no: 15, key: "r15", label: { th: "16) ทำความสะอาดตู้ MDB", en: "16) Clean MDB cabinet" }, kind: "simple", hasPhoto: true, tooltip: { th: "ทำความสะอาดโดยการขจัดฝุ่นและสิ่งสกปรกภายในตู้ด้วยเครื่องดูดฝุ่นหรือเป่าลมแห้ง", en: "Clean by removing dust inside cabinet with vacuum or dry air" } },
 ] as const;
 
 // ใบที่บันทึกด้วยฟอร์มชุดนี้ถูกสตัมป์ form_version ไว้ ใบที่ไม่มี (หรือ < 2)
@@ -559,11 +565,11 @@ function isMobileDevice(): boolean {
 }
 
 // ==================== UI COMPONENTS ====================
-function PassFailRow({ label, value, onChange, remark, onRemarkChange, labels, aboveRemark, beforeRemark, belowRemark, inlineLeft, lang, remarkId, pfButtonsId }: {
+function PassFailRow({ label, value, onChange, remark, onRemarkChange, labels, aboveRemark, beforeRemark, belowRemark, inlineLeft, showPfButtons = true, lang, remarkId, pfButtonsId }: {
     label: string; value: PF; onChange: (v: Exclude<PF, "">) => void;
     remark?: string; onRemarkChange?: (v: string) => void;
     labels?: Partial<Record<Exclude<PF, "">, React.ReactNode>>;
-    aboveRemark?: React.ReactNode; beforeRemark?: React.ReactNode; belowRemark?: React.ReactNode; inlineLeft?: React.ReactNode;
+    aboveRemark?: React.ReactNode; beforeRemark?: React.ReactNode; belowRemark?: React.ReactNode; inlineLeft?: React.ReactNode; showPfButtons?: boolean;
     lang: Lang; remarkId?: string; pfButtonsId?: string;
 }) {
     const text = { PASS: labels?.PASS ?? t("pass", lang), FAIL: labels?.FAIL ?? t("fail", lang), NA: labels?.NA ?? t("na", lang) };
@@ -580,14 +586,14 @@ function PassFailRow({ label, value, onChange, remark, onRemarkChange, labels, a
             <Typography className="tw-font-medium">{label}</Typography>
             {onRemarkChange ? (
                 <div className="tw-w-full tw-min-w-0 tw-space-y-2">
-                    {aboveRemark}{buttonsRow}{beforeRemark}
+                    {aboveRemark}{showPfButtons && buttonsRow}{beforeRemark}
                     <div id={remarkId} className="tw-transition-all tw-duration-300">
                         <Textarea label={t("remark", lang)} value={remark || ""} onChange={(e) => onRemarkChange(e.target.value)} containerProps={{ className: "!tw-w-full !tw-min-w-0" }} className="!tw-w-full" />
                     </div>
                     {belowRemark}
                 </div>
             ) : (
-                <div className="tw-flex tw-flex-col sm:tw-flex-row tw-gap-2 sm:tw-items-center sm:tw-justify-between">{buttonsRow}</div>
+                showPfButtons && <div className="tw-flex tw-flex-col sm:tw-flex-row tw-gap-2 sm:tw-items-center sm:tw-justify-between">{buttonsRow}</div>
             )}
         </div>
     );
@@ -1077,7 +1083,7 @@ export default function MDBPMForm() {
     const legacyDoc = !!editId && docFormVersion < FORM_VERSION;
     const [rows, setRows] = useState<Record<string, { pf: PF; remark: string }>>(() => {
         const initial: Record<string, { pf: PF; remark: string }> = {};
-        QUESTIONS.forEach(q => { if (q.kind === "simple" || q.kind === "measure") initial[q.key] = { pf: "", remark: "" }; else if (q.kind === "group" && q.items) q.items.forEach(it => { initial[it.key] = { pf: "", remark: "" }; }); });
+        QUESTIONS.forEach(q => { if (q.kind === "simple" || q.kind === "measure") initial[q.key] = { pf: "", remark: "" }; else if ((q.kind === "group" || q.kind === "power_source") && q.items) q.items.forEach(it => { initial[it.key] = { pf: "", remark: "" }; }); });
         return initial;
     });
 
@@ -1298,6 +1304,7 @@ export default function MDBPMForm() {
             else if (q.kind === "trip_ccb") q11Items.forEach((item, idx) => { if (na(item.key)) return; keys.push({ key: item.key, label: `11.${idx + 1}` }); });
             else if (q.kind === "trip_charger") q12Items.forEach((item, idx) => { if (na(item.key)) return; keys.push({ key: item.key, label: `12.${idx + 1}` }); });
             else if (q.kind === "trip_main") q13Items.forEach((item, idx) => { if (na(item.key)) return; keys.push({ key: item.key, label: `13.${idx + 1}` }); });
+            else if (q.kind === "power_source" && q.items) q.items.forEach((item, idx) => { if (na(item.key)) return; keys.push({ key: item.key, label: `3.${String.fromCharCode(97 + idx)}` }); });
         });
         return keys;
     }, [rows, q6Items, q7Items, q8Items, q9Items, q10Items, q11Items, q12Items, q13Items]);
@@ -1310,7 +1317,7 @@ export default function MDBPMForm() {
     const PF_KEYS_ALL = useMemo(() => {
         const keys: string[] = [];
         QUESTIONS.forEach(q => {
-            if (q.kind === "simple" || q.kind === "measure") keys.push(q.key);
+            if (q.kind === "simple" || q.kind === "measure") { if (q.key !== "r1" && q.key !== "r2") keys.push(q.key); }
             else if (q.kind === "dynamic_measure") q6Items.forEach(it => keys.push(it.key));
             else if (q.kind === "charger_measure") q7Items.forEach(it => keys.push(it.key));
             else if (q.kind === "ccb_measure") q8Items.forEach(it => keys.push(it.key));
@@ -1320,6 +1327,7 @@ export default function MDBPMForm() {
             else if (q.kind === "trip_charger") q12Items.forEach(it => keys.push(it.key));
             else if (q.kind === "trip_main") q13Items.forEach(it => keys.push(it.key));
             else if (q.kind === "group" && q.items) q.items.forEach(it => keys.push(it.key));
+            else if (q.kind === "power_source" && q.items) q.items.forEach(it => keys.push(it.key));
         });
         return keys;
     }, [q6Items, q7Items, q8Items, q9Items, q10Items, q11Items, q12Items, q13Items]);
@@ -1680,6 +1688,26 @@ export default function MDBPMForm() {
             rcd_measure: { items: q9Items, qNo: 9, countLabel: t("rcdCount", lang), count: chargerCount, countUnit: t("unit", lang) },
         };
 
+        if (q.kind === "power_source" && q.items) {
+            return (
+                <SectionCard key={q.key} id={sectionId} title={q.label[lang]} tooltip={qTooltip}>
+                    <div className="tw-divide-y tw-divide-gray-200">
+                        {q.items.map((item, idx) => (
+                            <div key={item.key} className="tw-py-4 first:tw-pt-2">
+                                <PassFailRow label={item.label[lang]} value={rows[item.key]?.pf ?? ""} lang={lang}
+                                    onChange={v => setRows({ ...rows, [item.key]: { ...(rows[item.key] ?? { remark: "" }), pf: v } })}
+                                    remark={rows[item.key]?.remark ?? ""}
+                                    onRemarkChange={v => setRows({ ...rows, [item.key]: { ...(rows[item.key] ?? { pf: "" }), remark: v } })}
+                                    pfButtonsId={getPfIdFromKey(item.key)} remarkId={getRemarkIdFromKey(item.key)}
+                                    aboveRemark={<div className="tw-pb-4 tw-border-b tw-border-gray-100"><PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(item.key)} /></div>}
+                                />
+                            </div>
+                        ))}
+                    </div>
+                </SectionCard>
+            );
+        }
+
         if (measureMap[q.kind]) {
             const cfg = measureMap[q.kind];
             // จำนวน Breaker Main / Breaker CCB ช่างปรับเองได้ตามตู้จริง (เดิมอยู่ในด่านก่อน PM)
@@ -1768,7 +1796,7 @@ export default function MDBPMForm() {
                         onChange={v => setRows({ ...rows, [q.key]: { ...(rows[q.key] ?? { remark: "" }), pf: v } })}
                         remark={rows[q.key]?.remark ?? ""}
                         onRemarkChange={v => setRows({ ...rows, [q.key]: { ...(rows[q.key] ?? { pf: "" }), remark: v } })}
-                        pfButtonsId={getPfIdFromKey(q.key)} remarkId={getRemarkIdFromKey(q.key)}
+                        showPfButtons={q.key !== "r1" && q.key !== "r2"} pfButtonsId={getPfIdFromKey(q.key)} remarkId={getRemarkIdFromKey(q.key)}
                         aboveRemark={<>{q.hasPhoto && <div className="tw-pt-2 tw-pb-4 tw-border-b tw-mb-4 tw-border-gray-100"><PhotoMultiInput photos={photos[q.no] || []} setPhotos={makePhotoSetter(q.no)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(q.no)} /></div>}{checkboxElement && <div className="sm:tw-hidden tw-mb-3">{checkboxElement}</div>}</>}
                         inlineLeft={checkboxElement && <div className="tw-hidden sm:tw-flex">{checkboxElement}</div>}
                     />

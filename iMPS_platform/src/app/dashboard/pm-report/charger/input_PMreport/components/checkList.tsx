@@ -524,9 +524,7 @@ const getDynamicLabel = {
 };
 
 function getQuestionLabel(q: Question, mode: TabId, lang: Lang): string {
-    const baseLabel = q.label[lang];
-    if (mode === "pre") return lang === "th" ? `${baseLabel} (ก่อน PM)` : `${baseLabel} (Pre-PM)`;
-    return lang === "th" ? `${baseLabel} (หลัง PM)` : `${baseLabel} (Post-PM)`;
+    return q.label[lang];
 }
 
 function createFixedItems(qNo: number, count: number, lang: Lang): { key: string; label: string }[] {
@@ -637,7 +635,7 @@ function useDebouncedEffect(effect: () => void, deps: any[], delay = 800) {
 
 // ==================== UI COMPONENTS ====================
 function PassFailRow({
-    label, value, onChange, remark, onRemarkChange, labels, aboveRemark, beforeRemark, belowRemark, inlineLeft, onlyNA = false, onClear, lang, remarkId, pfButtonsId,
+    label, value, onChange, remark, onRemarkChange, labels, aboveRemark, beforeRemark, belowRemark, inlineLeft, onlyNA = false, onClear, showPfButtons = true, lang, remarkId, pfButtonsId,
 }: {
     label: string;
     value: PF;
@@ -651,6 +649,7 @@ function PassFailRow({
     inlineLeft?: React.ReactNode;
     onlyNA?: boolean;
     onClear?: () => void;
+    showPfButtons?: boolean;
     lang: Lang;
     remarkId?: string;
     pfButtonsId?: string;
@@ -685,7 +684,7 @@ function PassFailRow({
             {onRemarkChange ? (
                 <div className="tw-w-full tw-min-w-0 tw-space-y-2">
                     {aboveRemark}
-                    {buttonsRow}
+                    {showPfButtons && buttonsRow}
                     {beforeRemark}
                     <div id={remarkId} className="tw-transition-all tw-duration-300">
                         <Textarea label={t("remark", lang)} value={remark || ""} onChange={(e) => onRemarkChange(e.target.value)}
@@ -694,7 +693,7 @@ function PassFailRow({
                     {belowRemark}
                 </div>
             ) : (
-                <div className="tw-flex tw-flex-col sm:tw-flex-row tw-gap-2 sm:tw-items-center sm:tw-justify-between">{buttonsRow}</div>
+                showPfButtons && <div className="tw-flex tw-flex-col sm:tw-flex-row tw-gap-2 sm:tw-items-center sm:tw-justify-between">{buttonsRow}</div>
             )}
         </div>
     );
@@ -1800,6 +1799,7 @@ function DynamicItemsSection({
                         return (
                             <div key={item.key} className="tw-py-4 first:tw-pt-2">
                                 <PassFailRow
+                                    showPfButtons={!q.key.startsWith("pre_")}
                                     label={item.label}
                                     value={rows[item.key]?.pf ?? ""}
                                     onChange={(v) => setRows(prev => ({ ...prev, [item.key]: { ...(prev[item.key] ?? { remark: "" }), pf: v } }))}
@@ -2775,7 +2775,7 @@ export default function ChargerPMForm() {
     const PF_KEYS_POST = useMemo(() => {
         const keys: string[] = [];
         QUESTIONS.forEach((q) => {
-            if (q.kind === "simple" || q.kind === "measure") { if (rowsPre[q.key]?.pf !== "NA") { keys.push(q.key); } return; }
+            if (q.kind === "simple" || q.kind === "measure") { if (q.key.startsWith("pre_")) return; if (rowsPre[q.key]?.pf !== "NA") { keys.push(q.key); } return; }
             if (q.no === 5) { q5Items.forEach((item) => { if (rowsPre[item.key]?.pf !== "NA") { keys.push(item.key); } }); }
             else if (q.no === 7) { q7Items.forEach((item) => { if (rowsPre[item.key]?.pf !== "NA") { keys.push(item.key); } }); }
             else if ([3, 4, 6, 8, 10, 11, 17, 18].includes(q.no)) {
@@ -2914,7 +2914,7 @@ export default function ChargerPMForm() {
                                             onValueChange={() => { }} onUnitChange={() => { }} disabled={true} required={false} labelOnTop lang={lang} />
                                     </div>
                                     <div className="tw-max-w-xs">
-                                        <InputWithUnit<UnitVoltage> label={lang === "th" ? "CP (หลัง PM)" : "CP (Post PM)"} value={cp[item.key]?.value ?? ""} unit={cp[item.key]?.unit ?? "V"} units={["V"] as const}
+                                        <InputWithUnit<UnitVoltage> label="CP" value={cp[item.key]?.value ?? ""} unit={cp[item.key]?.unit ?? "V"} units={["V"] as const}
                                             onValueChange={(v) => setCp((s) => ({ ...s, [item.key]: { ...(s[item.key] ?? { unit: "V" }), value: v } }))}
                                             onUnitChange={(u) => setCp((s) => ({ ...s, [item.key]: { ...(s[item.key] ?? { value: "" }), unit: u } }))} disabled={isNA} required lang={lang} />
                                     </div>
