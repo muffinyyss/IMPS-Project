@@ -1799,7 +1799,6 @@ function DynamicItemsSection({
                         return (
                             <div key={item.key} className="tw-py-4 first:tw-pt-2">
                                 <PassFailRow
-                                    showPfButtons={!q.key.startsWith("pre_")}
                                     label={item.label}
                                     value={rows[item.key]?.pf ?? ""}
                                     onChange={(v) => setRows(prev => ({ ...prev, [item.key]: { ...(prev[item.key] ?? { remark: "" }), pf: v } }))}
@@ -1993,6 +1992,7 @@ function PhotoRemarkSection({
         return (
             <div className="tw-py-2">
                 <PassFailRow
+                    showPfButtons={!qKey.startsWith("pre_")}
                     label={t("testResult", lang)}
                     value={rows[qKey]?.pf ?? ""}
                     onChange={(v) => setRows(prev => ({ ...prev, [qKey]: { ...(prev[qKey] ?? { remark: "" }), pf: v } }))}
