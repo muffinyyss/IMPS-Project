@@ -382,7 +382,7 @@ const DROPDOWN_Q2_OPTIONS = [
 ] as const;
 
 type TabId = "pre" | "post";
-const TABS: { id: TabId; label: string }[] = [{ id: "pre", label: "Pre\u2011PM" }, { id: "post", label: "Post\u2011PM" }];
+const TABS: { id: TabId; label: string }[] = [{ id: "post", label: "Post\u2011PM" }];
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 const LOGO_SRC = "/img/logo_egat.png";
@@ -925,7 +925,7 @@ export default function CBBOXPMForm() {
     }, [router, searchParams]);
     const editId = searchParams.get("edit_id") ?? "";
     const action = searchParams.get("action");
-    const isPostMode = action === "post";
+    const isPostMode = true;
 
     const [submitting, setSubmitting] = useState(false);
     const [docName, setDocName] = useState("");
@@ -1483,7 +1483,7 @@ export default function CBBOXPMForm() {
 
     // Tab navigation
     const active: TabId = useMemo(() => searchParams.get("pmtab") === "post" ? "post" : "pre", [searchParams]);
-    const displayTab: TabId = isPostMode ? "post" : (active === "post" && !canGoAfter ? "pre" : active);
+    const displayTab: TabId = "post";
 
     useEffect(() => {
         const tabParam = searchParams.get("pmtab");
