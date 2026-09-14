@@ -110,15 +110,23 @@ const baseRoutes = [
   // เมนู Company — เฉพาะ super_admin กับ admin เท่านั้น
   { name: "Company Profile", icon: <i className="fa fa-building" />, path: "/dashboard/company", allow: ["super_admin", "admin"], showMode: "before" },
   { name: "Users Management", icon: <i className="fa fa-users" />, path: "/dashboard/users", allow: ["admin"], showMode: "before" },
-  { name: "My Charger", icon: <i className="fa fa-charging-station" />, path: "/dashboard/chargers", allow: ["admin", "owner"], showMode: "after" },
-  { name: "Device", icon: <i className="fa fa-microchip" />, path: "/dashboard/device", allow: ["admin", "owner", "planner"], showMode: "after" },
-  { name: "Configuration", icon: <i className="fa fa-cog" />, path: "/dashboard/setting", allow: ["admin", "owner", "planner"], showMode: "after" },
-  { name: "Condition-base", icon: <i className="fa fa-desktop" />, path: "/dashboard/cbm", allow: ["admin", "owner", "planner"], showMode: "after" },
-  { name: "MDB/CCB", icon: <i className="fa fa-database" />, path: "/dashboard/mdb", allow: ["admin", "owner", "planner"], showMode: "after" },
-  { name: "PM report", icon: <i className="fa fa-file-alt" />, path: "/dashboard/pm-report", allow: ["admin", "owner", "technician", "planner"], showMode: "after" },
-  { name: "CM report", icon: <i className="far fa-file" />, path: "/dashboard/cm-report", allow: ["admin", "owner", "technician", "cs", "planner"], showMode: "after" },
-  { name: "Test report", icon: <i className="fa fa-check-square" />, path: "/dashboard/test-report", allow: ["admin", "owner", "technician", "planner"], showMode: "after" },
-  { name: "Ai Module", icon: <i className="fa fa-robot" />, path: "/dashboard/ai", allow: ["admin", "owner", "planner"], showMode: "after" },
+  {
+    name: "My Charger",
+    icon: <i className="fa fa-charging-station" />,
+    allow: ["admin", "owner", "technician", "cs", "planner"],
+    showMode: "after",
+    pages: [
+      { name: "My Charger", icon: <i className="fa fa-charging-station" />, path: "/dashboard/chargers", allow: ["admin", "owner"], showMode: "after" },
+      { name: "Device", icon: <i className="fa fa-microchip" />, path: "/dashboard/device", allow: ["admin", "owner", "planner"], showMode: "after" },
+      { name: "Configuration", icon: <i className="fa fa-cog" />, path: "/dashboard/setting", allow: ["admin", "owner", "planner"], showMode: "after" },
+      { name: "Condition-base", icon: <i className="fa fa-desktop" />, path: "/dashboard/cbm", allow: ["admin", "owner", "planner"], showMode: "after" },
+      { name: "MDB/CCB", icon: <i className="fa fa-database" />, path: "/dashboard/mdb", allow: ["admin", "owner", "planner"], showMode: "after" },
+      { name: "PM report", icon: <i className="fa fa-file-alt" />, path: "/dashboard/pm-report", allow: ["admin", "owner", "technician", "planner"], showMode: "after" },
+      { name: "CM report", icon: <i className="far fa-file" />, path: "/dashboard/cm-report", allow: ["admin", "owner", "technician", "cs", "planner"], showMode: "after" },
+      { name: "Test report", icon: <i className="fa fa-check-square" />, path: "/dashboard/test-report", allow: ["admin", "owner", "technician", "planner"], showMode: "after" },
+      { name: "AI Module", icon: <i className="fa fa-robot" />, path: "/dashboard/ai", allow: ["admin", "owner", "planner"], showMode: "after" },
+    ],
+  },
 ];
 
 /** 2) อ่าน user/role จาก localStorage (ตาม payload ที่ backend ส่งมาใน /login) */
@@ -229,10 +237,12 @@ function applyStationParams(items, stationParams) {
   const stationId = stationParams?.stationId || "";
   if (!sn || !stationId) return items;
   return items.map((r) => {
-    if (r.showMode === "after" && r.path) {
-      return { ...r, path: withStationParams(r.path, sn, stationId) };
-    }
-    return r;
+    const next = r.showMode === "after" && r.path
+      ? { ...r, path: withStationParams(r.path, sn, stationId) }
+      : r;
+    return Array.isArray(next.pages)
+      ? { ...next, pages: applyStationParams(next.pages, stationParams) }
+      : next;
   });
 }
 
