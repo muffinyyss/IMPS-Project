@@ -471,6 +471,8 @@ const T = {
 
     // Questions
     q1: { th: "1) ตรวจสอบสภาพทั่วไป", en: "1) General condition inspection" },
+    preQ1: { th: "1) ตรวจสอบสภาพทั่วไป (ก่อนบำรุงรักษา)", en: "1) General condition (before maintenance)" },
+    preQ2: { th: "2) อุปกรณ์ชำรุดเสียหาย (ก่อนบำรุงรักษา)", en: "2) Damaged equipment (before maintenance)" },
     q2: { th: "2) ตรวจสอบสภาพดักซีล, ซิลิโคนกันซึม", en: "2) Seal and silicone waterproofing inspection" },
     q3: { th: "3) ตรวจสอบระบบระบายอากาศ", en: "3) Ventilation system inspection" },
     q3_1: { th: "ตรวจสอบการทำงานอุปกรณ์ตั้งอุณหภูมิ", en: "Temperature controller operation check" },
@@ -672,6 +674,8 @@ type Question =
     | { no: number; key: string; labelKey: keyof typeof T; kind: "subBreakers"; hasPhoto?: boolean; tooltipKey?: keyof typeof T };
 
 const QUESTIONS: Question[] = [
+    { no: 101, key: "pre_r1", labelKey: "preQ1", kind: "simple", hasPhoto: true, tooltipKey: "q1_tooltip" },
+    { no: 102, key: "pre_r2", labelKey: "preQ2", kind: "simple", hasPhoto: true, tooltipKey: "q1_tooltip" },
     { no: 1, key: "r1", labelKey: "q1", kind: "simple", hasPhoto: true, tooltipKey: "q1_tooltip" },
     { no: 2, key: "r2", labelKey: "q2", kind: "simple", hasPhoto: true, tooltipKey: "q2_tooltip" },
     {
@@ -2898,12 +2902,6 @@ export default function CCBPMReport() {
                     <div className="tw-mt-6 sm:tw-mt-8 tw-space-y-4 sm:tw-space-y-6">
                         {/* โหมดตรวจ: ตัดเฉพาะรายการข้อที่ช่างกรอก ดูจากตารางเทียบก่อน/หลังด้านล่างแทน
                             ส่วนหัวเอกสารกับข้อมูลสถานีคงไว้ ผู้อนุมัติต้องรู้ว่ากำลังดูใบไหน */}
-                        {!reviewMode && (
-                            <div className="tw-rounded-xl tw-border tw-border-amber-200 tw-bg-amber-50 tw-p-4 sm:tw-p-5 tw-space-y-2">
-                                <Typography variant="h6" className="tw-text-sm sm:tw-text-base tw-font-semibold tw-text-amber-900">{lang === "th" ? "1) ตรวจสอบสภาพทั่วไป (ก่อนบำรุงรักษา)" : "1) General condition (before maintenance)"}</Typography>
-                                <Typography variant="h6" className="tw-text-sm sm:tw-text-base tw-font-semibold tw-text-amber-900">{lang === "th" ? "2) อุปกรณ์ชำรุดเสียหาย (ก่อนบำรุงรักษา)" : "2) Damaged equipment (before maintenance)"}</Typography>
-                            </div>
-                        )}
                         {!reviewMode && (QUESTIONS.filter((q) => !(displayTab === "pre" && q.no === 11)).map((q) => renderQuestionBlock(q, displayTab)))}
                     </div>
 
