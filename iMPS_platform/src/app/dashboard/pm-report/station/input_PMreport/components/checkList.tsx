@@ -475,7 +475,25 @@ const QUESTIONS: Question[] = QUESTIONS_RAW.filter(
 ) as Question[];
 
 function getQuestionLabel(q: Question, mode: TabId, lang: Lang): string {
-    return q.label[lang];
+    if (q.no >= 101 && q.no <= 102) return q.label[lang];
+    return q.label[lang].replace(/^(\d+)/, (number) => String(Number(number) + 2));
+}
+
+function getDisplayedQuestionNo(qNo: number): number {
+    if (qNo >= 101 && qNo <= 102) return qNo - 100;
+    return qNo + 2;
+}
+
+function getDisplayedItemLabel(label: string, qNo: number): string {
+    if (qNo >= 101 && qNo <= 102) return label;
+    return label.replace(/^(\d+)/, (number) => String(Number(number) + 2));
+}
+
+function getDisplayedRowNo(key: string): string {
+    const match = key.match(/^r(\d+)(?:_(\d+))?$/);
+    if (!match) return key;
+    const mainNo = getDisplayedQuestionNo(Number(match[1]));
+    return match[2] ? `${mainNo}.${match[2]}` : `${mainNo}`;
 }
 
 function useDebouncedEffect(effect: () => void, deps: any[], delay = 800) {
@@ -484,7 +502,7 @@ function useDebouncedEffect(effect: () => void, deps: any[], delay = 800) {
 
 // ==================== SectionCard ====================
 function SectionCard({ title, subtitle, children, tooltip }: { title?: string; subtitle?: string; children: React.ReactNode; tooltip?: string }) {
-    const qNumber = title?.match(/^(\d+)\./)?.[1];
+    const qNumber = title?.match(/^(\d+)[.)]/)?.[1];
     return (
         <div className="tw-bg-white tw-rounded-xl tw-border tw-border-gray-200 tw-shadow-sm tw-overflow-hidden">
             {title && (
@@ -496,7 +514,7 @@ function SectionCard({ title, subtitle, children, tooltip }: { title?: string; s
                             </div>
                         )}
                         <Typography variant="h6" className="tw-text-white tw-text-sm sm:tw-text-base tw-font-semibold tw-flex-1">
-                            {qNumber ? title.replace(/^\d+\.\s*/, '') : title}
+                            {qNumber ? title.replace(/^\d+[.)]\s*/, '') : title}
                         </Typography>
                         {tooltip && (
                             <Tooltip content={tooltip} placement="bottom">
@@ -580,17 +598,19 @@ function PMValidationCard({
     const [isExpanded, setIsExpanded] = useState(true);
 
     const getPhotoScrollId = (item: string): string => {
-        // "1" -> station-pm-photo-1, "7.1" -> station-pm-photo-7-1
         const parts = item.split(".");
-        if (parts.length === 2) return `${ID_PREFIX}-photo-${parts[0]}-${parts[1]}`;
-        return `${ID_PREFIX}-photo-${parts[0]}`;
+        const displayNo = Number(parts[0]);
+        const storageNo = displayNo <= 2 ? displayNo + 100 : displayNo - 2;
+        if (parts.length === 2) return `${ID_PREFIX}-photo-${storageNo}-${parts[1]}`;
+        return `${ID_PREFIX}-photo-${storageNo}`;
     };
 
     const getPfScrollId = (item: string): string => {
-        // "1" -> station-pm-pf-1, "7.1" -> station-pm-pf-7-1
         const parts = item.split(".");
-        if (parts.length === 2) return `${ID_PREFIX}-pf-${parts[0]}-${parts[1]}`;
-        return `${ID_PREFIX}-pf-${parts[0]}`;
+        const displayNo = Number(parts[0]);
+        const storageNo = displayNo <= 2 ? displayNo + 100 : displayNo - 2;
+        if (parts.length === 2) return `${ID_PREFIX}-pf-${storageNo}-${parts[1]}`;
+        return `${ID_PREFIX}-pf-${storageNo}`;
     };
 
     const allErrors: ValidationError[] = useMemo(() => {
@@ -1347,9 +1367,9 @@ export default function StationPMReport() {
             return (photos[photoKey]?.length ?? 0) < 1;
         });
         return missingKeys.map((key) => {
-            if (key.startsWith("q")) return key.substring(1);
+            if (key.startsWith("q")) return `${getDisplayedQuestionNo(Number(key.substring(1)))}`;
             const match = key.match(/^r(\d+)_(\d+)$/);
-            if (match) return `${match[1]}.${match[2]}`;
+            if (match) return `${getDisplayedQuestionNo(Number(match[1]))}.${match[2]}`;
             return key.replace("r", "");
         }).sort((a, b) => {
             const aParts = String(a).split(".").map(Number);
@@ -1371,9 +1391,9 @@ export default function StationPMReport() {
             return (photos[photoKey]?.length ?? 0) < 1;
         });
         return missingKeys.map((key) => {
-            if (key.startsWith("q")) return key.substring(1);
+            if (key.startsWith("q")) return `${getDisplayedQuestionNo(Number(key.substring(1)))}`;
             const match = key.match(/^r(\d+)_(\d+)$/);
-            if (match) return `${match[1]}.${match[2]}`;
+            if (match) return `${getDisplayedQuestionNo(Number(match[1]))}.${match[2]}`;
             return key.replace("r", "");
         }).sort((a, b) => {
             const aParts = String(a).split(".").map(Number);
@@ -1392,6 +1412,7 @@ export default function StationPMReport() {
     const PF_REQUIRED_KEYS = useMemo(() => {
         const keys: string[] = [];
         QUESTIONS.forEach((q) => {
+            if (q.key.startsWith("pre_")) return;
             if (q.kind === "simple") { keys.push(q.key); }
             else if (q.kind === "group") { q.items.forEach((item) => { keys.push(item.key); }); }
         });
@@ -1408,8 +1429,7 @@ export default function StationPMReport() {
     const missingPFItems = useMemo(() => PF_KEYS_POST.filter((k) => !rows[k]?.pf).map((k) => {
         const match = k.match(/^r(\d+)(?:_(\d+))?$/);
         if (!match) return k;
-        const [, qNo, subNo] = match;
-        return subNo ? `${qNo}.${subNo}` : qNo;
+        return getDisplayedRowNo(k);
     }).sort((a, b) => {
         const aParts = String(a).split(".").map(Number);
         const bParts = String(b).split(".").map(Number);
@@ -1751,7 +1771,7 @@ export default function StationPMReport() {
                         return (
                             <div key={item.key} className={`tw-py-4 ${idx !== q.items.length - 1 ? "tw-border-b tw-border-gray-200" : ""} ${isNA ? "tw-bg-amber-50/50" : ""}`}>
                                 <div className="tw-flex tw-items-center tw-justify-between tw-mb-3">
-                                    <Typography variant="small" className="tw-font-medium">{item.label[lang]}</Typography>
+                                    <Typography variant="small" className="tw-font-medium">{getDisplayedItemLabel(item.label[lang], q.no)}</Typography>
                                     <Button size="sm" color={isNA ? "amber" : "gray"} variant={isNA ? "filled" : "outlined"}
                                         onClick={() => setRows(prev => ({ ...prev, [item.key]: { ...prev[item.key], pf: isNA ? "" : "NA" } }))}>
                                         {isNA ? t("cancelNA", lang) : t("na", lang)}
@@ -1779,7 +1799,7 @@ export default function StationPMReport() {
             if (rowsPre[q.key]?.pf === "NA") {
                 return (
                     <SectionCard key={q.key} title={getQuestionLabel(q, mode, lang)}>
-                        <SkippedNAItem label={q.label[lang]} remark={rowsPre[q.key]?.remark} lang={lang} />
+                        <SkippedNAItem label={getQuestionLabel(q, mode, lang)} remark={rowsPre[q.key]?.remark} lang={lang} />
                     </SectionCard>
                 );
             }
@@ -1823,7 +1843,7 @@ export default function StationPMReport() {
                     if (rowsPre[item.key]?.pf === "NA") {
                         return (
                             <div key={item.key} className={`tw-py-4 ${idx !== q.items.length - 1 ? "tw-border-b tw-border-gray-200" : ""}`}>
-                                <SkippedNAItem label={item.label[lang]} remark={rowsPre[item.key]?.remark} lang={lang} />
+                                <SkippedNAItem label={getDisplayedItemLabel(item.label[lang], q.no)} remark={rowsPre[item.key]?.remark} lang={lang} />
                             </div>
                         );
                     }
@@ -1843,7 +1863,7 @@ export default function StationPMReport() {
 
                     return (
                         <div key={item.key} className={`tw-py-4 ${idx !== q.items.length - 1 ? "tw-border-b tw-border-gray-200" : ""}`}>
-                            <PassFailRow label={item.label[lang]} value={rows[item.key]?.pf ?? ""} lang={lang}
+                            <PassFailRow label={getDisplayedItemLabel(item.label[lang], q.no)} value={rows[item.key]?.pf ?? ""} lang={lang}
                                 onChange={(v) => setRows({ ...rows, [item.key]: { ...rows[item.key], pf: v } })}
                                 remark={rows[item.key]?.remark || ""}
                                 onRemarkChange={(v) => setRows({ ...rows, [item.key]: { ...rows[item.key], remark: v } })}
@@ -1915,8 +1935,8 @@ export default function StationPMReport() {
         const labelOfItem = (it: any) =>
             it?.label !== undefined ? it.label : it?.labelKey ? (t as any)(it.labelKey, lang) : "";
         (QUESTIONS as any[]).forEach((q: any) => {
-            put(q?.key, labelOfItem(q));
-            (q?.items ?? []).forEach((it: any) => put(it?.key, labelOfItem(it)));
+            put(q?.key, getQuestionLabel(q, "post", lang));
+            (q?.items ?? []).forEach((it: any) => put(it?.key, getDisplayedItemLabel(textOf(labelOfItem(it)), q.no)));
         });
         ([] as any[]).forEach((arr: any) =>
             (arr ?? []).forEach((it: any) => put(it?.key, labelOfItem(it))));
