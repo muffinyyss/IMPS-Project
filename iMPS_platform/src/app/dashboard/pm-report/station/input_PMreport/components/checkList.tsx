@@ -384,7 +384,6 @@ const getPfIdFromKey = (rowKey: string): string => {
 
 type TabId = "pre" | "post";
 const TABS: { id: TabId; label: string; slug: "pre" | "post" }[] = [
-    { id: "pre", label: "Pre\u2011PM", slug: "pre" },
     { id: "post", label: "Post\u2011PM", slug: "post" },
 ];
 function slugToTab(slug: string | null): TabId {
@@ -1002,7 +1001,7 @@ export default function StationPMReport() {
     }, [router, searchParams]);
     const editId = searchParams.get("edit_id") ?? "";
     const action = searchParams.get("action");
-    const isPostMode = action === "post";
+    const isPostMode = true;
 
     // Photos: key-based for simple (q1, q2, ...) and group items (r7_1, r7_2, ...)
     const initialPhotos: Record<string, PhotoItem[]> = Object.fromEntries(
@@ -1890,7 +1889,7 @@ export default function StationPMReport() {
         router.push(`${pathname}?${params.toString()}`, { scroll: false });
     };
 
-    const displayTab: TabId = isPostMode ? "post" : (active === "post" && !canGoAfter ? "pre" : active);
+    const displayTab: TabId = "post";
 
 
     // ── ตารางเทียบก่อน/หลัง PM (โหมดตรวจอนุมัติ) ──

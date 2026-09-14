@@ -624,7 +624,6 @@ const getPfIdFromKey = (key: string | number): string => {
 
 type TabId = "pre" | "post";
 const TABS: { id: TabId; label: string; slug: "pre" | "post" }[] = [
-    { id: "pre", label: "Pre\u2011PM", slug: "pre" },
     { id: "post", label: "Post\u2011PM", slug: "post" },
 ];
 
@@ -1339,7 +1338,7 @@ export default function CCBPMReport() {
     }, [router, searchParams]);
     const editId = searchParams.get("edit_id") ?? "";
     const action = searchParams.get("action");
-    const isPostMode = action === "post";
+    const isPostMode = true;
 
     const PM_PREFIX = "ccbpmreport";
 
@@ -2702,7 +2701,7 @@ export default function CCBPMReport() {
         router.push(`${pathname}?${params.toString()}`, { scroll: false });
     };
 
-    const displayTab: TabId = isPostMode ? "post" : (active === "post" && !canGoAfter ? "pre" : active);
+    const displayTab: TabId = "post";
     const allPFAnsweredForUI = displayTab === "pre" ? allPFAnsweredPre : allPFAnsweredPost;
     const missingPFItemsForUI = displayTab === "pre" ? missingPFItemsPre : missingPFItemsPost;
 

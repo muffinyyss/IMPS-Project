@@ -217,7 +217,6 @@ function enqueueBgUploads(tasks: BgUploadTask[]) {
 type TabId = "pre" | "post";
 
 const TABS: { id: TabId; label: string; slug: "pre" | "post" }[] = [
-    { id: "pre", label: "Pre\u2011PM", slug: "pre" },
     { id: "post", label: "Post\u2011PM", slug: "post" },
 ];
 
@@ -2116,7 +2115,7 @@ export default function ChargerPMForm() {
     const searchParams = useSearchParams();
     const editId = searchParams.get("edit_id") ?? "";
     const action = searchParams.get("action");
-    const isPostMode = action === "post";
+    const isPostMode = true;
 
     const [photos, setPhotos] = useState<Record<string | number, PhotoItem[]>>({});
 
@@ -2798,7 +2797,7 @@ export default function ChargerPMForm() {
         else router.back();
     }, [router, searchParams]);
     const canGoAfter: boolean = isPostMode ? true : (allPhotosAttachedPre && allRequiredInputsFilled);
-    const displayTab: TabId = isPostMode ? "post" : (active === "post" && !canGoAfter ? "pre" : active);
+    const displayTab: TabId = "post";
 
     const isSummaryFilled = summary.trim().length > 0;
     const isSummaryCheckFilled = summaryCheck !== "";
