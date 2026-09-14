@@ -1639,6 +1639,12 @@ export default function CBBOXPMForm() {
                     </div>
                     <div className="tw-space-y-4 tw-mt-6">{/* โหมดตรวจ: ตัดเฉพาะรายการข้อที่ช่างกรอก ดูจากตารางเทียบก่อน/หลังด้านล่างแทน
                             ส่วนหัวเอกสารกับข้อมูลสถานีคงไว้ ผู้อนุมัติต้องรู้ว่ากำลังดูใบไหน */}
+                        {!reviewMode && (
+                            <div className="tw-rounded-xl tw-border tw-border-amber-200 tw-bg-amber-50 tw-p-4 sm:tw-p-5 tw-space-y-2">
+                                <Typography variant="h6" className="tw-text-sm sm:tw-text-base tw-font-semibold tw-text-amber-900">{lang === "th" ? "1) ตรวจสอบสภาพทั่วไป (ก่อนบำรุงรักษา)" : "1) General condition (before maintenance)"}</Typography>
+                                <Typography variant="h6" className="tw-text-sm sm:tw-text-base tw-font-semibold tw-text-amber-900">{lang === "th" ? "2) อุปกรณ์ชำรุดเสียหาย (ก่อนบำรุงรักษา)" : "2) Damaged equipment (before maintenance)"}</Typography>
+                            </div>
+                        )}
                         {!reviewMode && (QUESTIONS.filter(q => !(displayTab === "pre" && q.no === 9)).map(q => renderQuestionBlock(q, displayTab)))}</div>
                     {/* โหมดตรวจ: ย้ายไปไว้ล่างสุด ให้อ่านหลังดูตารางเทียบเสร็จ */}
                     {!reviewMode && summaryBlock}
