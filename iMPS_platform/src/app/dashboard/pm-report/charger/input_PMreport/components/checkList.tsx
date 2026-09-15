@@ -217,7 +217,6 @@ function enqueueBgUploads(tasks: BgUploadTask[]) {
 type TabId = "pre" | "post";
 
 const TABS: { id: TabId; label: string; slug: "pre" | "post" }[] = [
-    { id: "pre", label: "Pre\u2011PM", slug: "pre" },
     { id: "post", label: "Post\u2011PM", slug: "post" },
 ];
 
@@ -298,7 +297,7 @@ const T = {
     filter: { th: "แผ่น", en: "filters" },
 
     // Remarks
-    remark: { th: "หมายเหตุ *", en: "Remark *" },
+    remark: { th: "หมายเหตุ", en: "Remark" },
     remarkLabel: { th: "หมายเหตุ", en: "Remark" },
     testResult: { th: "ผลการทดสอบ", en: "Test Result" },
     preRemarkLabel: { th: "หมายเหตุ (ก่อน PM)", en: "Remark (Pre-PM)" },
@@ -328,7 +327,6 @@ const T = {
     allComplete: { th: "ครบเรียบร้อย ✅", en: "Complete ✅" },
     missingPhoto: { th: "ยังไม่ได้แนบรูปข้อ:", en: "Missing photos for:" },
     missingInput: { th: "ยังขาดข้อ:", en: "Missing:" },
-    missingRemark: { th: "ยังไม่ได้กรอกหมายเหตุข้อ:", en: "Missing remarks for:" },
     missingPF: { th: "ยังไม่ได้เลือกข้อ:", en: "Not selected:" },
     missingSummaryText: { th: "ยังไม่ได้กรอก Comment", en: "Comment not filled" },
     missingSummaryStatus: { th: "ยังไม่ได้เลือกสถานะสรุปผล (Pass/Fail/N/A)", en: "Summary status not selected (Pass/Fail/N/A)" },
@@ -344,7 +342,6 @@ const T = {
     // Alerts
     alertNoSN: { th: "ไม่พบ SN", en: "SN not found" },
     alertFillRequired: { th: "กรุณากรอกค่าให้ครบ (ข้อ 10 CP และ ข้อ 16)", en: "Please fill in all required fields (Item 10 CP and Item 16)" },
-    alertFillRemark: { th: "กรุณากรอกหมายเหตุข้อ:", en: "Please fill in remarks for:" },
     alertFillPreFirst: { th: "กรุณากรอกข้อมูลในส่วน Pre-PM ให้ครบก่อน", en: "Please complete all Pre-PM fields first" },
     alertSaveFailed: { th: "บันทึกไม่สำเร็จ:", en: "Save failed:" },
     alertCompleteAll: { th: "กรุณากรอกข้อมูลและแนบรูปให้ครบก่อนบันทึก", en: "Please complete all fields and attach photos before saving" },
@@ -427,7 +424,7 @@ type Question = {
     no: number;
     key: string;
     label: BilingualText;
-    kind: "simple" | "measure" | "group";
+    kind: "simple" | "measure" | "group" | "power_source";
     hasPhoto?: boolean;
     tooltip?: BilingualText;
     items?: { key: string; label: BilingualText }[];
@@ -456,6 +453,14 @@ const FIELD_GROUPS: Record<number, { keys: readonly string[]; unitType: "voltage
 
 // ==================== QUESTIONS (Bilingual) ====================
 const QUESTIONS: Question[] = [
+    { no: 101, key: "pre_r1", label: { th: "1) ตรวจสอบสภาพทั่วไป (ก่อนบำรุงรักษา)", en: "1) General condition (before maintenance)" }, kind: "simple", hasPhoto: true, tooltip: { th: "บันทึกสภาพเครื่องชาร์จก่อนเริ่มบำรุงรักษา", en: "Record the charger condition before maintenance" } },
+    { no: 102, key: "pre_r2", label: { th: "2) อุปกรณ์ชำรุดเสียหาย (ก่อนบำรุงรักษา)", en: "2) Damaged equipment (before maintenance)" }, kind: "simple", hasPhoto: true, tooltip: { th: "บันทึกอุปกรณ์ที่ชำรุดเสียหายก่อนเริ่มบำรุงรักษา", en: "Record damaged equipment before maintenance" }, },
+    { no: 103, key: "r3_power_source", label: { th: "3) ตรวจสอบสภาพแหล่งจ่ายไฟ MDB", en: "3) Inspect MDB power supply condition" }, kind: "power_source", hasPhoto: true, items: [
+        { key: "r3_power_main_cb", label: { th: "a. Main CB", en: "a. Main CB" } },
+        { key: "r3_power_cb", label: { th: "b. CB", en: "b. CB" } },
+        { key: "r3_power_meter", label: { th: "c. Power Meter (Voltage)", en: "c. Power Meter (Voltage)" } },
+        { key: "r3_power_transformer", label: { th: "d. Transformer", en: "d. Transformer" } },
+    ], tooltip: { th: "ตรวจสอบสภาพอุปกรณ์แหล่งจ่ายไฟของเครื่องชาร์จ", en: "Inspect the charger's power supply equipment" } },
     { no: 1, key: "r1", label: { th: "1) ตรวจสอบสภาพทั่วไป", en: "1) Check general condition" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบความสมบูรณ์ของตู้, การยึดแน่นของน็อตยึดฐาน, รอยแตกร้าวและร่องรอยการกระแทก", en: "Check cabinet integrity, base bolt tightness, cracks and impact marks" } },
     { no: 2, key: "r2", label: { th: "2) ตรวจสอบดักซีล,ซิลิโคนกันซึม", en: "2) Check sealant and silicone" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบความยืดหยุ่นของขอบยางกันน้ำ, รอยต่อของเคเบิลแกลนด์และและสภาพซิลิโคนตามแนวตะเข็บตู้", en: "Check waterproof rubber flexibility, cable gland joints and silicone condition" } },
     { no: 3, key: "r3", label: { th: "3) ตรวจสอบสายอัดประจุ", en: "3) Check charging cables" }, kind: "group", hasPhoto: true, items: [{ label: { th: "3.1) สายที่ 1", en: "3.1) Cable 1" }, key: "r3_1" }], tooltip: { th: "ตรวจสอบความสมบูรณ์ของฉนวนหุ้มสาย, คอสายว่าไม่มีการบิดงอหรือปริแตกและตรวจสอบรอยไหม้", en: "Check cable insulation, bends or cracks, and burn marks" } },
@@ -525,9 +530,42 @@ const getDynamicLabel = {
 };
 
 function getQuestionLabel(q: Question, mode: TabId, lang: Lang): string {
-    const baseLabel = q.label[lang];
-    if (mode === "pre") return lang === "th" ? `${baseLabel} (ก่อน PM)` : `${baseLabel} (Pre-PM)`;
-    return lang === "th" ? `${baseLabel} (หลัง PM)` : `${baseLabel} (Post-PM)`;
+    if (q.no < 1 || q.no > 18) return q.label[lang];
+    return q.label[lang].replace(/^(\d+)/, (number) => String(Number(number) + 3));
+}
+
+function getDisplayedItemLabel(label: string, qNo: number): string {
+    if (qNo < 1 || qNo > 18) return label;
+    return label.replace(/^(\d+)/, (number) => String(Number(number) + 3));
+}
+
+// ข้อ 1-3 เป็นหัวข้อที่เพิ่มด้านหน้าฟอร์ม ส่วนเลข no=1..18 และคีย์ r1..r18
+// ยังคงเป็นเลขชุดเดิมที่บันทึกในฐานข้อมูล เพื่อให้ใบงานเก่ายังอ่านได้ถูกต้อง
+function getDisplayedQuestionNo(qNo: number): number {
+    if (qNo >= 101 && qNo <= 103) return qNo - 100;
+    if (qNo >= 1 && qNo <= 18) return qNo + 3;
+    return qNo;
+}
+
+function getDisplayedRowNo(key: string): string {
+    const powerItemIndex = QUESTIONS.find(q => q.kind === "power_source")?.items?.findIndex(item => item.key === key) ?? -1;
+    if (powerItemIndex >= 0) return `3.${String.fromCharCode(97 + powerItemIndex)}`;
+
+    const match = key.match(/^r(\d+)(?:_(\d+))?$/);
+    if (!match) return key;
+    const mainNo = getDisplayedQuestionNo(Number(match[1]));
+    return match[2] ? `${mainNo}.${match[2]}` : `${mainNo}`;
+}
+
+function compareDisplayedItemNos(a: string, b: string): number {
+    const parse = (value: string) => {
+        const [main = "0", sub = ""] = value.split(".");
+        const subOrder = /^\d+$/.test(sub) ? Number(sub) : (sub.toLowerCase().charCodeAt(0) - 96 || 0);
+        return [Number(main) || 0, subOrder] as const;
+    };
+    const [aMain, aSub] = parse(a);
+    const [bMain, bSub] = parse(b);
+    return aMain !== bMain ? aMain - bMain : aSub - bSub;
 }
 
 function createFixedItems(qNo: number, count: number, lang: Lang): { key: string; label: string }[] {
@@ -638,7 +676,7 @@ function useDebouncedEffect(effect: () => void, deps: any[], delay = 800) {
 
 // ==================== UI COMPONENTS ====================
 function PassFailRow({
-    label, value, onChange, remark, onRemarkChange, labels, aboveRemark, beforeRemark, belowRemark, inlineLeft, onlyNA = false, onClear, lang, remarkId, pfButtonsId,
+    label, value, onChange, remark, onRemarkChange, labels, aboveRemark, beforeRemark, belowRemark, inlineLeft, onlyNA = false, onClear, showPfButtons = true, lang, remarkId, pfButtonsId,
 }: {
     label: string;
     value: PF;
@@ -652,6 +690,7 @@ function PassFailRow({
     inlineLeft?: React.ReactNode;
     onlyNA?: boolean;
     onClear?: () => void;
+    showPfButtons?: boolean;
     lang: Lang;
     remarkId?: string;
     pfButtonsId?: string;
@@ -686,7 +725,7 @@ function PassFailRow({
             {onRemarkChange ? (
                 <div className="tw-w-full tw-min-w-0 tw-space-y-2">
                     {aboveRemark}
-                    {buttonsRow}
+                    {showPfButtons && buttonsRow}
                     {beforeRemark}
                     <div id={remarkId} className="tw-transition-all tw-duration-300">
                         <Textarea label={t("remark", lang)} value={remark || ""} onChange={(e) => onRemarkChange(e.target.value)}
@@ -695,7 +734,7 @@ function PassFailRow({
                     {belowRemark}
                 </div>
             ) : (
-                <div className="tw-flex tw-flex-col sm:tw-flex-row tw-gap-2 sm:tw-items-center sm:tw-justify-between">{buttonsRow}</div>
+                showPfButtons && <div className="tw-flex tw-flex-col sm:tw-flex-row tw-gap-2 sm:tw-items-center sm:tw-justify-between">{buttonsRow}</div>
             )}
         </div>
     );
@@ -807,15 +846,9 @@ interface PMValidationCardProps {
     // Input validation
     allRequiredInputsFilled: boolean;
     missingInputsDetailed: MissingInputItem[];
-    // Remark validation (Pre)
-    allRemarksFilledPre: boolean;
-    missingRemarksPre: string[];
     // PF validation (Post)
     allPFAnsweredPost: boolean;
     missingPFItemsPost: string[];
-    // Remark validation (Post)
-    allRemarksFilledPost: boolean;
-    missingRemarksPost: string[];
     // Summary validation (Post)
     isSummaryFilled: boolean;
     isSummaryCheckFilled: boolean;
@@ -829,12 +862,8 @@ function PMValidationCard({
     missingPhotoItems,
     allRequiredInputsFilled,
     missingInputsDetailed,
-    allRemarksFilledPre,
-    missingRemarksPre,
     allPFAnsweredPost,
     missingPFItemsPost,
-    allRemarksFilledPost,
-    missingRemarksPost,
     isSummaryFilled,
     isSummaryCheckFilled,
 }: PMValidationCardProps) {
@@ -845,21 +874,16 @@ function PMValidationCard({
     const getPhotoScrollId = (item: string): string => {
         const parts = item.split('.');
         if (parts.length === 2) {
-            // Sub-item like "3.1" -> pm-photo-3-1
-            return `pm-photo-${parts[0]}-${parts[1]}`;
+            // ข้อ 3.a-3.d ใช้เลข storage 103 และ index 1-4
+            if (parts[0] === "3" && /^[a-d]$/i.test(parts[1])) {
+                return `pm-photo-103-${parts[1].toLowerCase().charCodeAt(0) - 96}`;
+            }
+            // เลขที่แสดงของข้อเดิมเลื่อนไป 3 แต่ id ยังอิงเลข storage เดิม
+            return `pm-photo-${Math.max(1, Number(parts[0]) - 3)}-${parts[1]}`;
         }
-        // Simple item like "1" -> pm-photo-1
-        return `pm-photo-${parts[0]}`;
-    };
-
-    const getRemarkScrollId = (item: string): string => {
-        const parts = item.split('.');
-        if (parts.length === 2) {
-            // Sub-item like "3.1" -> pm-remark-3-1
-            return `pm-remark-${parts[0]}-${parts[1]}`;
-        }
-        // Simple item like "1" -> pm-remark-1
-        return `pm-remark-${parts[0]}`;
+        const displayNo = Number(parts[0]);
+        const storageNo = displayNo <= 3 ? displayNo + 100 : displayNo - 3;
+        return `pm-photo-${storageNo}`;
     };
 
     const getInputScrollId = (item: string): string => {
@@ -878,11 +902,14 @@ function PMValidationCard({
     const getPfButtonsScrollId = (item: string): string => {
         const parts = item.split('.');
         if (parts.length === 2) {
-            // Sub-item like "3.1" -> pm-pf-3-1
-            return `pm-pf-${parts[0]}-${parts[1]}`;
+            if (parts[0] === "3" && /^[a-d]$/i.test(parts[1])) {
+                return `pm-pf-103-${parts[1].toLowerCase().charCodeAt(0) - 96}`;
+            }
+            return `pm-pf-${Math.max(1, Number(parts[0]) - 3)}-${parts[1]}`;
         }
-        // Simple item like "1" -> pm-pf-1
-        return `pm-pf-${parts[0]}`;
+        const displayNo = Number(parts[0]);
+        const storageNo = displayNo <= 3 ? displayNo + 100 : displayNo - 3;
+        return `pm-pf-${storageNo}`;
     };
 
     // Build validation errors
@@ -910,18 +937,19 @@ function PMValidationCard({
                 let message: string;
 
                 if (qNo === 10 && subNo) {
-                    // Item 10 CP sub-items: 10.1, 10.2, etc.
+                    // CP ยังคงเก็บเป็นข้อ 10 แต่แสดงเป็นข้อ 13
                     scrollId = `pm-input-10-${subNo}`;
-                    itemDisplay = `10.${subNo}`;
+                    itemDisplay = `${getDisplayedQuestionNo(qNo)}.${subNo}`;
                     message = lang === "th" ? `ยังไม่ได้กรอกค่า ${label}` : `${label} value not filled`;
                 } else if (qNo === 16) {
-                    // Item 16 voltage fields
+                    // แรงดันด้านเข้ายังคงเก็บเป็นข้อ 16 แต่แสดงเป็นข้อ 19
                     scrollId = `pm-question-16`;
-                    itemDisplay = `16`;
+                    itemDisplay = `${getDisplayedQuestionNo(qNo)}`;
                     message = lang === "th" ? `ยังไม่ได้กรอกค่า ${label}` : `${label} value not filled`;
                 } else {
                     scrollId = `pm-question-${qNo}`;
-                    itemDisplay = subNo ? `${qNo}.${subNo}` : `${qNo}`;
+                    const displayNo = getDisplayedQuestionNo(qNo);
+                    itemDisplay = subNo ? `${displayNo}.${subNo}` : `${displayNo}`;
                     message = lang === "th" ? `ยังไม่ได้กรอกค่า ${label}` : `${label} value not filled`;
                 }
 
@@ -931,19 +959,6 @@ function PMValidationCard({
                     itemName: `${t("itemLabel", lang)} ${itemDisplay}`,
                     message,
                     scrollId,
-                });
-            });
-        }
-
-        // 3) Remark errors (Pre mode) - link to specific remark textarea
-        if (displayTab === "pre" && !allRemarksFilledPre) {
-            missingRemarksPre.forEach((item) => {
-                errors.push({
-                    section: lang === "th" ? "หมายเหตุ" : "Remarks",
-                    sectionIcon: "💬",
-                    itemName: `${t("itemLabel", lang)} ${item}`,
-                    message: lang === "th" ? "ยังไม่ได้กรอกหมายเหตุ" : "Remark not filled",
-                    scrollId: getRemarkScrollId(item),
                 });
             });
         }
@@ -959,19 +974,6 @@ function PMValidationCard({
                         itemName: `${t("itemLabel", lang)} ${item}`,
                         message: lang === "th" ? "ยังไม่ได้เลือกสถานะ" : "Status not selected",
                         scrollId: getPfButtonsScrollId(item),
-                    });
-                });
-            }
-
-            // 5) Remark errors (Post mode) - link to specific remark textarea
-            if (!allRemarksFilledPost) {
-                missingRemarksPost.forEach((item) => {
-                    errors.push({
-                        section: lang === "th" ? "หมายเหตุ" : "Remarks",
-                        sectionIcon: "💬",
-                        itemName: `${t("itemLabel", lang)} ${item}`,
-                        message: lang === "th" ? "ยังไม่ได้กรอกหมายเหตุ" : "Remark not filled",
-                        scrollId: getRemarkScrollId(item),
                     });
                 });
             }
@@ -1002,9 +1004,7 @@ function PMValidationCard({
         lang, displayTab, isPostMode,
         allPhotosAttached, missingPhotoItems,
         allRequiredInputsFilled, missingInputsDetailed,
-        allRemarksFilledPre, missingRemarksPre,
         allPFAnsweredPost, missingPFItemsPost,
-        allRemarksFilledPost, missingRemarksPost,
         isSummaryFilled, isSummaryCheckFilled
     ]);
 
@@ -1849,7 +1849,7 @@ function DynamicItemsSection({
                         return (
                             <div key={item.key} className="tw-py-4 first:tw-pt-2">
                                 <PassFailRow
-                                    label={item.label}
+                                    label={getDisplayedItemLabel(item.label, qNo)}
                                     value={rows[item.key]?.pf ?? ""}
                                     onChange={(v) => setRows(prev => ({ ...prev, [item.key]: { ...(prev[item.key] ?? { remark: "" }), pf: v } }))}
                                     remark={rows[item.key]?.remark ?? ""}
@@ -2042,6 +2042,7 @@ function PhotoRemarkSection({
         return (
             <div className="tw-py-2">
                 <PassFailRow
+                    showPfButtons={!qKey.startsWith("pre_")}
                     label={t("testResult", lang)}
                     value={rows[qKey]?.pf ?? ""}
                     onChange={(v) => setRows(prev => ({ ...prev, [qKey]: { ...(prev[qKey] ?? { remark: "" }), pf: v } }))}
@@ -2166,7 +2167,7 @@ export default function ChargerPMForm() {
     const searchParams = useSearchParams();
     const editId = searchParams.get("edit_id") ?? "";
     const action = searchParams.get("action");
-    const isPostMode = action === "post";
+    const isPostMode = true;
 
     const [photos, setPhotos] = useState<Record<string | number, PhotoItem[]>>({});
 
@@ -2289,7 +2290,10 @@ export default function ChargerPMForm() {
     const [cmpPhotos, setCmpPhotos] = useState<{ pre: any; post: any }>({ pre: {}, post: {} });
     const [rows, setRows] = useState<Record<string, { pf: PF; remark: string }>>(() => {
         const initial: Record<string, { pf: PF; remark: string }> = {};
-        QUESTIONS.forEach((q) => { initial[q.key] = { pf: "", remark: "" }; });
+        QUESTIONS.forEach((q) => {
+            initial[q.key] = { pf: "", remark: "" };
+            q.items?.forEach((item) => { initial[item.key] = { pf: "", remark: "" }; });
+        });
         getFixedItemsQ8("th").forEach((item) => { initial[item.key] = { pf: "", remark: "" }; });
         getFixedItemsQ11("th").forEach((item) => { initial[item.key] = { pf: "", remark: "" }; });
         getFixedItemsQ18("th").forEach((item) => { initial[item.key] = { pf: "", remark: "" }; });
@@ -2449,7 +2453,10 @@ export default function ChargerPMForm() {
 
         setRows(() => {
             const initial: Record<string, { pf: PF; remark: string }> = {};
-            QUESTIONS.forEach((q) => { initial[q.key] = { pf: "", remark: "" }; });
+            QUESTIONS.forEach((q) => {
+                initial[q.key] = { pf: "", remark: "" };
+                q.items?.forEach((item) => { initial[item.key] = { pf: "", remark: "" }; });
+            });
             getFixedItemsQ8("th").forEach((item) => { initial[item.key] = { pf: "", remark: "" }; });
             getFixedItemsQ11("th").forEach((item) => { initial[item.key] = { pf: "", remark: "" }; });
             getFixedItemsQ18("th").forEach((item) => { initial[item.key] = { pf: "", remark: "" }; });
@@ -2735,12 +2742,15 @@ export default function ChargerPMForm() {
     const validPhotoKeysPre = useMemo(() => {
         const keys: { key: string | number; label: string }[] = [];
         QUESTIONS.filter(q => q.hasPhoto && !q.postOnly).forEach((q) => { // เพิ่ม !q.postOnly
-            if (q.kind === "simple" || q.kind === "measure") { keys.push({ key: q.no, label: `${q.no}` }); }
-            else if (q.no === 5) { q5Items.forEach((item, idx) => keys.push({ key: `${q.no}_${idx}`, label: `${q.no}.${idx + 1}` })); }
-            else if (q.no === 7) { q7Items.forEach((item, idx) => keys.push({ key: `${q.no}_${idx}`, label: `${q.no}.${idx + 1}` })); }
+            const displayNo = getDisplayedQuestionNo(q.no);
+            if (q.kind === "power_source" && q.items) {
+                q.items.forEach((_, idx) => keys.push({ key: `${q.no}_${idx}`, label: `${displayNo}.${String.fromCharCode(97 + idx)}` }));
+            } else if (q.kind === "simple" || q.kind === "measure") { keys.push({ key: q.no, label: `${displayNo}` }); }
+            else if (q.no === 5) { q5Items.forEach((item, idx) => keys.push({ key: `${q.no}_${idx}`, label: `${displayNo}.${idx + 1}` })); }
+            else if (q.no === 7) { q7Items.forEach((item, idx) => keys.push({ key: `${q.no}_${idx}`, label: `${displayNo}.${idx + 1}` })); }
             else if ([3, 4, 6, 8, 10, 11, 17].includes(q.no)) {
                 const fixedItems = fixedItemsMap[q.no as keyof typeof fixedItemsMap];
-                if (fixedItems) { fixedItems.forEach((item, idx) => keys.push({ key: `${q.no}_${idx}`, label: `${q.no}.${idx + 1}` })); }
+                if (fixedItems) { fixedItems.forEach((item, idx) => keys.push({ key: `${q.no}_${idx}`, label: `${displayNo}.${idx + 1}` })); }
             }
         });
         return keys;
@@ -2749,23 +2759,29 @@ export default function ChargerPMForm() {
     const validPhotoKeysPost = useMemo(() => {
         const keys: { key: string | number; label: string }[] = [];
         QUESTIONS.filter(q => q.hasPhoto).forEach((q) => {
-            if (q.kind === "simple" || q.kind === "measure") {
+            const displayNo = getDisplayedQuestionNo(q.no);
+            if (q.kind === "power_source" && q.items) {
+                q.items.forEach((item, idx) => {
+                    if (rowsPre[item.key]?.pf === "NA") return;
+                    keys.push({ key: `${q.no}_${idx}`, label: `${displayNo}.${String.fromCharCode(97 + idx)}` });
+                });
+            } else if (q.kind === "simple" || q.kind === "measure") {
                 if (rowsPre[q.key]?.pf === "NA") return;
-                keys.push({ key: q.no, label: `${q.no}` });
+                keys.push({ key: q.no, label: `${displayNo}` });
             } else if (q.no === 5) {
-                q5Items.forEach((item, idx) => { if (rowsPre[item.key]?.pf === "NA") return; keys.push({ key: `${q.no}_${idx}`, label: `${q.no}.${idx + 1}` }); });
+                q5Items.forEach((item, idx) => { if (rowsPre[item.key]?.pf === "NA") return; keys.push({ key: `${q.no}_${idx}`, label: `${displayNo}.${idx + 1}` }); });
             } else if (q.no === 7) {
-                q7Items.forEach((item, idx) => { if (rowsPre[item.key]?.pf === "NA") return; keys.push({ key: `${q.no}_${idx}`, label: `${q.no}.${idx + 1}` }); });
+                q7Items.forEach((item, idx) => { if (rowsPre[item.key]?.pf === "NA") return; keys.push({ key: `${q.no}_${idx}`, label: `${displayNo}.${idx + 1}` }); });
             } else if ([3, 4, 6, 8, 10, 11, 17, 18].includes(q.no)) {
                 const fixedItems = fixedItemsMap[q.no as keyof typeof fixedItemsMap];
-                if (fixedItems) { fixedItems.forEach((item, idx) => { if (rowsPre[item.key]?.pf === "NA") return; keys.push({ key: `${q.no}_${idx}`, label: `${q.no}.${idx + 1}` }); }); }
+                if (fixedItems) { fixedItems.forEach((item, idx) => { if (rowsPre[item.key]?.pf === "NA") return; keys.push({ key: `${q.no}_${idx}`, label: `${displayNo}.${idx + 1}` }); }); }
             }
         });
         return keys;
     }, [q5Items, q7Items, fixedItemsMap, rowsPre]);
 
-    const missingPhotoItemsPre = useMemo(() => validPhotoKeysPre.filter(({ key }) => (photos[key]?.length ?? 0) < 1).map(({ label }) => label).sort((a, b) => { const [aMain, aSub] = a.split('.').map(Number); const [bMain, bSub] = b.split('.').map(Number); if (aMain !== bMain) return aMain - bMain; return (aSub || 0) - (bSub || 0); }), [photos, validPhotoKeysPre]);
-    const missingPhotoItemsPost = useMemo(() => validPhotoKeysPost.filter(({ key }) => (photos[key]?.length ?? 0) < 1).map(({ label }) => label).sort((a, b) => { const [aMain, aSub] = a.split('.').map(Number); const [bMain, bSub] = b.split('.').map(Number); if (aMain !== bMain) return aMain - bMain; return (aSub || 0) - (bSub || 0); }), [photos, validPhotoKeysPost]);
+    const missingPhotoItemsPre = useMemo(() => validPhotoKeysPre.filter(({ key }) => (photos[key]?.length ?? 0) < 1).map(({ label }) => label).sort(compareDisplayedItemNos), [photos, validPhotoKeysPre]);
+    const missingPhotoItemsPost = useMemo(() => validPhotoKeysPost.filter(({ key }) => (photos[key]?.length ?? 0) < 1).map(({ label }) => label).sort(compareDisplayedItemNos), [photos, validPhotoKeysPost]);
 
     const allPhotosAttachedPre = missingPhotoItemsPre.length === 0;
     const allPhotosAttachedPost = missingPhotoItemsPost.length === 0;
@@ -2821,66 +2837,11 @@ export default function ChargerPMForm() {
         return Object.entries(grouped).map(([no, arr]) => `${no}: ${arr.join(", ")}`);
     }, [missingInputsDetailed]);
 
-    const validRemarkKeys = useMemo(() => {
-        const keys: string[] = [];
-        QUESTIONS.filter(q => !q.postOnly).forEach((q) => { // เพิ่ม filter !q.postOnly
-            if (q.kind === "simple" || q.kind === "measure") { keys.push(q.key); }
-            if (q.no === 5) { q5Items.forEach((item) => keys.push(item.key)); }
-            else if (q.no === 7) { q7Items.forEach((item) => keys.push(item.key)); }
-            else if ([3, 4, 6, 8, 10, 11, 17].includes(q.no)) {
-                const fixedItems = fixedItemsMap[q.no as keyof typeof fixedItemsMap];
-                if (fixedItems) { fixedItems.forEach((item) => keys.push(item.key)); }
-            }
-        });
-        return keys;
-    }, [q5Items, q7Items, fixedItemsMap]);
-
-    const missingRemarks = useMemo(() => {
-        const missing: string[] = [];
-        validRemarkKeys.forEach((key) => {
-            const val = rows[key];
-            if (!val?.remark?.trim()) {
-                const match = key.match(/^r(\d+)(?:_(\d+))?$/);
-                if (match) { const qNo = parseInt(match[1], 10); const subNo = match[2]; missing.push(subNo ? `${qNo}.${subNo}` : `${qNo}`); }
-            }
-        });
-        return missing.sort((a, b) => { const [aMain, aSub] = a.split('.').map(Number); const [bMain, bSub] = b.split('.').map(Number); if (aMain !== bMain) return aMain - bMain; return (aSub || 0) - (bSub || 0); });
-    }, [rows, validRemarkKeys]);
-
-    const missingRemarksPre = useMemo(() => missingRemarks.filter(item => { const mainNo = parseInt(item.split('.')[0], 10); return mainNo !== 18; }), [missingRemarks]);
-    const allRemarksFilledPre = missingRemarksPre.length === 0;
-
-    const validRemarkKeysPost = useMemo(() => {
-        const keys: string[] = [];
-        QUESTIONS.forEach((q) => {
-            if (q.kind === "simple" || q.kind === "measure") { if (rowsPre[q.key]?.pf === "NA") return; keys.push(q.key); }
-            if (q.no === 5) { q5Items.forEach((item) => { if (rowsPre[item.key]?.pf === "NA") return; keys.push(item.key); }); }
-            else if (q.no === 7) { q7Items.forEach((item) => { if (rowsPre[item.key]?.pf === "NA") return; keys.push(item.key); }); }
-            else if ([3, 4, 6, 8, 10, 11, 17, 18].includes(q.no)) {
-                const fixedItems = fixedItemsMap[q.no as keyof typeof fixedItemsMap];
-                if (fixedItems) { fixedItems.forEach((item) => { if (rowsPre[item.key]?.pf === "NA") return; keys.push(item.key); }); }
-            }
-        });
-        return keys;
-    }, [q5Items, q7Items, fixedItemsMap, rowsPre]);
-
-    const missingRemarksPost = useMemo(() => {
-        const missing: string[] = [];
-        validRemarkKeysPost.forEach((key) => {
-            const val = rows[key];
-            if (!val?.remark?.trim()) {
-                const match = key.match(/^r(\d+)(?:_(\d+))?$/);
-                if (match) { const qNo = parseInt(match[1], 10); const subNo = match[2]; missing.push(subNo ? `${qNo}.${subNo}` : qNo.toString()); }
-            }
-        });
-        return missing.sort((a, b) => { const [aMain, aSub] = a.split('.').map(Number); const [bMain, bSub] = b.split('.').map(Number); if (aMain !== bMain) return aMain - bMain; return (aSub || 0) - (bSub || 0); });
-    }, [rows, validRemarkKeysPost]);
-    const allRemarksFilledPost = missingRemarksPost.length === 0;
-
     const PF_KEYS_POST = useMemo(() => {
         const keys: string[] = [];
         QUESTIONS.forEach((q) => {
-            if (q.kind === "simple" || q.kind === "measure") { if (rowsPre[q.key]?.pf !== "NA") { keys.push(q.key); } return; }
+            if (q.kind === "power_source" && q.items) { q.items.forEach((item) => { if (rowsPre[item.key]?.pf !== "NA") keys.push(item.key); }); return; }
+            if (q.kind === "simple" || q.kind === "measure") { if (q.key.startsWith("pre_")) return; if (rowsPre[q.key]?.pf !== "NA") { keys.push(q.key); } return; }
             if (q.no === 5) { q5Items.forEach((item) => { if (rowsPre[item.key]?.pf !== "NA") { keys.push(item.key); } }); }
             else if (q.no === 7) { q7Items.forEach((item) => { if (rowsPre[item.key]?.pf !== "NA") { keys.push(item.key); } }); }
             else if ([3, 4, 6, 8, 10, 11, 17, 18].includes(q.no)) {
@@ -2892,7 +2853,7 @@ export default function ChargerPMForm() {
     }, [q5Items, q7Items, fixedItemsMap, rowsPre]);
 
     const allPFAnsweredPost = useMemo(() => PF_KEYS_POST.every((k) => rows[k]?.pf !== ""), [rows, PF_KEYS_POST]);
-    const missingPFItemsPost = useMemo(() => PF_KEYS_POST.filter((k) => !rows[k]?.pf).map((k) => { const match = k.match(/^r(\d+)(?:_(\d+))?$/); if (match) { const qNo = match[1]; const subNo = match[2]; return subNo ? `${qNo}.${subNo}` : qNo; } return k; }).sort((a, b) => { const [aMain, aSub] = a.split('.').map(Number); const [bMain, bSub] = b.split('.').map(Number); if (aMain !== bMain) return aMain - bMain; return (aSub || 0) - (bSub || 0); }), [rows, PF_KEYS_POST]);
+    const missingPFItemsPost = useMemo(() => PF_KEYS_POST.filter((k) => !rows[k]?.pf).map(getDisplayedRowNo).sort(compareDisplayedItemNos), [rows, PF_KEYS_POST]);
 
     const active: TabId = useMemo(() => slugToTab(searchParams.get("pmtab")), [searchParams]);
 
@@ -2903,12 +2864,12 @@ export default function ChargerPMForm() {
         if (back) router.push(back);
         else router.back();
     }, [router, searchParams]);
-    const canGoAfter: boolean = isPostMode ? true : (allPhotosAttachedPre && allRequiredInputsFilled && allRemarksFilledPre);
-    const displayTab: TabId = isPostMode ? "post" : (active === "post" && !canGoAfter ? "pre" : active);
+    const canGoAfter: boolean = isPostMode ? true : (allPhotosAttachedPre && allRequiredInputsFilled);
+    const displayTab: TabId = "post";
 
     const isSummaryFilled = summary.trim().length > 0;
     const isSummaryCheckFilled = summaryCheck !== "";
-    const canFinalSave = allPhotosAttachedPost && allPFAnsweredPost && allRequiredInputsFilled && allRemarksFilledPost && isSummaryFilled && isSummaryCheckFilled;
+    const canFinalSave = allPhotosAttachedPost && allPFAnsweredPost && allRequiredInputsFilled && isSummaryFilled && isSummaryCheckFilled;
 
     const handleUnitChange = (no: number, _key: string, u: UnitVoltage) => {
         const m = MEASURE_BY_NO[no];
@@ -2991,10 +2952,54 @@ export default function ChargerPMForm() {
         }
 
         // ========== POST MODE ==========
+        if (q.kind === "power_source" && q.items) {
+            return (
+                <SectionCard key={q.key} id={sectionId} title={getQuestionLabel(q, mode, lang)} subtitle={subtitle} tooltip={qTooltip}>
+                    <div className="tw-divide-y tw-divide-gray-200">
+                        {q.items.map((item, idx) => {
+                            const photoKey = `${q.no}_${idx}`;
+                            const subNo = idx + 1;
+                            return (
+                                <div key={item.key} className="tw-py-4 first:tw-pt-2">
+                                    <PassFailRow
+                                        label={item.label[lang]}
+                                        value={rows[item.key]?.pf ?? ""}
+                                        onChange={(v) => setRows(prev => ({ ...prev, [item.key]: { ...(prev[item.key] ?? { remark: "" }), pf: v } }))}
+                                        remark={rows[item.key]?.remark ?? ""}
+                                        onRemarkChange={(v) => setRows(prev => ({ ...prev, [item.key]: { ...(prev[item.key] ?? { pf: "" }), remark: v } }))}
+                                        lang={lang}
+                                        pfButtonsId={`pm-pf-${q.no}-${subNo}`}
+                                        remarkId={`pm-remark-${q.no}-${subNo}`}
+                                        aboveRemark={
+                                            <div className="tw-pb-4 tw-border-b tw-border-gray-100">
+                                                <PhotoMultiInput
+                                                    id={`pm-photo-${q.no}-${subNo}`}
+                                                    photos={photos[photoKey] || []}
+                                                    setPhotos={(action) => setPhotos(prev => {
+                                                        const current = prev[photoKey] || [];
+                                                        const next = typeof action === "function" ? action(current) : action;
+                                                        return { ...prev, [photoKey]: next };
+                                                    })}
+                                                    max={10}
+                                                    draftKey={currentDraftKey}
+                                                    qNo={q.no}
+                                                    lang={lang}
+                                                />
+                                            </div>
+                                        }
+                                    />
+                                </div>
+                            );
+                        })}
+                    </div>
+                </SectionCard>
+            );
+        }
+
         if ((q.kind === "simple" || q.kind === "measure") && rowsPre[q.key]?.pf === "NA") {
             return (
                 <SectionCard key={q.key} id={sectionId} title={getQuestionLabel(q, mode, lang)} subtitle={subtitle} tooltip={qTooltip}>
-                    <SkippedNAItem label={q.label[lang]} remark={rowsPre[q.key]?.remark} lang={lang} />
+                    <SkippedNAItem label={getQuestionLabel(q, mode, lang)} remark={rowsPre[q.key]?.remark} lang={lang} />
                 </SectionCard>
             );
         }
@@ -3019,7 +3024,7 @@ export default function ChargerPMForm() {
                                             onValueChange={() => { }} onUnitChange={() => { }} disabled={true} required={false} labelOnTop lang={lang} />
                                     </div>
                                     <div className="tw-max-w-xs">
-                                        <InputWithUnit<UnitVoltage> label={lang === "th" ? "CP (หลัง PM)" : "CP (Post PM)"} value={cp[item.key]?.value ?? ""} unit={cp[item.key]?.unit ?? "V"} units={["V"] as const}
+                                        <InputWithUnit<UnitVoltage> label="CP" value={cp[item.key]?.value ?? ""} unit={cp[item.key]?.unit ?? "V"} units={["V"] as const}
                                             onValueChange={(v) => setCp((s) => ({ ...s, [item.key]: { ...(s[item.key] ?? { unit: "V" }), value: v } }))}
                                             onUnitChange={(u) => setCp((s) => ({ ...s, [item.key]: { ...(s[item.key] ?? { value: "" }), unit: u } }))} disabled={isNA} required lang={lang} />
                                     </div>
@@ -3134,7 +3139,6 @@ export default function ChargerPMForm() {
         if (!sn) { alert(t("alertNoSN", lang)); return; }
         if (!allPhotosAttachedPre) { alert(t("alertPhotoNotComplete", lang)); return; }
         if (!allRequiredInputsFilled) { alert(t("alertFillRequired", lang)); return; }
-        if (!allRemarksFilledPre) { alert(`${t("alertFillRemark", lang)} ${missingRemarksPre.join(", ")}`); return; }
         if (submitting) return;
         setSubmitting(true);
         try {
@@ -3300,7 +3304,6 @@ export default function ChargerPMForm() {
         // ✅ เพิ่ม guards เหมือน onPreSave
         if (!allPhotosAttachedPost) { alert(t("alertPhotoNotComplete", lang)); return; }
         if (!allRequiredInputsFilled) { alert(t("alertFillRequired", lang)); return; }
-        if (!allRemarksFilledPost) { alert(`${t("alertFillRemark", lang)} ${missingRemarksPost.join(", ")}`); return; }
         if (!isSummaryFilled || !isSummaryCheckFilled) { alert(t("alertCompleteAll", lang)); return; }
         // เวลาทำงานต้องครบ — backend ก็กันไว้อีกชั้น เพราะ IN09 ต้องใช้
         if (!workStart || !workFinish) { alert(t("alertWorkTime", lang)); return; }
@@ -3481,8 +3484,14 @@ export default function ChargerPMForm() {
     // คีย์รูปของ charger: ข้อหลัก g{n} · ข้อย่อย g{n}_{idx} โดย idx เริ่มที่ 0
     // ส่วนคีย์คำตอบใช้ subNo = idx + 1 คนละฐานกัน ต้องลบหนึ่งก่อนถึงจะตรงเส้น
     const photoKeysOf = useCallback((row: { key: string }) => {
+        const powerQuestion = QUESTIONS.find(q => q.kind === "power_source");
+        const powerItemIndex = powerQuestion?.items?.findIndex(item => item.key === row.key) ?? -1;
+        if (powerQuestion && powerItemIndex >= 0) return [`g${powerQuestion.no}_${powerItemIndex}`];
+
         const m = row.key.match(/^r(\d+)_(\d+)$/);
         if (m) return [`g${m[1]}_${Number(m[2]) - 1}`];
+        const question = QUESTIONS.find(q => q.key === row.key);
+        if (question) return [`g${question.no}`];
         return [`g${row.key.replace(/^r/, "")}`];
     }, []);
 
@@ -3501,11 +3510,14 @@ export default function ChargerPMForm() {
         const labelOfItem = (it: any) =>
             it?.label !== undefined ? it.label : it?.labelKey ? (t as any)(it.labelKey, lang) : "";
         (QUESTIONS as any[]).forEach((q: any) => {
-            put(q?.key, labelOfItem(q));
-            (q?.items ?? []).forEach((it: any) => put(it?.key, labelOfItem(it)));
+            put(q?.key, getQuestionLabel(q, "post", lang));
+            (q?.items ?? []).forEach((it: any) => put(it?.key, getDisplayedItemLabel(textOf(labelOfItem(it)), q.no)));
         });
-        ([...Object.values(fixedItemsMap), q7Items] as any[]).forEach((arr: any) =>
-            (arr ?? []).forEach((it: any) => put(it?.key, labelOfItem(it))));
+        ([...Object.values(fixedItemsMap), q5Items, q7Items] as any[]).forEach((arr: any) =>
+            (arr ?? []).forEach((it: any) => {
+                const qNo = Number(String(it?.key ?? "").match(/^r(\d+)/)?.[1] ?? 0);
+                put(it?.key, getDisplayedItemLabel(textOf(labelOfItem(it)), qNo));
+            }));
         const labelOf = (key: string) => labels.get(key) ?? key;
         // เรียงตามลำดับข้อในฟอร์มกรอก ข้อย่อยที่ช่างเพิ่มเอง (r5_1, r5_2)
         // ต้องต่อท้ายข้อแม่ของมัน ไม่ใช่ไปกองรวมกันท้ายตาราง
@@ -3531,8 +3543,9 @@ export default function ChargerPMForm() {
             const qNo: number | undefined = typeof q?.no === "number" ? q.no
                 : Number(String(q?.key ?? "").replace(/^r/, "")) || undefined;
             out.push(mk(q.key, section, "", qNo));
+            const declaredItemKeys = new Set<string>((q.items ?? []).map((item: any) => item?.key).filter(Boolean));
             answered
-                .filter((k) => k !== q.key && k.split("_")[0] === q.key)
+                .filter((k) => k !== q.key && (k.split("_")[0] === q.key || declaredItemKeys.has(k)))
                 .sort((a, b) => subNo(a) - subNo(b))
                 .forEach((k) => out.push(mk(k, section, labelOf(k), qNo)));
         });
@@ -3541,7 +3554,7 @@ export default function ChargerPMForm() {
             out.push(mk(k, "", labelOf(k), Number(k.replace(/^r/, "").split("_")[0]) || undefined));
         });
         return out;
-    }, [rowsPre, rows, lang, fixedItemsMap, q7Items]);
+    }, [rowsPre, rows, lang, fixedItemsMap, q5Items, q7Items]);
 
 
     // กล่องหมายเหตุ + สรุปผลการตรวจสอบ — ประกาศครั้งเดียว วางได้สองที่
@@ -3574,7 +3587,8 @@ export default function ChargerPMForm() {
                                         containerProps={{ className: "!tw-min-w-0" }}
                                         className="!tw-w-full !tw-text-sm resize-none"
                                     />
-                                    <div className="tw-pt-3 sm:tw-pt-4 tw-border-t tw-border-gray-200">
+                                    {/* Temporarily disabled: Maximo labor input is hidden on all pages. */}
+                                    {false && <div className="tw-pt-3 sm:tw-pt-4 tw-border-t tw-border-gray-200">
                                         <PassFailRow
                                             label={t("summaryResult", lang)}
                                             value={summaryCheck}
@@ -3582,7 +3596,7 @@ export default function ChargerPMForm() {
                                             labels={{ PASS: t("summaryPass", lang), FAIL: t("summaryFail", lang), NA: t("summaryNA", lang) }}
                                             lang={lang}
                                         />
-                                    </div>
+                                    </div>}
 
                         {/* ด่านก่อนเริ่มกรอก — ช่างอ่านข้อมูลใบงานก่อน แล้วค่อยกดเริ่ม (เหมือนหน้า CM)
                             ใบที่เคยเริ่มกรอกไปแล้วเข้ามาก็ทำต่อได้เลย ไม่ต้องกดซ้ำ */}
@@ -3788,12 +3802,8 @@ export default function ChargerPMForm() {
                                 missingPhotoItems={missingPhotoItems}
                                 allRequiredInputsFilled={allRequiredInputsFilled}
                                 missingInputsDetailed={missingInputsDetailed}
-                                allRemarksFilledPre={allRemarksFilledPre}
-                                missingRemarksPre={missingRemarksPre}
                                 allPFAnsweredPost={allPFAnsweredPost}
                                 missingPFItemsPost={missingPFItemsPost}
-                                allRemarksFilledPost={allRemarksFilledPost}
-                                missingRemarksPost={missingRemarksPost}
                                 isSummaryFilled={isSummaryFilled}
                                 isSummaryCheckFilled={isSummaryCheckFilled}
                             />
@@ -3804,7 +3814,7 @@ export default function ChargerPMForm() {
                                 {displayTab === "pre" ? (
                                     <Button type="button" onClick={onPreSave} disabled={!canGoAfter || submitting}
                                         className="tw-text-sm tw-py-2.5 tw-bg-gray-800 hover:tw-bg-gray-900"
-                                        title={!allPhotosAttachedPre ? t("alertPhotoNotComplete", lang) : !allRequiredInputsFilled ? t("alertInputNotComplete", lang) : !allRemarksFilledPre ? `${t("alertFillRemark", lang)} ${missingRemarksPre.join(", ")}` : undefined}>
+                                        title={!allPhotosAttachedPre ? t("alertPhotoNotComplete", lang) : !allRequiredInputsFilled ? t("alertInputNotComplete", lang) : undefined}>
                                         {submitting ? t("saving", lang) : t("save", lang)}
                                     </Button>
                                 ) : (

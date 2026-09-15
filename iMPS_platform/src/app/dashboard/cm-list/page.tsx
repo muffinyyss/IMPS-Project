@@ -19,7 +19,7 @@ import useLanguage from "@/utils/useLanguage";
 import {
   CMRow, ActiveFilters, DateSel, STATUS_LABELS, WorkStatusFilter, EMPTY_FILTERS, CmOrigin,
   normalizeStatus, workStatusOf, workStatusBadge, filterByDate, listYears, listBrands,
-  weeksInMonth, applyFilters, applySearch, brandOf, originOf, matchesCompanyFilter, UNKNOWN_BRAND, UNKNOWN_COMPANY, FLEXXFAST_BRAND, COMPANY_FILTER_OPTIONS,
+  weeksInMonth, applyFilters, applySearch, brandOf, originOf, matchesCompanyFilter, UNKNOWN_BRAND, UNKNOWN_COMPANY, listCompanyFilterOptions,
 } from "@/utils/cm-dashboard";
 import { CM_ORIGIN_LIST } from "@/app/dashboard/cm-report/lib/origin";
 import { failureCodeLabel } from "@/app/dashboard/cm-report/lib/failureCode";
@@ -51,6 +51,17 @@ function isPlanningWait(value?: string, assignees?: string[]) {
   const result = (value || "").trim();
   return WAITING_ON_REPLAN_RESULTS.includes(result) && !hasAssignedTechnician(assignees);
 }
+
+// ใบที่ถูกตีกลับยังเก็บ status จริงเป็น "Wait for approve" (ด่าน cs) เพื่อไม่ให้ flow ฝั่ง backend เพี้ยน
+// แต่ในตารางต้องโชว์ "Reject" ไม่ใช่ "SR wait for approve" — เคลียร์เองเมื่อ cs แก้แล้วบันทึกกลับ
+function isRejectedSr(r: CMRow): boolean {
+  const raw = (r.status || "").trim().toLowerCase();
+  const stage = (r.stage || "").trim().toLowerCase();
+  const atCsStage = raw === "open" || (raw === "wait for approve" && stage !== "close_approval");
+  return atCsStage && !!(r.reject_remark || "").trim();
+}
+
+const REJECTED_BADGE = { bg: "#fee2e2", text: "#991b1b" };
 
 // même règle que le CM Dashboard : status brut + stage → onglet de la fiche CM
 function statusSlug(status: string, stage?: string, repairResult?: string): "open" | "in-progress" | "closed" | "cancelled" {
@@ -162,9 +173,12 @@ export default function CMListPage() {
           setUserRole(user?.role ?? "");
           setUserCompany(company);
           setIsSuperAdmin(superAdmin);
-          // ใส่ค่าเริ่มต้นให้เฉพาะคนที่เห็นดรอปดาวน์ Company (super admin / พนักงาน EGAT)
-          // คนบริษัทอื่นดรอปดาวน์ถูกซ่อน ถ้าใส่ให้ด้วยจะโดนล็อกอยู่ที่ EGAT แล้วแก้กลับไม่ได้
-          if (superAdmin || company.trim().toLowerCase() === "egat") {
+          // Technician must see every work item returned by their assignment scope,
+          // including jobs that have not been started yet and auto-created jobs.
+          const technician = String(user?.role ?? "").trim().toLowerCase() === "technician";
+          if (technician) {
+            setFilters((prev) => ({ ...prev, status: null, origin: null }));
+          } else if (superAdmin || company.trim().toLowerCase() === "egat") {
             // เช็ค prev.company กันเคสผู้ใช้กดเลือกบริษัทเองก่อน /me ตอบกลับ
             setFilters((prev) => (prev.company ? prev : { ...prev, company: DEFAULT_COMPANY_FILTER }));
           }
@@ -242,22 +256,29 @@ export default function CMListPage() {
 
   const activeFilterCount = Object.values(filters).filter(Boolean).length;
   const isEgatCompany = userCompany.trim().toLowerCase() === "egat";
+  // The API limits technicians to work assigned to/reported by them. EGAT
+  // technicians additionally stay within EGAT-owned work items.
   const canSeeAllCompanies = isSuperAdmin || isEgatCompany;
+  const isEgatTechnician = userRole.trim().toLowerCase() === "technician" && isEgatCompany;
+  const scopedRows = useMemo(
+    () => isEgatTechnician ? rows.filter((row) => matchesCompanyFilter(row, "EGAT")) : rows,
+    [isEgatTechnician, rows]
+  );
 
   const stations = useMemo(() => {
-    const names = Array.from(new Set(rows.map((r) => r.station_name || r.station_id))).filter(Boolean);
+    const names = Array.from(new Set(scopedRows.map((r) => r.station_name || r.station_id))).filter(Boolean);
     return ["All", ...names];
-  }, [rows]);
+  }, [scopedRows]);
 
-  const years = useMemo(() => listYears(rows), [rows]);
+  const years = useMemo(() => listYears(scopedRows), [scopedRows]);
   const weekCount = useMemo(
     () => (yearSel !== "all" && monthSel !== "all" ? weeksInMonth(yearSel, monthSel) : 0),
     [yearSel, monthSel]
   );
 
   const stationRows = useMemo(
-    () => (stationFilter === "All" ? rows : rows.filter((r) => (r.station_name || r.station_id) === stationFilter)),
-    [rows, stationFilter]
+    () => (stationFilter === "All" ? scopedRows : scopedRows.filter((r) => (r.station_name || r.station_id) === stationFilter)),
+    [scopedRows, stationFilter]
   );
   const periodRows = useMemo(
     () => filterByDate(stationRows, yearSel, monthSel, weekSel),
@@ -294,17 +315,13 @@ export default function CMListPage() {
     return counts;
   }, [statusButtonBase]);
 
-  const companies = COMPANY_FILTER_OPTIONS;
+  // ตัวเลือกบริษัท = ตัวเลือกมาตรฐาน + บริษัทที่ผู้ใช้พิมพ์เองตอนเปิดใบ
+  const companies = useMemo(() => listCompanyFilterOptions(scopedRows), [scopedRows]);
   const brandRows = useMemo(
-    () => rows.filter((r) => matchesCompanyFilter(r, filters.company)),
-    [rows, filters.company]
+    () => scopedRows.filter((r) => matchesCompanyFilter(r, filters.company)),
+    [scopedRows, filters.company]
   );
-  const brands = useMemo(() => {
-    const listed = listBrands(brandRows);
-    if (filters.company?.trim().toLowerCase() !== "eds") return listed;
-    if (!isSuperAdmin) return [FLEXXFAST_BRAND];
-    return [FLEXXFAST_BRAND, ...listed.filter((brand) => brand.toLowerCase() !== FLEXXFAST_BRAND.toLowerCase())];
-  }, [brandRows, filters.company, isSuperAdmin]);
+  const brands = useMemo(() => listBrands(brandRows), [brandRows]);
   const originCounts = useMemo(() => {
     const base = applyFilters(periodRows, filters, "origin");
     let auto = 0;
@@ -330,7 +347,8 @@ export default function CMListPage() {
       case "problem": return (r.problem_details || "").toLowerCase();
       case "severity": return SEVERITY_RANK[(r.severity || "").trim().toLowerCase()] ?? 0;
       case "date": return r.cm_date || "";
-      case "status": return workStatusOf(r);
+      // ใบที่ถูกตีกลับโชว์ป้าย "Reject" — เรียงให้อยู่ก้อนเดียวกัน ไม่ปนกับ SR ที่รออนุมัติจริง
+      case "status": return isRejectedSr(r) ? "rejected" : workStatusOf(r);
       default: return "";
     }
   }, [displayFaultyEquipment]);
@@ -399,6 +417,7 @@ export default function CMListPage() {
       noResults: (q?: string) => q ? `ไม่พบรายการที่ตรงกับ "${q}"` : "ไม่พบรายงาน",
       volumeWarning: (total: number, limit: number) => `ฐานข้อมูลมี ${total.toLocaleString()} รายการ — แสดงผล ${limit.toLocaleString()} รายการล่าสุด`,
       openReportTitle: "เปิดใบงาน CM",
+      rejectedStatus: "Reject",
       quickWaitCsApprove: "รอเปิดใบงาน",
       quickWaitApprove: "รออนุมัติ",
       quickInProgress: "รอดำเนินการ", quickComplete: "เสร็จสิ้น", quickCancelled: "ยกเลิก",
@@ -440,6 +459,7 @@ export default function CMListPage() {
       noResults: (q?: string) => q ? `No records matching "${q}"` : "No reports found",
       volumeWarning: (total: number, limit: number) => `Database has ${total.toLocaleString()} records — showing latest ${limit.toLocaleString()}.`,
       openReportTitle: "Open CM work order",
+      rejectedStatus: "Reject",
       quickWaitCsApprove: "SR wait for approve",
       quickWaitApprove: "WO wait for approve",
       quickInProgress: "In Progress", quickComplete: "Complete", quickCancelled: "Cancelled",
@@ -523,7 +543,7 @@ export default function CMListPage() {
         <div>
           <h1 className="tw-text-2xl tw-font-bold tw-text-gray-800">{t.pageTitle}</h1>
           <p className="tw-mt-0.5 tw-text-sm tw-text-gray-500">
-            {t.subtitle(rows.length)}
+            {t.subtitle(scopedRows.length)}
             <span className="tw-ml-2 tw-font-semibold tw-text-blue-600">{t.tableCount(searchFiltered.length, search || undefined)}</span>
           </p>
           <button
@@ -745,6 +765,7 @@ export default function CMListPage() {
                 </tr>
               ) : tableRows.map((r, i) => {
                 const badge = workStatusBadge(r);
+                const rejected = isRejectedSr(r);
                 const canOpenPdf = normalizeStatus(r.status, r.stage, r.repair_result) === "completed";
                 const brand = brandOf(r);
                 return (
@@ -808,9 +829,13 @@ export default function CMListPage() {
                       <button
                         onClick={(e) => { e.stopPropagation(); toggleFilter("workStatus", badge.ws); }}
                         className="tw-whitespace-nowrap tw-rounded-full tw-px-2.5 tw-py-0.5 tw-text-xs tw-font-medium tw-transition-all hover:tw-opacity-80"
-                        style={{ background: badge.bg, color: badge.text, outline: filters.workStatus === badge.ws ? `2px solid ${badge.text}` : "none" }}
+                        style={{
+                          background: rejected ? REJECTED_BADGE.bg : badge.bg,
+                          color: rejected ? REJECTED_BADGE.text : badge.text,
+                          outline: filters.workStatus === badge.ws ? `2px solid ${rejected ? REJECTED_BADGE.text : badge.text}` : "none",
+                        }}
                       >
-                        {workStatusLabel[badge.ws]}
+                        {rejected ? t.rejectedStatus : workStatusLabel[badge.ws]}
                       </button>
                     </td>
                     <td className="tw-px-4 tw-py-3 tw-text-center">

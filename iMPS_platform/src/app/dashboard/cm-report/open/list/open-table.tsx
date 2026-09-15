@@ -16,24 +16,18 @@ import {
 import {
   Button, Card, CardBody, CardHeader, Typography, CardFooter, Input,
 } from "@material-tailwind/react";
-import { ArrowUpTrayIcon, DocumentArrowDownIcon, TrashIcon } from "@heroicons/react/24/outline";
+import { ArrowUpTrayIcon, DocumentArrowDownIcon } from "@heroicons/react/24/outline";
 import { ChevronLeftIcon, ChevronRightIcon, ChevronUpDownIcon } from "@heroicons/react/24/solid";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Dialog, DialogHeader, DialogBody, DialogFooter } from "@material-tailwind/react";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
 import { apiFetch } from "@/utils/api";
 import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
 import { failureCodeLabel } from "@/app/dashboard/cm-report/lib/failureCode";
 import { brandScopeOf, canOpenCmAtStation } from "@/utils/brandScope";
+import { COMPANY_FILTER_OPTIONS } from "@/utils/cm-dashboard";
 
 // ==================== TRANSLATIONS ====================
 const T = {
-  deleteTitle: { th: "ยืนยันการลบใบงาน", en: "Confirm delete" },
-  deleteWarn: { th: "การลบไม่สามารถย้อนกลับได้", en: "This action cannot be undone." },
-  deleteConfirm: { th: "ลบใบงาน", en: "Delete" },
-  deleteCancel: { th: "ยกเลิก", en: "Cancel" },
-  deleting: { th: "กำลังลบ...", en: "Deleting..." },
-  deleteFailedMsg: { th: "ลบไม่สำเร็จ: ", en: "Delete failed: " },
   // Page Header
   pageTitle: { th: "Corrective Maintenance Report", en: "Corrective Maintenance Report" },
   pageSubtitle: { th: "ค้นหาและดาวน์โหลดเอกสาร CM Report", en: "Search and download CM Report documents" },
@@ -41,6 +35,9 @@ const T = {
   // Buttons
   upload: { th: "อัพโหลด", en: "Upload" },
   add: { th: "+ เพิ่ม", en: "+ Add" },
+  companyModalTitle: { th: "เปิดใบงานนี้ให้บริษัทไหน", en: "Open this work order for which company?" },
+  companyModalHint: { th: "เลือกบริษัทที่รับผิดชอบใบงานนี้ — ใช้แยกงานในหน้า CM List และ Dashboard", en: "Pick the company responsible for this work order — used to split work in CM List and Dashboard." },
+  companyConfirm: { th: "เปิดใบงาน", en: "Open work order" },
   cancel: { th: "ยกเลิก", en: "Cancel" },
   uploadBtn: { th: "อัพโหลด", en: "Upload" },
 
@@ -109,6 +106,19 @@ const t = (key: keyof typeof T, lang: Lang): string => T[key][lang];
 // หมายเลขตู้/SN แยกเป็นคอลัมน์ของตัวเองแล้ว ตำแหน่งที่พบจึงเหลือแค่ชื่อ failure class
 const chargerField = (v?: unknown) => String(v ?? "").trim();
 
+// ใบที่ถูกตีกลับยังคงสถานะจริงเป็น "Wait for approve" (ด่าน cs) เพื่อให้ backend flow เดิมทำงานได้
+// แต่ในตารางต้องโชว์ "Reject" ให้ cs รู้ว่าต้องแก้ไข ไม่ใช่รออนุมัติ (เคลียร์เมื่อ cs บันทึกกลับ)
+const isRejectedSr = (row: { status?: string; stage?: string; reject_remark?: string }) => {
+  const sl = String(row.status ?? "").trim().toLowerCase();
+  const stageLower = String(row.stage ?? "").trim().toLowerCase();
+  // ด่าน cs เท่านั้น — reject ด่านปิดงาน (close_approval) ดันสถานะเป็น In Progress อยู่แล้ว
+  const isCsStage = sl === "open" || (sl === "wait for approve" && stageLower !== "close_approval");
+  return isCsStage && !!String(row.reject_remark ?? "").trim();
+};
+
+const displayStatus = (row: { status?: string; stage?: string; reject_remark?: string }) =>
+  isRejectedSr(row) ? "Reject" : (String(row.status ?? "").trim() || "-");
+
 type TData = {
   id?: string;
   doc_name?: string;
@@ -168,10 +178,6 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
   const [data, setData] = useState<TData[]>([]);
   const [filtering, setFiltering] = useState("");
   const [username, setUsername] = useState<string>("");
-  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
-  const canDelete = isSuperAdmin; // ลบถาวรได้เฉพาะ super admin (ซ่อนตอน impersonate role อื่น)
-  const [deleteTarget, setDeleteTarget] = useState<TData | null>(null);
-  const [deleting, setDeleting] = useState(false);
   const [pageLoading, setPageLoading] = useState(true);
   const [issueId, setIssueId] = useState<string>("");
   const [sn, setSn] = useState<string | null>(null);
@@ -266,7 +272,6 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
           if (alive) {
             setUserRole(user.role ?? "");
             setUsername(user.username ?? "");
-            setIsSuperAdmin(!!user.is_super_admin);
           }
         }
       } catch (err) {
@@ -547,33 +552,6 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [apiBase, stationId, sn, mode, statusFromTab]);
 
-  // ลบใบงาน (เฉพาะบัญชี thatsawan)
-  // เปิด dialog ยืนยันแทน window.confirm ให้เหมือนปุ่มอื่นในระบบ
-  const handleDelete = (row: TData) => {
-    if (!canDelete) return;
-    if (!row.id || !stationId) return;
-    setDeleteTarget(row);
-  };
-
-  const confirmDelete = async () => {
-    const row = deleteTarget;
-    if (!row?.id || !stationId) return;
-    setDeleting(true);
-    try {
-      const url = `${apiBase}/cmreport/${encodeURIComponent(row.id)}?station_id=${encodeURIComponent(stationId)}`;
-      const res = await apiFetch(url, { method: "DELETE", credentials: "include" });
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({}));
-        throw new Error(j?.detail || `HTTP ${res.status}`);
-      }
-      await fetchRows();
-      setDeleteTarget(null);
-    } catch (err: any) {
-      alert(t("deleteFailedMsg", lang) + (err?.message ?? err));
-    } finally {
-      setDeleting(false);
-    }
-  };
 
 
 
@@ -716,19 +694,20 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
       meta: { headerAlign: "center", cellAlign: "left" },
     },
     {
-      accessorFn: (row) => row.status ?? "-",
+      accessorFn: (row) => displayStatus(row),
       id: "status",
       header: () => t("colStatus", lang),
       cell: (info: CellContext<TData, unknown>) => {
         const s = String(info.getValue() ?? "-");
         const sl = s.toLowerCase();
         const color =
-          sl === "open" ? "tw-bg-green-100 tw-text-green-800" :
-            sl === "wait for approve" ? "tw-bg-purple-100 tw-text-purple-800" :
-              sl === "wait for schedule" ? "tw-bg-indigo-100 tw-text-indigo-800" :
-                sl === "complete" || sl === "closed" || sl === "close" ? "tw-bg-gray-200 tw-text-gray-800" :
-                  sl === "in progress" || sl === "ongoing" ? "tw-bg-amber-100 tw-text-amber-800" :
-                    "tw-bg-blue-gray-100 tw-text-blue-gray-800";
+          sl === "reject" ? "tw-bg-red-100 tw-text-red-800" :
+            sl === "open" ? "tw-bg-green-100 tw-text-green-800" :
+              sl === "wait for approve" ? "tw-bg-purple-100 tw-text-purple-800" :
+                sl === "wait for schedule" ? "tw-bg-indigo-100 tw-text-indigo-800" :
+                  sl === "complete" || sl === "closed" || sl === "close" ? "tw-bg-gray-200 tw-text-gray-800" :
+                    sl === "in progress" || sl === "ongoing" ? "tw-bg-amber-100 tw-text-amber-800" :
+                      "tw-bg-blue-gray-100 tw-text-blue-gray-800";
         return (
           <span className={`tw-inline-block tw-px-2 sm:tw-px-2.5 tw-py-0.5 sm:tw-py-1 tw-rounded-full tw-text-[10px] sm:tw-text-xs tw-font-medium ${color}`}>
             {s}
@@ -741,31 +720,8 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
       meta: { headerAlign: "center", cellAlign: "center" },
     },
     // ปุ่มอนุมัติ (cs-approve) ย้ายไปอยู่ในฟอร์มแล้ว — head cs เปิดใบงานเพื่อดูรายละเอียดก่อนอนุมัติ
-    ...(canDelete ? [{
-      id: "actions",
-      header: () => (lang === "th" ? "ลบ" : "Delete"),
-      enableSorting: false,
-      size: 70,
-      minSize: 60,
-      maxSize: 90,
-      cell: (info: CellContext<TData, unknown>) => (
-        <button
-          type="button"
-          onClick={(e) => {
-            // แถวมี onClick เปิดฟอร์ม — ต้องหยุด event ไม่ให้ลามขึ้นไป ไม่งั้นกดลบแล้วเด้งเข้าฟอร์ม
-            e.stopPropagation();
-            handleDelete(info.row.original);
-          }}
-          title={lang === "th" ? "ลบใบงาน" : "Delete work order"}
-          className="tw-inline-flex tw-items-center tw-justify-center tw-w-8 tw-h-8 tw-rounded-lg tw-text-red-500 hover:tw-text-white hover:tw-bg-red-500 tw-transition-all"
-        >
-          <TrashIcon className="tw-w-4 tw-h-4" />
-        </button>
-      ),
-      meta: { headerAlign: "center", cellAlign: "center" },
-    } as ColumnDef<TData, unknown>] : []),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], [lang, canDelete, stationId]);
+  ], [lang, stationId]);
 
   function sameUser(a?: string, b?: string) {
     return String(a ?? "").trim().toLowerCase() === String(b ?? "").trim().toLowerCase();
@@ -896,12 +852,34 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
     }
   }
 
-  const goAdd = () => setView("form");
+  // ── เลือกบริษัทก่อนเปิดใบงานใหม่ — ค่าที่เลือกส่งต่อไปที่ฟอร์มผ่าน query แล้วบันทึกลงใบงาน
+  // ใช้ลิสต์เดียวกับดรอปดาวน์กรองบริษัทใน CM List / CM Dashboard เพื่อไม่ให้สองที่หลุดกัน
+  const COMPANY_CHOICES = COMPANY_FILTER_OPTIONS;
+  const [companyModalOpen, setCompanyModalOpen] = useState(false);
+  const [companyChoice, setCompanyChoice] = useState<string>(COMPANY_CHOICES[0]);
+  const pickedCompany = companyChoice;
+
+  const goAdd = () => {
+    setCompanyChoice(COMPANY_CHOICES[0]);
+    setCompanyModalOpen(true);
+  };
+
+  const confirmCompanyAndAdd = () => {
+    if (!pickedCompany) return;
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("view", "form");
+    params.delete("edit_id");
+    params.set("company", pickedCompany);
+    setCompanyModalOpen(false);
+    router.push(`${pathname}?${params.toString()}`, { scroll: false });
+  };
+
   const goList = () => {
     const params = new URLSearchParams(searchParams.toString());
     params.delete("view");
     params.delete("edit_id");
     params.delete("self_close");
+    params.delete("company");
     router.push(`${pathname}?${params.toString()}`, { scroll: false });
   };
 
@@ -1197,48 +1175,49 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
         </div>
       </Card>
 
+      {/* เลือกบริษัทก่อนเข้าฟอร์มเปิดใบงานใหม่ */}
+      {companyModalOpen && (
+        <div
+          className="tw-fixed tw-inset-0 tw-z-[100] tw-flex tw-items-center tw-justify-center tw-bg-black/40 tw-p-4"
+          onClick={() => setCompanyModalOpen(false)}
+        >
+          <div className="tw-w-full tw-max-w-md tw-rounded-2xl tw-bg-white tw-p-6 tw-shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="tw-text-lg tw-font-bold tw-text-blue-gray-800">{t("companyModalTitle", lang)}</h3>
+            <p className="tw-mt-1 tw-text-sm tw-text-blue-gray-500">{t("companyModalHint", lang)}</p>
 
+            <div className="tw-mt-4 tw-flex tw-flex-col tw-gap-2">
+              {COMPANY_CHOICES.map((c) => (
+                <label
+                  key={c}
+                  className={`tw-flex tw-cursor-pointer tw-items-center tw-gap-3 tw-rounded-xl tw-border tw-px-4 tw-py-3 tw-transition-colors ${companyChoice === c ? "tw-border-gray-900 tw-bg-gray-50" : "tw-border-blue-gray-100 hover:tw-border-blue-gray-300"}`}
+                >
+                  <input
+                    type="radio"
+                    name="cm-company"
+                    className="tw-h-4 tw-w-4 tw-cursor-pointer tw-accent-gray-900"
+                    checked={companyChoice === c}
+                    onChange={() => setCompanyChoice(c)}
+                  />
+                  <span className="tw-text-sm tw-font-semibold tw-text-blue-gray-800">{c}</span>
+                </label>
+              ))}
+            </div>
 
-      {/* ยืนยันการลบใบงาน — ใช้ Dialog เหมือนปุ่มอื่น แทน window.confirm ของเบราว์เซอร์ */}
-      <Dialog
-        open={!!deleteTarget}
-        handler={() => { if (!deleting) setDeleteTarget(null); }}
-        size="xs"
-        className="tw-mx-4 tw-max-w-[calc(100vw-2rem)] sm:tw-max-w-sm tw-rounded-xl sm:tw-rounded-2xl"
-      >
-        <DialogHeader className="tw-flex tw-items-center tw-gap-3 tw-text-base sm:tw-text-lg tw-font-semibold tw-px-4 sm:tw-px-6 tw-pt-5 sm:tw-pt-6 tw-pb-2">
-          <span className="tw-w-10 tw-h-10 tw-rounded-full tw-bg-red-100 tw-flex tw-items-center tw-justify-center tw-shrink-0">
-            <TrashIcon className="tw-w-5 tw-h-5 tw-text-red-600" />
-          </span>
-          {t("deleteTitle", lang)}
-        </DialogHeader>
-        <DialogBody className="tw-px-4 sm:tw-px-6 tw-py-3">
-          <p className="tw-text-sm tw-text-blue-gray-800 tw-break-all">
-            {deleteTarget?.doc_name || deleteTarget?.issue_id || deleteTarget?.id || "-"}
-          </p>
-          <p className="tw-mt-2 tw-text-sm tw-text-red-600">{t("deleteWarn", lang)}</p>
-        </DialogBody>
-        <DialogFooter className="tw-gap-2 sm:tw-gap-3 tw-px-4 sm:tw-px-6 tw-pb-5 sm:tw-pb-6 tw-pt-2">
-          <Button
-            variant="text"
-            size="sm"
-            disabled={deleting}
-            onClick={() => setDeleteTarget(null)}
-            className="tw-text-xs sm:tw-text-sm tw-px-4 sm:tw-px-5 tw-py-2 sm:tw-py-2.5 tw-font-medium tw-text-blue-gray-600 hover:tw-bg-blue-gray-50 tw-transition-colors tw-rounded-lg"
-          >
-            {t("deleteCancel", lang)}
-          </Button>
-          <Button
-            size="sm"
-            disabled={deleting}
-            onClick={() => { void confirmDelete(); }}
-            className="tw-bg-red-600 hover:tw-bg-red-700 tw-text-xs sm:tw-text-sm tw-px-5 sm:tw-px-6 tw-py-2 sm:tw-py-2.5 tw-font-medium tw-rounded-lg tw-shadow-md tw-transition-all disabled:tw-opacity-60"
-          >
-            {deleting ? t("deleting", lang) : t("deleteConfirm", lang)}
-          </Button>
-        </DialogFooter>
-      </Dialog>
-
+            <div className="tw-flex tw-items-center tw-justify-end tw-gap-3 tw-pt-5">
+              <Button variant="outlined" onClick={() => setCompanyModalOpen(false)} className="tw-border-blue-gray-200 tw-text-blue-gray-700">
+                {t("cancel", lang)}
+              </Button>
+              <Button
+                onClick={confirmCompanyAndAdd}
+                disabled={!pickedCompany}
+                className="tw-bg-gray-900 hover:tw-bg-black tw-text-white disabled:tw-opacity-50 disabled:tw-cursor-not-allowed"
+              >
+                {t("companyConfirm", lang)}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

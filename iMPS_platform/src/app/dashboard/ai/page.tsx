@@ -124,6 +124,12 @@ export default function AiDashboardPage() {
     const { activeSn, activeName } = useStation();
     const { setHideNav } = useAiNav();
 
+    useEffect(() => {
+        if (!activeSn && !localStorage.getItem("selected_sn")) {
+            router.replace("/dashboard/ai/heatmap");
+        }
+    }, [activeSn, router]);
+
 
     const loadData = useCallback(async () => {
         setLoading(true); setError(null);

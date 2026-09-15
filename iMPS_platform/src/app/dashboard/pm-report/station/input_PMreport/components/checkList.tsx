@@ -276,7 +276,7 @@ const T = {
     noPhotos: { th: "ยังไม่มีรูปแนบ", en: "No photos attached" },
 
     // Remarks
-    remark: { th: "หมายเหตุ *", en: "Remark *" },
+    remark: { th: "หมายเหตุ", en: "Remark" },
     remarkLabel: { th: "หมายเหตุ", en: "Remark" },
     testResult: { th: "ผลการทดสอบ", en: "Test Result" },
     preRemarkLabel: { th: "หมายเหตุ (ก่อน PM)", en: "Remark (Pre-PM)" },
@@ -304,7 +304,6 @@ const T = {
     // Validation Messages
     allComplete: { th: "ครบเรียบร้อย ✅", en: "Complete ✅" },
     missingPhoto: { th: "ยังไม่ได้แนบรูปข้อ:", en: "Missing photos for:" },
-    missingRemark: { th: "ยังไม่ได้กรอกหมายเหตุข้อ:", en: "Missing remarks for:" },
     missingPF: { th: "ยังไม่ได้เลือกข้อ:", en: "Not selected:" },
     missingSummaryText: { th: "ยังไม่ได้กรอก Comment", en: "Comment not filled" },
     missingSummaryStatus: { th: "ยังไม่ได้เลือกสถานะสรุปผล (Pass/Fail/N/A)", en: "Summary status not selected (Pass/Fail/N/A)" },
@@ -323,7 +322,6 @@ const T = {
     alertSaveFailed: { th: "บันทึกไม่สำเร็จ:", en: "Save failed:" },
     alertCompleteAll: { th: "กรุณากรอกข้อมูลและแนบรูปให้ครบก่อนบันทึก", en: "Please complete all fields and attach photos before saving" },
     alertPhotoNotComplete: { th: "กรุณาแนบรูปในส่วน Pre-PM ให้ครบก่อน", en: "Please attach all photos in Pre-PM section" },
-    alertFillRemark: { th: "กรุณากรอกหมายเหตุข้อ:", en: "Please fill in remarks for:" },
     noReportId: { th: "ไม่มี report_id - กรุณาบันทึกข้อมูล Pre-PM ก่อน", en: "No report_id - Please save Pre-PM first" },
     workTime: { th: "เวลาทำงานจริง", en: "Actual work time" },
     workStart: { th: "เวลาเริ่มงาน", en: "Start time" },
@@ -386,7 +384,6 @@ const getPfIdFromKey = (rowKey: string): string => {
 
 type TabId = "pre" | "post";
 const TABS: { id: TabId; label: string; slug: "pre" | "post" }[] = [
-    { id: "pre", label: "Pre\u2011PM", slug: "pre" },
     { id: "post", label: "Post\u2011PM", slug: "post" },
 ];
 function slugToTab(slug: string | null): TabId {
@@ -425,10 +422,12 @@ function resolveUploadFile(p: PhotoItem): Promise<File> {
 type PF = "PASS" | "FAIL" | "NA" | "";
 
 type Question =
-    | { no: number; key: `r${number}`; label: { th: string; en: string }; labelPre?: { th: string; en: string }; labelPost?: { th: string; en: string }; kind: "simple"; hasPhoto?: boolean; tooltip?: { th: string; en: string } }
-    | { no: number; key: `r${number}`; label: { th: string; en: string }; labelPre?: { th: string; en: string }; labelPost?: { th: string; en: string }; kind: "group"; items: { key: string; label: { th: string; en: string } }[]; hasPhoto?: boolean; tooltip?: { th: string; en: string } };
+    | { no: number; key: string; label: { th: string; en: string }; labelPre?: { th: string; en: string }; labelPost?: { th: string; en: string }; kind: "simple"; hasPhoto?: boolean; tooltip?: { th: string; en: string } }
+    | { no: number; key: string; label: { th: string; en: string }; labelPre?: { th: string; en: string }; labelPost?: { th: string; en: string }; kind: "group"; items: { key: string; label: { th: string; en: string } }[]; hasPhoto?: boolean; tooltip?: { th: string; en: string } };
 
 const QUESTIONS_RAW = [
+    { no: 101, key: "pre_r1", label: { th: "1) ตรวจสอบสภาพทั่วไป (ก่อนบำรุงรักษา)", en: "1) General condition (before maintenance)" }, kind: "simple", hasPhoto: true, tooltip: { th: "บันทึกสภาพสถานีก่อนเริ่มบำรุงรักษา", en: "Record the station condition before maintenance" } },
+    { no: 102, key: "pre_r2", label: { th: "2) อุปกรณ์ชำรุดเสียหาย (ก่อนบำรุงรักษา)", en: "2) Damaged equipment (before maintenance)" }, kind: "simple", hasPhoto: true, tooltip: { th: "บันทึกอุปกรณ์ที่ชำรุดเสียหายก่อนเริ่มบำรุงรักษา", en: "Record damaged equipment before maintenance" } },
     { no: 1, key: "r1", label: { th: "1. ตรวจสอบโครงสร้างสถานี", en: "1. Check station structure" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบความมั่นคงแข็งแรงของเสาและหลังคาว่าไม่มีการทรุดตัวและไม่มีรอยร้าวในโครงสร้างหลักหรือรอยแยกบริเวณรอยต่อ", en: "Check the stability of pillars and roof for any subsidence, cracks in main structure, or separation at joints" } },
     { no: 2, key: "r2", label: { th: "2. ตรวจสอบสีโครงสร้างสถานี", en: "2. Check station structure paint" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบการหลุดร่อน พองตัว หรือการเกิดสนิมบนพื้นผิวโลหะ", en: "Check for peeling, blistering, or rust formation on metal surfaces" } },
     { no: 3, key: "r3", label: { th: "3. ตรวจสอบพื้นผิวสถานี", en: "3. Check station surface" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบสภาพพื้นผิวคอนกรีตหรือวัสดุปูพื้นต้องไม่มีรอยแตกร้าว", en: "Check concrete surface or flooring material for cracks or damage" } },
@@ -476,9 +475,25 @@ const QUESTIONS: Question[] = QUESTIONS_RAW.filter(
 ) as Question[];
 
 function getQuestionLabel(q: Question, mode: TabId, lang: Lang): string {
-    const baseLabel = q.label[lang];
-    if (mode === "pre") return lang === "th" ? `${baseLabel} (ก่อน PM)` : `${baseLabel} (Pre-PM)`;
-    return lang === "th" ? `${baseLabel} (หลัง PM)` : `${baseLabel} (Post-PM)`;
+    if (q.no >= 101 && q.no <= 102) return q.label[lang];
+    return q.label[lang].replace(/^(\d+)/, (number) => String(Number(number) + 2));
+}
+
+function getDisplayedQuestionNo(qNo: number): number {
+    if (qNo >= 101 && qNo <= 102) return qNo - 100;
+    return qNo + 2;
+}
+
+function getDisplayedItemLabel(label: string, qNo: number): string {
+    if (qNo >= 101 && qNo <= 102) return label;
+    return label.replace(/^(\d+)/, (number) => String(Number(number) + 2));
+}
+
+function getDisplayedRowNo(key: string): string {
+    const match = key.match(/^r(\d+)(?:_(\d+))?$/);
+    if (!match) return key;
+    const mainNo = getDisplayedQuestionNo(Number(match[1]));
+    return match[2] ? `${mainNo}.${match[2]}` : `${mainNo}`;
 }
 
 function useDebouncedEffect(effect: () => void, deps: any[], delay = 800) {
@@ -487,7 +502,7 @@ function useDebouncedEffect(effect: () => void, deps: any[], delay = 800) {
 
 // ==================== SectionCard ====================
 function SectionCard({ title, subtitle, children, tooltip }: { title?: string; subtitle?: string; children: React.ReactNode; tooltip?: string }) {
-    const qNumber = title?.match(/^(\d+)\./)?.[1];
+    const qNumber = title?.match(/^(\d+)[.)]/)?.[1];
     return (
         <div className="tw-bg-white tw-rounded-xl tw-border tw-border-gray-200 tw-shadow-sm tw-overflow-hidden">
             {title && (
@@ -499,7 +514,7 @@ function SectionCard({ title, subtitle, children, tooltip }: { title?: string; s
                             </div>
                         )}
                         <Typography variant="h6" className="tw-text-white tw-text-sm sm:tw-text-base tw-font-semibold tw-flex-1">
-                            {qNumber ? title.replace(/^\d+\.\s*/, '') : title}
+                            {qNumber ? title.replace(/^\d+[.)]\s*/, '') : title}
                         </Typography>
                         {tooltip && (
                             <Tooltip content={tooltip} placement="bottom">
@@ -568,12 +583,8 @@ interface PMValidationCardProps {
     isPostMode: boolean;
     allPhotosAttached: boolean;
     missingPhotoItems: string[];
-    allRemarksFilledPre: boolean;
-    missingRemarksPre: string[];
     allPFAnswered: boolean;
     missingPFItems: string[];
-    allRemarksFilledPost: boolean;
-    missingRemarksPost: string[];
     isSummaryFilled: boolean;
     isSummaryCheckFilled: boolean;
 }
@@ -581,32 +592,25 @@ interface PMValidationCardProps {
 function PMValidationCard({
     lang, displayTab, isPostMode,
     allPhotosAttached, missingPhotoItems,
-    allRemarksFilledPre, missingRemarksPre,
     allPFAnswered, missingPFItems,
-    allRemarksFilledPost, missingRemarksPost,
     isSummaryFilled, isSummaryCheckFilled,
 }: PMValidationCardProps) {
     const [isExpanded, setIsExpanded] = useState(true);
 
     const getPhotoScrollId = (item: string): string => {
-        // "1" -> station-pm-photo-1, "7.1" -> station-pm-photo-7-1
         const parts = item.split(".");
-        if (parts.length === 2) return `${ID_PREFIX}-photo-${parts[0]}-${parts[1]}`;
-        return `${ID_PREFIX}-photo-${parts[0]}`;
-    };
-
-    const getRemarkScrollId = (item: string): string => {
-        // "1" -> station-pm-remark-1, "7.1" -> station-pm-remark-7-1
-        const parts = item.split(".");
-        if (parts.length === 2) return `${ID_PREFIX}-remark-${parts[0]}-${parts[1]}`;
-        return `${ID_PREFIX}-remark-${parts[0]}`;
+        const displayNo = Number(parts[0]);
+        const storageNo = displayNo <= 2 ? displayNo + 100 : displayNo - 2;
+        if (parts.length === 2) return `${ID_PREFIX}-photo-${storageNo}-${parts[1]}`;
+        return `${ID_PREFIX}-photo-${storageNo}`;
     };
 
     const getPfScrollId = (item: string): string => {
-        // "1" -> station-pm-pf-1, "7.1" -> station-pm-pf-7-1
         const parts = item.split(".");
-        if (parts.length === 2) return `${ID_PREFIX}-pf-${parts[0]}-${parts[1]}`;
-        return `${ID_PREFIX}-pf-${parts[0]}`;
+        const displayNo = Number(parts[0]);
+        const storageNo = displayNo <= 2 ? displayNo + 100 : displayNo - 2;
+        if (parts.length === 2) return `${ID_PREFIX}-pf-${storageNo}-${parts[1]}`;
+        return `${ID_PREFIX}-pf-${storageNo}`;
     };
 
     const allErrors: ValidationError[] = useMemo(() => {
@@ -625,20 +629,7 @@ function PMValidationCard({
             });
         }
 
-        // 2) Remark errors (Pre mode)
-        if (displayTab === "pre" && !allRemarksFilledPre) {
-            missingRemarksPre.forEach((item) => {
-                errors.push({
-                    section: lang === "th" ? "หมายเหตุ" : "Remarks",
-                    sectionIcon: "💬",
-                    itemName: `${t("itemLabel", lang)} ${item}`,
-                    message: lang === "th" ? "ยังไม่ได้กรอกหมายเหตุ" : "Remark not filled",
-                    scrollId: getRemarkScrollId(item),
-                });
-            });
-        }
-
-        // 3) Post mode errors
+        // 2) Post mode errors
         if (isPostMode) {
             // PF status errors
             if (!allPFAnswered) {
@@ -649,19 +640,6 @@ function PMValidationCard({
                         itemName: `${t("itemLabel", lang)} ${item}`,
                         message: lang === "th" ? "ยังไม่ได้เลือก Pass/Fail" : "Pass/Fail not selected",
                         scrollId: getPfScrollId(item),
-                    });
-                });
-            }
-
-            // Remark errors (Post mode)
-            if (!allRemarksFilledPost) {
-                missingRemarksPost.forEach((item) => {
-                    errors.push({
-                        section: lang === "th" ? "หมายเหตุ (Post)" : "Remarks (Post)",
-                        sectionIcon: "💬",
-                        itemName: `${t("itemLabel", lang)} ${item}`,
-                        message: lang === "th" ? "ยังไม่ได้กรอกหมายเหตุ" : "Remark not filled",
-                        scrollId: getRemarkScrollId(item),
                     });
                 });
             }
@@ -691,9 +669,7 @@ function PMValidationCard({
     }, [
         lang, displayTab, isPostMode,
         allPhotosAttached, missingPhotoItems,
-        allRemarksFilledPre, missingRemarksPre,
         allPFAnswered, missingPFItems,
-        allRemarksFilledPost, missingRemarksPost,
         isSummaryFilled, isSummaryCheckFilled
     ]);
 
@@ -815,12 +791,12 @@ function scrollToFirstError(scrollId: string) {
 }
 
 function PassFailRow({
-    label, value, onChange, remark, onRemarkChange, labels, aboveRemark, beforeRemark, inlineLeft, lang, id, remarkId,
+    label, value, onChange, remark, onRemarkChange, labels, aboveRemark, beforeRemark, inlineLeft, showPfButtons = true, lang, id, remarkId,
 }: {
     label: string; value: PF; onChange: (v: Exclude<PF, "">) => void;
     remark?: string; onRemarkChange?: (v: string) => void;
     labels?: Partial<Record<Exclude<PF, "">, React.ReactNode>>;
-    aboveRemark?: React.ReactNode; beforeRemark?: React.ReactNode; inlineLeft?: React.ReactNode; lang: Lang;
+    aboveRemark?: React.ReactNode; beforeRemark?: React.ReactNode; inlineLeft?: React.ReactNode; showPfButtons?: boolean; lang: Lang;
     id?: string; remarkId?: string;
 }) {
     const text = { PASS: labels?.PASS ?? t("pass", lang), FAIL: labels?.FAIL ?? t("fail", lang), NA: labels?.NA ?? t("na", lang) };
@@ -843,7 +819,7 @@ function PassFailRow({
             {onRemarkChange ? (
                 <div className="tw-w-full tw-min-w-0 tw-space-y-2">
                     {aboveRemark}
-                    {buttonsRow}
+                    {showPfButtons !== false && buttonsRow}
                     {beforeRemark}
                     <div id={remarkId}>
                         <Textarea label={t("remark", lang)} value={remark || ""} onChange={(e) => onRemarkChange(e.target.value)}
@@ -851,7 +827,7 @@ function PassFailRow({
                     </div>
                 </div>
             ) : (
-                <div className="tw-flex tw-flex-col sm:tw-flex-row tw-gap-2 sm:tw-items-center sm:tw-justify-between">{buttonsRow}</div>
+                showPfButtons !== false && <div className="tw-flex tw-flex-col sm:tw-flex-row tw-gap-2 sm:tw-items-center sm:tw-justify-between">{buttonsRow}</div>
             )}
         </div>
     );
@@ -1045,7 +1021,7 @@ export default function StationPMReport() {
     }, [router, searchParams]);
     const editId = searchParams.get("edit_id") ?? "";
     const action = searchParams.get("action");
-    const isPostMode = action === "post";
+    const isPostMode = true;
 
     // Photos: key-based for simple (q1, q2, ...) and group items (r7_1, r7_2, ...)
     const initialPhotos: Record<string, PhotoItem[]> = Object.fromEntries(
@@ -1159,7 +1135,7 @@ export default function StationPMReport() {
     const ALL_KEYS = useMemo(() => {
         const keys: string[] = [];
         QUESTIONS.forEach((q) => {
-            if (q.kind === "simple") { keys.push(q.key); }
+            if (q.kind === "simple") { if (!q.key.startsWith("pre_")) keys.push(q.key); }
             else if (q.kind === "group") { q.items.forEach((item) => { keys.push(item.key); }); }
         });
         return keys;
@@ -1391,9 +1367,9 @@ export default function StationPMReport() {
             return (photos[photoKey]?.length ?? 0) < 1;
         });
         return missingKeys.map((key) => {
-            if (key.startsWith("q")) return key.substring(1);
+            if (key.startsWith("q")) return `${getDisplayedQuestionNo(Number(key.substring(1)))}`;
             const match = key.match(/^r(\d+)_(\d+)$/);
-            if (match) return `${match[1]}.${match[2]}`;
+            if (match) return `${getDisplayedQuestionNo(Number(match[1]))}.${match[2]}`;
             return key.replace("r", "");
         }).sort((a, b) => {
             const aParts = String(a).split(".").map(Number);
@@ -1415,9 +1391,9 @@ export default function StationPMReport() {
             return (photos[photoKey]?.length ?? 0) < 1;
         });
         return missingKeys.map((key) => {
-            if (key.startsWith("q")) return key.substring(1);
+            if (key.startsWith("q")) return `${getDisplayedQuestionNo(Number(key.substring(1)))}`;
             const match = key.match(/^r(\d+)_(\d+)$/);
-            if (match) return `${match[1]}.${match[2]}`;
+            if (match) return `${getDisplayedQuestionNo(Number(match[1]))}.${match[2]}`;
             return key.replace("r", "");
         }).sort((a, b) => {
             const aParts = String(a).split(".").map(Number);
@@ -1436,6 +1412,7 @@ export default function StationPMReport() {
     const PF_REQUIRED_KEYS = useMemo(() => {
         const keys: string[] = [];
         QUESTIONS.forEach((q) => {
+            if (q.key.startsWith("pre_")) return;
             if (q.kind === "simple") { keys.push(q.key); }
             else if (q.kind === "group") { q.items.forEach((item) => { keys.push(item.key); }); }
         });
@@ -1452,8 +1429,7 @@ export default function StationPMReport() {
     const missingPFItems = useMemo(() => PF_KEYS_POST.filter((k) => !rows[k]?.pf).map((k) => {
         const match = k.match(/^r(\d+)(?:_(\d+))?$/);
         if (!match) return k;
-        const [, qNo, subNo] = match;
-        return subNo ? `${qNo}.${subNo}` : qNo;
+        return getDisplayedRowNo(k);
     }).sort((a, b) => {
         const aParts = String(a).split(".").map(Number);
         const bParts = String(b).split(".").map(Number);
@@ -1461,72 +1437,11 @@ export default function StationPMReport() {
         return (aParts[1] ?? 0) - (bParts[1] ?? 0);
     }), [rows, PF_KEYS_POST]);
 
-    // Remark validation for Pre mode
-    const validRemarkKeysPre = useMemo(() => {
-        const keys: string[] = [];
-        QUESTIONS.filter((q) => q.no !== 11).forEach((q) => {
-            if (q.kind === "simple") { keys.push(q.key); }
-            else if (q.kind === "group") { q.items.forEach((item) => { keys.push(item.key); }); }
-        });
-        return keys;
-    }, []);
-
-    const missingRemarksPre = useMemo(() => {
-        const missing: string[] = [];
-        validRemarkKeysPre.forEach((key) => {
-            const val = rows[key];
-            if (val?.pf === "NA") return;
-            if (!val?.remark?.trim()) {
-                const match = key.match(/^r(\d+)(?:_(\d+))?$/);
-                if (match) {
-                    const [, qNo, subNo] = match;
-                    missing.push(subNo ? `${qNo}.${subNo}` : qNo);
-                }
-            }
-        });
-        return missing.sort((a, b) => {
-            const aParts = String(a).split(".").map(Number);
-            const bParts = String(b).split(".").map(Number);
-            if (aParts[0] !== bParts[0]) return aParts[0] - bParts[0];
-            return (aParts[1] ?? 0) - (bParts[1] ?? 0);
-        });
-    }, [rows, validRemarkKeysPre]);
-    const allRemarksFilledPre = missingRemarksPre.length === 0;
-
-    // Remark validation for Post mode
-    const validRemarkKeysPost = useMemo(() => {
-        return PF_REQUIRED_KEYS.filter((k) => {
-            if (rowsPre[k]?.pf === "NA") return false;
-            return true;
-        });
-    }, [PF_REQUIRED_KEYS, rowsPre]);
-
-    const missingRemarksPost = useMemo(() => {
-        const missing: string[] = [];
-        validRemarkKeysPost.forEach((key) => {
-            const val = rows[key];
-            if (!val?.remark?.trim()) {
-                const match = key.match(/^r(\d+)(?:_(\d+))?$/);
-                if (match) {
-                    const [, qNo, subNo] = match;
-                    missing.push(subNo ? `${qNo}.${subNo}` : qNo);
-                }
-            }
-        });
-        return missing.sort((a, b) => {
-            const aParts = String(a).split(".").map(Number);
-            const bParts = String(b).split(".").map(Number);
-            if (aParts[0] !== bParts[0]) return aParts[0] - bParts[0];
-            return (aParts[1] ?? 0) - (bParts[1] ?? 0);
-        });
-    }, [rows, validRemarkKeysPost]);
-    const allRemarksFilledPost = missingRemarksPost.length === 0;
-
     const isSummaryFilled = summary.trim().length > 0;
     const isSummaryCheckFilled = summaryCheck !== "";
 
-    const canGoAfter: boolean = isPostMode ? true : (allPhotosAttachedPre && allRemarksFilledPre);
-    const canFinalSave = allPhotosAttachedPost && allPFAnswered && allRemarksFilledPost && isSummaryFilled && isSummaryCheckFilled;
+    const canGoAfter: boolean = isPostMode ? true : allPhotosAttachedPre;
+    const canFinalSave = allPhotosAttachedPost && allPFAnswered && isSummaryFilled && isSummaryCheckFilled;
 
     // Helper functions for scroll IDs
     const getFirstMissingPhotoScrollId = (): string | null => {
@@ -1535,15 +1450,6 @@ export default function StationPMReport() {
         const parts = first.split(".");
         if (parts.length === 2) return `${ID_PREFIX}-photo-${parts[0]}-${parts[1]}`;
         return `${ID_PREFIX}-photo-${parts[0]}`;
-    };
-
-    const getFirstMissingRemarkScrollId = (): string | null => {
-        const missing = isPostMode ? missingRemarksPost : missingRemarksPre;
-        if (missing.length === 0) return null;
-        const first = missing[0];
-        const parts = first.split(".");
-        if (parts.length === 2) return `${ID_PREFIX}-remark-${parts[0]}-${parts[1]}`;
-        return `${ID_PREFIX}-remark-${parts[0]}`;
     };
 
     const getFirstMissingPFScrollId = (): string | null => {
@@ -1710,12 +1616,6 @@ export default function StationPMReport() {
             if (scrollId) scrollToFirstError(scrollId);
             return;
         }
-        if (!allRemarksFilledPre) {
-            alert(`${t("alertFillRemark", lang)} ${missingRemarksPre.join(", ")}`);
-            const scrollId = getFirstMissingRemarkScrollId();
-            if (scrollId) scrollToFirstError(scrollId);
-            return;
-        }
 
         if (submitting) return;
         setSubmitting(true);
@@ -1773,12 +1673,6 @@ export default function StationPMReport() {
         if (!allPFAnswered) {
             alert(lang === "th" ? "กรุณาเลือก PASS/FAIL/N/A ทุกข้อ" : "Please select PASS/FAIL/N/A for all items");
             const scrollId = getFirstMissingPFScrollId();
-            if (scrollId) scrollToFirstError(scrollId);
-            return;
-        }
-        if (!allRemarksFilledPost) {
-            alert(`${t("alertFillRemark", lang)} ${missingRemarksPost.join(", ")}`);
-            const scrollId = getFirstMissingRemarkScrollId();
             if (scrollId) scrollToFirstError(scrollId);
             return;
         }
@@ -1877,7 +1771,7 @@ export default function StationPMReport() {
                         return (
                             <div key={item.key} className={`tw-py-4 ${idx !== q.items.length - 1 ? "tw-border-b tw-border-gray-200" : ""} ${isNA ? "tw-bg-amber-50/50" : ""}`}>
                                 <div className="tw-flex tw-items-center tw-justify-between tw-mb-3">
-                                    <Typography variant="small" className="tw-font-medium">{item.label[lang]}</Typography>
+                                    <Typography variant="small" className="tw-font-medium">{getDisplayedItemLabel(item.label[lang], q.no)}</Typography>
                                     <Button size="sm" color={isNA ? "amber" : "gray"} variant={isNA ? "filled" : "outlined"}
                                         onClick={() => setRows(prev => ({ ...prev, [item.key]: { ...prev[item.key], pf: isNA ? "" : "NA" } }))}>
                                         {isNA ? t("cancelNA", lang) : t("na", lang)}
@@ -1905,7 +1799,7 @@ export default function StationPMReport() {
             if (rowsPre[q.key]?.pf === "NA") {
                 return (
                     <SectionCard key={q.key} title={getQuestionLabel(q, mode, lang)}>
-                        <SkippedNAItem label={q.label[lang]} remark={rowsPre[q.key]?.remark} lang={lang} />
+                        <SkippedNAItem label={getQuestionLabel(q, mode, lang)} remark={rowsPre[q.key]?.remark} lang={lang} />
                     </SectionCard>
                 );
             }
@@ -1925,7 +1819,7 @@ export default function StationPMReport() {
 
             return (
                 <SectionCard key={q.key} title={getQuestionLabel(q, mode, lang)}>
-                    <PassFailRow label={t("testResult", lang)} value={rows[q.key]?.pf ?? ""} lang={lang}
+                    <PassFailRow label={t("testResult", lang)} value={rows[q.key]?.pf ?? ""} lang={lang} showPfButtons={!q.key.startsWith("pre_")}
                         onChange={(v) => setRows({ ...rows, [q.key]: { ...rows[q.key], pf: v } })}
                         remark={rows[q.key]?.remark || ""}
                         onRemarkChange={(v) => setRows({ ...rows, [q.key]: { ...rows[q.key], remark: v } })}
@@ -1949,7 +1843,7 @@ export default function StationPMReport() {
                     if (rowsPre[item.key]?.pf === "NA") {
                         return (
                             <div key={item.key} className={`tw-py-4 ${idx !== q.items.length - 1 ? "tw-border-b tw-border-gray-200" : ""}`}>
-                                <SkippedNAItem label={item.label[lang]} remark={rowsPre[item.key]?.remark} lang={lang} />
+                                <SkippedNAItem label={getDisplayedItemLabel(item.label[lang], q.no)} remark={rowsPre[item.key]?.remark} lang={lang} />
                             </div>
                         );
                     }
@@ -1969,7 +1863,7 @@ export default function StationPMReport() {
 
                     return (
                         <div key={item.key} className={`tw-py-4 ${idx !== q.items.length - 1 ? "tw-border-b tw-border-gray-200" : ""}`}>
-                            <PassFailRow label={item.label[lang]} value={rows[item.key]?.pf ?? ""} lang={lang}
+                            <PassFailRow label={getDisplayedItemLabel(item.label[lang], q.no)} value={rows[item.key]?.pf ?? ""} lang={lang}
                                 onChange={(v) => setRows({ ...rows, [item.key]: { ...rows[item.key], pf: v } })}
                                 remark={rows[item.key]?.remark || ""}
                                 onRemarkChange={(v) => setRows({ ...rows, [item.key]: { ...rows[item.key], remark: v } })}
@@ -2015,7 +1909,7 @@ export default function StationPMReport() {
         router.push(`${pathname}?${params.toString()}`, { scroll: false });
     };
 
-    const displayTab: TabId = isPostMode ? "post" : (active === "post" && !canGoAfter ? "pre" : active);
+    const displayTab: TabId = "post";
 
 
     // ── ตารางเทียบก่อน/หลัง PM (โหมดตรวจอนุมัติ) ──
@@ -2041,8 +1935,8 @@ export default function StationPMReport() {
         const labelOfItem = (it: any) =>
             it?.label !== undefined ? it.label : it?.labelKey ? (t as any)(it.labelKey, lang) : "";
         (QUESTIONS as any[]).forEach((q: any) => {
-            put(q?.key, labelOfItem(q));
-            (q?.items ?? []).forEach((it: any) => put(it?.key, labelOfItem(it)));
+            put(q?.key, getQuestionLabel(q, "post", lang));
+            (q?.items ?? []).forEach((it: any) => put(it?.key, getDisplayedItemLabel(textOf(labelOfItem(it)), q.no)));
         });
         ([] as any[]).forEach((arr: any) =>
             (arr ?? []).forEach((it: any) => put(it?.key, labelOfItem(it))));
@@ -2205,7 +2099,8 @@ export default function StationPMReport() {
                     )}
 
                     {/* เวลาทำงานจริงของช่าง — ต้องกรอกก่อนส่งปิดใบงาน (ส่งเข้า Maximo IN09) */}
-                    {isPostMode && (
+                    {/* Temporarily disabled: Maximo labor input is hidden on all pages. */}
+                    {false && isPostMode && (
                         <div className="tw-mt-6 tw-pt-4 tw-border-t tw-border-gray-200">
                             <div className="tw-mb-2">
                                 <Typography variant="h6" className="tw-text-sm sm:tw-text-base">
@@ -2283,12 +2178,8 @@ export default function StationPMReport() {
                                 isPostMode={isPostMode}
                                 allPhotosAttached={allPhotosAttached}
                                 missingPhotoItems={missingPhotoItems}
-                                allRemarksFilledPre={allRemarksFilledPre}
-                                missingRemarksPre={missingRemarksPre}
                                 allPFAnswered={allPFAnswered}
                                 missingPFItems={missingPFItems}
-                                allRemarksFilledPost={allRemarksFilledPost}
-                                missingRemarksPost={missingRemarksPost}
                                 isSummaryFilled={isSummaryFilled}
                                 isSummaryCheckFilled={isSummaryCheckFilled}
                             />
@@ -2299,7 +2190,7 @@ export default function StationPMReport() {
                                 {displayTab === "pre" ? (
                                     <Button type="button" onClick={onPreSave} disabled={!canGoAfter || submitting}
                                         className="tw-text-sm tw-py-2.5 tw-bg-gray-800 hover:tw-bg-gray-900"
-                                        title={!allPhotosAttachedPre ? t("alertPhotoNotComplete", lang) : !allRemarksFilledPre ? `${t("alertFillRemark", lang)} ${missingRemarksPre.join(", ")}` : undefined}>
+                                        title={!allPhotosAttachedPre ? t("alertPhotoNotComplete", lang) : undefined}>
                                         {submitting ? t("saving", lang) : t("save", lang)}
                                     </Button>
                                 ) : (

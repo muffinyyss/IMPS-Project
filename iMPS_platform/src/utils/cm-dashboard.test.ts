@@ -5,6 +5,7 @@ import {
   isCancelled,
   excludeCancelled,
   workStatusOf,
+  isWorkOrder,
   filterByPeriod,
   applyFilters,
   applySearch,
@@ -20,6 +21,10 @@ import {
   ActiveFilters,
   companyOf,
   listCompanies,
+  matchesCompanyFilter,
+  listCompanyFilterOptions,
+  isChargerWorkOrder,
+  isEdsWorkOrder,
 } from "./cm-dashboard";
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
@@ -61,6 +66,85 @@ describe("company filter helpers", () => {
   it("puts unknown companies last", () => {
     const rows = [makeRow({ id: "a", company: "" }), makeRow({ id: "b", company: "Company A" })];
     expect(listCompanies(rows)).toEqual(["Company A", "Unknown"]);
+  });
+
+  it("matches EDS to FlexxFast chargers, regardless of the station company", () => {
+    const egatFlexxFast = makeRow({ company: "EGAT", charger_brand: "FlexxFast" });
+    const edsDelta = makeRow({ company: "EDS", charger_brand: "Delta" });
+    const edsFlexxFast = makeRow({ company: "EDS", charger_brand: "flexxfast" });
+
+    expect(matchesCompanyFilter(egatFlexxFast, "EDS")).toBe(true);
+    expect(matchesCompanyFilter(edsDelta, "EDS")).toBe(false);
+    expect(matchesCompanyFilter(edsFlexxFast, "EDS")).toBe(true);
+    expect(matchesCompanyFilter(edsDelta, "EGAT")).toBe(false);
+  });
+
+  it("keeps FlexxFast charger work orders out of the EGAT filter", () => {
+    // ใบของตู้ FlexxFast ที่ตั้งอยู่ในสถานี EGAT เป็นงานของ EDS — เลือก EGAT ต้องไม่เห็น
+    const egatFlexxFast = makeRow({ company: "EGAT", charger_brand: "FlexxFast", faulty_equipment: "DCCHARGER" });
+    const egatDelta = makeRow({ company: "EGAT", charger_brand: "Delta", faulty_equipment: "DCCHARGER" });
+    const egatNoBrand = makeRow({ company: "EGAT", charger_brand: "", faulty_equipment: "DCCHARGER" });
+
+    expect(matchesCompanyFilter(egatFlexxFast, "EGAT")).toBe(false);
+    expect(matchesCompanyFilter(egatDelta, "EGAT")).toBe(true);
+    expect(matchesCompanyFilter(egatNoBrand, "EGAT")).toBe(true);
+    expect(applyFilters([egatFlexxFast, egatDelta], { ...EMPTY_FILTERS, company: "EGAT" })).toEqual([egatDelta]);
+  });
+
+  it("counts only charger work orders as EDS", () => {
+    // ใบระดับสถานี backend เติม brand จากยี่ห้อของทั้งสถานี — ไม่ใช่งานตู้ จึงยังเป็นของ EGAT
+    const stationLevel = makeRow({ company: "EGAT", charger_brand: "FlexxFast", faulty_equipment: "STATION" });
+    const legacyStation = makeRow({ company: "EGAT", charger_brand: "FlexxFast", faulty_equipment: "STATFC" });
+    const legacyCharger = makeRow({ company: "EGAT", charger_brand: "FlexxFast", faulty_equipment: "charger_2" });
+
+    expect(isChargerWorkOrder(stationLevel)).toBe(false);
+    expect(isEdsWorkOrder(stationLevel)).toBe(false);
+    expect(matchesCompanyFilter(stationLevel, "EGAT")).toBe(true);
+    expect(matchesCompanyFilter(stationLevel, "EDS")).toBe(false);
+
+    expect(matchesCompanyFilter(legacyStation, "EGAT")).toBe(true);
+    expect(matchesCompanyFilter(legacyStation, "EDS")).toBe(false);
+
+    expect(isEdsWorkOrder(legacyCharger)).toBe(true);
+    expect(matchesCompanyFilter(legacyCharger, "EGAT")).toBe(false);
+    expect(matchesCompanyFilter(legacyCharger, "EDS")).toBe(true);
+  });
+
+  it("uses the company picked when the work order was opened", () => {
+    // ใบตู้ FlexxFast ที่ผู้เปิดเลือก EGAT ไว้ → อยู่ในกลุ่ม EGAT ไม่ใช่ EDS ตามยี่ห้อ
+    const pickedEgat = makeRow({ company: "EGAT", assigned_company: "EGAT", charger_brand: "FlexxFast", faulty_equipment: "DCCHARGER" });
+    // ใบตู้ Delta ที่เลือก EDS ไว้ → เป็นงานของ EDS แม้ยี่ห้อไม่ใช่ FlexxFast
+    const pickedEds = makeRow({ company: "EDS", assigned_company: "EDS", charger_brand: "Delta", faulty_equipment: "DCCHARGER" });
+
+    expect(matchesCompanyFilter(pickedEgat, "EGAT")).toBe(true);
+    expect(matchesCompanyFilter(pickedEgat, "EDS")).toBe(false);
+    expect(matchesCompanyFilter(pickedEds, "EDS")).toBe(true);
+    expect(matchesCompanyFilter(pickedEds, "EGAT")).toBe(false);
+    expect(companyOf(pickedEds)).toBe("EDS");
+  });
+
+  it("matches a company typed into the Other box, case-insensitively", () => {
+    const row = makeRow({ company: "EGAT", assigned_company: "PTG" });
+    expect(matchesCompanyFilter(row, "PTG")).toBe(true);
+    expect(matchesCompanyFilter(row, "ptg")).toBe(true);
+    expect(matchesCompanyFilter(row, "EGAT")).toBe(false);
+    expect(matchesCompanyFilter(row, null)).toBe(true);
+  });
+
+  it("adds custom companies to the filter dropdown after the standard options", () => {
+    const rows = [makeRow({ assigned_company: "PTG" }), makeRow({ assigned_company: "eds" }), makeRow({ assigned_company: "" })];
+    expect(listCompanyFilterOptions(rows)).toEqual(["EGAT", "EDS", "PTG"]);
+    expect(listCompanyFilterOptions([])).toEqual(["EGAT", "EDS"]);
+  });
+
+  it("falls back to the resolved charger when the failure code is unknown", () => {
+    const withCharger = makeRow({ company: "EGAT", charger_brand: "FlexxFast", faulty_equipment: "OTHER", charger_sn: "SN-9" });
+    const withoutCharger = makeRow({ company: "EGAT", charger_brand: "FlexxFast", faulty_equipment: "OTHER" });
+
+    expect(isChargerWorkOrder(withCharger)).toBe(true);
+    expect(matchesCompanyFilter(withCharger, "EGAT")).toBe(false);
+    expect(isChargerWorkOrder(withoutCharger)).toBe(false);
+    expect(matchesCompanyFilter(withoutCharger, "EGAT")).toBe(true);
   });
 });
 
@@ -152,13 +236,13 @@ describe("cancelled rows", () => {
     expect(groupByMonth(rows).open[0]).toBe(1);
   });
 
-  it("le filtre « wo_all » exclut les fiches annulées", () => {
+  it("le filtre « wo_all » inclut les WO annulées", () => {
     const rows = [
       makeRow({ id: "a", status: "In Progress" }),
       makeRow({ id: "b", status: "Cancelled" }),
     ];
     const kept = applyFilters(rows, { ...noFilters, workStatus: "wo_all" });
-    expect(kept.map((r) => r.id)).toEqual(["a"]);
+    expect(kept.map((r) => r.id)).toEqual(["a", "b"]);
   });
 
   it('statusBadge affiche « Cancelled » et non « Open »', () => {
@@ -213,6 +297,47 @@ describe("workStatusOf", () => {
     ];
     const kept = applyFilters(rows, { ...noFilters, workStatus: "wo_all" });
     expect(kept.map((r) => r.id)).toEqual(["b"]);
+  });
+});
+
+describe("isWorkOrder", () => {
+  it("นับ WO ที่ยกเลิกแล้ว และไม่รวม SR ที่ยกเลิกก่อนเป็น WO", () => {
+    expect(isWorkOrder(makeRow({ status: "Open" }))).toBe(false);
+    expect(isWorkOrder(makeRow({ status: "Wait for approve", stage: "cs_approval" }))).toBe(false);
+    expect(isWorkOrder(makeRow({ status: "Wait for schedule" }))).toBe(true);
+    expect(isWorkOrder(makeRow({ status: "In Progress" }))).toBe(true);
+    expect(isWorkOrder(makeRow({ status: "Cancelled", status_before_cancel: "Open" }))).toBe(false);
+    expect(isWorkOrder(makeRow({ status: "Cancelled", status_before_cancel: "In Progress" }))).toBe(true);
+    expect(isWorkOrder(makeRow({ status: "Cancelled" }))).toBe(true);
+  });
+
+  it("นับ WO ทุกช่วงของกระบวนการ", () => {
+    const rows = [
+      makeRow({ status: "Wait for schedule" }),
+      makeRow({ status: "In Progress", repair_result: "WO - wait for material" }),
+      makeRow({ status: "In Progress", repair_result: "WO - wait for site condition" }),
+      makeRow({ status: "In Progress" }),
+      makeRow({ status: "Wait for approve" }),
+      makeRow({ status: "Closed" }),
+      makeRow({ status: "Open" }),
+      makeRow({ status: "Cancelled", status_before_cancel: "In Progress" }),
+    ];
+    expect(rows.filter(isWorkOrder)).toHaveLength(7);
+  });
+});
+
+describe("rejected SR", () => {
+  it("อยู่ใน SR ทั้งหมด แต่ยังไม่เป็น WO", () => {
+    const rejected = makeRow({
+      status: "Wait for approve",
+      stage: "cs_approval",
+      reject_remark: "ต้องแก้ไขรายละเอียด",
+    });
+
+    expect(applyFilters([rejected], { ...noFilters })).toHaveLength(1);
+    expect(workStatusOf(rejected)).toBe("wait_cs_approve");
+    expect(applyFilters([rejected], { ...noFilters, workStatus: "wait_cs_approve" })).toHaveLength(1);
+    expect(applyFilters([rejected], { ...noFilters, workStatus: "wo_all" })).toHaveLength(0);
   });
 });
 

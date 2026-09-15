@@ -4,14 +4,14 @@ import React, { useMemo, useState, useEffect, useRef, useCallback } from "react"
 import { Button, Input, Textarea } from "@material-tailwind/react";
 import Image from "next/image";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
-import { ArrowLeftIcon, ArrowUturnLeftIcon, PhotoIcon, XMarkIcon, CheckCircleIcon, ExclamationTriangleIcon, PencilIcon } from "@heroicons/react/24/solid";
+import { ArrowLeftIcon, ArrowUturnLeftIcon, PhotoIcon, XMarkIcon, CheckCircleIcon, ExclamationTriangleIcon, PencilIcon, DocumentArrowDownIcon } from "@heroicons/react/24/solid";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
 import CreatableSelect from "react-select/creatable";
 import { useDraft, type DraftData, type DraftImage, type DraftCorrectiveAction } from "../lib/draft";
 import { useReportLock } from "@/app/dashboard/cm-report/lib/lock";
 import { failureCodeLabel } from "@/app/dashboard/cm-report/lib/failureCode";
 import {
-    useMaximoFailureTree, isMaximoCode, failureClassRole, type SelectOption,
+    useMaximoFailureTree, isMaximoCode, failureClassRole, failureClassOptions, type SelectOption,
     maximoProblemOptions, maximoCauseOptions, maximoRemedyOptions, NO_PROBLEM_OPTION,
 } from "@/app/dashboard/cm-report/lib/maximo";
 import { cmBackRoute } from "@/app/dashboard/cm-report/lib/origin";
@@ -20,6 +20,8 @@ import { repairResultLabel, normalizeRepairResult, REPAIR_RESULT_VALUES } from "
 import { ZoomableImg, AttachmentFileRow, isImageAttachment } from "@/app/dashboard/cm-report/components/photo-viewer";
 import RepairRoundCard, { type RepairRound } from "@/app/dashboard/cm-report/components/RepairRoundCard";
 import LockBanner from "@/app/dashboard/cm-report/components/LockBanner";
+import { damageSymptomLabel } from "@/app/dashboard/cm-report/lib/damageSymptoms";
+import { WARRANTY_STATUS_OPTIONS, INVESTMENT_SCOPE_OPTIONS, labelOf } from "@/app/dashboard/stations/components/stationOptions";
 
 // ==================== DEVICE NAME FORMATTER ====================
 function formatDeviceName(name: string): string {
@@ -40,6 +42,7 @@ function formatDeviceName(name: string): string {
 const T = {
     pageTitle: { th: "รายงานบันทึกปัญหา (CM)", en: "Corrective Maintenance Report (CM)" },
     headerEdit: { th: "In Progress", en: "In Progress" },
+    headerBeforeStart: { th: "รายละเอียดการแจ้งปัญหา", en: "Issue Details" },
     companyName: { th: "การไฟฟ้าฝ่ายผลิตแห่งประเทศไทย (กฟผ.)", en: "Electricity Generating Authority of Thailand (EGAT)" },
     companyAddressLine1: { th: "เลขที่ 53 หมู่ 2 ถนนจรัญสนิทวงศ์ ตำบลบางกรวย อำเภอบางกรวย", en: "53 Moo 2, Charan Sanitwong Rd., Bang Kruai, Bang Kruai" },
     companyAddressLine2: { th: "จังหวัดนนทบุรี 11130 ศูนย์บริการข้อมูล กฟผ. สายด่วน 1416", en: "Nonthaburi 11130, EGAT Call Center: 1416" },
@@ -54,13 +57,11 @@ const T = {
     inspector: { th: "ผู้ตรวจสอบ", en: "Inspector" },
     repairer: { th: "ผู้เข้าแก้ไข", en: "Repairer" },
     inspectorEntered: { th: "ผู้ตรวจสอบ", en: "Inspector" },
-    faultyEquipment: { th: "ตำแหน่งจุดที่มีความผิดปกติ", en: "FAILURECODE DESCRIPTION" },
+    damageSymptoms: { th: "อาการชำรุด", en: "Damage Symptoms" },
+    failureCodeDescription: { th: "ตำแหน่งจุดที่พบปัญหา", en: "Failurecode Description" },
+    selectFailureCodeDescription: { th: "เลือกตำแหน่งจุดที่พบปัญหา...", en: "Select Failurecode Description..." },
     repairedEquipment: { th: "การแก้ไข", en: "Correction" },
-    selectEquipmentPlaceholder: { th: "เลือกตำแหน่ง...", en: "Select location..." },
-    chargersGroup: { th: "Chargers", en: "Chargers" },
     devicesGroup: { th: "อุปกรณ์ในตู้", en: "Cabinet Devices" },
-    otherEquipmentGroup: { th: "อุปกรณ์อื่นๆ", en: "Other Equipment" },
-    loadingChargers: { th: "กำลังโหลด...", en: "Loading..." },
     loadingDevices: { th: "กำลังโหลดอุปกรณ์...", en: "Loading devices..." },
     noChargersFound: { th: "ไม่พบ Charger", en: "No chargers found" },
     problemDetails: { th: "รายละเอียดปัญหา", en: "Problem Details" },
@@ -69,6 +70,9 @@ const T = {
     details: { th: "รายละเอียด", en: "Details" },
     jobStatus: { th: "สถานะงาน", en: "Job Status" },
     remarks: { th: "หมายเหตุ", en: "Remarks" },
+    warrantyStatus: { th: "การรับประกัน", en: "Warranty" },
+    investmentScope: { th: "สัดส่วนการลงทุน", en: "Investment Scope" },
+    ioCode: { th: "รหัสค่าใช้จ่าย (IO)", en: "Expense Code (IO)" },
     photos: { th: "รูปภาพ", en: "Photos" },
     noPhotos: { th: "ยังไม่มีรูปแนบ", en: "No photos attached" },
 
@@ -91,6 +95,14 @@ const T = {
         en: "Who gets an actual-labor record in Maximo (IN09) — leave empty to fall back to the assigned technicians",
     },
     maximoLaborEmpty: { th: "ยังไม่มีรหัสช่างจาก Maximo", en: "No Maximo labor codes available" },
+    maximoLaborContractorOnly: {
+        th: "ผู้กรอกใบงานไม่ได้สังกัด กฟผ. — ระบบกำหนดรหัสลงเวลาเป็น EVCONTRACTOR",
+        en: "The current user is not under EGAT — the time-log code is fixed to EVCONTRACTOR",
+    },
+    maximoLaborContractorMissing: {
+        th: "ยังไม่มีรหัสผู้รับเหมา (EVCONTRACTOR) จาก Maximo",
+        en: "Contractor labor code (EVCONTRACTOR) not available from Maximo",
+    },
     contractorName: { th: "ชื่อผู้รับเหมา", en: "Contractor name" },
     contractorPlaceholder: { th: "ระบุชื่อผู้รับเหมาที่มาทำงานจริง", en: "Name of the contractor who did the work" },
     contractorRequired: { th: "เลือกผู้รับเหมาแล้วต้องระบุชื่อด้วย", en: "Enter the contractor name" },
@@ -121,6 +133,7 @@ const T = {
     rrStartedAt: { th: "วันที่เข้าแก้ไข", en: "Repair started" },
     rrFinishedAt: { th: "วันที่แก้ไขเสร็จ", en: "Repair finished" },
     backToList: { th: "กลับ", en: "Back" },
+    exportPdf: { th: "ออกไฟล์ PDF", en: "Export PDF" },
 
     // Alerts
     alertNoStationId: { th: "ไม่พบ station_id", en: "Station ID not found" },
@@ -196,6 +209,7 @@ type Job = {
     charger_no?: string; charger_sn?: string;
     problem_details: string; problem_type: string[]; severity: Severity;
     initial_cause: string; status: Status; remarks: string; faulty_equipment: string;
+    damage_symptoms: string[]; damage_symptom_other: string;
     corrective_actions: CorrectiveItem[];
     start_repair_date: string;
     resolved_date: string;
@@ -285,10 +299,10 @@ const COMPLETED_REPAIR_RESULTS = ["WO - wait for approve", "แก้ไขส�
 const NO_PROBLEM_REPAIR_RESULT = "ไม่พบปัญหา";
 
 // ตัวเลือกท้าย dropdown ปัญหา — แสดงเสมอทุก failure code
-const PROGRESS_REQUIRED_KEYS = ["problemType", "problemTypeOther", "cause"];
+const PROGRESS_REQUIRED_KEYS = ["failureCodeDescription", "problemType", "problemTypeOther", "cause"];
 
-// เลือก "แก้ไขสำเร็จ" = ปิดงาน ต้องมีหลักฐานครบ
-const COMPLETED_REQUIRED_KEYS = ["problemType", "cause", "correction", "correctiveAction", "afterPhoto", "repairResult"];
+// เลือก "แก้ไขสำเร็จ" = ปิดงาน ต้องมีข้อมูลหลักครบ; รูปก่อน/หลังเป็น optional
+const COMPLETED_REQUIRED_KEYS = ["failureCodeDescription", "problemType", "cause", "correction", "correctiveAction", "repairResult"];
 
 // รูปของแต่ละรอบซ่อมต้องไม่ไปกองรวมกลุ่มเดียวกัน — index ของ corrective action
 // รีเซ็ตทุกรอบ จึงบวก offset ตามจำนวนรอบที่เก็บเข้าประวัติแล้ว (คงรูปแบบ before_<เลข> ไว้)
@@ -305,9 +319,11 @@ const toOptions = (codes: { code: string; description: string }[] | null): Selec
 
 const LOGO_SRC = "/img/logo_egat.png";
 const LIST_ROUTE = "/dashboard/cm-report";
-const MAX_PHOTOS = 10;
-const FIXED_EQUIPMENT = ["MDB", "CCB", "CB-BOX", "Station"] as const;
+// รหัสกลางของผู้รับเหมาใน Maximo — backend ตั้งค่าได้ผ่าน MAXIMO_CONTRACTOR_LABOR_CODE
+// (ตัวเลือกที่ backend ส่งมาจะมี needs_name = true กำกับไว้ด้วย ใช้เป็นเกณฑ์หลัก)
+const CONTRACTOR_LABOR_CODE = "EVCONTRACTOR";
 
+const MAX_PHOTOS = 10;
 // ==================== อุปกรณ์ภายในของแต่ละ Non-Charger (Placeholder - แก้ทีหลัง) ====================
 const NON_CHARGER_DEVICES: Record<string, string[]> = {
     mdb: ["MCCB", "ACB", "Surge Arrester", "Power Meter", "Busbar", "CT", "PT"],
@@ -320,6 +336,7 @@ const INITIAL_JOB: Job = {
     issue_id: "", doc_name: "", found_date: "", found_time: "", location: "", problem_details: "",
     charger_no: "", charger_sn: "",
     problem_type: [], severity: "", initial_cause: "", status: "", remarks: "", faulty_equipment: "",
+    damage_symptoms: [], damage_symptom_other: "",
     corrective_actions: [{ text: "", beforeImages: [], afterImages: [] }],
     resolved_date: "",
     start_repair_date: "",
@@ -854,7 +871,7 @@ function ProblemGroupBlock({ faultyEquipment, value, onChange, onRemove, onAddGr
                                                         ))}
                                                     </div>
                                                 ) : (
-                                                    <div className="tw-text-center tw-py-6 tw-text-blue-gray-400 tw-text-sm tw-font-medium">{th ? "ยังไม่มีรูปก่อนแก้ไข" : "No before image yet"}</div>
+                                                    <div className="tw-text-center tw-py-6 tw-text-blue-gray-400 tw-text-sm tw-font-medium">{th ? "ไม่มีรูปก่อนแก้ไข" : "No before image"}</div>
                                                 )}
                                             </div>
                                             {/* After Images */}
@@ -884,7 +901,7 @@ function ProblemGroupBlock({ faultyEquipment, value, onChange, onRemove, onAddGr
                                                         ))}
                                                     </div>
                                                 ) : (
-                                                    <div className="tw-text-center tw-py-6 tw-text-green-600 tw-text-sm tw-font-medium">{th ? "ยังไม่มีรูปหลังแก้ไข" : "No after image yet"}</div>
+                                                    <div className="tw-text-center tw-py-6 tw-text-green-600 tw-text-sm tw-font-medium">{th ? "ไม่มีรูปหลังแก้ไข" : "No after image"}</div>
                                                 )}
                                             </div>
                                         </div>
@@ -921,6 +938,12 @@ export default function CMInProgressForm() {
     const addCauseGroup = () => setExtraGroups(g => [...g, newGroup("cause")]);
     const addCorrectionGroup = () => setExtraGroups(g => [...g, newGroup("correction")]);
     const [reportedBy, setReportedBy] = useState("");
+    // ข้อมูลที่บันทึกจากหน้า Open — ช่างใช้ตรวจสอบก่อนเริ่มแก้ไข (อ่านอย่างเดียว)
+    const [openStationDetails, setOpenStationDetails] = useState({
+        warrantyStatus: "",
+        investmentScope: [] as string[],
+        ioCode: "",
+    });
     const [inspector, setInspector] = useState("");
     const [recordInspector, setRecordInspector] = useState(""); // inspector ที่บันทึกในใบงานแล้ว = เจ้าของใบงานเฟสซ่อม
     // ประวัติผลซ่อมรอบก่อน ๆ (อ่านอย่างเดียว) — flat fields คือรอบที่กำลังกรอก
@@ -936,6 +959,7 @@ export default function CMInProgressForm() {
     const maximoTree = useMaximoFailureTree();
     const [currentUsername, setCurrentUsername] = useState("");
     const [currentRole, setCurrentRole] = useState("");
+    const [currentCompany, setCurrentCompany] = useState("");
     const [approvedBy, setApprovedBy] = useState("");
     const [approvalStage, setApprovalStage] = useState("");
     const [approving, setApproving] = useState(false);
@@ -957,12 +981,11 @@ export default function CMInProgressForm() {
     const originalRepairResultRef = useRef<string>("");
     const [photos_problem, setPhotosProblem] = useState<PhotoItem[]>([]);
     const [chargers, setChargers] = useState<ChargerInfo[]>([]);
-    const [loadingChargers, setLoadingChargers] = useState(false);
     const [devices, setDevices] = useState<string[]>([]);
     const [loadingDevices, setLoadingDevices] = useState(false);
     const [jobLoaded, setJobLoaded] = useState(false);
     const [startRepairStamped, setStartRepairStamped] = useState(false);
-    // ช่างกดปุ่ม "เริ่มแก้ไข" แล้วหรือยัง — ก่อนกดจะเห็นเฉพาะข้อมูลที่ CS/Planner กรอกมาแบบอ่านอย่างเดียว
+    // ช่างกดปุ่ม "เริ่มงาน" แล้วหรือยัง — ก่อนกดจะเห็นเฉพาะข้อมูลที่ CS/Planner กรอกมาแบบอ่านอย่างเดียว
     const [repairStartedManually, setRepairStartedManually] = useState(false);
 
     const editId = searchParams.get("edit_id") ?? "";
@@ -991,8 +1014,8 @@ export default function CMInProgressForm() {
     // ใช้ status จริงเป็นตัวกำหนด Read only เท่านั้น
     // การเลือก Repair Result = WO - wait for approve ยังต้องแก้ไข/บันทึกได้ก่อน
     const isWaitForApprove = normalizedJobStatus === "wait for approve";
-    // Planner แก้ไขข้อมูลของ Technician ได้เฉพาะใบที่ส่งมารออนุมัติปิดงานแล้ว
-    // ส่วน In Progress/Wait for schedule เป็นหน้าที่ของ Technician จึงเปิดดูได้อย่างเดียว
+    // Planner แก้ไขข้อมูลของ Technician ได้เมื่อใบอยู่ In Progress หรือรออนุมัติปิดงาน
+    const canEditInProgress = isPlanner && normalizedJobStatus === "in progress";
     const isWoCloseApproval =
         isWaitForApprove &&
         approvalStage.trim().toLowerCase() !== "cs_approval";
@@ -1008,7 +1031,7 @@ export default function CMInProgressForm() {
         isCancelledStatus ||
         isTechnicianWaitForApprove ||
         (isWaitForApprove && !canEditTechnicianData) ||
-        (isPlanner && !plannerSelfCloseMode && (!canEditTechnicianData || !plannerEditMode)) ||
+        (isPlanner && !plannerSelfCloseMode && !canEditInProgress && (!canEditTechnicianData || !plannerEditMode)) ||
         (!isPlanner && !isJobOwner);
 
     // ล็อกกันกรอกชนกัน — คนที่เปิดฟอร์มในโหมดกรอกก่อนได้สิทธิ์ ที่เหลือดูได้อย่างเดียว
@@ -1016,10 +1039,11 @@ export default function CMInProgressForm() {
     const { lockedBy } = useReportLock(editId, stationId ?? "", !viewOnlyByRole);
     const viewOnly = viewOnlyByRole || !!lockedBy;
 
-    // ช่างเปิดใบงานครั้งแรก = อ่านข้อมูลจาก CS/Planner ก่อน แล้วค่อยกด "เริ่มแก้ไข" ถึงจะเห็นส่วนที่ต้องกรอก
+    // ช่างเปิดใบงานครั้งแรก = อ่านข้อมูลจาก CS/Planner ก่อน แล้วค่อยกด "เริ่มงาน" เพื่อเข้าสู่ฟอร์ม In Progress
     // ใบที่เคยเริ่มแก้ไขแล้ว (มีเวลาเริ่ม) เข้ามาก็กรอกต่อได้เลย — role อื่นไม่ต้องผ่านด่านนี้
+    const requiresRepairStart = isTechnician || canEditInProgress;
     const repairStarted =
-        !isTechnician || viewOnly || repairStartedManually || !!job.start_repair_date || !!job.start_repair_time;
+        !requiresRepairStart || viewOnly || repairStartedManually || !!job.start_repair_date || !!job.start_repair_time;
 
     // อนุมัติปิดใบงาน (Wait for approve → Closed) — เฉพาะ admin/planner และเฉพาะใบที่รออนุมัติอยู่จริง
     const canApprove =
@@ -1112,6 +1136,12 @@ export default function CMInProgressForm() {
 
     const goBackToList = () => router.push(buildListUrl(currentTab));
 
+    // ปุ่ม PDF ข้างปุ่มกลับ — เปิดเฉพาะใบที่ปิดงานแล้ว (Closed/Complete) และเปิดจากใบที่บันทึกไว้จริง
+    const canExportPdf = isClosedStatus && !!editId && !!stationId;
+    const pdfUrl = canExportPdf
+        ? `${API_BASE}/pdf/cm/${encodeURIComponent(editId)}/export?station_id=${encodeURIComponent(stationId ?? "")}&lang=${lang}&dl=0`
+        : "";
+
     const returnToPlannerSchedule = () => {
         const params = new URLSearchParams(searchParams.toString());
         params.delete("self_close");
@@ -1196,6 +1226,7 @@ export default function CMInProgressForm() {
             };
             setJob(prev => ({
                 ...prev,
+                faulty_equipment: pendingDraft.faulty_equipment || prev.faulty_equipment,
                 corrective_actions: pendingDraft.corrective_actions?.length > 0
                     ? mergeDraftActionsWithServer(draftActionsToCorrective(pendingDraft.corrective_actions), prev.corrective_actions)
                     : prev.corrective_actions,
@@ -1310,6 +1341,7 @@ export default function CMInProgressForm() {
             job.repair_result_remark ||
             job.problem_type.length > 0 ||
             job.cause.length > 0 ||
+            job.faulty_equipment ||
             job.start_repair_date ||
             job.start_repair_time;
         if (!hasData) return;
@@ -1337,6 +1369,7 @@ export default function CMInProgressForm() {
             })));
 
             const draftData: DraftData = {
+                faulty_equipment: job.faulty_equipment,
                 corrective_actions: correctiveActionsWithImages,
                 repaired_equipment: job.repaired_equipment,
                 repair_result: job.repair_result,
@@ -1354,7 +1387,7 @@ export default function CMInProgressForm() {
         } catch (e) {
             console.error("Failed to save draft with images:", e);
         }
-    }, [job.corrective_actions, extraGroups, job.repaired_equipment, job.repair_result, job.preventive_action, job.inprogress_remarks, job.repair_result_remark, job.problem_type, job.problem_type_other, job.cause, job.start_repair_date, job.start_repair_time, editId, stationId, saveDraftNow]);
+    }, [job.corrective_actions, extraGroups, job.repaired_equipment, job.repair_result, job.preventive_action, job.inprogress_remarks, job.repair_result_remark, job.problem_type, job.problem_type_other, job.cause, job.faulty_equipment, job.start_repair_date, job.start_repair_time, editId, stationId, saveDraftNow]);
 
     const draftTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     useEffect(() => {
@@ -1487,17 +1520,32 @@ export default function CMInProgressForm() {
         })
     ), [extraGroups, lang, isNoProblem, isWaitingForSiteCondition, isClosedResult]);
 
+    // Maximo labor is determined by the company of the signed-in user, not by
+    // the station, work order, or charger owner.
+    const contractorOnly = !!currentCompany.trim() && currentCompany.trim().toLowerCase() !== "egat";
+    const contractorLaborOption = useMemo(
+        () => laborOptions.find((o) => o.laborcode.trim().toUpperCase() === CONTRACTOR_LABOR_CODE),
+        [laborOptions]
+    );
+    const visibleLaborOptions = useMemo(
+        () => (contractorOnly
+            ? [contractorLaborOption ?? { laborcode: CONTRACTOR_LABOR_CODE, name: CONTRACTOR_LABOR_CODE, needs_name: true }]
+            : laborOptions),
+        [laborOptions, contractorOnly, contractorLaborOption]
+    );
+
     // ติ๊กรหัสกลางของผู้รับเหมาไว้ = ต้องมีชื่อจริงกำกับ
-    const contractorPicked = laborOptions.some(
-        (o) => o.needs_name && maximoLabor.includes(o.laborcode)
+    const contractorPicked = maximoLabor.some(
+        (code) => code.trim().toUpperCase() === CONTRACTOR_LABOR_CODE
     );
     const contractorMissing = contractorPicked && !maximoContractor.trim();
     // รายชื่อช่างจาก Maximo (IN08) ดึงไม่ได้ = ไม่มีอะไรให้เลือก บังคับไม่ได้
     // และด่านตรวจ/อนุมัติแก้ไม่ได้ ใบเก่าที่ช่างไม่ได้เลือกไว้จะกลายเป็นทางตันของ planner
-    const maximoLaborRequired = !viewOnly && laborOptions.length > 0;
+    // Temporarily disabled on all pages: Maximo labor is not collected yet.
+    const maximoLaborRequired = false;
 
     const validations = useMemo<ValidationItem[]>(() => [
-        { key: "equipment", label: t("faultyEquipment", lang), isValid: !!job.faulty_equipment, message: t("notSelected", lang), isRequired: !isWaitingForSiteCondition, scrollId: "cm-equipment" },
+        { key: "failureCodeDescription", label: t("failureCodeDescription", lang), isValid: !!job.faulty_equipment.trim(), message: t("notSelected", lang), isRequired: !isWaitingForSiteCondition, scrollId: "cm-failure-code-description" },
         { key: "problemType", label: t("validProblemType", lang), isValid: validationGroupState.allProblemTypesFilled, message: t("notSelected", lang), isRequired: !isWaitingForSiteCondition, scrollId: "cm-problem-type" },
         { key: "problemTypeOther", label: lang === "th" ? "ระบุปัญหา (อื่นๆ)" : "Specify Problem (Other)", isValid: !!job.problem_type_other.trim(), message: t("notFilled", lang), isRequired: job.problem_type.includes("Other"), scrollId: "cm-problem-type" },
         { key: "cause", label: t("validCause", lang), isValid: validationGroupState.allCausesFilled, message: t("notFilled", lang), isRequired: !isNoProblem && !isWaitingForSiteCondition, scrollId: "cm-cause" },
@@ -1506,7 +1554,7 @@ export default function CMInProgressForm() {
         { key: "correction", label: t("repairedEquipment", lang), isValid: validationGroupState.allCorrectionsFilled, message: t("notSelected", lang), isRequired: isClosedResult && !isNoProblem, scrollId: "cm-correction" },
         { key: "correctiveAction", label: t("validCorrectiveAction", lang), isValid: validationGroupState.allActionTextsFilled, message: t("notFilled", lang), isRequired: !isNoProblem && !isWaitingForMaterial && !isWaitingForSiteCondition, scrollId: "cm-corrective" },
         { key: "beforePhoto", label: t("validBeforePhoto", lang), isValid: validationGroupState.allBeforePhotosFilled, message: t("notFilled", lang), isRequired: false, scrollId: "cm-corrective" },
-        { key: "afterPhoto", label: t("validAfterPhoto", lang), isValid: validationGroupState.allAfterPhotosFilled, message: t("notFilled", lang), isRequired: isClosedResult && !isNoProblem, scrollId: "cm-corrective" },
+        { key: "afterPhoto", label: t("validAfterPhoto", lang), isValid: validationGroupState.allAfterPhotosFilled, message: t("notFilled", lang), isRequired: false, scrollId: "cm-corrective" },
         { key: "repairResult", label: t("validRepairResult", lang), isValid: !!job.repair_result, message: t("notSelected", lang), isRequired: !isNoProblem, scrollId: "cm-repair-result" },
         // { key: "preventiveAction", label: t("preventiveAction", lang), isValid: job.preventive_action.some((p: string) => p.trim() !== ""), message: t("notFilled", lang), isRequired: isClosedResult && !isNoProblem, scrollId: "cm-preventive" },
         { key: "inprogressRemarks", label: lang === "th" ? "หมายเหตุผลหลังซ่อม" : "Repair Result Remark", isValid: !!job.repair_result_remark.trim(), message: t("notFilled", lang), isRequired: needsRepairRemark, scrollId: "cm-repair-result" },
@@ -1551,12 +1599,13 @@ export default function CMInProgressForm() {
         // เลือก "รอเข้าพื้นที่" = ฟอร์มล้างช่องอาการ/สาเหตุทิ้งไปแล้ว บังคับต่อไม่ได้
         // (ไม่งั้นปุ่มเดียวของใบสถานะ Wait for schedule จะ disabled ถาวร = ทางตัน)
         if (isWaitingForSiteCondition) return !!job.repair_result_remark.trim();
+        if (!job.faulty_equipment.trim()) return false;
         const fullGroups = extraGroups.filter(group => group.kind === "full");
         const hasProblem = job.problem_type.some(Boolean) && fullGroups.every(group => group.problem_type.some(Boolean));
         const hasCause = job.cause.some(cause => cause.trim() !== "") &&
             extraGroups.filter(group => group.kind !== "correction").every(group => group.cause.some(cause => cause.trim() !== ""));
         return (hasProblem || !!job.problem_type_other.trim()) && hasCause;
-    }, [job.problem_type, job.problem_type_other, job.cause, job.repair_result_remark, isWaitingForSiteCondition, extraGroups]);
+    }, [job.faulty_equipment, job.problem_type, job.problem_type_other, job.cause, job.repair_result_remark, isWaitingForSiteCondition, extraGroups]);
 
     // การ์ดสรุปต้องสะท้อนสิ่งที่ "ปุ่มที่กดได้จริง" ต้องการ ไม่งั้นจะขึ้นแดงว่ายังไม่เลือก
     // ผลหลังซ่อม ทั้งที่สถานะนี้ไม่ต้องเลือก — canSave ยังใช้ validations ชุดเต็มเหมือนเดิม
@@ -1581,12 +1630,8 @@ export default function CMInProgressForm() {
         ? "Closed"
         : (isClosing || job.repair_result === "WO - wait for approve" ? "Wait for approve" : "In Progress");
     const targetTab = targetStatus === "Closed" ? "closed" : "in-progress";
-    // ป้าย Job Status ต้องบอก "สถานะตอนนี้" ของใบงาน ไม่ใช่สถานะที่จะกลายเป็นตอนกดบันทึก
-    // ด่านปิดงาน targetStatus ของ planner เป็น "Closed" ตั้งแต่เปิดหน้า (กดบันทึกแล้วปิดเลย)
-    // ถ้าเอามาโชว์ตรง ๆ จะดูเหมือนใบถูกปิดไปแล้วทั้งที่ยังรออนุมัติอยู่
-    const jobStatusLabel = isWoCloseApproval
-        ? "WO - wait for approve"
-        : (plannerSelfCloseMode ? "Wait for schedule" : targetStatus);
+    // แสดงสถานะปัจจุบันของใบงาน ไม่ใช่สถานะปลายทางที่จะเกิดขึ้นหลังบันทึก
+    const jobStatusLabel = job.status || "Open";
     // ใบที่ซ่อมจบแล้ว (รออนุมัติ หรือปิดเลย) → ต้องมีวันที่แก้ไขเสร็จเสมอ
     // (ครอบคลุมทั้ง แก้ไขสำเร็จ/ไม่สำเร็จ, ไม่พบปัญหา และ WO - wait for approve)
     const hasResolvedDate = targetStatus === "Wait for approve" || targetStatus === "Closed";
@@ -1798,7 +1843,6 @@ export default function CMInProgressForm() {
     useEffect(() => {
         if (!stationId) return;
         let alive = true;
-        setLoadingChargers(true);
         (async () => {
             try {
                 const res = await fetch(`${API_BASE}/chargers/${encodeURIComponent(stationId)}`, { credentials: "include" });
@@ -1808,8 +1852,6 @@ export default function CMInProgressForm() {
                 }
             } catch {
                 setChargers([]);
-            } finally {
-                if (alive) setLoadingChargers(false);
             }
         })();
         return () => { alive = false; };
@@ -1894,10 +1936,7 @@ export default function CMInProgressForm() {
         //                    ทำให้ repaired_equipment ที่โหลดมาถูกล้างทิ้งทุกครั้งที่เปิดใบ (และหายจาก DB ถ้าบันทึกซ้ำ)
         if (prev === null || prev === "") return;
         if (prev !== job.faulty_equipment) {
-            // ปัญหา/สาเหตุ/การแก้ไข cascade มาจาก failure class — เปลี่ยนอุปกรณ์แล้วค่าเดิม
-            // จะไม่อยู่ในตัวเลือกชุดใหม่ ปล่อยไว้จะบันทึกรหัสที่ไม่เข้าคู่กันลง Maximo
-            setJob(p => ({ ...p, repaired_equipment: [], problem_type: [], problem_type_other: "", cause: [] }));
-            setExtraGroups([]);
+            setJob(p => ({ ...p, repaired_equipment: [] }));
         }
     }, [job.faulty_equipment]);
 
@@ -2005,7 +2044,9 @@ export default function CMInProgressForm() {
                     status: (data.status ?? "In Progress") as Status,
                     remarks: data.remarks_open ?? "",
                     faulty_equipment: data.faulty_equipment ?? "",
-                    // รอบใหม่: ล้างเวลาเริ่มให้ว่าง ช่างต้องกด "เริ่มแก้ไข" อีกครั้งถึงจะประทับเวลาใหม่
+                    damage_symptoms: Array.isArray(data.damage_symptoms) ? data.damage_symptoms : [],
+                    damage_symptom_other: data.damage_symptom_other ?? "",
+                    // รอบใหม่: ล้างเวลาเริ่มให้ว่าง ช่างต้องกด "เริ่มงาน" อีกครั้งถึงจะประทับเวลาใหม่
                     // (repairStarted อิงฟิลด์นี้ — ประทับไว้ตั้งแต่โหลดจะข้ามด่านกดเริ่มไปเลย
                     //  แล้วรอบนี้จะได้เวลาตอนเปิดหน้า ไม่ใช่เวลาที่ลงมือจริง IN09 ก็เพี้ยนตาม)
                     start_repair_date: waitingRoundArchived ? "" : (data.start_repair_date || ""),
@@ -2187,6 +2228,11 @@ export default function CMInProgressForm() {
                 loadedJobRef.current = normalizedJob;
 
                 setReportedBy(data.reported_by ?? "");
+                setOpenStationDetails({
+                    warrantyStatus: data.warranty_status ?? "",
+                    investmentScope: Array.isArray(data.investment_scope) ? data.investment_scope : [],
+                    ioCode: data.io_code ?? "",
+                });
                 setApprovedBy(data.approved_by ?? "");
                 setApprovalStage(data.stage ?? "");
                 setRejectedInfo({ remark: data.reject_remark ?? "", by: data.rejected_by ?? "" });
@@ -2243,8 +2289,8 @@ export default function CMInProgressForm() {
         }
     }, [job]);
 
-    // ปุ่ม "เริ่มแก้ไข" ของช่าง — ประทับเวลาเริ่มงานแล้วเปิดส่วนที่ต้องกรอก
-    const startRepair = () => {
+    // ปุ่ม "เริ่มงาน" ของช่าง — ประทับเวลาเริ่มงานแล้วเข้าสู่ส่วนกรอกข้อมูล In Progress
+    const startWork = () => {
         const stampedDate = job.start_repair_date || localTodayISO();
         const stampedTime = job.start_repair_time || localNowHHMM();
         setJob(prev => ({ ...prev, start_repair_date: stampedDate, start_repair_time: stampedTime }));
@@ -2275,6 +2321,7 @@ export default function CMInProgressForm() {
     }, [jobLoaded, startRepairStamped, job.start_repair_date, job.start_repair_time, localTodayISO, localNowHHMM, saveDraftWithImages, hasEditedJob, viewOnly]);
 
     useEffect(() => {
+        if (currentRole.trim().toLowerCase() === "technician") return;
         let alive = true;
         (async () => {
             try {
@@ -2286,13 +2333,15 @@ export default function CMInProgressForm() {
                         setInspector(prev => prev || data.username || "");
                         setCurrentUsername(data.username || "");
                         setCurrentRole(data.role || "");
+                        setCurrentCompany(String(data.company || ""));
                     }
                 }
             } catch { }
         })();
         return () => { alive = false; };
-    }, []);
+    }, [currentRole]);
     useEffect(() => {
+        if (isTechnician) return;
         let alive = true;
         (async () => {
             try {
@@ -2305,10 +2354,20 @@ export default function CMInProgressForm() {
             }
         })();
         return () => { alive = false; };
-    }, []);
+    }, [isTechnician]);
 
     const toggleMaximoLabor = (code: string) =>
         setMaximoLabor(prev => prev.includes(code) ? prev.filter(c => c !== code) : [...prev, code]);
+
+    // ผู้ใช้บริษัทอื่นถูกกำหนดรหัส Maximo ตายตัวเป็น EVCONTRACTOR
+    // หลังโหลดใบงานเสร็จด้วย เพื่อให้ค่าที่บันทึกไว้เดิมไม่เขียนทับกฎนี้จาก race ของสอง request
+    useEffect(() => {
+        if (isTechnician || viewOnly || !jobLoaded || !contractorOnly) return;
+        const fixedCode = contractorLaborOption?.laborcode || CONTRACTOR_LABOR_CODE;
+        setMaximoLabor(prev => (
+            prev.length === 1 && prev[0] === fixedCode ? prev : [fixedCode]
+        ));
+    }, [isTechnician, viewOnly, jobLoaded, contractorOnly, contractorLaborOption]);
 
     // ==================== HANDLERS ====================
     // อนุมัติปิดใบงาน — ย้ายมาจากตาราง In Progress เพื่อให้ผู้อนุมัติเห็นรายละเอียดใบงานก่อนกด
@@ -2678,6 +2737,25 @@ export default function CMInProgressForm() {
 
     const severityColor = getSeverityColor(job.severity);
 
+    // FAILURECODE ที่เลือกได้ตามชนิด Charger ของใบงาน เพื่อใช้กรอง Problem/Cause/Correction ต่อกัน
+    const failureCodeDescriptionOptions = useMemo(() => {
+        const selectedNo = String(job.charger_no || chargerIdentity?.charger_no || "").trim().toLowerCase();
+        const selectedSn = String(job.charger_sn || chargerIdentity?.charger_sn || "").trim().toLowerCase();
+        const selectedCharger = chargers.find(charger => {
+            if (!selectedNo && !selectedSn) return false;
+            const no = String(charger.chargerNo ?? charger.charger_id ?? "").trim().toLowerCase();
+            const chargerSn = String(charger.SN || charger.sn || "").trim().toLowerCase();
+            return selectedNo && selectedSn
+                ? no === selectedNo && chargerSn === selectedSn
+                : no === selectedNo || chargerSn === selectedSn;
+        });
+        const pinnedType = String(selectedCharger?.chargerType || "").trim().toUpperCase();
+        return failureClassOptions(maximoTree, {
+            hasDC: pinnedType ? pinnedType === "DC" : chargers.length === 0 || chargers.some(charger => String(charger.chargerType || "DC").toUpperCase() === "DC"),
+            hasAC: pinnedType ? pinnedType === "AC" : chargers.some(charger => String(charger.chargerType || "").toUpperCase() === "AC"),
+        }) ?? [];
+    }, [job.charger_no, job.charger_sn, chargerIdentity, chargers, maximoTree]);
+
     // ชุดตัวเลือก "ปัญหา" ตาม FAILURECODE ของใบงาน (ถ้าไม่มีลิสต์กำหนด → ใช้ชุดเดิม) + "ไม่พบปัญหา"
     const failureProblemOptions = toOptions(
         maximoProblemOptions(maximoTree, job.faulty_equipment));
@@ -2831,9 +2909,24 @@ export default function CMInProgressForm() {
 
             {/* Back Button */}
             <div className="tw-mx-auto tw-max-w-6xl tw-mb-6 tw-flex tw-items-center tw-justify-between">
-                <Button variant="outlined" size="sm" onClick={goBackToList} title={t("backToList", lang)} className="tw-border-blue-gray-200 tw-text-blue-gray-700 hover:tw-border-blue-gray-300">
-                    <ArrowLeftIcon className="tw-w-4 tw-h-4" />
-                </Button>
+                <div className="tw-flex tw-items-center tw-gap-2">
+                    <Button variant="outlined" size="sm" onClick={goBackToList} title={t("backToList", lang)} className="tw-border-blue-gray-200 tw-text-blue-gray-700 hover:tw-border-blue-gray-300">
+                        <ArrowLeftIcon className="tw-w-4 tw-h-4" />
+                    </Button>
+                    {/* ใบงานที่ปิดแล้วเท่านั้นถึงออกไฟล์ PDF ได้ — ใบที่ยังไม่จบข้อมูลยังไม่ครบ */}
+                    {canExportPdf && (
+                        <a
+                            href={pdfUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title={t("exportPdf", lang)}
+                            aria-label={t("exportPdf", lang)}
+                            className="tw-inline-flex tw-items-center tw-justify-center tw-rounded-lg tw-border tw-border-red-200 tw-px-3 tw-py-2 tw-text-red-600 hover:tw-border-red-300 hover:tw-bg-red-50 hover:tw-text-red-800 tw-transition-colors"
+                        >
+                            <DocumentArrowDownIcon className="tw-w-4 tw-h-4" />
+                        </a>
+                    )}
+                </div>
             </div>
 
             <form noValidate onSubmit={e => e.preventDefault()} onKeyDown={e => e.key === "Enter" && e.target instanceof HTMLInputElement && e.preventDefault()}>
@@ -2871,7 +2964,7 @@ export default function CMInProgressForm() {
                         </div>
                     )}
 
-                    {/* fieldset disabled = โหมดดูอย่างเดียวเมื่อใบงานปิดแล้ว หรือช่างยังไม่กด "เริ่มแก้ไข" */}
+                    {/* fieldset disabled = โหมดดูอย่างเดียวเมื่อใบงานปิดแล้ว หรือช่างยังไม่กด "เริ่มงาน" */}
                     <fieldset disabled={viewOnly || !repairStarted} className="tw-border-0 tw-p-0 tw-m-0 tw-min-w-0">
                     {/* Header */}
                     <div className="tw-flex tw-flex-col md:tw-flex-row tw-items-start tw-justify-between tw-gap-6 tw-mb-6">
@@ -2881,7 +2974,7 @@ export default function CMInProgressForm() {
                             </div>
                             <div>
                                 <div className="tw-font-bold tw-text-blue-gray-900 tw-text-base md:tw-text-lg">
-                                    {t("pageTitle", lang)} – {t("headerEdit", lang)}
+                                    {t("pageTitle", lang)} – {(isTechnician || canEditInProgress) && !repairStarted ? t("headerBeforeStart", lang) : t("headerEdit", lang)}
                                 </div>
                                 <div className="tw-text-sm tw-text-blue-gray-600 tw-mt-2">{t("companyName", lang)}</div>
                                 <div className="tw-text-xs tw-text-blue-gray-500 tw-mt-1">{t("companyAddressLine1", lang)}</div>
@@ -2934,21 +3027,67 @@ export default function CMInProgressForm() {
                     {/* ตู้ชาร์จที่ใบงานนี้เกี่ยวข้อง — ชื่อ / เลขตู้ / S/N / บริษัทผู้ถือครอง */}
                     <ChargerIdentity data={chargerIdentity} lang={lang} />
 
-                    {/* Section 1: Problem Details (Readonly) */}
+                    {/* Section 1: ข้อมูลจากหน้า Open (อ่านอย่างเดียว) */}
                     <div className="tw-mb-6 tw-rounded-lg tw-overflow-hidden tw-border tw-border-blue-gray-100 tw-bg-white tw-shadow-sm">
                         <div className="tw-flex tw-items-center tw-gap-3 tw-bg-red-600 hover:tw-bg-red-700 tw-px-4 tw-py-3 tw-text-white tw-cursor-pointer tw-transition-colors">
                             <div className="tw-w-8 tw-h-8 tw-rounded-full tw-bg-white tw-text-red-600 tw-flex tw-items-center tw-justify-center tw-font-bold tw-text-sm">1</div>
                             <span className="tw-font-semibold tw-text-base">{t("problemDetails", lang)}</span>
-                            <span className="tw-ml-auto tw-text-xs tw-bg-white/20 tw-px-2.5 tw-py-1 tw-rounded-full tw-font-medium">{lang === "th" ? "อ่านอย่างเดียว" : "Read Only"}</span>
+                            <span className="tw-ml-auto tw-text-xs tw-bg-white/20 tw-px-2.5 tw-py-1 tw-rounded-full tw-font-medium">
+                                {lang === "th" ? "อ่านอย่างเดียว" : "Read Only"}
+                            </span>
                         </div>
 
                         <div className="tw-p-4 tw-space-y-4">
-                            {/* Severity — ตำแหน่งจุดที่มีความผิดปกติ ย้ายไปอยู่กับ dropdown ปัญหา เพราะช่างเป็นคนเลือกเองแล้ว */}
+                            {/* Damage Symptoms from Open */}
+                            <div>
+                                <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-2">{t("damageSymptoms", lang)}</label>
+                                <div className="tw-min-h-10 tw-flex tw-flex-wrap tw-items-center tw-gap-2 tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-gray-100 tw-px-3 tw-py-2">
+                                    {job.damage_symptoms.length > 0 ? job.damage_symptoms.map(symptom => (
+                                        <span key={symptom} className="tw-rounded-full tw-bg-red-50 tw-px-2.5 tw-py-1 tw-text-xs tw-font-medium tw-text-red-700">
+                                            {symptom === "other" && job.damage_symptom_other.trim()
+                                                ? `${damageSymptomLabel(symptom, lang)}: ${job.damage_symptom_other}`
+                                                : damageSymptomLabel(symptom, lang)}
+                                        </span>
+                                    )) : <span className="tw-text-sm tw-text-blue-gray-500">-</span>}
+                                </div>
+                            </div>
+
+                            {/* Severity */}
                             <div>
                                 <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-2">{t("severity", lang)}</label>
                                 <div className="tw-flex tw-items-center tw-gap-2 tw-h-10 tw-px-3 tw-border tw-border-blue-gray-200 tw-rounded-lg tw-bg-gray-100">
                                     <span className={`tw-w-2.5 tw-h-2.5 tw-rounded-full ${severityColor.dot}`}></span>
                                     <span className={`tw-text-sm tw-font-medium ${severityColor.text}`}>{job.severity || "-"}</span>
+                                </div>
+                            </div>
+
+                            {/* Station-level details saved from Open (read only) */}
+                            <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-3 tw-gap-4">
+                                <div>
+                                    <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-2">{t("warrantyStatus", lang)}</label>
+                                    <div className="tw-min-h-10 tw-flex tw-items-center tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-gray-100 tw-px-3 tw-py-2 tw-text-sm tw-text-blue-gray-700">
+                                        {openStationDetails.warrantyStatus
+                                            ? labelOf(WARRANTY_STATUS_OPTIONS, openStationDetails.warrantyStatus, lang)
+                                            : "-"}
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-2">{t("investmentScope", lang)}</label>
+                                    <div className="tw-min-h-10 tw-flex tw-flex-wrap tw-items-center tw-gap-2 tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-gray-100 tw-px-3 tw-py-2">
+                                        {openStationDetails.investmentScope.length > 0
+                                            ? openStationDetails.investmentScope.map(scope => (
+                                                <span key={scope} className="tw-rounded-full tw-bg-blue-50 tw-px-2.5 tw-py-1 tw-text-xs tw-font-medium tw-text-blue-700">
+                                                    {labelOf(INVESTMENT_SCOPE_OPTIONS, scope, lang)}
+                                                </span>
+                                            ))
+                                            : <span className="tw-text-sm tw-text-blue-gray-500">-</span>}
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-2">{t("ioCode", lang)}</label>
+                                    <div className="tw-min-h-10 tw-flex tw-items-center tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-gray-100 tw-px-3 tw-py-2 tw-text-sm tw-text-blue-gray-700 tw-break-all">
+                                        {openStationDetails.ioCode || "-"}
+                                    </div>
                                 </div>
                             </div>
 
@@ -2958,20 +3097,20 @@ export default function CMInProgressForm() {
                                 <Textarea value={job.problem_details || ""} readOnly rows={2} className="!tw-w-full !tw-border-blue-gray-200 !tw-bg-gray-100 !tw-text-blue-gray-700 !tw-opacity-100" style={{ backgroundColor: "#f3f4f6", color: "#455a64" }} containerProps={{ className: "!tw-min-w-0" }} />
                             </div>
 
-                            {/* Remarks - ซ่อนถ้าไม่มีหมายเหตุ */}
-                            {(job.remarks || "").trim() && (job.remarks || "").trim() !== "-" && (
-                                <div>
-                                    <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-2">{t("remarks", lang)}</label>
-                                    <Textarea value={job.remarks || ""} readOnly rows={2} className="!tw-w-full !tw-border-blue-gray-200 !tw-bg-gray-100 !tw-text-blue-gray-700 !tw-opacity-100" style={{ backgroundColor: "#f3f4f6", color: "#455a64" }} containerProps={{ className: "!tw-min-w-0" }} />
-                                </div>
-                            )}
+                            {/* Remarks from Open — แสดงหัวข้อเสมอเพื่อให้รายละเอียดครบทุกช่อง */}
+                            <div>
+                                <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-2">{t("remarks", lang)}</label>
+                                <Textarea value={(job.remarks || "").trim() || "-"} readOnly rows={2} className="!tw-w-full !tw-border-blue-gray-200 !tw-bg-gray-100 !tw-text-blue-gray-700 !tw-opacity-100" style={{ backgroundColor: "#f3f4f6", color: "#455a64" }} containerProps={{ className: "!tw-min-w-0" }} />
+                            </div>
 
                             {/* Job Status */}
                             <div>
                                 <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-3">{t("jobStatus", lang)}</label>
-                                {/* สถานะปัจจุบันของใบงาน — ด่านรออนุมัติปิดงานโชว์ "WO - wait for approve"
-                                    ไม่ใช่ Closed (ดู jobStatusLabel) */}
-                                <div className={`tw-inline-flex tw-items-center tw-px-4 tw-py-2.5 tw-rounded-full tw-text-white tw-font-semibold tw-text-sm tw-shadow-md ${jobStatusLabel === "Closed" ? "tw-bg-gray-600" : jobStatusLabel === "In Progress" ? "tw-bg-amber-500" : "tw-bg-blue-500"
+                                <div className={`tw-inline-flex tw-items-center tw-px-4 tw-py-2.5 tw-rounded-full tw-text-white tw-font-semibold tw-text-sm tw-shadow-md ${
+                                    ["closed", "complete", "cancelled"].includes(normalizedJobStatus) ? "tw-bg-gray-600" :
+                                        normalizedJobStatus === "in progress" ? "tw-bg-amber-500" :
+                                            normalizedJobStatus === "wait for approve" ? "tw-bg-purple-600" :
+                                                normalizedJobStatus === "wait for schedule" ? "tw-bg-indigo-600" : "tw-bg-blue-500"
                                     }`}>
                                     <span>{jobStatusLabel}</span>
                                 </div>
@@ -2989,7 +3128,7 @@ export default function CMInProgressForm() {
                     {repairHistory.length > 0 && (
                         <div className="tw-mb-6">
                             {repairHistory.map((r, i) => <RepairRoundCard key={i} round={r} index={i} lang={lang} />)}
-                            {/* หัวข้อรอบใหม่ขึ้นตอนกดเริ่มแก้ไขแล้วเท่านั้น — ก่อนกดยังไม่มีช่องกรอก
+                            {/* หัวข้อรอบใหม่ขึ้นตอนกดเริ่มงานแล้วเท่านั้น — ก่อนกดยังไม่มีช่องกรอก
                                 อยู่ข้างล่าง หัวข้อจะลอยอยู่เฉย ๆ */}
                             {repairStarted && (
                                 <h4 className="tw-text-sm tw-font-bold tw-text-blue-gray-700">
@@ -3016,7 +3155,7 @@ export default function CMInProgressForm() {
                         </div>
                     )}
 
-                    {/* ก่อนช่างกด "เริ่มแก้ไข" ให้เห็นเฉพาะข้อมูลจาก CS/Planner ด้านบน */}
+                    {/* ก่อนช่างกด "เริ่มงาน" ให้เห็นเฉพาะข้อมูลจาก CS/Planner ด้านบน */}
                     {repairStarted && (<>
 
                     {/* Section 2: Problem Found + Corrective (Editable) — รวมปัญหากับการแก้ไขในการ์ดเดียว */}
@@ -3076,9 +3215,9 @@ export default function CMInProgressForm() {
                                     )}
                             </div>
 
-                            {/* ช่างที่จะลงเวลาเข้า Maximo — laborcode คนละชุดกับ username ใน iMPS
-                                จึงต้องให้เลือกเอง ไม่งั้น IN09 จะ unmapped ทั้งใบ */}
-                            <div id="cm-maximo-labor" className="tw-space-y-2">
+                            {/* Temporarily disabled for technician: Maximo time logging is not in use yet. */}
+                            {/* Temporarily disabled: Maximo labor input is hidden on all pages. */}
+                            {false && <div id="cm-maximo-labor" className="tw-space-y-2">
                                 <label className="tw-flex tw-items-center tw-gap-2 tw-text-sm tw-font-semibold tw-text-gray-700">
                                     <span className="tw-w-1.5 tw-h-1.5 tw-rounded-full tw-bg-blue-500"></span>
                                     {t("maximoLabor", lang)}
@@ -3111,18 +3250,26 @@ export default function CMInProgressForm() {
                                     )
                                 ) : (
                                 <>
-                                    <p className="tw-text-xs tw-text-gray-500">{t("maximoLaborHint", lang)}</p>
-                                    {laborOptions.length === 0 ? (
-                                        <p className="tw-text-xs tw-text-orange-600">{t("maximoLaborEmpty", lang)}</p>
+                                    {!contractorOnly && (
+                                        <p className="tw-text-xs tw-text-gray-500">{t("maximoLaborHint", lang)}</p>
+                                    )}
+                                    {contractorOnly && (
+                                        <p className="tw-text-xs tw-text-amber-700">{t("maximoLaborContractorOnly", lang)}</p>
+                                    )}
+                                    {visibleLaborOptions.length === 0 ? (
+                                        <p className="tw-text-xs tw-text-orange-600">
+                                            {contractorOnly ? t("maximoLaborContractorMissing", lang) : t("maximoLaborEmpty", lang)}
+                                        </p>
                                     ) : (
                                         <div className="tw-rounded-xl tw-border tw-border-gray-200 tw-bg-white tw-divide-y tw-divide-gray-100 tw-max-h-56 tw-overflow-y-auto">
-                                            {laborOptions.map((o) => (
-                                                <label key={o.laborcode} className="tw-flex tw-items-center tw-gap-2.5 tw-px-3 tw-py-2.5 tw-cursor-pointer hover:tw-bg-blue-50/60 tw-transition-colors">
+                                            {visibleLaborOptions.map((o) => (
+                                                <label key={o.laborcode} className={`tw-flex tw-items-center tw-gap-2.5 tw-px-3 tw-py-2.5 tw-transition-colors ${contractorOnly ? "tw-cursor-not-allowed tw-bg-gray-50" : "tw-cursor-pointer hover:tw-bg-blue-50/60"}`}>
                                                     <input
                                                         type="checkbox"
                                                         checked={maximoLabor.includes(o.laborcode)}
                                                         onChange={() => toggleMaximoLabor(o.laborcode)}
-                                                        className="tw-h-4 tw-w-4 tw-shrink-0 tw-rounded tw-border-gray-300 tw-text-blue-600 focus:tw-ring-blue-500 tw-cursor-pointer"
+                                                        disabled={contractorOnly}
+                                                        className="tw-h-4 tw-w-4 tw-shrink-0 tw-rounded tw-border-gray-300 tw-text-blue-600 focus:tw-ring-blue-500 tw-cursor-pointer disabled:tw-cursor-not-allowed"
                                                     />
                                                     <span className="tw-min-w-0 tw-truncate tw-text-sm tw-text-gray-800">{o.name}</span>
                                                     <span className="tw-ml-auto tw-font-mono tw-text-xs tw-text-gray-400">{o.laborcode}</span>
@@ -3152,7 +3299,7 @@ export default function CMInProgressForm() {
                                     )}
                                 </>
                                 )}
-                            </div>
+                            </div>}
 
                             {/* Repair Result */}
                             {!isNoProblem && (
@@ -3224,53 +3371,56 @@ export default function CMInProgressForm() {
                                 </div>
                             )}
 
-                            {/* Faulty Equipment — ช่างเลือกตำแหน่งจุดที่มีความผิดปกติตรงนี้
-                                ต้องมาก่อน "ปัญหา" เพราะตัวเลือกปัญหา/สาเหตุ/การแก้ไข cascade มาจากค่านี้ */}
-                            <div id="cm-equipment" className="tw-space-y-2">
-                                <label className="tw-flex tw-items-center tw-gap-2 tw-text-sm tw-font-semibold tw-text-gray-700">
-                                    <span className="tw-w-1.5 tw-h-1.5 tw-rounded-full tw-bg-blue-500"></span>
-                                    {t("faultyEquipment", lang)} <span className="tw-text-red-500">*</span>
-                                </label>
-                                <div className="tw-flex-1 tw-min-w-0 md:tw-flex-none md:tw-w-96">
+                            {/* FAILURECODE DESCRIPTION — เลือกก่อน Problem Description */}
+                            {!isWaitingForSiteCondition && (
+                                <div id="cm-failure-code-description" className="tw-space-y-2">
+                                    <label className="tw-flex tw-items-center tw-gap-2 tw-text-sm tw-font-semibold tw-text-gray-700">
+                                        <span className="tw-w-1.5 tw-h-1.5 tw-rounded-full tw-bg-blue-500"></span>
+                                        {t("failureCodeDescription", lang)} <span className="tw-text-red-500">*</span>
+                                    </label>
                                     <select
                                         value={job.faulty_equipment}
                                         disabled={viewOnly}
-                                        onChange={e => setJob(prev => ({ ...prev, faulty_equipment: e.target.value }))}
-                                        className={`tw-w-full tw-h-12 tw-border tw-border-gray-200 tw-rounded-xl tw-px-4 tw-text-sm tw-font-medium tw-transition-all focus:tw-outline-none focus:tw-ring-3 focus:tw-ring-blue-500/20 focus:tw-border-blue-500 ${viewOnly ? "tw-bg-gray-100 tw-text-blue-gray-700 tw-cursor-not-allowed tw-opacity-100" : "tw-bg-white tw-text-gray-700 hover:tw-border-blue-400 tw-cursor-pointer"}`}
-                                        style={viewOnly ? { backgroundColor: "#f3f4f6", color: "#455a64" } : {}}
+                                        onChange={(event) => {
+                                            const nextFailureCode = event.target.value;
+                                            setJob(prev => ({
+                                                ...prev,
+                                                faulty_equipment: nextFailureCode,
+                                                problem_type: [],
+                                                problem_type_other: "",
+                                                cause: [],
+                                                repaired_equipment: [],
+                                                corrective_actions: prev.corrective_actions.map(action => ({ ...action, code: undefined })),
+                                            }));
+                                            setExtraGroups(prev => prev
+                                                .map(group => ({
+                                                    ...group,
+                                                    problem_type: [],
+                                                    cause: [],
+                                                    repaired_equipment: [],
+                                                    corrective_actions: group.corrective_actions.map(action => ({ ...action, code: undefined })),
+                                                }))
+                                                .filter(group => group.corrective_actions.some(action =>
+                                                    action.text.trim() || action.beforeImages.length > 0 || action.afterImages.length > 0
+                                                ))
+                                            );
+                                        }}
+                                        className="tw-w-full md:tw-w-96 tw-h-12 tw-rounded-xl tw-border tw-border-gray-200 tw-bg-white tw-px-4 tw-text-sm tw-font-medium tw-text-gray-700 hover:tw-border-blue-400 focus:tw-outline-none focus:tw-ring-3 focus:tw-ring-blue-500/20 focus:tw-border-blue-500 tw-transition-all disabled:tw-bg-gray-100 disabled:tw-cursor-not-allowed"
                                     >
-                                        <option value="">{t("selectEquipmentPlaceholder", lang)}</option>
-                                        <optgroup label={lang === "th" ? "รหัสความเสียหาย" : "Failure Code"}>
-                                            {maximoTree.classes.map(c => (
-                                                <option key={c.code} value={c.code}>{c.description || c.code}</option>
-                                            ))}
-                                            {/* ใบงานเก่าที่เก็บรหัสชุดเดิม — ต้องมี option ให้ค่าที่เลือกไว้ ไม่งั้น select โชว์ว่าง */}
-                                            {job.faulty_equipment
-                                                && !maximoTree.classes.some(c => c.code === job.faulty_equipment)
-                                                && !job.faulty_equipment.startsWith("charger_") && (
-                                                <option value={job.faulty_equipment}>
-                                                    {failureCodeLabel(job.faulty_equipment)}
-                                                </option>
-                                            )}
-                                        </optgroup>
-                                        {/* กลุ่มเดิม — ให้รายงานเก่าที่บันทึกเป็น charger_x / mdb / ccb ฯลฯ ยังแสดงผลได้ */}
-                                        {chargers.length > 0 && (
-                                            <optgroup label={t("chargersGroup", lang)}>
-                                                {chargers.map((c, i) => {
-                                                    const id = c.chargerNo ?? c.charger_id ?? i + 1;
-                                                    const sn = c.SN ?? c.sn ?? "";
-                                                    const label = c.charger_name || `Charger ${c.chargerNo ?? i + 1}`;
-                                                    return <option key={id} value={`charger_${id}`}>{sn ? `${label} (${sn})` : label}</option>;
-                                                })}
-                                            </optgroup>
+                                        <option value="">{t("selectFailureCodeDescription", lang)}</option>
+                                        {failureCodeDescriptionOptions.map(option => (
+                                            <option key={option.value} value={option.value}>{option.label}</option>
+                                        ))}
+                                        {job.faulty_equipment && !failureCodeDescriptionOptions.some(option => option.value === job.faulty_equipment) && (
+                                            <option value={job.faulty_equipment}>
+                                                {chargerIdentity?.auto_generated && job.faulty_equipment.startsWith("charger_")
+                                                    ? (lang === "th" ? "เครื่องชาร์จ" : "Charger")
+                                                    : failureCodeLabel(job.faulty_equipment)}
+                                            </option>
                                         )}
-                                        <optgroup label={t("otherEquipmentGroup", lang)}>
-                                            {FIXED_EQUIPMENT.map(eq => <option key={eq} value={eq.toLowerCase()}>{eq}</option>)}
-                                        </optgroup>
                                     </select>
-                                    {loadingChargers && <p className="tw-text-xs tw-text-blue-gray-400 tw-mt-2">{t("loadingChargers", lang)}</p>}
                                 </div>
-                            </div>
+                            )}
 
                             {/* Problem Type */}
                             {!isWaitingForSiteCondition && (
@@ -3469,7 +3619,7 @@ export default function CMInProgressForm() {
                                                                 </div>
                                                             ) : (
                                                                 <div className="tw-text-center tw-py-6 tw-text-blue-gray-400 tw-text-sm tw-font-medium">
-                                                                    {lang === "th" ? "ยังไม่มีรูปก่อนแก้ไข" : "No before image yet"}
+                                                                    {lang === "th" ? "ไม่มีรูปก่อนแก้ไข" : "No before image"}
                                                                 </div>
                                                             )}
                                                         </div>
@@ -3479,7 +3629,7 @@ export default function CMInProgressForm() {
                                                             <div className="tw-flex tw-items-center tw-justify-between tw-mb-3">
                                                                 <span className="tw-text-sm tw-font-semibold tw-text-green-700 tw-flex tw-items-center tw-gap-2">
                                                                     <span className="tw-w-2 tw-h-2 tw-rounded-full tw-bg-green-500"></span>
-                                                                    {t("afterPhoto", lang)} {isClosedResult && <span className="tw-text-red-500">*</span>}
+                                                                    {t("afterPhoto", lang)}
                                                                 </span>
                                                                 {!viewOnly && (
                                                                     <label className="tw-inline-flex tw-items-center tw-gap-1.5 tw-px-3 tw-py-1.5 tw-rounded-lg tw-bg-white tw-border tw-border-green-300 tw-text-green-600 tw-font-medium tw-text-xs tw-cursor-pointer hover:tw-bg-green-50 tw-shadow-sm tw-transition-all">
@@ -3511,8 +3661,8 @@ export default function CMInProgressForm() {
                                                             ) : (
                                                                 <div className="tw-text-center tw-py-6 tw-text-green-600 tw-text-sm tw-font-medium">
                                                                     {isClosedResult
-                                                                        ? (lang === "th" ? "⚠️ กรุณาแนบรูปหลังแก้ไข" : "⚠️ Please attach after image")
-                                                                        : (lang === "th" ? "ยังไม่มีรูปหลังแก้ไข" : "No after image yet")
+                                                                        ? (lang === "th" ? "ไม่มีรูปหลังแก้ไข" : "No after image")
+                                                                        : (lang === "th" ? "ไม่มีรูปหลังแก้ไข" : "No after image")
                                                                     }
                                                                 </div>
                                                             )}
@@ -3687,19 +3837,21 @@ export default function CMInProgressForm() {
                                 {approvalActions}
                             </>
                         ) : !repairStarted ? (
-                            /* ช่างยังไม่กดเริ่มแก้ไข — มีแค่ปุ่มเริ่มแก้ไข (ข้อมูลด้านบนอ่านอย่างเดียว) */
+                            /* ช่างหรือ Planner ยังไม่กดเริ่มแก้ไข — มีเฉพาะข้อมูลแจ้งปัญหา */
                             <>
                                 {cancelAction}
                                 <Button
                                     type="button"
-                                    onClick={startRepair}
+                                    onClick={startWork}
                                     className="tw-bg-amber-500 hover:tw-bg-amber-600 tw-text-white tw-font-semibold tw-text-base tw-px-8 tw-py-3 tw-rounded-xl hover:tw-shadow-xl hover:tw-shadow-amber-500/30 tw-transition-all"
                                 >
-                                    {repairHistory.length > 0
+                                    {canEditInProgress
+                                        ? (lang === "th" ? "เริ่มแก้ไข" : "Start Editing")
+                                        : repairHistory.length > 0
                                         ? (lang === "th"
-                                            ? `เริ่มแก้ไขรอบที่ ${repairHistory.length + 1}`
-                                            : `Start repair round ${repairHistory.length + 1}`)
-                                        : (lang === "th" ? "เริ่มแก้ไข" : "Start repair")}
+                                            ? `เริ่มงานรอบที่ ${repairHistory.length + 1}`
+                                            : `Start work round ${repairHistory.length + 1}`)
+                                        : (lang === "th" ? "เริ่มงาน" : "Start Work")}
                                 </Button>
                             </>
                         ) : (
@@ -3724,7 +3876,7 @@ export default function CMInProgressForm() {
                                 <Button
                                     onClick={() => { void onFinalSave({ keepStatus: true }); }}
                                     disabled={saving || !canSaveProgress}
-                                    title={!canSaveProgress ? (lang === "th" ? "ต้องระบุอาการและสาเหตุก่อน" : "Fill in problem and cause first") : undefined}
+                                    title={!canSaveProgress ? (lang === "th" ? "ต้องเลือก FAILURECODE DESCRIPTION ปัญหา และสาเหตุก่อน" : "Select the FAILURECODE DESCRIPTION, problem, and cause first") : undefined}
                                     className="tw-text-white tw-font-semibold tw-text-base tw-px-8 tw-py-3 tw-rounded-xl hover:tw-shadow-xl disabled:tw-opacity-50 disabled:tw-cursor-not-allowed disabled:tw-shadow-none tw-transition-all tw-transform hover:tw-scale-[1.02] tw-bg-blue-500 hover:tw-bg-blue-600 hover:tw-shadow-blue-500/30 tw-mr-3"
                                 >
                                     {saving ? t("saving", lang) : (lang === "th" ? "บันทึกความคืบหน้า" : "Save progress")}

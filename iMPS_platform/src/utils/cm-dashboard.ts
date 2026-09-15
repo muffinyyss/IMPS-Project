@@ -6,7 +6,11 @@ export type CMRow = {
   station_name: string;
   /** บริษัทเจ้าของสถานี (แยกจาก brand ของ charger) */
   company?: string;
+  /** บริษัทที่ผู้เปิดใบเลือกไว้ตอนกด + เพิ่ม — ว่าง = ใบเก่าที่ไม่ได้เลือก */
+  assigned_company?: string;
   status: string;
+  /** สถานะก่อนยกเลิก ใช้แยก SR ที่ยกเลิกก่อนสร้าง WO ออกจาก WO ที่ยกเลิก */
+  status_before_cancel?: string;
   stage?: string;
   reject_remark?: string;
   faulty_equipment: string;
@@ -47,21 +51,71 @@ export const UNKNOWN_COMPANY = "Unknown";
 export const FLEXXFAST_BRAND = "FlexxFast";
 export const COMPANY_FILTER_OPTIONS = ["EGAT", "EDS"] as const;
 
-export function companyOf(r: CMRow): string {
-  return (r.company || "").trim() || UNKNOWN_COMPANY;
+/**
+ * ฟิลด์ขั้นต่ำที่ใช้ตัดสิน brand/company ของใบงาน — ฟอร์ม CM มีข้อมูลแค่ชุดนี้ ไม่ได้มีทั้ง CMRow
+ * (CMRow ใส่แทนได้ตรง ๆ จึงไม่กระทบผู้เรียกเดิม)
+ */
+export type CompanyScopeRow = Partial<
+  Pick<CMRow, "company" | "assigned_company" | "charger_brand" | "faulty_equipment" | "charger_sn" | "charger_no">
+>;
+
+/**
+ * บริษัทที่ผู้เปิดใบเลือกไว้ตอนกด + เพิ่ม — ว่างเมื่อเป็นใบเก่าที่เปิดก่อนมีป๊อปอัพเลือกบริษัท
+ * ใบที่มีค่านี้ให้ยึดตามที่เลือกไว้ ไม่ต้องเดาจากยี่ห้อตู้/บริษัทเจ้าของสถานีอีก
+ */
+export function assignedCompanyOf(r: CompanyScopeRow): string {
+  return (r.assigned_company || "").trim();
 }
 
-export function brandOf(r: CMRow): string {
+export function companyOf(r: CompanyScopeRow): string {
+  return assignedCompanyOf(r) || (r.company || "").trim() || UNKNOWN_COMPANY;
+}
+
+export function brandOf(r: CompanyScopeRow): string {
   const brand = (r.charger_brand || "").trim();
   if (brand.toLowerCase() === FLEXXFAST_BRAND.toLowerCase()) return FLEXXFAST_BRAND;
   return brand || UNKNOWN_BRAND;
 }
 
-export function matchesCompanyFilter(r: CMRow, company: string | null): boolean {
+/** FAILURECODE ของใบที่เปิดกับตู้ชาร์จ — รหัส Maximo (ใบใหม่) + รหัสชุดเก่าของ iMPS */
+const CHARGER_FAILURE_CODES = ["DCCHARGER", "ACCHARGER", "DCCHARFC", "ACCHARFC"];
+/** FAILURECODE ระดับสถานี — ไม่ใช่ใบของตู้ แม้สถานีนั้นจะเป็นตู้ FlexxFast ล้วน */
+const STATION_FAILURE_CODES = ["STATION", "STATFC"];
+
+/** ใบนี้เปิดกับตู้ชาร์จหรือไม่ — ใบระดับสถานี/MDB ไม่นับ */
+export function isChargerWorkOrder(r: CompanyScopeRow): boolean {
+  const code = (r.faulty_equipment || "").trim().toUpperCase();
+  if (CHARGER_FAILURE_CODES.includes(code)) return true;
+  if (STATION_FAILURE_CODES.includes(code)) return false;
+  // ใบรุ่นเก่าเก็บ faulty_equipment เป็น charger_1 / charger_<id>
+  if (code.startsWith("CHARGER_")) return true;
+  // รหัสอื่นที่ไม่รู้จัก — นับเป็นใบของตู้ก็ต่อเมื่อ backend resolve ตู้ให้ได้จริง
+  return !!(r.charger_sn || "").trim() || String(r.charger_no ?? "").trim() !== "";
+}
+
+/**
+ * ใบนี้เป็นงานของ EDS หรือไม่ — ตู้ยี่ห้อ FlexxFast และเปิดเป็นใบของตู้ชาร์จ
+ *
+ * brand ของใบระดับสถานี backend เติมมาจากยี่ห้อของทั้งสถานี ใบพวกนั้นจึงอาจเป็น
+ * FlexxFast ทั้งที่ไม่ใช่งานตู้ — ต้องเช็ค isChargerWorkOrder ควบคู่เสมอ
+ */
+export function isEdsWorkOrder(r: CompanyScopeRow): boolean {
+  return brandOf(r).toLowerCase() === FLEXXFAST_BRAND.toLowerCase() && isChargerWorkOrder(r);
+}
+
+export function matchesCompanyFilter(r: CompanyScopeRow, company: string | null): boolean {
   if (!company) return true;
+  // ใบที่เลือกบริษัทไว้ตอนเปิด — เทียบกับที่เลือกตรง ๆ กฎ brand → EDS ใช้เฉพาะใบเก่าที่ไม่ได้เลือก
+  const assigned = assignedCompanyOf(r);
+  if (assigned) return assigned.toLowerCase() === company.trim().toLowerCase();
+  // EDS รับผิดชอบตู้ FlexxFast โดยไม่ขึ้นกับ company ของสถานี
+  // จึงต้องใช้ brand ของตู้จากใบงานเป็นเกณฑ์เดียวกับ PM Dashboard
   if (company.trim().toLowerCase() === "eds") {
-    return brandOf(r).toLowerCase() === FLEXXFAST_BRAND.toLowerCase();
+    return isEdsWorkOrder(r);
   }
+  // อีกด้านของกฎเดียวกัน: ใบตู้ FlexxFast เป็นงานของ EDS เสมอ
+  // เลือก EGAT จึงไม่เห็นใบของ EDS แม้ตู้นั้นจะอยู่ในสถานีของ EGAT
+  if (isEdsWorkOrder(r)) return false;
   return companyOf(r).toLowerCase() === company.trim().toLowerCase();
 }
 
@@ -87,6 +141,22 @@ export function listBrands(rows: CMRow[]): string[] {
       return b[1] - a[1] || a[0].localeCompare(b[0]);
     })
     .map((e) => e[0]);
+}
+
+/**
+ * ตัวเลือกในดรอปดาวน์ "บริษัท" — ตัวเลือกมาตรฐาน + บริษัทที่ผู้ใช้พิมพ์เองในช่อง "อื่น ๆ"
+ * ตอนเปิดใบ (ไม่งั้นใบที่เลือกบริษัทนอกลิสต์จะกรองหาไม่เจอ)
+ */
+export function listCompanyFilterOptions(rows: CompanyScopeRow[]): string[] {
+  const seen = new Map<string, string>(
+    COMPANY_FILTER_OPTIONS.map((c) => [c.toLowerCase(), c] as const)
+  );
+  for (const r of rows) {
+    const assigned = assignedCompanyOf(r);
+    if (assigned && !seen.has(assigned.toLowerCase())) seen.set(assigned.toLowerCase(), assigned);
+  }
+  const extras = Array.from(seen.values()).slice(COMPANY_FILTER_OPTIONS.length).sort((a, b) => a.localeCompare(b));
+  return [...COMPANY_FILTER_OPTIONS, ...extras];
 }
 
 export function listCompanies(rows: CMRow[]): string[] {
@@ -280,6 +350,18 @@ export function workStatusOf(r: CMRow): WorkStatus {
   return byStatus;
 }
 
+/** ใบงานที่ผ่านด่าน CS แล้วและเป็น WO จริง รวม WO ที่ถูกยกเลิก */
+export function isWorkOrder(r: CMRow): boolean {
+  const ws = workStatusOf(r);
+  if (ws === "cancelled") {
+    // ข้อมูลเก่าที่ไม่มีสถานะก่อนยกเลิก ถือเป็น WO เพื่อไม่ให้ยอด WO ย้อนหลังหาย
+    if (!r.status_before_cancel) return true;
+    const before = normalizeWorkStatus(r.status_before_cancel);
+    return before !== "new" && before !== "wait_cs_approve";
+  }
+  return ws !== "new" && ws !== "rejected" && ws !== "wait_cs_approve" && ws !== "cancelled";
+}
+
 /** สีป้ายสถานะละเอียด (8 bucket) — ใช้ในตารางใบงาน ให้ตรงกับสีการ์ด KPI ด้านบน */
 const WORK_STATUS_COLORS: Record<WorkStatus, { bg: string; text: string }> = {
   new: { bg: "#fee2e2", text: "#dc2626" },
@@ -384,10 +466,7 @@ export function applyFilters(
     }
     if (filters.workStatus && exclude !== "workStatus") {
       const ws = workStatusOf(r);
-      // wo_all = SR ที่กลายเป็น WO แล้วทั้งหมด — ตัดถัง "new", SR ที่รอ head CS อนุมัติ
-      // (ยังไม่ขึ้นเป็น WO) และใบที่ยกเลิกออก
-      const notWo = ws === "new" || ws === "wait_cs_approve" || ws === "cancelled";
-      if (filters.workStatus === "wo_all" ? notWo : ws !== filters.workStatus) return false;
+      if (filters.workStatus === "wo_all" ? !isWorkOrder(r) : ws !== filters.workStatus) return false;
     }
     if (filters.cause && exclude !== "cause") {
       if (!causeLabelsOf(r).includes(filters.cause)) return false;

@@ -199,7 +199,7 @@ export function failureClassRole(
 }
 
 /**
- * ตัวเลือก "อุปกรณ์ที่เสียหาย" (FAILURECODE) ของหน้า open
+ * ตัวเลือก "ตำแหน่งจุดที่มีความผิดปกติ" (FAILURECODE)
  *
  * กรองตามชนิดตู้ที่สถานีนั้นมีจริง — สถานีที่มีแต่ตู้ DC ไม่ต้องเห็น AC Charger Failure
  * ส่วน class ระดับสถานีโชว์เสมอ. Maximo ยังไม่พร้อมคืน null ให้ผู้เรียก fallback

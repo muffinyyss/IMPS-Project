@@ -38,7 +38,7 @@ const T = {
     photos: { th: "รูป", en: "photos" },
     cameraSupported: { th: "รองรับการถ่ายจากกล้องบนมือถือ", en: "Camera supported on mobile" },
     noPhotos: { th: "ยังไม่มีรูปแนบ", en: "No photos attached" },
-    remark: { th: "หมายเหตุ *", en: "Remark *" },
+    remark: { th: "หมายเหตุ", en: "Remark" },
     remarkLabel: { th: "หมายเหตุ", en: "Remark" },
     testResult: { th: "ผลการทดสอบ", en: "Test Result" },
     preRemarkLabel: { th: "หมายเหตุ (ก่อน PM)", en: "Remark (Pre-PM)" },
@@ -54,7 +54,7 @@ const T = {
     powerSource: { th: "แหล่งรับไฟ", en: "Power source" },
     circuitDevice: { th: "อุปกรณ์ตัดวงจรไฟฟ้า", en: "Circuit breaker device" },
     validationPhotoTitle: { th: "1) ตรวจสอบการแนบรูปภาพ", en: "1) Photo Attachments" },
-    validationInputTitle: { th: "2) อินพุตข้อ 5", en: "2) Input Item 5" },
+    validationInputTitle: { th: "2) อินพุตข้อ 7", en: "2) Input Item 7" },
     validationRemarkTitle: { th: "3) หมายเหตุ", en: "3) Remarks" },
     validationPFTitle: { th: "3) สถานะ PASS / FAIL / N/A", en: "3) PASS / FAIL / N/A status" },
     validationRemarkTitlePost: { th: "4) หมายเหตุ", en: "4) Remarks" },
@@ -62,7 +62,6 @@ const T = {
     allComplete: { th: "ครบเรียบร้อย ✅", en: "Complete ✅" },
     missingPhoto: { th: "ยังไม่ได้แนบรูปข้อ:", en: "Missing photos for:" },
     missingInput: { th: "ยังขาดข้อ:", en: "Missing:" },
-    missingRemark: { th: "ยังไม่ได้กรอกหมายเหตุข้อ:", en: "Missing remarks for:" },
     missingPF: { th: "ยังไม่ได้เลือกข้อ:", en: "Not selected:" },
     missingSummaryText: { th: "ยังไม่ได้กรอก Comment", en: "Comment not filled" },
     missingSummaryStatus: { th: "ยังไม่ได้เลือกสถานะสรุปผล", en: "Summary status not selected" },
@@ -72,8 +71,7 @@ const T = {
     alertSaveFailed: { th: "บันทึกไม่สำเร็จ:", en: "Save failed:" },
     alertCompleteAll: { th: "กรุณากรอกข้อมูลและแนบรูปให้ครบก่อนบันทึก", en: "Please complete all fields" },
     alertPhotoNotComplete: { th: "กรุณาแนบรูปในส่วน Pre-PM ให้ครบก่อน", en: "Please attach all photos" },
-    alertInputNotComplete: { th: "กรุณากรอกค่าข้อ 5 ให้ครบ", en: "Please fill in Item 5" },
-    alertFillRemark: { th: "กรุณากรอกหมายเหตุข้อ:", en: "Please fill in remarks for:" },
+    alertInputNotComplete: { th: "กรุณากรอกค่าข้อ 7 ให้ครบ", en: "Please fill in Item 7" },
     noReportId: { th: "ไม่มี report_id", en: "No report_id" },
     // PMValidationCard translations
     itemLabel: { th: "ข้อ", en: "Item" },
@@ -360,6 +358,8 @@ const getPfIdFromKey = (key: string | number): string => {
 };
 
 const QUESTIONS_DATA = [
+    { no: 101, key: "pre_r1", label: { th: "1) ตรวจสอบสภาพทั่วไป (ก่อนบำรุงรักษา)", en: "1) General condition (before maintenance)" }, kind: "simple", hasPhoto: true, tooltip: { th: "บันทึกสภาพกล่องก่อนเริ่มบำรุงรักษา", en: "Record the box condition before maintenance" } },
+    { no: 102, key: "pre_r2", label: { th: "2) อุปกรณ์ชำรุดเสียหาย (ก่อนบำรุงรักษา)", en: "2) Damaged equipment (before maintenance)" }, kind: "simple", hasPhoto: true, tooltip: { th: "บันทึกอุปกรณ์ที่ชำรุดเสียหายก่อนเริ่มบำรุงรักษา", en: "Record damaged equipment before maintenance" } },
     { no: 1, key: "r1", label: { th: "1) การไฟฟ้าฝ่ายจำหน่าย", en: "1) Power distribution authority" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบระบบจำหน่าย", en: "Check distribution system" } },
     { no: 2, key: "r2", label: { th: "2) ตรวจสอบอุปกรณ์ตัดวงจรไฟฟ้า", en: "2) Check circuit breaker device" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบอุปกรณ์ตัดตอน", en: "Inspect circuit breaker" } },
     { no: 3, key: "r3", label: { th: "3) ตรวจสอบสภาพทั่วไป", en: "3) General condition inspection" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบความแข็งแรงของตู้", en: "Check cabinet integrity" } },
@@ -384,7 +384,7 @@ const DROPDOWN_Q2_OPTIONS = [
 ] as const;
 
 type TabId = "pre" | "post";
-const TABS: { id: TabId; label: string }[] = [{ id: "pre", label: "Pre\u2011PM" }, { id: "post", label: "Post\u2011PM" }];
+const TABS: { id: TabId; label: string }[] = [{ id: "post", label: "Post\u2011PM" }];
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 const LOGO_SRC = "/img/logo_egat.png";
@@ -407,8 +407,13 @@ type Question = { no: number; key: string; label: { th: string; en: string }; ki
 const QUESTIONS = QUESTIONS_DATA as unknown as Question[];
 
 function getQuestionLabel(q: Question, mode: TabId, lang: Lang): string {
-    const baseLabel = q.label[lang];
-    return mode === "pre" ? (lang === "th" ? `${baseLabel} (ก่อน PM)` : `${baseLabel} (Pre-PM)`) : (lang === "th" ? `${baseLabel} (หลัง PM)` : `${baseLabel} (Post-PM)`);
+    if (q.no >= 101 && q.no <= 102) return q.label[lang];
+    return q.label[lang].replace(/^(\d+)/, (number) => String(Number(number) + 2));
+}
+
+function getDisplayedQuestionNo(qNo: number): number {
+    if (qNo >= 101 && qNo <= 102) return qNo - 100;
+    return qNo + 2;
 }
 
 const FIELD_GROUPS: Record<number, { keys: readonly string[] } | undefined> = { 5: { keys: VOLTAGE_FIELDS } };
@@ -527,12 +532,8 @@ interface PMValidationCardProps {
     missingPhotoItems: string[];
     allRequiredInputsFilled: boolean;
     missingInputsDetailed: MissingInputItem[];
-    allRemarksFilledPre: boolean;
-    missingRemarksPre: number[];
     allPFAnsweredPost: boolean;
     missingPFItemsPost: number[];
-    allRemarksFilledPost: boolean;
-    missingRemarksPost: number[];
     isSummaryFilled: boolean;
     isSummaryCheckFilled: boolean;
 }
@@ -541,9 +542,7 @@ function PMValidationCard({
     lang, displayTab, isPostMode,
     allPhotosAttached, missingPhotoItems,
     allRequiredInputsFilled, missingInputsDetailed,
-    allRemarksFilledPre, missingRemarksPre,
     allPFAnsweredPost, missingPFItemsPost,
-    allRemarksFilledPost, missingRemarksPost,
     isSummaryFilled, isSummaryCheckFilled,
 }: PMValidationCardProps) {
     const [isExpanded, setIsExpanded] = useState(true);
@@ -553,15 +552,13 @@ function PMValidationCard({
     };
 
     const getPhotoScrollId = (item: string): string => {
-        return `${ID_PREFIX}-photo-${item}`;
-    };
-
-    const getRemarkScrollId = (item: number): string => {
-        return `${ID_PREFIX}-remark-${item}`;
+        const displayNo = Number(item);
+        const storageNo = displayNo <= 2 ? displayNo + 100 : displayNo - 2;
+        return `${ID_PREFIX}-photo-${storageNo}`;
     };
 
     const getPfButtonsScrollId = (item: number): string => {
-        return `${ID_PREFIX}-pf-${item}`;
+        return `${ID_PREFIX}-pf-${item - 2}`;
     };
 
     const getInputScrollId = (qNo: number, fieldKey: string): string => {
@@ -592,27 +589,14 @@ function PMValidationCard({
                 errors.push({
                     section: lang === "th" ? "ค่าที่ต้องกรอก" : "Required Inputs",
                     sectionIcon: "📝",
-                    itemName: `${t("itemLabel", lang)} ${qNo}`,
+                    itemName: `${t("itemLabel", lang)} ${getDisplayedQuestionNo(qNo)}`,
                     message,
                     scrollId,
                 });
             });
         }
 
-        // 3) Remark errors (Pre mode)
-        if (displayTab === "pre" && !allRemarksFilledPre) {
-            missingRemarksPre.forEach((item) => {
-                errors.push({
-                    section: lang === "th" ? "หมายเหตุ" : "Remarks",
-                    sectionIcon: "💬",
-                    itemName: `${t("itemLabel", lang)} ${item}`,
-                    message: lang === "th" ? "ยังไม่ได้กรอกหมายเหตุ" : "Remark not filled",
-                    scrollId: getRemarkScrollId(item),
-                });
-            });
-        }
-
-        // 4) Post mode errors
+        // 3) Post mode errors
         if (isPostMode) {
             // PF status errors
             if (!allPFAnsweredPost) {
@@ -623,19 +607,6 @@ function PMValidationCard({
                         itemName: `${t("itemLabel", lang)} ${item}`,
                         message: lang === "th" ? "ยังไม่ได้เลือก Pass/Fail" : "Pass/Fail not selected",
                         scrollId: getPfButtonsScrollId(item),
-                    });
-                });
-            }
-
-            // Remark errors (Post mode)
-            if (!allRemarksFilledPost) {
-                missingRemarksPost.forEach((item) => {
-                    errors.push({
-                        section: lang === "th" ? "หมายเหตุ (Post)" : "Remarks (Post)",
-                        sectionIcon: "💬",
-                        itemName: `${t("itemLabel", lang)} ${item}`,
-                        message: lang === "th" ? "ยังไม่ได้กรอกหมายเหตุ" : "Remark not filled",
-                        scrollId: getRemarkScrollId(item),
                     });
                 });
             }
@@ -666,9 +637,7 @@ function PMValidationCard({
         lang, displayTab, isPostMode,
         allPhotosAttached, missingPhotoItems,
         allRequiredInputsFilled, missingInputsDetailed,
-        allRemarksFilledPre, missingRemarksPre,
         allPFAnsweredPost, missingPFItemsPost,
-        allRemarksFilledPost, missingRemarksPost,
         isSummaryFilled, isSummaryCheckFilled
     ]);
 
@@ -788,20 +757,20 @@ function InputWithUnit({ label, value, unit, onValueChange, readOnly, disabled, 
     );
 }
 
-function PassFailRow({ label, value, onChange, remark, onRemarkChange, labels, aboveRemark, beforeRemark, lang, id, remarkId }: {
+function PassFailRow({ label, value, onChange, remark, onRemarkChange, labels, aboveRemark, beforeRemark, showPfButtons = true, lang, id, remarkId }: {
     label: string; value: PF; onChange: (v: Exclude<PF, "">) => void; remark?: string; onRemarkChange?: (v: string) => void;
-    labels?: Partial<Record<Exclude<PF, "">, React.ReactNode>>; aboveRemark?: React.ReactNode; beforeRemark?: React.ReactNode; lang: Lang; id?: string; remarkId?: string;
+    labels?: Partial<Record<Exclude<PF, "">, React.ReactNode>>; aboveRemark?: React.ReactNode; beforeRemark?: React.ReactNode; showPfButtons?: boolean; lang: Lang; id?: string; remarkId?: string;
 }) {
     const text = { PASS: labels?.PASS ?? t("pass", lang), FAIL: labels?.FAIL ?? t("fail", lang), NA: labels?.NA ?? t("na", lang) };
     return (
         <div className="tw-space-y-3 tw-py-3">
             <div className="tw-flex tw-flex-col sm:tw-flex-row tw-items-start sm:tw-items-center tw-justify-between tw-gap-2">
                 <Typography className="tw-font-medium">{label}</Typography>
-                <div id={id} className="tw-flex tw-gap-2">
+                {showPfButtons && <div id={id} className="tw-flex tw-gap-2">
                     <Button size="sm" color="green" variant={value === "PASS" ? "filled" : "outlined"} className="tw-min-w-[72px]" onClick={() => onChange("PASS")}>{text.PASS}</Button>
                     <Button size="sm" color="red" variant={value === "FAIL" ? "filled" : "outlined"} className="tw-min-w-[72px]" onClick={() => onChange("FAIL")}>{text.FAIL}</Button>
                     <Button size="sm" color="blue-gray" variant={value === "NA" ? "filled" : "outlined"} className="tw-min-w-[72px]" onClick={() => onChange("NA")}>{text.NA}</Button>
-                </div>
+                </div>}
             </div>
             {onRemarkChange && <div className="tw-space-y-3">{aboveRemark}{beforeRemark}<div id={remarkId}><Textarea label={t("remark", lang)} value={remark || ""} onChange={(e) => onRemarkChange(e.target.value)} containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full" /></div></div>}
         </div>
@@ -965,7 +934,7 @@ export default function CBBOXPMForm() {
     }, [router, searchParams]);
     const editId = searchParams.get("edit_id") ?? "";
     const action = searchParams.get("action");
-    const isPostMode = action === "post";
+    const isPostMode = true;
 
     const [submitting, setSubmitting] = useState(false);
     const [docName, setDocName] = useState("");
@@ -1213,42 +1182,26 @@ export default function CBBOXPMForm() {
 
     // Format missingPhotoItems as string[] for PMValidationCard
     const missingPhotoItemsFormatted = useMemo(() => {
-        return missingPhotoItems.map(no => String(no));
+        return missingPhotoItems.map(no => String(getDisplayedQuestionNo(no)));
     }, [missingPhotoItems]);
 
     const PF_KEYS_PRE = useMemo(() => QUESTIONS.filter(q => q.no !== 9).map(q => q.key), []);
-    const PF_KEYS_POST = useMemo(() => QUESTIONS.filter(q => { if (q.no === 1 || q.no === 2) return false; if (rowsPre[q.key]?.pf === "NA") return false; return true; }).map(q => q.key), [rowsPre]);
+    const PF_KEYS_POST = useMemo(() => QUESTIONS.filter(q => { if (q.key.startsWith("pre_")) return false; if (q.no === 1 || q.no === 2) return false; if (rowsPre[q.key]?.pf === "NA") return false; return true; }).map(q => q.key), [rowsPre]);
 
     const allPFAnsweredPre = useMemo(() => true, []); // Pre mode doesn't require PF
     const missingPFItemsPre = useMemo(() => [] as number[], []);
     const allPFAnsweredPost = useMemo(() => PF_KEYS_POST.every(k => rows[k]?.pf !== ""), [rows, PF_KEYS_POST]);
-    const missingPFItemsPost = useMemo(() => PF_KEYS_POST.filter(k => !rows[k]?.pf).map(k => Number(k.replace("r", ""))).sort((a, b) => a - b), [rows, PF_KEYS_POST]);
+    const missingPFItemsPost = useMemo(() => PF_KEYS_POST.filter(k => !rows[k]?.pf).map(k => getDisplayedQuestionNo(Number(k.replace("r", "")))).sort((a, b) => a - b), [rows, PF_KEYS_POST]);
 
     // For UI display
     const allPFAnsweredForUI = isPostMode ? allPFAnsweredPost : allPFAnsweredPre;
     const missingPFItemsForUI = isPostMode ? missingPFItemsPost : missingPFItemsPre;
 
-    const validRemarkKeysPre = useMemo(() => QUESTIONS.filter(q => q.no !== 9).map(q => q.key), []);
-    const missingRemarksPre = useMemo(() => {
-        const missing: number[] = [];
-        validRemarkKeysPre.forEach(key => { const val = rows[key]; if (val?.pf === "NA") return; if (!val?.remark?.trim()) { const m = key.match(/^r(\d+)$/); if (m) missing.push(parseInt(m[1], 10)); } });
-        return missing.sort((a, b) => a - b);
-    }, [rows, validRemarkKeysPre]);
-    const allRemarksFilledPre = missingRemarksPre.length === 0;
-
-    const validRemarkKeysPost = useMemo(() => QUESTIONS.filter(q => rowsPre[q.key]?.pf !== "NA").map(q => q.key), [rowsPre]);
-    const missingRemarksPost = useMemo(() => {
-        const missing: number[] = [];
-        validRemarkKeysPost.forEach(key => { const val = rows[key]; if (!val?.remark?.trim()) { const m = key.match(/^r(\d+)$/); if (m) missing.push(parseInt(m[1], 10)); } });
-        return missing.sort((a, b) => a - b);
-    }, [rows, validRemarkKeysPost]);
-    const allRemarksFilledPost = missingRemarksPost.length === 0;
-
     const missingInputs = useMemo(() => {
         const r: string[] = [];
         if (rows["r5"]?.pf === "NA" || rowsPre["r5"]?.pf === "NA") return r;
         const missingKeys = FIELD_GROUPS[5]?.keys.filter(k => !m5.state[k]?.value?.trim()) || [];
-        if (missingKeys.length > 0) r.push(`5: ${missingKeys.join(", ")}`);
+        if (missingKeys.length > 0) r.push(`7: ${missingKeys.join(", ")}`);
         return r;
     }, [m5.state, rowsPre, rows]);
 
@@ -1267,8 +1220,8 @@ export default function CBBOXPMForm() {
     const isSummaryFilled = summary.trim().length > 0;
     const isSummaryCheckFilled = summaryCheck !== "";
 
-    const canGoAfter = isPostMode ? true : (allPhotosAttachedPre && allRequiredInputsFilled && allRemarksFilledPre);
-    const canFinalSave = allPhotosAttachedPost && allPFAnsweredPost && allRequiredInputsFilled && allRemarksFilledPost && isSummaryFilled && isSummaryCheckFilled;
+    const canGoAfter = isPostMode ? true : (allPhotosAttachedPre && allRequiredInputsFilled);
+    const canFinalSave = allPhotosAttachedPost && allPFAnsweredPost && allRequiredInputsFilled && isSummaryFilled && isSummaryCheckFilled;
 
     // Auto-save draft
     const photoRefs = useMemo(() => {
@@ -1355,20 +1308,20 @@ export default function CBBOXPMForm() {
                 <SectionCard key={q.key} title={getQuestionLabel(q, mode, lang)} tooltip={qTooltip}>
                     <div className={isNA ? "tw-bg-amber-50/50" : ""}>
                         <div className="tw-flex tw-items-center tw-justify-end tw-gap-2 tw-mb-3">
-                            {isLockedByQ2 && <Typography variant="small" className="tw-text-amber-700 tw-italic">{lang === "th" ? "(N/A ตามข้อ 2)" : "(N/A from Q2)"}</Typography>}
+                            {isLockedByQ2 && <Typography variant="small" className="tw-text-amber-700 tw-italic">{lang === "th" ? "(N/A ตามข้อ 4)" : "(N/A from Q4)"}</Typography>}
                             <Button size="sm" color={isNA ? "amber" : "gray"} variant={isNA ? "filled" : "outlined"} disabled={isLockedByQ2} onClick={() => setRows(prev => ({ ...prev, [q.key]: { ...prev[q.key], pf: isNA ? "" : "NA" } }))}>{isNA ? t("cancelNA", lang) : t("na", lang)}</Button>
                         </div>
                         {q.hasPhoto && <div className="tw-mb-3"><PhotoMultiInput photos={photos[q.no] || []} setPhotos={makePhotoSetter(q.no)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(q.no)} /></div>}
                         {hasMeasure && <div className={`tw-mb-3 ${isNA ? "tw-opacity-50 tw-pointer-events-none" : ""}`}>{renderMeasureGrid(q.no)}</div>}
                         {q.no === 1 && <div className={`tw-mb-4 ${isNA ? "tw-opacity-50 tw-pointer-events-none" : ""}`}><select value={dropdownQ1} onChange={e => setDropdownQ1(e.target.value)} className="tw-w-full tw-max-w-sm tw-px-3 tw-py-2 tw-rounded-lg tw-border tw-border-gray-300 tw-bg-white tw-text-sm focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-blue-500/30"><option value="">{t("selectPowerSource", lang)}</option>{DROPDOWN_Q1_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt[lang]}</option>)}</select></div>}
-                        {q.no === 2 && <div className={`tw-mb-4 ${isNA ? "tw-opacity-50 tw-pointer-events-none" : ""}`}><select value={dropdownQ2} onChange={e => setDropdownQ2(e.target.value)} className="tw-w-full tw-max-w-sm tw-px-3 tw-py-2 tw-rounded-lg tw-border tw-border-gray-300 tw-bg-white tw-text-sm focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-blue-500/30"><option value="">{t("selectDevice", lang)}</option>{DROPDOWN_Q2_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt[lang]}</option>)}</select>{isNA && <Typography variant="small" className="tw-text-amber-700 tw-mt-2">{lang === "th" ? "* ข้อ 5, 6, 7 จะเป็น N/A ตามข้อนี้" : "* Q5, 6, 7 will be N/A accordingly"}</Typography>}</div>}
+                        {q.no === 2 && <div className={`tw-mb-4 ${isNA ? "tw-opacity-50 tw-pointer-events-none" : ""}`}><select value={dropdownQ2} onChange={e => setDropdownQ2(e.target.value)} className="tw-w-full tw-max-w-sm tw-px-3 tw-py-2 tw-rounded-lg tw-border tw-border-gray-300 tw-bg-white tw-text-sm focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-blue-500/30"><option value="">{t("selectDevice", lang)}</option>{DROPDOWN_Q2_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt[lang]}</option>)}</select>{isNA && <Typography variant="small" className="tw-text-amber-700 tw-mt-2">{lang === "th" ? "* ข้อ 7, 8, 9 จะเป็น N/A ตามข้อนี้" : "* Q7, 8, 9 will be N/A accordingly"}</Typography>}</div>}
                         <div id={getRemarkIdFromKey(q.no)}><Textarea label={t("remark", lang)} value={rows[q.key]?.remark || ""} onChange={e => setRows(prev => ({ ...prev, [q.key]: { ...prev[q.key], remark: e.target.value } }))} rows={3} containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full" /></div>
                     </div>
                 </SectionCard>
             );
         }
 
-        if (rowsPre[q.key]?.pf === "NA") return <SectionCard key={q.key} title={getQuestionLabel(q, mode, lang)} tooltip={qTooltip}><SkippedNAItem label={q.label[lang]} remark={rowsPre[q.key]?.remark} lang={lang} /></SectionCard>;
+        if (rowsPre[q.key]?.pf === "NA") return <SectionCard key={q.key} title={getQuestionLabel(q, mode, lang)} tooltip={qTooltip}><SkippedNAItem label={getQuestionLabel(q, mode, lang)} remark={rowsPre[q.key]?.remark} lang={lang} /></SectionCard>;
 
         if (mode === "post" && (q.no === 1 || q.no === 2)) {
             return (
@@ -1384,6 +1337,7 @@ export default function CBBOXPMForm() {
             <SectionCard key={q.key} title={getQuestionLabel(q, mode, lang)} tooltip={qTooltip}>
                 <PassFailRow
                     label={t("testResult", lang)}
+                    showPfButtons={!q.key.startsWith("pre_")}
                     value={rows[q.key]?.pf ?? ""}
                     lang={lang}
                     onChange={v => setRows(prev => ({ ...prev, [q.key]: { ...prev[q.key], pf: v } }))}
@@ -1469,7 +1423,6 @@ export default function CBBOXPMForm() {
         // Validation checks with scroll to error
         if (!allPhotosAttachedPre) { alert(t("alertFillPhoto", lang)); return; }
         if (!allRequiredInputsFilled) { alert(t("alertInputNotComplete", lang)); return; }
-        if (!allRemarksFilledPre) { alert(`${t("alertFillRemark", lang)} ${missingRemarksPre.join(", ")}`); return; }
 
         if (submitting) return;
         setSubmitting(true);
@@ -1507,7 +1460,6 @@ export default function CBBOXPMForm() {
         if (!allPhotosAttachedPost) { alert(t("alertFillPhoto", lang)); return; }
         if (!allPFAnsweredPost) { alert(lang === "th" ? "กรุณาเลือก PASS/FAIL/N/A ทุกข้อ" : "Please select PASS/FAIL/N/A for all items"); return; }
         if (!allRequiredInputsFilled) { alert(t("alertInputNotComplete", lang)); return; }
-        if (!allRemarksFilledPost) { alert(`${t("alertFillRemark", lang)} ${missingRemarksPost.join(", ")}`); return; }
         if (!isSummaryFilled || !isSummaryCheckFilled) { alert(t("alertCompleteAll", lang)); return; }
 
         if (submitting) return;
@@ -1541,7 +1493,7 @@ export default function CBBOXPMForm() {
 
     // Tab navigation
     const active: TabId = useMemo(() => searchParams.get("pmtab") === "post" ? "post" : "pre", [searchParams]);
-    const displayTab: TabId = isPostMode ? "post" : (active === "post" && !canGoAfter ? "pre" : active);
+    const displayTab: TabId = "post";
 
     useEffect(() => {
         const tabParam = searchParams.get("pmtab");
@@ -1571,7 +1523,10 @@ export default function CBBOXPMForm() {
     // ใช้ state ที่โหลดเอกสารมาแล้ว: rowsPre = คำตอบก่อน PM, rows = หลัง PM
     // คีย์ที่ไม่ได้อยู่ใน QUESTIONS (ข้อย่อยแบบ r5_1) เอามาต่อท้ายด้วย จะได้ไม่ตกหล่น
     // cb-box ไม่มีข้อย่อย รูปผูกกับข้อหลักตรงๆ
-    const photoKeysOf = useCallback((row: { key: string }) => [`g${row.key.replace(/^r/, "")}`], []);
+    const photoKeysOf = useCallback((row: { key: string }) => {
+        const question = QUESTIONS.find(q => q.key === row.key);
+        return [`g${question?.no ?? row.key.replace(/^r/, "")}`];
+    }, []);
 
     const compareRows = useMemo(() => {
         // ป้ายหัวข้อต้องตรงกับที่ช่างเห็นตอนกรอก — ข้อย่อยอย่าง r3_1 ฟอร์มสร้างขึ้นมาเอง
@@ -1588,7 +1543,7 @@ export default function CBBOXPMForm() {
         const labelOfItem = (it: any) =>
             it?.label !== undefined ? it.label : it?.labelKey ? (t as any)(it.labelKey, lang) : "";
         (QUESTIONS as any[]).forEach((q: any) => {
-            put(q?.key, labelOfItem(q));
+            put(q?.key, getQuestionLabel(q, "post", lang));
             (q?.items ?? []).forEach((it: any) => put(it?.key, labelOfItem(it)));
         });
         ([] as any[]).forEach((arr: any) =>
@@ -1717,7 +1672,8 @@ export default function CBBOXPMForm() {
                     )}
 
                     {/* เวลาทำงานจริงของช่าง — ต้องกรอกก่อนส่งปิดใบงาน (ส่งเข้า Maximo IN09) */}
-                    {isPostMode && (
+                    {/* Temporarily disabled: Maximo labor input is hidden on all pages. */}
+                    {false && isPostMode && (
                         <div className="tw-mt-6 tw-pt-4 tw-border-t tw-border-gray-200">
                             <div className="tw-mb-2">
                                 <Typography variant="h6" className="tw-text-sm sm:tw-text-base">
@@ -1797,12 +1753,8 @@ export default function CBBOXPMForm() {
                                 missingPhotoItems={missingPhotoItemsFormatted}
                                 allRequiredInputsFilled={allRequiredInputsFilled}
                                 missingInputsDetailed={missingInputsDetailed}
-                                allRemarksFilledPre={allRemarksFilledPre}
-                                missingRemarksPre={missingRemarksPre}
                                 allPFAnsweredPost={allPFAnsweredForUI}
                                 missingPFItemsPost={missingPFItemsForUI}
-                                allRemarksFilledPost={allRemarksFilledPost}
-                                missingRemarksPost={missingRemarksPost}
                                 isSummaryFilled={isSummaryFilled}
                                 isSummaryCheckFilled={isSummaryCheckFilled}
                             />

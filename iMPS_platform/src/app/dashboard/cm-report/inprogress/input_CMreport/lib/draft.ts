@@ -28,6 +28,7 @@ export interface DraftGroup {
 }
 
 export interface DraftData {
+    faulty_equipment?: string;
     corrective_actions: DraftCorrectiveAction[];
     repaired_equipment: string[];
     repair_result: string;

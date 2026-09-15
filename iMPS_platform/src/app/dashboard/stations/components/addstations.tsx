@@ -2,6 +2,7 @@
 import LoadingOverlay from "../../components/Loadingoverlay";
 import { useEffect, useState, useMemo, useRef } from "react";
 import { apiFetch } from "@/utils/api";
+import { WARRANTY_STATUS_OPTIONS, INVESTMENT_SCOPE_OPTIONS, MultiSelectDropdown } from "./stationOptions";
 import {
     Dialog,
     DialogHeader,
@@ -19,7 +20,6 @@ export type ChargerForm = {
     id: string;
     chargerNo: number;
     brand: string;
-    manufacturer: string;
     vendor: string;
     model: string;
     SN: string;
@@ -48,6 +48,9 @@ export type StationForm = {
     is_active: boolean;
     maximo_location: string;
     maximo_desc: string;
+    warranty_status: string;
+    investment_scope: string[];
+    io_code: string;
     stationImages: File[];
     mdbImages: File[];
 };
@@ -91,7 +94,7 @@ const generateId = (): string => {
 };
 
 const createEmptyCharger = (chargerNo: number): ChargerForm => ({
-    id: generateId(), chargerNo, brand: "", manufacturer: "", vendor: "", model: "", SN: "", WO: "", power: "",
+    id: generateId(), chargerNo, brand: "", vendor: "", model: "", SN: "", WO: "", power: "",
     PLCFirmware: "", PIFirmware: "", RTFirmware: "", chargeBoxID: "", ocppUrl: "",
     commissioningDate: getTodayDate(), warrantyYears: 1, numberOfCables: 1, is_active: true,
     maximo_location: "", maximo_desc: "", chargerType: "DC", chargerImages: [], deviceImages: [],
@@ -316,11 +319,13 @@ export default function AddStationModal({
                 stationInfo: "ข้อมูลสถานี", stationName: "ชื่อสถานี", owner: "เจ้าของ",
                 status: "สถานะ", active: "เปิดใช้งาน", inactive: "ปิดใช้งาน",
                 maximoLocation: "Location", maximoDesc: "Description",
+                warrantyStatus: "การรับประกัน", investmentScope: "สัดส่วนการลงทุน", ioCode: "รหัสค่าใช้จ่าย (IO)",
+                selectPlaceholder: "เลือก",
                 stationImages: "รูปภาพสถานี", station: "สถานี", mdb: "MDB",
                 chargers: "ตู้ชาร์จ", addCharger: "เพิ่มตู้ชาร์จ", chargerNo: "ตู้ชาร์จ #",
                 chargerBoxId: "Charge Box ID", ocppUrl: "OCPP URL", ocppSection: "OCPP",
                 chargerType: "ประเภท", chargerNoAuto: "ลำดับ (อัตโนมัติ)", auto: "อัตโนมัติ",
-                brand: "ยี่ห้อ", manufacturer: "ผู้ผลิตตู้ Charger", vendor: "ผู้จำหน่าย (Vendor)", model: "รุ่น", serialNumber: "S/N",
+                brand: "ยี่ห้อ", vendor: "ผู้จำหน่าย (Vendor)", model: "รุ่น", serialNumber: "S/N",
                 workOrder: "WO", power: "กำลังไฟ (kW)", plcFirmware: "PLC Firmware",
                 piFirmware: "Pi Firmware", routerFirmware: "Router Firmware",
                 commissioningDate: "วันเริ่มใช้งาน", warrantyYears: "รับประกัน (ปี)",
@@ -353,11 +358,13 @@ export default function AddStationModal({
                 stationInfo: "Station Information", stationName: "Station Name", owner: "Owner",
                 status: "Status", active: "Active", inactive: "Inactive",
                 maximoLocation: "Location", maximoDesc: "Description",
+                warrantyStatus: "Warranty", investmentScope: "Investment Scope", ioCode: "Expense Code (IO)",
+                selectPlaceholder: "Select",
                 stationImages: "Station Images", station: "Station", mdb: "MDB",
                 chargers: "Chargers", addCharger: "Add Charger", chargerNo: "Charger #",
                 chargerBoxId: "Charge Box ID", ocppUrl: "OCPP URL", ocppSection: "OCPP",
                 chargerType: "Type", chargerNoAuto: "No. (Auto)", auto: "Auto",
-                brand: "Brand", manufacturer: "Charger Manufacturer", vendor: "Vendor", model: "Model", serialNumber: "S/N",
+                brand: "Brand", vendor: "Vendor", model: "Model", serialNumber: "S/N",
                 workOrder: "WO", power: "Power (kW)", plcFirmware: "PLC Firmware",
                 piFirmware: "Pi Firmware", routerFirmware: "Router Firmware",
                 commissioningDate: "Commissioning Date", warrantyYears: "Warranty (Yrs)",
@@ -392,7 +399,8 @@ export default function AddStationModal({
     /* ── state ── */
     const [station, setStation] = useState<StationForm>({
         station_id: "", station_name: "", owner: "", is_active: true,
-        maximo_location: "", maximo_desc: "", stationImages: [], mdbImages: [],
+        maximo_location: "", maximo_desc: "", warranty_status: "", investment_scope: [], io_code: "",
+        stationImages: [], mdbImages: [],
     });
     const [stationPreviews, setStationPreviews] = useState<Record<StationImageKind, string[]>>({ station: [], mdb: [] });
     const [chargerPreviews, setChargerPreviews] = useState<Record<string, { charger: string[]; device: string[] }>>({});
@@ -699,9 +707,11 @@ export default function AddStationModal({
                 station_id: station.station_id.trim(), station_name: station.station_name.trim(),
                 owner: (station.owner || currentUser).trim(), is_active: station.is_active,
                 maximo_location: station.maximo_location.trim(), maximo_desc: station.maximo_desc.trim(),
+                warranty_status: station.warranty_status, investment_scope: station.investment_scope,
+                io_code: station.io_code.trim(),
             },
             chargers: chargers.map((c) => ({
-                chargerNo: c.chargerNo, brand: c.brand.trim(), manufacturer: c.manufacturer.trim(), vendor: c.vendor.trim(), model: c.model.trim(),
+                chargerNo: c.chargerNo, brand: c.brand.trim(), vendor: c.vendor.trim(), model: c.model.trim(),
                 SN: c.SN.trim(), WO: c.WO.trim(), power: c.power.trim(),
                 PLCFirmware: c.PLCFirmware.trim(), PIFirmware: c.PIFirmware.trim(),
                 RTFirmware: c.RTFirmware.trim(), chargeBoxID: c.chargeBoxID.trim(),
@@ -750,7 +760,7 @@ export default function AddStationModal({
     const resetAndClose = () => {
         Object.values(stationPreviews).forEach((urls) => urls.forEach((u) => u && URL.revokeObjectURL(u)));
         Object.values(chargerPreviews).forEach((p) => { p.charger?.forEach((u) => URL.revokeObjectURL(u)); p.device?.forEach((u) => URL.revokeObjectURL(u)); });
-        setStation({ station_id: "", station_name: "", owner: isAdmin ? "" : currentUser, is_active: true, maximo_location: "", maximo_desc: "", stationImages: [], mdbImages: [] });
+        setStation({ station_id: "", station_name: "", owner: isAdmin ? "" : currentUser, is_active: true, maximo_location: "", maximo_desc: "", warranty_status: "", investment_scope: [], io_code: "", stationImages: [], mdbImages: [] });
         setStationPreviews({ station: [], mdb: [] });
         setChargerPreviews({});
         setChargers([]);
@@ -900,6 +910,20 @@ export default function AddStationModal({
                                         <Option value="true">{t.active}</Option>
                                         <Option value="false">{t.inactive}</Option>
                                     </Select>
+                                    <Select label={t.warrantyStatus} value={station.warranty_status} onChange={(v) => onStationChange("warranty_status", v ?? "")}>
+                                        {WARRANTY_STATUS_OPTIONS.map((o) => (
+                                            <Option key={o.value} value={o.value}>{o[lang]}</Option>
+                                        ))}
+                                    </Select>
+                                    <MultiSelectDropdown
+                                        label={t.investmentScope}
+                                        options={INVESTMENT_SCOPE_OPTIONS}
+                                        selected={station.investment_scope}
+                                        onChange={(next) => onStationChange("investment_scope", next)}
+                                        lang={lang}
+                                        emptyLabel={t.selectPlaceholder}
+                                    />
+                                    <Input label={t.ioCode} value={station.io_code} onChange={(e) => onStationChange("io_code", e.target.value)} crossOrigin={undefined} />
                                 </div>
 
                                 {/* images */}
@@ -993,7 +1017,6 @@ export default function AddStationModal({
                                                 <Option value="AC">AC</Option>
                                             </Select>
                                              <Input label={t.brand} required value={charger.brand} onChange={(e) => onChargerChange(charger.id, "brand", e.target.value)} crossOrigin={undefined} />
-                                             <Input label={t.manufacturer} value={charger.manufacturer} onChange={(e) => onChargerChange(charger.id, "manufacturer", e.target.value)} crossOrigin={undefined} />
                                              <Input label={t.vendor} value={charger.vendor} onChange={(e) => onChargerChange(charger.id, "vendor", e.target.value)} crossOrigin={undefined} />
                                              <Input label={t.model} required value={charger.model} onChange={(e) => onChargerChange(charger.id, "model", e.target.value)} crossOrigin={undefined} />
                                             <Input label={t.serialNumber} required value={charger.SN} onChange={(e) => onChargerChange(charger.id, "SN", e.target.value)} crossOrigin={undefined} />

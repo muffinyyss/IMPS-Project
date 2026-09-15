@@ -501,13 +501,16 @@ def station_info_public(
         if station_id:
             station_doc = station_collection.find_one(
                 {"station_id": station_id},
-                {"_id": 0, "station_name": 1}
+                {"_id": 0, "station_name": 1, "warranty_status": 1, "investment_scope": 1, "io_code": 1}
             )
 
         # สร้าง response โดยรวมข้อมูลจาก charger + station
         doc = {
             "station_id": station_id,
             "station_name": station_doc.get("station_name", "") if station_doc else "",
+            "warranty_status": (station_doc.get("warranty_status", "") if station_doc else ""),
+            "investment_scope": (station_doc.get("investment_scope", []) if station_doc else []) or [],
+            "io_code": (station_doc.get("io_code", "") if station_doc else ""),
             "SN": charger_doc.get("SN"),
             "chargeBoxID": charger_doc.get("chargeBoxID"),
             "brand": charger_doc.get("brand"),
@@ -538,6 +541,9 @@ def station_info_public(
                 "chargerNo": 1,
                 "PIFirmware":1,
                 "chargingCables": 1,
+                "warranty_status": 1,
+                "investment_scope": 1,
+                "io_code": 1,
             }
         )
         if not doc:
