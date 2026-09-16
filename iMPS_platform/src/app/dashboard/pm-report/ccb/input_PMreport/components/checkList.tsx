@@ -473,6 +473,12 @@ const T = {
     q1: { th: "1) ตรวจสอบสภาพทั่วไป", en: "1) General condition inspection" },
     preQ1: { th: "1) ตรวจสอบสภาพทั่วไป (ก่อนบำรุงรักษา)", en: "1) General condition (before maintenance)" },
     preQ2: { th: "2) อุปกรณ์ชำรุดเสียหาย (ก่อนบำรุงรักษา)", en: "2) Damaged equipment (before maintenance)" },
+    preQ3: { th: "3) ตรวจสอบสภาพแหล่งจ่ายไฟ MDB", en: "3) Inspect MDB power supply condition" },
+    preQ3_tooltip: { th: "ตรวจสอบสภาพอุปกรณ์แหล่งจ่ายไฟของตู้ CCB", en: "Inspect the CCB power supply equipment" },
+    preQ3_1: { th: "Main CB", en: "Main CB" },
+    preQ3_2: { th: "CB", en: "CB" },
+    preQ3_3: { th: "Power Meter (Voltage)", en: "Power Meter (Voltage)" },
+    preQ3_4: { th: "Transformer", en: "Transformer" },
     q2: { th: "2) ตรวจสอบสภาพดักซีล, ซิลิโคนกันซึม", en: "2) Seal and silicone waterproofing inspection" },
     q3: { th: "3) ตรวจสอบระบบระบายอากาศ", en: "3) Ventilation system inspection" },
     q3_1: { th: "ตรวจสอบการทำงานอุปกรณ์ตั้งอุณหภูมิ", en: "Temperature controller operation check" },
@@ -573,6 +579,7 @@ const formatPhotoKeyNumber = (key: number): string => {
     if (key === 1002) return "2";
     if (key === 90) return "9";
     if (key >= 101 && key <= 106) return `10-${key - 100}`;
+    if (key >= 1031 && key <= 1034) return `103-${key - 1030}`;
     if (key >= 30 && key < 90) return `${Math.floor(key / 10)}-${key % 10}`;
     return String(key);
 };
@@ -678,6 +685,15 @@ type Question =
 const QUESTIONS: Question[] = [
     { no: 101, key: "pre_r1", labelKey: "preQ1", kind: "simple", hasPhoto: true, tooltipKey: "q1_tooltip" },
     { no: 102, key: "pre_r2", labelKey: "preQ2", kind: "simple", hasPhoto: true, tooltipKey: "q1_tooltip" },
+    {
+        no: 103, key: "r103", labelKey: "preQ3", kind: "group", hasPhoto: true, tooltipKey: "preQ3_tooltip",
+        items: [
+            { key: "r103_1", labelKey: "preQ3_1" },
+            { key: "r103_2", labelKey: "preQ3_2" },
+            { key: "r103_3", labelKey: "preQ3_3" },
+            { key: "r103_4", labelKey: "preQ3_4" },
+        ],
+    },
     { no: 1, key: "r1", labelKey: "q1", kind: "simple", hasPhoto: true, tooltipKey: "q1_tooltip" },
     { no: 2, key: "r2", labelKey: "q2", kind: "simple", hasPhoto: true, tooltipKey: "q2_tooltip" },
     {
@@ -734,19 +750,24 @@ function getQuestionLabel(q: Question, mode: TabId, lang: Lang): string {
     return label.replace(/^\d+(?=[.)])/, String(getDisplayedQuestionNo(q.no)));
 }
 
-const getDisplayedQuestionNo = (qNo: number): number => qNo >= 100 ? qNo - 100 : qNo + 2;
+// ข้อ 1-3 (no 101-103) เพิ่มไว้หน้าฟอร์ม ข้อเดิม no=1..11 ยังใช้คีย์ชุดเดิมใน DB
+// จึงเลื่อนเฉพาะเลขที่แสดงผล
+const DISPLAY_SHIFT = 3;
+
+const getDisplayedQuestionNo = (qNo: number): number => qNo >= 100 ? qNo - 100 : qNo + DISPLAY_SHIFT;
 
 const getDisplayedItemLabel = (label: string): string =>
-    label.replace(/^(\d+)(?=[.)])/, (_, qNo: string) => String(Number(qNo) + 2));
+    label.replace(/^(\d+)(?=[.)])/, (_, qNo: string) => String(Number(qNo) + DISPLAY_SHIFT));
 
 const getDisplayedRowNo = (key: string): string => {
     if (key === "pre_r1") return "1";
     if (key === "pre_r2") return "2";
-    if (key === "r9_main") return "11";
+    if (key === "r9_main") return String(9 + DISPLAY_SHIFT);
     const subBreaker = key.match(/^r10_sub(\d+)$/);
-    if (subBreaker) return `12.${subBreaker[1]}`;
+    if (subBreaker) return `${10 + DISPLAY_SHIFT}.${subBreaker[1]}`;
     const row = key.match(/^r(\d+)(?:_(\d+))?$/);
-    if (row) return row[2] ? `${Number(row[1]) + 2}.${row[2]}` : String(Number(row[1]) + 2);
+    if (row && Number(row[1]) >= 100) return row[2] ? `${Number(row[1]) - 100}.${row[2]}` : String(Number(row[1]) - 100);
+    if (row) return row[2] ? `${Number(row[1]) + DISPLAY_SHIFT}.${row[2]}` : String(Number(row[1]) + DISPLAY_SHIFT);
     return key;
 };
 
@@ -879,14 +900,15 @@ function PMValidationCard({
     const getPhotoScrollId = (item: string): string => {
         const parts = item.split('.');
         const displayedNo = Number(parts[0]);
-        const internalNo = displayedNo <= 2 ? displayedNo : displayedNo - 2;
+        const internalNo = displayedNo <= 2 ? displayedNo : displayedNo === 3 ? 103 : displayedNo - 3;
         if (parts.length === 2) return `${ID_PREFIX}-photo-${internalNo}-${parts[1]}`;
         return `${ID_PREFIX}-photo-${internalNo}`;
     };
 
     const getPfButtonsScrollId = (item: string): string => {
         const parts = item.split('.');
-        const internalNo = Number(parts[0]) - 2;
+        const displayedPfNo = Number(parts[0]);
+        const internalNo = displayedPfNo === 3 ? 103 : displayedPfNo - 3;
         if (parts.length === 2) return `${ID_PREFIX}-pf-${internalNo}-${parts[1]}`;
         return `${ID_PREFIX}-pf-${internalNo}`;
     };
@@ -1890,6 +1912,7 @@ export default function CCBPMReport() {
         else if (key === 1002) { rowKey = "pre_r2"; }
         else if (key === 90) { rowKey = "r9_main"; }
         else if (key >= 101 && key <= 106) { rowKey = `r10_sub${key - 100}`; }
+        else if (key >= 1031 && key <= 1034) { rowKey = `r103_${key - 1030}`; }
         else if (key >= 30 && key < 90) { const qNo = Math.floor(key / 10); const subNo = key % 10; rowKey = `r${qNo}_${subNo}`; }
         else { rowKey = `r${key}`; }
         if (rowKey && rows[rowKey]?.pf === "NA") return false;
@@ -1902,6 +1925,7 @@ export default function CCBPMReport() {
         else if (key === 1002) { rowKey = "pre_r2"; }
         else if (key === 90) { rowKey = "r9_main"; }
         else if (key >= 101 && key <= 106) { rowKey = `r10_sub${key - 100}`; }
+        else if (key >= 1031 && key <= 1034) { rowKey = `r103_${key - 1030}`; }
         else if (key >= 30 && key < 90) { const qNo = Math.floor(key / 10); const subNo = key % 10; rowKey = `r${qNo}_${subNo}`; }
         else { rowKey = `r${key}`; }
         if (rowKey && rowsPre[rowKey]?.pf === "NA") return false;
@@ -1998,6 +2022,7 @@ export default function CCBPMReport() {
         if (no === 1001 || no === 1002) return `g${no}`;
         if (no === 90) return "g9";
         if (no >= 101 && no <= 106) return `g10_${no - 100}`;
+        if (no >= 1031 && no <= 1034) return `g103_${no - 1030}`;
         if (no >= 30 && no < 90) return `g${Math.floor(no / 10)}_${no % 10}`;
         return `g${no}`;
     };
@@ -2335,7 +2360,7 @@ export default function CCBPMReport() {
                             {q.items.map((item, idx) => {
                                 const photoKey = getPhotoKeyForQuestion(q, item.key);
                                 const isItemNA = rows[item.key]?.pf === "NA";
-                                const subLabel = `${q.no}.${idx + 1}) ${t(item.labelKey, lang)}`;
+                                const subLabel = `${getDisplayedQuestionNo(q.no)}.${idx + 1}) ${t(item.labelKey, lang)}`;
                                 // max = รูปที่แนบไว้แล้วใน slot นี้ + ส่วนที่เหลือในกลุ่ม
                                 const itemMax = Math.min(10, (photos[photoKey]?.length ?? 0) + groupRemaining);
                                 return (
@@ -2533,7 +2558,7 @@ export default function CCBPMReport() {
                             </Typography>
                             <div className="tw-divide-y tw-divide-gray-200">
                                 {q.items.map((item, idx) => {
-                                    const subLabel = `${q.no}.${idx + 1}) ${t(item.labelKey, lang)}`;
+                                    const subLabel = `${getDisplayedQuestionNo(q.no)}.${idx + 1}) ${t(item.labelKey, lang)}`;
                                     if (rowsPre[item.key]?.pf === "NA") {
                                         return (
                                             <div key={item.key} className="tw-py-4 first:tw-pt-2 tw-bg-amber-50/50">
@@ -2735,10 +2760,11 @@ export default function CCBPMReport() {
         return items.map(no => {
             if (no === 1001) return "1";
             if (no === 1002) return "2";
-            if (no === 90) return "11";
-            if (no >= 101 && no <= 106) return `12.${no - 100}`;
-            if (no >= 30 && no < 90) return `${Math.floor(no / 10) + 2}.${no % 10}`;
-            return String(no + 2);
+            if (no === 90) return String(9 + DISPLAY_SHIFT);
+            if (no >= 101 && no <= 106) return `${10 + DISPLAY_SHIFT}.${no - 100}`;
+            if (no >= 1031 && no <= 1034) return `3.${no - 1030}`;
+            if (no >= 30 && no < 90) return `${Math.floor(no / 10) + DISPLAY_SHIFT}.${no % 10}`;
+            return String(no + DISPLAY_SHIFT);
         }).join(", ");
     };
 
@@ -2746,10 +2772,11 @@ export default function CCBPMReport() {
         return missingPhotoItems.map(no => {
             if (no === 1001) return "1";
             if (no === 1002) return "2";
-            if (no === 90) return "11";
-            if (no >= 101 && no <= 106) return `12.${no - 100}`;
-            if (no >= 30 && no < 90) return `${Math.floor(no / 10) + 2}.${no % 10}`;
-            return String(no + 2);
+            if (no === 90) return String(9 + DISPLAY_SHIFT);
+            if (no >= 101 && no <= 106) return `${10 + DISPLAY_SHIFT}.${no - 100}`;
+            if (no >= 1031 && no <= 1034) return `3.${no - 1030}`;
+            if (no >= 30 && no < 90) return `${Math.floor(no / 10) + DISPLAY_SHIFT}.${no % 10}`;
+            return String(no + DISPLAY_SHIFT);
         });
     }, [missingPhotoItems]);
 

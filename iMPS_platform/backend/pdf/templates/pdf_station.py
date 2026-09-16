@@ -652,6 +652,11 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None, row_titles: dic
 
     # เรียงลำดับข้อหลัก
     for main_idx in sorted(grouped.keys()):
+        # หัวข้อที่ฟอร์มเพิ่มเข้ามาแต่ PDF ยังไม่มีชุดหัวข้อรองรับ (เช่น ข้อ 3 แหล่งจ่ายไฟ no=103)
+        # ข้ามไป ไม่งั้นจะโผล่เป็นแถว "รายการที่ 103" ต่อท้ายใบ แบบเดียวกับ pdf_mdb/pdf_cbbox
+        if f"r{main_idx}" not in row_titles:
+            continue
+
         group = grouped[main_idx]
         main_key = group["main"]
         subs = sorted(group["subs"], key=lambda x: x[0])  # เรียงตาม sub_idx
