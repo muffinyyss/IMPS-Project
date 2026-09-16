@@ -428,6 +428,16 @@ type Question =
 const QUESTIONS_RAW = [
     { no: 101, key: "pre_r1", label: { th: "1) ตรวจสอบสภาพทั่วไป (ก่อนบำรุงรักษา)", en: "1) General condition (before maintenance)" }, kind: "simple", hasPhoto: true, tooltip: { th: "บันทึกสภาพสถานีก่อนเริ่มบำรุงรักษา", en: "Record the station condition before maintenance" } },
     { no: 102, key: "pre_r2", label: { th: "2) อุปกรณ์ชำรุดเสียหาย (ก่อนบำรุงรักษา)", en: "2) Damaged equipment (before maintenance)" }, kind: "simple", hasPhoto: true, tooltip: { th: "บันทึกอุปกรณ์ที่ชำรุดเสียหายก่อนเริ่มบำรุงรักษา", en: "Record damaged equipment before maintenance" } },
+    {
+        no: 103, key: "r103", label: { th: "3. ตรวจสอบสภาพแหล่งจ่ายไฟ MDB", en: "3. Inspect MDB power supply condition" }, kind: "group", hasPhoto: true,
+        tooltip: { th: "ตรวจสอบสภาพอุปกรณ์แหล่งจ่ายไฟของสถานี", en: "Inspect the station's power supply equipment" },
+        items: [
+            { key: "r103_1", label: { th: "3.1) Main CB", en: "3.1) Main CB" } },
+            { key: "r103_2", label: { th: "3.2) CB", en: "3.2) CB" } },
+            { key: "r103_3", label: { th: "3.3) Power Meter (Voltage)", en: "3.3) Power Meter (Voltage)" } },
+            { key: "r103_4", label: { th: "3.4) Transformer", en: "3.4) Transformer" } },
+        ],
+    },
     { no: 1, key: "r1", label: { th: "1. ตรวจสอบโครงสร้างสถานี", en: "1. Check station structure" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบความมั่นคงแข็งแรงของเสาและหลังคาว่าไม่มีการทรุดตัวและไม่มีรอยร้าวในโครงสร้างหลักหรือรอยแยกบริเวณรอยต่อ", en: "Check the stability of pillars and roof for any subsidence, cracks in main structure, or separation at joints" } },
     { no: 2, key: "r2", label: { th: "2. ตรวจสอบสีโครงสร้างสถานี", en: "2. Check station structure paint" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบการหลุดร่อน พองตัว หรือการเกิดสนิมบนพื้นผิวโลหะ", en: "Check for peeling, blistering, or rust formation on metal surfaces" } },
     { no: 3, key: "r3", label: { th: "3. ตรวจสอบพื้นผิวสถานี", en: "3. Check station surface" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบสภาพพื้นผิวคอนกรีตหรือวัสดุปูพื้นต้องไม่มีรอยแตกร้าว", en: "Check concrete surface or flooring material for cracks or damage" } },
@@ -474,19 +484,29 @@ const QUESTIONS: Question[] = QUESTIONS_RAW.filter(
     (q) => q.kind === "simple" || q.kind === "group"
 ) as Question[];
 
+// ข้อ 1-3 (101-103) เป็นหัวข้อที่เพิ่มไว้หน้าฟอร์ม เลขที่แสดงตรงกับที่เขียนไว้ในป้ายอยู่แล้ว
+// ส่วนข้อเดิม no=1..11 ยังเก็บคีย์ชุดเดิมใน DB จึงเลื่อนเฉพาะเลขที่แสดงผล
+const DISPLAY_SHIFT = 3;
+
 function getQuestionLabel(q: Question, mode: TabId, lang: Lang): string {
-    if (q.no >= 101 && q.no <= 102) return q.label[lang];
-    return q.label[lang].replace(/^(\d+)/, (number) => String(Number(number) + 2));
+    if (q.no >= 101 && q.no <= 103) return q.label[lang];
+    return q.label[lang].replace(/^(\d+)/, (number) => String(Number(number) + DISPLAY_SHIFT));
 }
 
 function getDisplayedQuestionNo(qNo: number): number {
-    if (qNo >= 101 && qNo <= 102) return qNo - 100;
-    return qNo + 2;
+    if (qNo >= 101 && qNo <= 103) return qNo - 100;
+    return qNo + DISPLAY_SHIFT;
 }
 
 function getDisplayedItemLabel(label: string, qNo: number): string {
-    if (qNo >= 101 && qNo <= 102) return label;
-    return label.replace(/^(\d+)/, (number) => String(Number(number) + 2));
+    if (qNo >= 101 && qNo <= 103) return label;
+    return label.replace(/^(\d+)/, (number) => String(Number(number) + DISPLAY_SHIFT));
+}
+
+// เลขที่แสดง -> เลขที่ใช้เป็น id ในหน้าฟอร์ม (เลขเก็บจริง) สำหรับเลื่อนหน้าจอไปที่ข้อนั้น
+function displayedNoToStorageNo(displayNo: number): number {
+    if (displayNo <= 3) return displayNo + 100;
+    return displayNo - DISPLAY_SHIFT;
 }
 
 function getDisplayedRowNo(key: string): string {
@@ -600,7 +620,7 @@ function PMValidationCard({
     const getPhotoScrollId = (item: string): string => {
         const parts = item.split(".");
         const displayNo = Number(parts[0]);
-        const storageNo = displayNo <= 2 ? displayNo + 100 : displayNo - 2;
+        const storageNo = displayedNoToStorageNo(displayNo);
         if (parts.length === 2) return `${ID_PREFIX}-photo-${storageNo}-${parts[1]}`;
         return `${ID_PREFIX}-photo-${storageNo}`;
     };
@@ -608,7 +628,7 @@ function PMValidationCard({
     const getPfScrollId = (item: string): string => {
         const parts = item.split(".");
         const displayNo = Number(parts[0]);
-        const storageNo = displayNo <= 2 ? displayNo + 100 : displayNo - 2;
+        const storageNo = displayedNoToStorageNo(displayNo);
         if (parts.length === 2) return `${ID_PREFIX}-pf-${storageNo}-${parts[1]}`;
         return `${ID_PREFIX}-pf-${storageNo}`;
     };
@@ -1444,20 +1464,21 @@ export default function StationPMReport() {
     const canFinalSave = allPhotosAttachedPost && allPFAnswered && isSummaryFilled && isSummaryCheckFilled;
 
     // Helper functions for scroll IDs
+    // รายการที่ค้างเก็บเป็น "เลขที่แสดง" ส่วน id ในหน้าอิงเลขเก็บจริง ต้องแปลงก่อนเสมอ
     const getFirstMissingPhotoScrollId = (): string | null => {
         if (missingPhotoItems.length === 0) return null;
-        const first = missingPhotoItems[0];
-        const parts = first.split(".");
-        if (parts.length === 2) return `${ID_PREFIX}-photo-${parts[0]}-${parts[1]}`;
-        return `${ID_PREFIX}-photo-${parts[0]}`;
+        const parts = missingPhotoItems[0].split(".");
+        const storageNo = displayedNoToStorageNo(Number(parts[0]));
+        if (parts.length === 2) return `${ID_PREFIX}-photo-${storageNo}-${parts[1]}`;
+        return `${ID_PREFIX}-photo-${storageNo}`;
     };
 
     const getFirstMissingPFScrollId = (): string | null => {
         if (missingPFItems.length === 0) return null;
-        const first = missingPFItems[0];
-        const parts = first.split(".");
-        if (parts.length === 2) return `${ID_PREFIX}-pf-${parts[0]}-${parts[1]}`;
-        return `${ID_PREFIX}-pf-${parts[0]}`;
+        const parts = missingPFItems[0].split(".");
+        const storageNo = displayedNoToStorageNo(Number(parts[0]));
+        if (parts.length === 2) return `${ID_PREFIX}-pf-${storageNo}-${parts[1]}`;
+        return `${ID_PREFIX}-pf-${storageNo}`;
     };
 
     // Photo refs for draft

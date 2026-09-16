@@ -65,7 +65,7 @@ const baseRoutes = [
       },
       {
         layout: "dashboard",
-        icon: <i className="fa fa-file-alt" />,
+        icon: <i className="fa fa-table-list" />,
         // ตารางใบงาน PM รวมทุกสถานี — แพทเทิร์นเดียวกับ CM List
         // technician ต้องเห็นด้วย (เหมือน CM List) จะได้ตามงานที่ถูกมอบหมายได้
         name: "PM List",

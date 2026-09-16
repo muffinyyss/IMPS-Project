@@ -360,6 +360,16 @@ const getPfIdFromKey = (key: string | number): string => {
 const QUESTIONS_DATA = [
     { no: 101, key: "pre_r1", label: { th: "1) ตรวจสอบสภาพทั่วไป (ก่อนบำรุงรักษา)", en: "1) General condition (before maintenance)" }, kind: "simple", hasPhoto: true, tooltip: { th: "บันทึกสภาพกล่องก่อนเริ่มบำรุงรักษา", en: "Record the box condition before maintenance" } },
     { no: 102, key: "pre_r2", label: { th: "2) อุปกรณ์ชำรุดเสียหาย (ก่อนบำรุงรักษา)", en: "2) Damaged equipment (before maintenance)" }, kind: "simple", hasPhoto: true, tooltip: { th: "บันทึกอุปกรณ์ที่ชำรุดเสียหายก่อนเริ่มบำรุงรักษา", en: "Record damaged equipment before maintenance" } },
+    {
+        no: 103, key: "r103", label: { th: "3) ตรวจสอบสภาพแหล่งจ่ายไฟ MDB", en: "3) Inspect MDB power supply condition" }, kind: "group", hasPhoto: true,
+        tooltip: { th: "ตรวจสอบสภาพอุปกรณ์แหล่งจ่ายไฟของตู้ CB Box", en: "Inspect the CB Box power supply equipment" },
+        items: [
+            { key: "r103_1", label: { th: "3.1) Main CB", en: "3.1) Main CB" } },
+            { key: "r103_2", label: { th: "3.2) CB", en: "3.2) CB" } },
+            { key: "r103_3", label: { th: "3.3) Power Meter (Voltage)", en: "3.3) Power Meter (Voltage)" } },
+            { key: "r103_4", label: { th: "3.4) Transformer", en: "3.4) Transformer" } },
+        ],
+    },
     { no: 1, key: "r1", label: { th: "1) การไฟฟ้าฝ่ายจำหน่าย", en: "1) Power distribution authority" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบระบบจำหน่าย", en: "Check distribution system" } },
     { no: 2, key: "r2", label: { th: "2) ตรวจสอบอุปกรณ์ตัดวงจรไฟฟ้า", en: "2) Check circuit breaker device" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบอุปกรณ์ตัดตอน", en: "Inspect circuit breaker" } },
     { no: 3, key: "r3", label: { th: "3) ตรวจสอบสภาพทั่วไป", en: "3) General condition inspection" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบความแข็งแรงของตู้", en: "Check cabinet integrity" } },
@@ -403,17 +413,64 @@ type PF = "PASS" | "FAIL" | "NA" | "";
 const VOLTAGE_FIELDS = ["L1-N", "L2-N", "L3-N", "L1-G", "L2-G", "L3-G", "L1-L2", "L2-L3", "L3-L1", "N-G"] as const;
 const LABELS: Record<string, string> = { "L1-N": "L1-N", "L2-N": "L2-N", "L3-N": "L3-N", "L1-G": "L1-G", "L2-G": "L2-G", "L3-G": "L3-G", "L1-L2": "L1-L2", "L2-L3": "L2-L3", "L3-L1": "L3-L1", "N-G": "N-G" };
 
-type Question = { no: number; key: string; label: { th: string; en: string }; kind: string; hasPhoto?: boolean; tooltip?: { th: string; en: string } };
+type QuestionItem = { key: string; label: { th: string; en: string } };
+type Question = { no: number; key: string; label: { th: string; en: string }; kind: string; hasPhoto?: boolean; tooltip?: { th: string; en: string }; items?: QuestionItem[] };
 const QUESTIONS = QUESTIONS_DATA as unknown as Question[];
 
+// ข้อ 1-3 (no 101-103) เป็นหัวข้อที่เพิ่มไว้หน้าฟอร์ม ป้ายของมันเขียนเลขที่แสดงไว้ตรงแล้ว
+// ข้อเดิม no=1..9 ยังใช้คีย์ชุดเดิมใน DB จึงเลื่อนเฉพาะเลขที่แสดงผล
+const DISPLAY_SHIFT = 3;
+
 function getQuestionLabel(q: Question, mode: TabId, lang: Lang): string {
-    if (q.no >= 101 && q.no <= 102) return q.label[lang];
-    return q.label[lang].replace(/^(\d+)/, (number) => String(Number(number) + 2));
+    if (q.no >= 101 && q.no <= 103) return q.label[lang];
+    return q.label[lang].replace(/^(\d+)/, (number) => String(Number(number) + DISPLAY_SHIFT));
 }
 
 function getDisplayedQuestionNo(qNo: number): number {
-    if (qNo >= 101 && qNo <= 102) return qNo - 100;
-    return qNo + 2;
+    if (qNo >= 101 && qNo <= 103) return qNo - 100;
+    return qNo + DISPLAY_SHIFT;
+}
+
+// คีย์รูปของข้อย่อย = no*10 + ลำดับข้อย่อย (103 -> 1031..1034) ข้อธรรมดายังใช้ no ตรง ๆ
+function getSubPhotoKey(qNo: number, idx: number): number {
+    return qNo * 10 + idx + 1;
+}
+
+function isSubPhotoKey(photoKey: number): boolean {
+    return photoKey > 1000;
+}
+
+// คีย์รูป -> คีย์คำตอบใน rows (1031 -> r103_1)
+function rowKeyOfPhotoKey(photoKey: number): string {
+    if (!isSubPhotoKey(photoKey)) return `r${photoKey}`;
+    return `r${Math.floor(photoKey / 10)}_${photoKey % 10}`;
+}
+
+// คีย์รูป -> เลขข้อที่แสดงให้ช่างเห็น (1031 -> "3.1")
+function displayedNoOfPhotoKey(photoKey: number): string {
+    if (!isSubPhotoKey(photoKey)) return String(getDisplayedQuestionNo(photoKey));
+    return `${getDisplayedQuestionNo(Math.floor(photoKey / 10))}.${photoKey % 10}`;
+}
+
+// คีย์รูป -> ท้าย id ในหน้าฟอร์ม (1031 -> "103-1")
+function idSuffixOfPhotoKey(photoKey: number): string {
+    if (!isSubPhotoKey(photoKey)) return String(photoKey);
+    return `${Math.floor(photoKey / 10)}-${photoKey % 10}`;
+}
+
+// คีย์รูป -> ชื่อกลุ่มที่ backend เก็บ (1031 -> g103_1) ต้องใช้สูตรเดียวกันทั้งตอนอัปและตอนตรวจยอด
+function photoGroupKey(photoKey: string | number): string {
+    const no = Number(photoKey);
+    if (!Number.isFinite(no)) return `g${photoKey}`;
+    return isSubPhotoKey(no) ? `g${Math.floor(no / 10)}_${no % 10}` : `g${no}`;
+}
+
+// เลขข้อที่แสดง -> ท้าย id ในหน้าฟอร์ม ("3.1" -> "103-1", "4" -> "1")
+function idSuffixOfDisplayedNo(item: string): string {
+    const [mainStr, subStr] = item.split(".");
+    const mainNo = Number(mainStr);
+    const storageNo = mainNo <= 3 ? mainNo + 100 : mainNo - DISPLAY_SHIFT;
+    return subStr ? `${storageNo}-${subStr}` : String(storageNo);
 }
 
 const FIELD_GROUPS: Record<number, { keys: readonly string[] } | undefined> = { 5: { keys: VOLTAGE_FIELDS } };
@@ -533,7 +590,7 @@ interface PMValidationCardProps {
     allRequiredInputsFilled: boolean;
     missingInputsDetailed: MissingInputItem[];
     allPFAnsweredPost: boolean;
-    missingPFItemsPost: number[];
+    missingPFItemsPost: string[];
     isSummaryFilled: boolean;
     isSummaryCheckFilled: boolean;
 }
@@ -551,15 +608,9 @@ function PMValidationCard({
         setIsExpanded(!isExpanded);
     };
 
-    const getPhotoScrollId = (item: string): string => {
-        const displayNo = Number(item);
-        const storageNo = displayNo <= 2 ? displayNo + 100 : displayNo - 2;
-        return `${ID_PREFIX}-photo-${storageNo}`;
-    };
+    const getPhotoScrollId = (item: string): string => `${ID_PREFIX}-photo-${idSuffixOfDisplayedNo(item)}`;
 
-    const getPfButtonsScrollId = (item: number): string => {
-        return `${ID_PREFIX}-pf-${item - 2}`;
-    };
+    const getPfButtonsScrollId = (item: string): string => `${ID_PREFIX}-pf-${idSuffixOfDisplayedNo(item)}`;
 
     const getInputScrollId = (qNo: number, fieldKey: string): string => {
         return `${ID_PREFIX}-input-${qNo}-${fieldKey}`;
@@ -1002,7 +1053,11 @@ export default function CBBOXPMForm() {
     const [dropdownQ2, setDropdownQ2] = useState("");
     const [q2WasNA, setQ2WasNA] = useState(false);
 
-    const initialPhotos: Record<number, PhotoItem[]> = Object.fromEntries(QUESTIONS.filter(q => q.hasPhoto).map(q => [q.no, []])) as Record<number, PhotoItem[]>;
+    const initialPhotos: Record<number, PhotoItem[]> = Object.fromEntries(
+        QUESTIONS.filter(q => q.hasPhoto).flatMap(q => q.items
+            ? q.items.map((_, idx) => [getSubPhotoKey(q.no, idx), []] as [number, PhotoItem[]])
+            : [[q.no, []] as [number, PhotoItem[]]])
+    ) as Record<number, PhotoItem[]>;
     const [photos, setPhotos] = useState<Record<number, PhotoItem[]>>(initialPhotos);
     const photosRef = useRef(photos);
     useEffect(() => { photosRef.current = photos; }, [photos]);
@@ -1019,7 +1074,10 @@ export default function CBBOXPMForm() {
     const [cmpPhotos, setCmpPhotos] = useState<{ pre: any; post: any }>({ pre: {}, post: {} });
     const [rows, setRows] = useState<Record<string, { pf: PF; remark: string }>>(() => {
         const initial: Record<string, { pf: PF; remark: string }> = {};
-        QUESTIONS.forEach(q => { initial[q.key] = { pf: "", remark: "" }; });
+        QUESTIONS.forEach(q => {
+            if (q.items) q.items.forEach(it => { initial[it.key] = { pf: "", remark: "" }; });
+            else initial[q.key] = { pf: "", remark: "" };
+        });
         return initial;
     });
 
@@ -1169,11 +1227,12 @@ export default function CBBOXPMForm() {
     };
 
     // Validation
-    const REQUIRED_PHOTO_ITEMS_PRE = useMemo(() => QUESTIONS.filter(q => q.hasPhoto && q.no !== 9).map(q => q.no), []);
-    const REQUIRED_PHOTO_ITEMS_POST = useMemo(() => QUESTIONS.filter(q => q.hasPhoto).map(q => q.no), []);
+    const photoKeysOfQuestion = (q: Question): number[] => q.items ? q.items.map((_, idx) => getSubPhotoKey(q.no, idx)) : [q.no];
+    const REQUIRED_PHOTO_ITEMS_PRE = useMemo(() => QUESTIONS.filter(q => q.hasPhoto && q.no !== 9).flatMap(photoKeysOfQuestion), []);
+    const REQUIRED_PHOTO_ITEMS_POST = useMemo(() => QUESTIONS.filter(q => q.hasPhoto).flatMap(photoKeysOfQuestion), []);
 
-    const missingPhotoItemsPre = useMemo(() => REQUIRED_PHOTO_ITEMS_PRE.filter(no => { if (rows[`r${no}`]?.pf === "NA") return false; return (photos[no]?.length ?? 0) < 1; }), [photos, rows]);
-    const missingPhotoItemsPost = useMemo(() => REQUIRED_PHOTO_ITEMS_POST.filter(no => { if (rowsPre[`r${no}`]?.pf === "NA") return false; return (photos[no]?.length ?? 0) < 1; }), [photos, rowsPre]);
+    const missingPhotoItemsPre = useMemo(() => REQUIRED_PHOTO_ITEMS_PRE.filter(no => { if (rows[rowKeyOfPhotoKey(no)]?.pf === "NA") return false; return (photos[no]?.length ?? 0) < 1; }), [photos, rows]);
+    const missingPhotoItemsPost = useMemo(() => REQUIRED_PHOTO_ITEMS_POST.filter(no => { if (rowsPre[rowKeyOfPhotoKey(no)]?.pf === "NA") return false; return (photos[no]?.length ?? 0) < 1; }), [photos, rowsPre]);
 
     const allPhotosAttachedPre = missingPhotoItemsPre.length === 0;
     const allPhotosAttachedPost = missingPhotoItemsPost.length === 0;
@@ -1182,16 +1241,29 @@ export default function CBBOXPMForm() {
 
     // Format missingPhotoItems as string[] for PMValidationCard
     const missingPhotoItemsFormatted = useMemo(() => {
-        return missingPhotoItems.map(no => String(getDisplayedQuestionNo(no)));
+        return missingPhotoItems.map(displayedNoOfPhotoKey);
     }, [missingPhotoItems]);
 
-    const PF_KEYS_PRE = useMemo(() => QUESTIONS.filter(q => q.no !== 9).map(q => q.key), []);
-    const PF_KEYS_POST = useMemo(() => QUESTIONS.filter(q => { if (q.key.startsWith("pre_")) return false; if (q.no === 1 || q.no === 2) return false; if (rowsPre[q.key]?.pf === "NA") return false; return true; }).map(q => q.key), [rowsPre]);
+    const rowKeysOfQuestion = (q: Question): string[] => q.items ? q.items.map(it => it.key) : [q.key];
+    const PF_KEYS_PRE = useMemo(() => QUESTIONS.filter(q => q.no !== 9).flatMap(rowKeysOfQuestion), []);
+    const PF_KEYS_POST = useMemo(() => QUESTIONS.filter(q => {
+        if (q.key.startsWith("pre_")) return false;
+        if (q.no === 1 || q.no === 2) return false;
+        return true;
+    }).flatMap(rowKeysOfQuestion).filter(k => rowsPre[k]?.pf !== "NA"), [rowsPre]);
 
     const allPFAnsweredPre = useMemo(() => true, []); // Pre mode doesn't require PF
-    const missingPFItemsPre = useMemo(() => [] as number[], []);
+    const missingPFItemsPre = useMemo(() => [] as string[], []);
     const allPFAnsweredPost = useMemo(() => PF_KEYS_POST.every(k => rows[k]?.pf !== ""), [rows, PF_KEYS_POST]);
-    const missingPFItemsPost = useMemo(() => PF_KEYS_POST.filter(k => !rows[k]?.pf).map(k => getDisplayedQuestionNo(Number(k.replace("r", "")))).sort((a, b) => a - b), [rows, PF_KEYS_POST]);
+    const missingPFItemsPost = useMemo(() => PF_KEYS_POST.filter(k => !rows[k]?.pf).map(k => {
+        const sub = k.match(/^r(\d+)_(\d+)$/);
+        if (sub) return `${getDisplayedQuestionNo(Number(sub[1]))}.${sub[2]}`;
+        return String(getDisplayedQuestionNo(Number(k.replace("r", ""))));
+    }).sort((a, b) => {
+        const [aM, aS] = a.split(".").map(Number);
+        const [bM, bS] = b.split(".").map(Number);
+        return aM !== bM ? aM - bM : (aS || 0) - (bS || 0);
+    }), [rows, PF_KEYS_POST]);
 
     // For UI display
     const allPFAnsweredForUI = isPostMode ? allPFAnsweredPost : allPFAnsweredPre;
@@ -1201,7 +1273,7 @@ export default function CBBOXPMForm() {
         const r: string[] = [];
         if (rows["r5"]?.pf === "NA" || rowsPre["r5"]?.pf === "NA") return r;
         const missingKeys = FIELD_GROUPS[5]?.keys.filter(k => !m5.state[k]?.value?.trim()) || [];
-        if (missingKeys.length > 0) r.push(`7: ${missingKeys.join(", ")}`);
+        if (missingKeys.length > 0) r.push(`${getDisplayedQuestionNo(5)}: ${missingKeys.join(", ")}`);
         return r;
     }, [m5.state, rowsPre, rows]);
 
@@ -1299,6 +1371,78 @@ export default function CBBOXPMForm() {
             </div>
         ) : null;
 
+        // ข้อที่มีข้อย่อย (ข้อ 3 แหล่งจ่ายไฟ MDB) — แต่ละข้อย่อยมีรูป/สถานะ/หมายเหตุของตัวเอง
+        if (q.items) {
+            const items = q.items;
+            return (
+                <SectionCard key={q.key} title={getQuestionLabel(q, mode, lang)} tooltip={qTooltip}>
+                    <div className="tw-divide-y tw-divide-gray-200">
+                        {items.map((item, idx) => {
+                            const photoKey = getSubPhotoKey(q.no, idx);
+                            const idSuffix = idSuffixOfPhotoKey(photoKey);
+                            const itemLabel = item.label[lang];
+                            const photoInput = (
+                                <PhotoMultiInput photos={photos[photoKey] || []} setPhotos={makePhotoSetter(photoKey)} max={10}
+                                    draftKey={currentDraftKey} qNo={photoKey} lang={lang} id={`${ID_PREFIX}-photo-${idSuffix}`} />
+                            );
+
+                            if (mode === "pre") {
+                                const isItemNA = rows[item.key]?.pf === "NA";
+                                return (
+                                    <div key={item.key} className={`tw-py-4 first:tw-pt-2 ${isItemNA ? "tw-bg-amber-50/50" : ""}`}>
+                                        <div className="tw-flex tw-items-center tw-justify-between tw-gap-2 tw-mb-3">
+                                            <Typography className="tw-font-semibold tw-text-sm tw-text-gray-800">{itemLabel}</Typography>
+                                            <Button size="sm" color={isItemNA ? "amber" : "gray"} variant={isItemNA ? "filled" : "outlined"}
+                                                onClick={() => setRows(prev => ({ ...prev, [item.key]: { ...prev[item.key], pf: isItemNA ? "" : "NA" } }))}>
+                                                {isItemNA ? t("cancelNA", lang) : t("na", lang)}
+                                            </Button>
+                                        </div>
+                                        <div className="tw-mb-3">{photoInput}</div>
+                                        <div id={`${ID_PREFIX}-remark-${idSuffix}`}>
+                                            <Textarea label={t("remark", lang)} value={rows[item.key]?.remark || ""}
+                                                onChange={e => setRows(prev => ({ ...prev, [item.key]: { ...prev[item.key], remark: e.target.value } }))}
+                                                rows={2} containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full" />
+                                        </div>
+                                    </div>
+                                );
+                            }
+
+                            if (rowsPre[item.key]?.pf === "NA") {
+                                return (
+                                    <div key={item.key} className="tw-py-4 first:tw-pt-2">
+                                        <SkippedNAItem label={itemLabel} remark={rowsPre[item.key]?.remark} lang={lang} />
+                                    </div>
+                                );
+                            }
+
+                            const itemPreRemark = rowsPre[item.key]?.remark;
+                            return (
+                                <div key={item.key} className="tw-py-4 first:tw-pt-2">
+                                    <PassFailRow
+                                        label={itemLabel}
+                                        value={rows[item.key]?.pf ?? ""}
+                                        lang={lang}
+                                        onChange={v => setRows(prev => ({ ...prev, [item.key]: { ...prev[item.key], pf: v } }))}
+                                        remark={rows[item.key]?.remark || ""}
+                                        onRemarkChange={v => setRows(prev => ({ ...prev, [item.key]: { ...prev[item.key], remark: v } }))}
+                                        id={`${ID_PREFIX}-pf-${idSuffix}`}
+                                        remarkId={`${ID_PREFIX}-remark-${idSuffix}`}
+                                        aboveRemark={<div className="tw-pb-4 tw-border-b tw-mb-4 tw-border-gray-100">{photoInput}</div>}
+                                        beforeRemark={itemPreRemark ? (
+                                            <div className="tw-mb-3 tw-p-3 tw-bg-amber-50 tw-rounded-lg tw-border tw-border-amber-300">
+                                                <Typography variant="small" className="tw-font-semibold tw-text-amber-700">{t("preRemarkLabel", lang)}</Typography>
+                                                <Typography variant="small" className="tw-text-amber-900">{itemPreRemark}</Typography>
+                                            </div>
+                                        ) : null}
+                                    />
+                                </div>
+                            );
+                        })}
+                    </div>
+                </SectionCard>
+            );
+        }
+
         if (mode === "pre") {
             const isNA = rows[q.key]?.pf === "NA";
             const isQ2NA = rows["r2"]?.pf === "NA";
@@ -1390,7 +1534,7 @@ export default function CBBOXPMForm() {
             // อัปไม่ผ่าน → throw ทะลุขึ้นไป catch ของ handler โดยยังไม่ได้ลบอะไร
             await Promise.all(
                 Object.entries(photosRef.current).map(([no, list]) =>
-                    uploadGroupPhotos(reportId, sid, `g${no}`, list || [], side, no, uploadedIds))
+                    uploadGroupPhotos(reportId, sid, photoGroupKey(no), list || [], side, no, uploadedIds))
             );
         }
 
@@ -1400,7 +1544,7 @@ export default function CBBOXPMForm() {
             return false;
         }
 
-        const expected = expectedCountByGroup(photosRef.current as any, k => `g${k}`);
+        const expected = expectedCountByGroup(photosRef.current as any, k => photoGroupKey(k));
         if (Object.keys(expected).length === 0) return true;
 
         const token = localStorage.getItem("access_token");

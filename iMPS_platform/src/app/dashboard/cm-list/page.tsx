@@ -25,6 +25,8 @@ import { CM_ORIGIN_LIST } from "@/app/dashboard/cm-report/lib/origin";
 import { failureCodeLabel } from "@/app/dashboard/cm-report/lib/failureCode";
 import { failureClassOptions, useMaximoFailureTree } from "@/app/dashboard/cm-report/lib/maximo";
 import { DocumentArrowDownIcon } from "@heroicons/react/24/outline";
+import { csvDate, csvFilename, downloadCsv, toCsv } from "@/utils/csv";
+import CsvExportButton from "@/components/CsvExportButton";
 
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 500;
@@ -510,6 +512,30 @@ export default function CMListPage() {
     { dim: "status", value: STATUS_LABELS.cancelled, label: t.quickCancelled, color: "#475569", bg: "#f1f5f9", count: statusCounts.cancelled },
   ];
 
+  // Toutes les lignes filtrées + triées (pas seulement la page affichée), mêmes colonnes que la table
+  const exportCsv = () => {
+    const csv = toCsv(sortedRows, [
+      { header: "#", value: (_r, i) => i + 1 },
+      { header: t.headers.station, value: (r) => r.station_name || r.station_id },
+      { header: "Brand", value: (r) => brandOf(r) },
+      { header: t.headers.sr, value: (r) => workNumberOf(r.issue_id, "SR") },
+      { header: t.headers.wo, value: (r) => (isWorkOrder(r) ? workNumberOf(r.issue_id, "WO") : "") },
+      { header: t.headers.reported_by, value: (r) => r.reported_by },
+      { header: t.headers.equipment, value: (r) => displayFaultyEquipment(r) },
+      { header: t.headers.problem, value: (r) => r.problem_details },
+      { header: t.headers.severity, value: (r) => r.severity },
+      { header: t.headers.date, value: (r) => csvDate(r.cm_date) },
+      { header: t.headers.status, value: (r) => (isRejectedSr(r) ? t.rejectedStatus : workStatusLabel[workStatusBadge(r).ws]) },
+      {
+        header: "PDF",
+        value: (r) => (r.id && normalizeStatus(r.status, r.stage, r.repair_result) === "completed"
+          ? `${API_BASE}/pdf/cm/${encodeURIComponent(r.id)}/export?station_id=${encodeURIComponent(r.station_id || "")}&lang=${lang}&dl=0`
+          : ""),
+      },
+    ]);
+    downloadCsv(csvFilename("cm-list"), csv);
+  };
+
   const totalPages = Math.ceil(sortedRows.length / pageSize);
   const from = page * pageSize + 1;
   const to = Math.min((page + 1) * pageSize, sortedRows.length);
@@ -700,6 +726,8 @@ export default function CMListPage() {
             {[10, 15, 25, 50, 100].map((n) => <option key={n} value={n} />)}
           </datalist>
         </div>
+
+        <CsvExportButton onClick={exportCsv} count={sortedRows.length} lang={lang} />
 
         {activeFilterCount > 0 && (
           <button onClick={clearAll} className="tw-text-xs tw-font-semibold tw-text-red-500 hover:tw-text-red-700 tw-underline">
