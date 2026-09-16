@@ -12,7 +12,7 @@ import React from "react";
 import { type Lang } from "@/utils/useLanguage";
 import { problemLabelOf, causeLabelOf } from "@/app/dashboard/cm-report/lib/maximo";
 import { repairResultLabel } from "@/app/dashboard/cm-report/lib/repairResult";
-import { ZoomableImg } from "@/app/dashboard/cm-report/components/photo-viewer";
+import { ZoomableImg, AttachmentFileRow } from "@/app/dashboard/cm-report/components/photo-viewer";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
@@ -33,7 +33,7 @@ export type RepairRound = {
     cause?: string[];
     repaired_equipment?: string[];
     inprogress_remarks?: string;
-    corrective_actions?: { code?: string; text?: string; beforeImages?: { url?: string }[]; afterImages?: { url?: string }[] }[];
+    corrective_actions?: { code?: string; text?: string; beforeImages?: { url?: string }[]; afterImages?: { url?: string }[]; files?: { url?: string; name?: string }[] }[];
     /**
      * ช่างที่ลงเวลากับ Maximo ของรอบนั้น — เก็บชื่อไว้ด้วย ไม่ได้เก็บแค่ laborcode
      * เพราะรายชื่อจาก IN08 เปลี่ยนได้ (ช่างลาออก/ย้ายหน่วย) ประวัติต้องอ่านได้เหมือนเดิม
@@ -56,6 +56,7 @@ const TEXT = {
     rrRemarks: { th: "หมายเหตุ", en: "Remarks" },
     rrBefore: { th: "รูปก่อนแก้ไข", en: "Before" },
     rrAfter: { th: "รูปหลังแก้ไข", en: "After" },
+    rrFiles: { th: "ไฟล์แนบ", en: "Attachments" },
     rrStartedAt: { th: "วันที่เข้าแก้ไข", en: "Repair started" },
     rrFinishedAt: { th: "วันที่แก้ไขเสร็จ", en: "Repair finished" },
     rrLabor: { th: "ช่างที่ลงเวลากับ Maximo", en: "Technicians for Maximo time log" },
@@ -71,7 +72,7 @@ export default function RepairRoundCard({
     const causes = (round.cause ?? []).map(x => causeLabelOf((x || "").trim())).filter(Boolean);
     const equipment = (round.repaired_equipment ?? []).map(x => (x || "").trim()).filter(Boolean);
     const actions = (round.corrective_actions ?? []).filter(
-        a => (a.text || "").trim() || (a.beforeImages?.length ?? 0) > 0 || (a.afterImages?.length ?? 0) > 0
+        a => (a.text || "").trim() || (a.beforeImages?.length ?? 0) > 0 || (a.afterImages?.length ?? 0) > 0 || (a.files?.length ?? 0) > 0
     );
     const labor = (round.maximo_labor ?? []).filter(l => (l?.laborcode || "").trim());
     const startedAt = [round.start_repair_date, round.start_repair_time].filter(Boolean).join(" ");
@@ -150,6 +151,16 @@ export default function RepairRoundCard({
                             {(a.text || "").trim() && <p className="tw-text-sm tw-text-blue-gray-800 tw-break-words">{a.text}</p>}
                             {thumbs(t("rrBefore", lang), a.beforeImages ?? [])}
                             {thumbs(t("rrAfter", lang), a.afterImages ?? [])}
+                            {(a.files?.length ?? 0) > 0 && (
+                                <div className="tw-mt-2">
+                                    <p className="tw-text-[11px] tw-text-blue-gray-400 tw-mb-1">{t("rrFiles", lang)}</p>
+                                    <div className="tw-flex tw-flex-wrap tw-gap-2">
+                                        {(a.files ?? []).map((f, k) => (
+                                            <AttachmentFileRow key={k} src={src(f.url)} name={f.name} />
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     ))}
                 </div>) : null}
