@@ -23,6 +23,8 @@ import { PM_ORIGIN_LIST } from "@/app/dashboard/pm-report/lib/origin";
 import { PM_PLANNING_ROLES } from "@/app/dashboard/pm-report/components/planning";
 import { PM_APPROVE_ROLES } from "@/app/dashboard/pm-report/components/flow";
 import { COMPANY_FILTER_OPTIONS, matchesCompanyFilter } from "@/utils/pm-dashboard";
+import { csvDate, csvFilename, downloadCsv, toCsv } from "@/utils/csv";
+import CsvExportButton from "@/components/CsvExportButton";
 
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 500;
@@ -259,6 +261,7 @@ export default function PMListPage() {
       companyFilterLabel: "บริษัท",
       allCompanies: "ทุกบริษัท",
       typeFilterLabel: "ชนิดอุปกรณ์",
+      csvDocument: "ชื่อเอกสาร",
       allTypes: "ทุกชนิด",
       statusFilterLabel: "กรองตามสถานะ",
       rowsPerPage: "แถวต่อหน้า",
@@ -291,6 +294,7 @@ export default function PMListPage() {
       companyFilterLabel: "Company",
       allCompanies: "All companies",
       typeFilterLabel: "Equipment type",
+      csvDocument: "Document",
       allTypes: "All types",
       statusFilterLabel: "Status",
       rowsPerPage: "Rows per page",
@@ -507,6 +511,25 @@ export default function PMListPage() {
     { key: "status", label: t.headers.status },
   ];
 
+  // Toutes les lignes filtrées + triées (pas seulement la page affichée)
+  const exportCsv = () => {
+    const csv = toCsv(sortedRows, [
+      { header: "#", value: (_r, i) => i + 1 },
+      { header: t.headers.station, value: (r) => r.station_name || r.station_id },
+      { header: t.headers.wo, value: (r) => r.wonum },
+      { header: t.typeFilterLabel, value: (r) => r.pm_type },
+      { header: t.csvDocument, value: (r) => (r.document_name === "-" ? "" : r.document_name) },
+      { header: "SN", value: (r) => (r.sn === "-" ? "" : r.sn) },
+      { header: t.companyFilterLabel, value: (r) => r.company },
+      { header: "Brand", value: (r) => r.charger_brand },
+      { header: t.headers.technician, value: (r) => (r.technician === "-" ? "" : r.technician) },
+      { header: t.headers.date, value: (r) => csvDate(r.pm_date) },
+      { header: t.headers.status, value: (r) => stageLabel[stageOf(r)] },
+      { header: "PDF", value: (r) => (r.file_url ? (r.file_url.startsWith("http") ? r.file_url : `${API_BASE}${r.file_url}`) : "") },
+    ]);
+    downloadCsv(csvFilename("pm-list"), csv);
+  };
+
   const totalPages = Math.ceil(sortedRows.length / pageSize);
   const from = page * pageSize + 1;
   const to = Math.min((page + 1) * pageSize, sortedRows.length);
@@ -648,6 +671,8 @@ export default function PMListPage() {
             {[10, 15, 25, 50, 100].map((n) => <option key={n} value={n} />)}
           </datalist>
         </div>
+
+        <CsvExportButton onClick={exportCsv} count={sortedRows.length} lang={lang} />
 
         {activeFilterCount > 0 && (
           <button onClick={clearAll} className="tw-text-xs tw-font-semibold tw-text-red-500 hover:tw-text-red-700 tw-underline">
