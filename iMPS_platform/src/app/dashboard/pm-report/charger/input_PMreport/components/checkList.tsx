@@ -456,10 +456,10 @@ const QUESTIONS: Question[] = [
     { no: 101, key: "pre_r1", label: { th: "1) ตรวจสอบสภาพทั่วไป (ก่อนบำรุงรักษา)", en: "1) General condition (before maintenance)" }, kind: "simple", hasPhoto: true, tooltip: { th: "บันทึกสภาพเครื่องชาร์จก่อนเริ่มบำรุงรักษา", en: "Record the charger condition before maintenance" } },
     { no: 102, key: "pre_r2", label: { th: "2) อุปกรณ์ชำรุดเสียหาย (ก่อนบำรุงรักษา)", en: "2) Damaged equipment (before maintenance)" }, kind: "simple", hasPhoto: true, tooltip: { th: "บันทึกอุปกรณ์ที่ชำรุดเสียหายก่อนเริ่มบำรุงรักษา", en: "Record damaged equipment before maintenance" }, },
     { no: 103, key: "r3_power_source", label: { th: "3) ตรวจสอบสภาพแหล่งจ่ายไฟ MDB", en: "3) Inspect MDB power supply condition" }, kind: "power_source", hasPhoto: true, items: [
-        { key: "r3_power_main_cb", label: { th: "a. Main CB", en: "a. Main CB" } },
-        { key: "r3_power_cb", label: { th: "b. CB", en: "b. CB" } },
-        { key: "r3_power_meter", label: { th: "c. Power Meter (Voltage)", en: "c. Power Meter (Voltage)" } },
-        { key: "r3_power_transformer", label: { th: "d. Transformer", en: "d. Transformer" } },
+        { key: "r3_power_main_cb", label: { th: "3.1) Main CB", en: "3.1) Main CB" } },
+        { key: "r3_power_cb", label: { th: "3.2) CB", en: "3.2) CB" } },
+        { key: "r3_power_meter", label: { th: "3.3) Power Meter (Voltage)", en: "3.3) Power Meter (Voltage)" } },
+        { key: "r3_power_transformer", label: { th: "3.4) Transformer", en: "3.4) Transformer" } },
     ], tooltip: { th: "ตรวจสอบสภาพอุปกรณ์แหล่งจ่ายไฟของเครื่องชาร์จ", en: "Inspect the charger's power supply equipment" } },
     { no: 1, key: "r1", label: { th: "1) ตรวจสอบสภาพทั่วไป", en: "1) Check general condition" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบความสมบูรณ์ของตู้, การยึดแน่นของน็อตยึดฐาน, รอยแตกร้าวและร่องรอยการกระแทก", en: "Check cabinet integrity, base bolt tightness, cracks and impact marks" } },
     { no: 2, key: "r2", label: { th: "2) ตรวจสอบดักซีล,ซิลิโคนกันซึม", en: "2) Check sealant and silicone" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบความยืดหยุ่นของขอบยางกันน้ำ, รอยต่อของเคเบิลแกลนด์และและสภาพซิลิโคนตามแนวตะเข็บตู้", en: "Check waterproof rubber flexibility, cable gland joints and silicone condition" } },
@@ -549,7 +549,7 @@ function getDisplayedQuestionNo(qNo: number): number {
 
 function getDisplayedRowNo(key: string): string {
     const powerItemIndex = QUESTIONS.find(q => q.kind === "power_source")?.items?.findIndex(item => item.key === key) ?? -1;
-    if (powerItemIndex >= 0) return `3.${String.fromCharCode(97 + powerItemIndex)}`;
+    if (powerItemIndex >= 0) return `3.${powerItemIndex + 1}`;
 
     const match = key.match(/^r(\d+)(?:_(\d+))?$/);
     if (!match) return key;
@@ -874,9 +874,9 @@ function PMValidationCard({
     const getPhotoScrollId = (item: string): string => {
         const parts = item.split('.');
         if (parts.length === 2) {
-            // ข้อ 3.a-3.d ใช้เลข storage 103 และ index 1-4
-            if (parts[0] === "3" && /^[a-d]$/i.test(parts[1])) {
-                return `pm-photo-103-${parts[1].toLowerCase().charCodeAt(0) - 96}`;
+            // ข้อ 3.1-3.4 ใช้เลข storage 103 และ index 1-4
+            if (parts[0] === "3" && /^\d+$/.test(parts[1]) && Number(parts[1]) <= 4) {
+                return `pm-photo-103-${parts[1]}`;
             }
             // เลขที่แสดงของข้อเดิมเลื่อนไป 3 แต่ id ยังอิงเลข storage เดิม
             return `pm-photo-${Math.max(1, Number(parts[0]) - 3)}-${parts[1]}`;
@@ -902,8 +902,8 @@ function PMValidationCard({
     const getPfButtonsScrollId = (item: string): string => {
         const parts = item.split('.');
         if (parts.length === 2) {
-            if (parts[0] === "3" && /^[a-d]$/i.test(parts[1])) {
-                return `pm-pf-103-${parts[1].toLowerCase().charCodeAt(0) - 96}`;
+            if (parts[0] === "3" && /^\d+$/.test(parts[1]) && Number(parts[1]) <= 4) {
+                return `pm-pf-103-${parts[1]}`;
             }
             return `pm-pf-${Math.max(1, Number(parts[0]) - 3)}-${parts[1]}`;
         }
@@ -2744,7 +2744,7 @@ export default function ChargerPMForm() {
         QUESTIONS.filter(q => q.hasPhoto && !q.postOnly).forEach((q) => { // เพิ่ม !q.postOnly
             const displayNo = getDisplayedQuestionNo(q.no);
             if (q.kind === "power_source" && q.items) {
-                q.items.forEach((_, idx) => keys.push({ key: `${q.no}_${idx}`, label: `${displayNo}.${String.fromCharCode(97 + idx)}` }));
+                q.items.forEach((_, idx) => keys.push({ key: `${q.no}_${idx}`, label: `${displayNo}.${idx + 1}` }));
             } else if (q.kind === "simple" || q.kind === "measure") { keys.push({ key: q.no, label: `${displayNo}` }); }
             else if (q.no === 5) { q5Items.forEach((item, idx) => keys.push({ key: `${q.no}_${idx}`, label: `${displayNo}.${idx + 1}` })); }
             else if (q.no === 7) { q7Items.forEach((item, idx) => keys.push({ key: `${q.no}_${idx}`, label: `${displayNo}.${idx + 1}` })); }
@@ -2763,7 +2763,7 @@ export default function ChargerPMForm() {
             if (q.kind === "power_source" && q.items) {
                 q.items.forEach((item, idx) => {
                     if (rowsPre[item.key]?.pf === "NA") return;
-                    keys.push({ key: `${q.no}_${idx}`, label: `${displayNo}.${String.fromCharCode(97 + idx)}` });
+                    keys.push({ key: `${q.no}_${idx}`, label: `${displayNo}.${idx + 1}` });
                 });
             } else if (q.kind === "simple" || q.kind === "measure") {
                 if (rowsPre[q.key]?.pf === "NA") return;

@@ -291,10 +291,10 @@ const QUESTIONS_DATA = [
     { no: 1, key: "r1", label: { th: "1) ตรวจสอบสภาพทั่วไป (ก่อนบำรุงรักษา)", en: "1) General condition (before maintenance)" }, kind: "simple", hasPhoto: true, tooltip: { th: "บันทึกสภาพตู้ MDB โดยรวมก่อนลงมือ — ถ่ายรูปสภาพก่อนบำรุงรักษาไว้เป็นหลักฐาน", en: "Record the overall MDB condition before starting work" } },
     { no: 2, key: "r2", label: { th: "2) อุปกรณ์ชำรุดเสียหาย (ก่อนบำรุงรักษา)", en: "2) Damaged equipment (before maintenance)" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจและบันทึกอุปกรณ์ที่ชำรุดเสียหายที่พบก่อนเริ่มบำรุงรักษา", en: "Record any damaged equipment found before maintenance" } },
     { no: 103, key: "r3_power_source", label: { th: "3) ตรวจสอบสภาพแหล่งจ่ายไฟ MDB", en: "3) Inspect MDB power supply condition" }, kind: "power_source", hasPhoto: true, items: [
-        { key: "r3_power_main_cb", label: { th: "a. Main CB", en: "a. Main CB" } },
-        { key: "r3_power_cb", label: { th: "b. CB", en: "b. CB" } },
-        { key: "r3_power_meter", label: { th: "c. Power Meter (Voltage)", en: "c. Power Meter (Voltage)" } },
-        { key: "r3_power_transformer", label: { th: "d. Transformer", en: "d. Transformer" } },
+        { key: "r3_power_main_cb", label: { th: "3.1) Main CB", en: "3.1) Main CB" } },
+        { key: "r3_power_cb", label: { th: "3.2) CB", en: "3.2) CB" } },
+        { key: "r3_power_meter", label: { th: "3.3) Power Meter (Voltage)", en: "3.3) Power Meter (Voltage)" } },
+        { key: "r3_power_transformer", label: { th: "3.4) Transformer", en: "3.4) Transformer" } },
     ], tooltip: { th: "ตรวจสอบสภาพอุปกรณ์แหล่งจ่ายไฟของตู้ MDB", en: "Inspect the MDB power supply equipment" } },
     { no: 3, key: "r3", label: { th: "4) ตรวจสอบสภาพทั่วไป", en: "4) General condition inspection" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบโครงสร้างตู้ ระบบล็อกและบานพับรวมถึงป้ายชื่อวงจร (Labeling)", en: "Check cabinet structure, lock system, hinges and circuit labeling" } },
     { no: 4, key: "r4", label: { th: "5) ตรวจสอบดักซีล, ซิลิโคนกันซึม", en: "5) Check sealant and silicone" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบสภาพดักซีลที่ปิดหรืออุดตามรอยต่อและช่องทางเข้าสาย", en: "Check sealant condition at joints and cable entry points" } },
@@ -1304,7 +1304,7 @@ export default function MDBPMForm() {
             else if (q.kind === "trip_ccb") q11Items.forEach((item, idx) => { if (na(item.key)) return; keys.push({ key: item.key, label: `11.${idx + 1}` }); });
             else if (q.kind === "trip_charger") q12Items.forEach((item, idx) => { if (na(item.key)) return; keys.push({ key: item.key, label: `12.${idx + 1}` }); });
             else if (q.kind === "trip_main") q13Items.forEach((item, idx) => { if (na(item.key)) return; keys.push({ key: item.key, label: `13.${idx + 1}` }); });
-            else if (q.kind === "power_source" && q.items) q.items.forEach((item, idx) => { if (na(item.key)) return; keys.push({ key: item.key, label: `3.${String.fromCharCode(97 + idx)}` }); });
+            else if (q.kind === "power_source" && q.items) q.items.forEach((item, idx) => { if (na(item.key)) return; keys.push({ key: item.key, label: `3.${idx + 1}` }); });
         });
         return keys;
     }, [rows, q6Items, q7Items, q8Items, q9Items, q10Items, q11Items, q12Items, q13Items]);
