@@ -4,7 +4,7 @@ import React, { useMemo, useState, useEffect, useRef, useCallback } from "react"
 import { Button, Input, Textarea } from "@material-tailwind/react";
 import Image from "next/image";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
-import { ArrowLeftIcon, ArrowUturnLeftIcon, PhotoIcon, XMarkIcon, CheckCircleIcon, ExclamationTriangleIcon, PencilIcon, DocumentArrowDownIcon } from "@heroicons/react/24/solid";
+import { ArrowLeftIcon, ArrowUturnLeftIcon, PaperClipIcon, PhotoIcon, XMarkIcon, CheckCircleIcon, ExclamationTriangleIcon, PencilIcon, DocumentArrowDownIcon } from "@heroicons/react/24/solid";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
 import CreatableSelect from "react-select/creatable";
 import { useDraft, type DraftData, type DraftImage, type DraftCorrectiveAction } from "../lib/draft";
@@ -17,7 +17,7 @@ import {
 import { cmBackRoute } from "@/app/dashboard/cm-report/lib/origin";
 import ChargerIdentity, { type ChargerIdentityData } from "@/app/dashboard/cm-report/components/ChargerIdentity";
 import { repairResultLabel, normalizeRepairResult, REPAIR_RESULT_VALUES } from "@/app/dashboard/cm-report/lib/repairResult";
-import { ZoomableImg, AttachmentFileRow, isImageAttachment } from "@/app/dashboard/cm-report/components/photo-viewer";
+import { ZoomableImg, AttachmentFileRow, isImageAttachment, isAllowedCmAttachment, CM_ACCEPT_ATTACH } from "@/app/dashboard/cm-report/components/photo-viewer";
 import RepairRoundCard, { type RepairRound } from "@/app/dashboard/cm-report/components/RepairRoundCard";
 import LockBanner from "@/app/dashboard/cm-report/components/LockBanner";
 import { damageSymptomLabel } from "@/app/dashboard/cm-report/lib/damageSymptoms";
@@ -191,7 +191,8 @@ type Severity = "" | "Low" | "Medium" | "High" | "Urgent";
 type Status = "" | "Open" | "In Progress" | "Wait for approve" | "Complete" | "Closed";
 type ServerPhoto = { filename: string; size: number; url: string; remark?: string; uploadedAt?: string; location?: string; };
 type PhotoItem = { id: string; file: File | null; preview: string; isServer?: boolean; serverUrl?: string; createdAt?: string; uploadedAtRaw?: string; location?: string; name?: string; };
-type CorrectiveItem = { text: string; beforeImages: PhotoItem[]; afterImages: PhotoItem[]; code?: string; };
+// files = ไฟล์แนบใต้ช่อง "รายละเอียดการดำเนินการ" (เอกสาร/รูป/วิดีโอ) — คนละชุดกับรูปก่อน/หลังแก้ไข
+type CorrectiveItem = { text: string; beforeImages: PhotoItem[]; afterImages: PhotoItem[]; files?: PhotoItem[]; code?: string; };
 
 /** แปลง uploadedAt → display string, รองรับทั้ง ISO date และ string ที่ format แล้ว */
 function formatPhotoDate(dateStr: string | undefined): string | undefined {
@@ -581,6 +582,79 @@ function PhotoUpload({ photos_problem, onAdd, onRemove, max, disabled, lang }: {
     );
 }
 
+// ==================== ACTION ATTACHMENTS ====================
+/**
+ * เลือกไฟล์แนบของ "การดำเนินการแก้ไข" 1 รายการ
+ * กรองนามสกุลที่ backend ไม่รับทิ้งไปเลย และคุมจำนวนให้เท่ากับเพดานต่อกลุ่มของ /cmreport/{id}/photos
+ */
+function pickActionFiles(files: FileList | null, currentCount: number, lang: Lang): PhotoItem[] {
+    if (!files || files.length === 0) return [];
+    const th = lang === "th";
+    const picked = Array.from(files);
+    const allowed = picked.filter(f => isAllowedCmAttachment(f.name));
+    if (allowed.length < picked.length) {
+        alert(th ? "มีไฟล์ที่ระบบไม่รองรับ ถูกข้ามไป" : "Some files have an unsupported type and were skipped.");
+    }
+    const remain = Math.max(0, MAX_PHOTOS - currentCount);
+    if (remain === 0) {
+        alert(th ? `แนบไฟล์ได้สูงสุด ${MAX_PHOTOS} ไฟล์ต่อรายการ` : `Maximum ${MAX_PHOTOS} files per item`);
+        return [];
+    }
+    if (allowed.length > remain) {
+        alert(th
+            ? `แนบไฟล์ได้สูงสุด ${MAX_PHOTOS} ไฟล์ต่อรายการ (เพิ่มได้อีก ${remain} ไฟล์)`
+            : `Maximum ${MAX_PHOTOS} files per item (${remain} remaining)`);
+    }
+    return allowed.slice(0, remain).map((f, k) => ({
+        id: `file-${Date.now()}-${k}-${f.name}`,
+        file: f,
+        preview: URL.createObjectURL(f),
+        name: f.name,
+    }));
+}
+
+/**
+ * กล่องไฟล์แนบใต้ช่องรายละเอียดการดำเนินการ — เอกสาร/รูป/วิดีโอ ชุดนามสกุลเดียวกับหน้า Open
+ * โหมดดูอย่างเดียวที่ยังไม่มีไฟล์แนบ ไม่ต้องแสดงกล่องเปล่าให้รก
+ */
+function ActionAttachments({ files, disabled, lang, onAdd, onRemove }: {
+    files: PhotoItem[]; disabled: boolean; lang: Lang;
+    onAdd: (files: FileList | null) => void; onRemove: (id: string) => void;
+}) {
+    const th = lang === "th";
+    if (disabled && files.length === 0) return null;
+    return (
+        <div className="tw-rounded-xl tw-border tw-border-blue-gray-200 tw-bg-blue-gray-50/40 tw-p-4 tw-space-y-3">
+            <div className="tw-flex tw-items-center tw-justify-between tw-gap-3">
+                <span className="tw-text-sm tw-font-semibold tw-text-blue-gray-700 tw-flex tw-items-center tw-gap-2">
+                    <PaperClipIcon className="tw-w-4 tw-h-4" />{th ? "ไฟล์แนบ" : "Attachments"}
+                </span>
+                {!disabled && (
+                    <label className="tw-inline-flex tw-items-center tw-gap-1.5 tw-px-3 tw-py-1.5 tw-rounded-lg tw-bg-white tw-border tw-border-blue-gray-300 tw-text-blue-gray-700 tw-font-medium tw-text-xs tw-cursor-pointer hover:tw-bg-blue-gray-50 tw-shadow-sm tw-transition-all">
+                        <input type="file" accept={CM_ACCEPT_ATTACH} multiple className="tw-hidden"
+                            onChange={(e) => { onAdd(e.target.files); e.target.value = ""; }} />
+                        <PaperClipIcon className="tw-w-4 tw-h-4" /><span>{th ? "แนบไฟล์" : "Attach file"}</span>
+                    </label>
+                )}
+            </div>
+            {files.length > 0 ? (
+                <div className="tw-flex tw-flex-wrap tw-gap-2">
+                    {files.map(f => (
+                        <AttachmentFileRow
+                            key={f.id}
+                            src={f.preview}
+                            name={f.name || f.file?.name}
+                            onRemove={disabled ? undefined : () => onRemove(f.id)}
+                        />
+                    ))}
+                </div>
+            ) : (
+                <p className="tw-text-xs tw-text-blue-gray-400">{th ? "ยังไม่มีไฟล์แนบ" : "No files attached"}</p>
+            )}
+        </div>
+    );
+}
+
 // ==================== SEVERITY COLOR ====================
 function getSeverityColor(severity: string) {
     switch (severity?.toLowerCase()) {
@@ -713,6 +787,14 @@ function ProblemGroupBlock({ faultyEquipment, value, onChange, onRemove, onAddGr
     };
     const removeImg = (i: number, kind: "beforeImages" | "afterImages", id: string) => {
         onChange({ ...value, corrective_actions: value.corrective_actions.map((a, j) => j === i ? { ...a, [kind]: a[kind].filter(im => im.id !== id) } : a) });
+    };
+    const addFiles = (i: number, files: FileList | null) => {
+        const picked = pickActionFiles(files, value.corrective_actions[i]?.files?.length ?? 0, lang);
+        if (!picked.length) return;
+        onChange({ ...value, corrective_actions: value.corrective_actions.map((a, j) => j === i ? { ...a, files: [...(a.files ?? []), ...picked].slice(0, MAX_PHOTOS) } : a) });
+    };
+    const removeFile = (i: number, id: string) => {
+        onChange({ ...value, corrective_actions: value.corrective_actions.map((a, j) => j === i ? { ...a, files: (a.files ?? []).filter(f => f.id !== id) } : a) });
     };
 
     const th = lang === "th";
@@ -906,6 +988,14 @@ function ProblemGroupBlock({ faultyEquipment, value, onChange, onRemove, onAddGr
                                             </div>
                                         </div>
                                         <textarea value={action.text} disabled={disabled} onChange={(e) => setText(i, e.target.value)} rows={3} placeholder={th ? "กรอกรายละเอียดการดำเนินการ..." : "Enter action details..."} className="tw-w-full tw-px-3 tw-py-2 tw-border tw-border-gray-300 tw-rounded-lg tw-text-sm tw-bg-white focus:tw-outline-none focus:tw-border-amber-400 tw-transition-colors tw-resize-y" />
+                                        {/* ไฟล์แนบของการดำเนินการรายการนี้ */}
+                                        <ActionAttachments
+                                            files={action.files ?? []}
+                                            disabled={disabled}
+                                            lang={lang}
+                                            onAdd={(fs) => addFiles(i, fs)}
+                                            onRemove={(id) => removeFile(i, id)}
+                                        />
                                     </div>
                                 </div>
                             </div>
@@ -1198,13 +1288,21 @@ export default function CMInProgressForm() {
                     preview: base64ToBlobUrl(img.base64),
                     isServer: false,
                 })),
+                files: (a.files || []).map((f: DraftImage) => ({
+                    id: f.id,
+                    file: null as unknown as File,
+                    preview: base64ToBlobUrl(f.base64),
+                    isServer: false,
+                    name: f.name,
+                })),
             }));
             const mergeDraftActionsWithServer = (draftActions: CorrectiveItem[], serverActions: CorrectiveItem[]): CorrectiveItem[] => {
                 const draftHasData = draftActions.some(action =>
                     !!action.code ||
                     action.text.trim() !== "" ||
                     action.beforeImages.length > 0 ||
-                    action.afterImages.length > 0
+                    action.afterImages.length > 0 ||
+                    (action.files?.length ?? 0) > 0
                 );
                 if (!draftHasData) return serverActions.length > 0 ? serverActions : [{ text: "", beforeImages: [], afterImages: [] }];
 
@@ -1221,6 +1319,7 @@ export default function CMInProgressForm() {
                         text: draftAction.text.trim() ? draftAction.text : serverAction.text,
                         beforeImages: draftAction.beforeImages.length ? draftAction.beforeImages : serverAction.beforeImages,
                         afterImages: draftAction.afterImages.length ? draftAction.afterImages : serverAction.afterImages,
+                        files: draftAction.files?.length ? draftAction.files : serverAction.files,
                     };
                 }).filter(Boolean) as CorrectiveItem[];
             };
@@ -1322,7 +1421,7 @@ export default function CMInProgressForm() {
                 }
                 return {
                     id: img.id,
-                    name: img.file?.name || `image_${img.id}`,
+                    name: img.file?.name || img.name || `image_${img.id}`,
                     base64,
                 };
             })
@@ -1332,7 +1431,7 @@ export default function CMInProgressForm() {
     const saveDraftWithImages = useCallback(async (overrides?: Partial<DraftData>) => {
         if (!editId || !stationId) return;
 
-        const hasData = job.corrective_actions.some((a: CorrectiveItem) => a.text.trim() !== "" || a.beforeImages.length > 0 || a.afterImages.length > 0) ||
+        const hasData = job.corrective_actions.some((a: CorrectiveItem) => a.text.trim() !== "" || a.beforeImages.length > 0 || a.afterImages.length > 0 || (a.files?.length ?? 0) > 0) ||
             extraGroups.length > 0 ||
             job.repaired_equipment.length > 0 ||
             job.repair_result ||
@@ -1351,11 +1450,13 @@ export default function CMInProgressForm() {
                 actions.map(async (a: CorrectiveItem) => {
                     const beforeImages = await convertImagesToDraft(a.beforeImages);
                     const afterImages = await convertImagesToDraft(a.afterImages);
+                    const files = await convertImagesToDraft(a.files ?? []);
                     return {
                         code: a.code,
                         text: a.text,
                         beforeImages: beforeImages.filter(img => img.base64),
                         afterImages: afterImages.filter(img => img.base64),
+                        files: files.filter(f => f.base64),
                     };
                 })
             );
@@ -1814,6 +1915,26 @@ export default function CMInProgressForm() {
         }));
     };
 
+    const addCorrectiveFiles = (index: number, files: FileList | null) => {
+        const picked = pickActionFiles(files, job.corrective_actions[index]?.files?.length ?? 0, lang);
+        if (!picked.length) return;
+        setJob(prev => ({
+            ...prev,
+            corrective_actions: prev.corrective_actions.map((item, i) =>
+                i === index ? { ...item, files: [...(item.files ?? []), ...picked].slice(0, MAX_PHOTOS) } : item
+            )
+        }));
+    };
+
+    const removeCorrectiveFile = (actionIndex: number, fileId: string) => {
+        setJob(prev => ({
+            ...prev,
+            corrective_actions: prev.corrective_actions.map((item, i) =>
+                i === actionIndex ? { ...item, files: (item.files ?? []).filter(f => f.id !== fileId) } : item
+            )
+        }));
+    };
+
     // ==================== PREVENTIVE ACTION HANDLERS ====================
     // const addPreventiveAction = () => {
     //     setJob(prev => ({
@@ -2027,6 +2148,9 @@ export default function CMInProgressForm() {
                             afterImages: flatAction.afterImages?.length
                                 ? flatAction.afterImages
                                 : (historyAction.afterImages ?? []),
+                            files: flatAction.files?.length
+                                ? flatAction.files
+                                : (historyAction.files ?? []),
                         };
                     });
                 })();
@@ -2125,13 +2249,27 @@ export default function CMInProgressForm() {
                                         location: img.location || repair.location || undefined,
                                     };
                                 }),
+                                // ไฟล์แนบใต้ช่องรายละเอียด — ใบเก่ายังไม่มี field นี้ จึง fallback ไปที่กลุ่ม file_<index>
+                                files: (a.files?.length
+                                    ? a.files
+                                    : (repairByGroup[`file_${idx}`] || repairByGroup[`file_${loadedHistory.length * PHOTO_GROUP_ROUND_STRIDE + idx}`] || [])
+                                ).map((f: any, fileIdx: number) => ({
+                                    id: `server-file-${idx}-${fileIdx}-${f.name || f.filename || f.url}`,
+                                    file: null,
+                                    preview: f.url?.startsWith("http") ? f.url : `${API_BASE}${f.url}`,
+                                    isServer: true,
+                                    serverUrl: f.url,
+                                    name: f.name || f.filename,
+                                    createdAt: formatPhotoDate(f.uploadedAt),
+                                    uploadedAtRaw: f.uploadedAt || undefined,
+                                })),
                             }));
                         }
 
                         if (Object.keys(repairByGroup).length > 0) {
                             const actionIndexes = new Set<number>();
                             for (const group of Object.keys(repairByGroup)) {
-                                const match = group.match(/^(before|after)_(\d+)$/);
+                                const match = group.match(/^(before|after|file)_(\d+)$/);
                                 if (match) actionIndexes.add(parseInt(match[2]));
                             }
                             // ไล่เฉพาะเลขกลุ่มที่มีอยู่จริง — เลขกลุ่มมี offset ตามรอบซ่อม
@@ -2141,6 +2279,7 @@ export default function CMInProgressForm() {
                             for (const i of (orderedIndexes.length ? orderedIndexes : [0])) {
                                 const beforePhotos = repairByGroup[`before_${i}`] || [];
                                 const afterPhotos = repairByGroup[`after_${i}`] || [];
+                                const attachedFiles = repairByGroup[`file_${i}`] || [];
                                 actions.push({
                                     text: "",
                                     beforeImages: beforePhotos.map((p: any, idx: number) => ({
@@ -2162,6 +2301,16 @@ export default function CMInProgressForm() {
                                         createdAt: formatPhotoDate(p.uploadedAt),
                                         uploadedAtRaw: p.uploadedAt || undefined,
                                         location: p.location || undefined,
+                                    })),
+                                    files: attachedFiles.map((f: any, idx: number) => ({
+                                        id: `server-file-${i}-${idx}-${f.filename || f.url}`,
+                                        file: null,
+                                        preview: f.url?.startsWith("http") ? f.url : `${API_BASE}${f.url}`,
+                                        isServer: true,
+                                        serverUrl: f.url,
+                                        name: f.name || f.filename,
+                                        createdAt: formatPhotoDate(f.uploadedAt),
+                                        uploadedAtRaw: f.uploadedAt || undefined,
                                     })),
                                 });
                             }
@@ -2644,11 +2793,63 @@ export default function CMInProgressForm() {
                         }
                     }
 
+                    // Upload ไฟล์แนบใต้ช่องรายละเอียด — กลุ่มแยกจากรูปก่อน/หลัง ใช้ phase เดียวกัน
+                    const uploadedFiles: { name: string; url: string; uploadedAt?: string }[] = [];
+                    for (const item of (action.files ?? [])) {
+                        if (item.isServer && item.serverUrl) {
+                            uploadedFiles.push({
+                                name: item.name || item.file?.name || `file_${item.id}`,
+                                url: item.serverUrl,
+                                uploadedAt: item.uploadedAtRaw || item.createdAt,
+                            });
+                            continue;
+                        }
+                        // ไฟล์ที่กู้มาจากร่างไม่มี File object เหลืออยู่ — ต้องดึงกลับจาก blob url ก่อนส่ง
+                        let upload: File | null = item.file;
+                        if (!upload && item.preview) {
+                            try {
+                                const blob = await (await fetch(item.preview)).blob();
+                                upload = new File([blob], item.name || `file_${item.id}`, { type: blob.type || "application/octet-stream" });
+                            } catch (e) {
+                                console.error("Failed to upload attachment from draft:", e);
+                                throw e;
+                            }
+                        }
+                        if (!upload) continue;
+
+                        const formData = new FormData();
+                        formData.append("station_id", stationId);
+                        formData.append("group", `file_${actionIndex}`);
+                        formData.append("phase", "repair");
+                        formData.append("files", upload);
+                        formData.append("created_at", new Date().toISOString());
+
+                        const uploadRes = await fetch(
+                            `${API_BASE}/cmreport/${encodeURIComponent(editId)}/photos`,
+                            { method: "POST", credentials: "include", body: formData }
+                        );
+                        if (!uploadRes.ok) {
+                            const detail = await uploadRes.text().catch(() => `HTTP ${uploadRes.status}`);
+                            throw new Error(`Attachment upload failed: ${detail}`);
+                        }
+                        const uploadData = await uploadRes.json().catch(() => ({}));
+                        if (!uploadData.files?.[0]) {
+                            throw new Error("Attachment upload returned no file");
+                        }
+                        uploadedFiles.push({
+                            // เก็บชื่อที่ผู้ใช้เห็น — ชื่อไฟล์บนดิสก์ถูก sanitize จนอ่านไม่ออกถ้าเป็นภาษาไทย
+                            name: upload.name,
+                            url: uploadData.files[0].url,
+                            uploadedAt: uploadData.files[0].uploadedAt || new Date().toISOString(),
+                        });
+                    }
+
                     return {
                         code: action.code,
                         text: action.text,
                         beforeImages: uploadedBeforeImages,
-                        afterImages: uploadedAfterImages
+                        afterImages: uploadedAfterImages,
+                        files: uploadedFiles
                     };
                 })
             );
@@ -3676,6 +3877,15 @@ export default function CMInProgressForm() {
                                                         rows={3}
                                                         placeholder={lang === "th" ? "กรอกรายละเอียดการดำเนินการ..." : "Enter action details..."}
                                                         className="tw-w-full tw-px-3 tw-py-2 tw-border tw-border-gray-300 tw-rounded-lg tw-text-sm tw-bg-white focus:tw-outline-none focus:tw-border-amber-400 tw-transition-colors tw-resize-y"
+                                                    />
+
+                                                    {/* ไฟล์แนบของการดำเนินการรายการนี้ */}
+                                                    <ActionAttachments
+                                                        files={action.files ?? []}
+                                                        disabled={viewOnly}
+                                                        lang={lang}
+                                                        onAdd={(fs) => addCorrectiveFiles(i, fs)}
+                                                        onRemove={(id) => removeCorrectiveFile(i, id)}
                                                     />
                                                 </div>
                                             </div>

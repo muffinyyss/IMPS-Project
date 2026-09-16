@@ -17,6 +17,8 @@ export interface DraftCorrectiveAction {
     text: string;
     beforeImages?: DraftImage[];
     afterImages?: DraftImage[];
+    // ไฟล์แนบใต้ช่องรายละเอียดการดำเนินการ — เก็บ base64 เหมือนรูป เพราะร่างอยู่ก่อน upload
+    files?: DraftImage[];
 }
 
 export interface DraftGroup {
