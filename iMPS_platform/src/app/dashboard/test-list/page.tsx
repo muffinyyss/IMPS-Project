@@ -14,7 +14,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card } from "@material-tailwind/react";
-import { DocumentArrowDownIcon } from "@heroicons/react/24/outline";
+import { DocumentArrowDownIcon, PlusIcon } from "@heroicons/react/24/outline";
 import { apiFetch } from "@/utils/api";
 import useLanguage from "@/utils/useLanguage";
 import {
@@ -135,6 +135,7 @@ export default function TestListPage() {
       tableCount: (n: number, q?: string) => `${n} รายการ${q ? ` · "${q}"` : ""}`,
       searchPlaceholder: "ค้นหา station, ชื่อเอกสาร, ช่าง, SN…",
       clearFilters: "ล้างตัวกรอง",
+      addWorkOrder: "เพิ่มใบงาน",
       pagination: (from: number, to: number, total: number) => `แสดง ${from}–${to} จาก ${total} รายการ`,
       loading: "กำลังโหลด",
       errorPrefix: "โหลดข้อมูลไม่สำเร็จ",
@@ -162,6 +163,7 @@ export default function TestListPage() {
       tableCount: (n: number, q?: string) => `${n} record(s)${q ? ` · "${q}"` : ""}`,
       searchPlaceholder: "Search station, document, technician, SN…",
       clearFilters: "Clear filters",
+      addWorkOrder: "Add work order",
       pagination: (from: number, to: number, total: number) => `Showing ${from}–${to} of ${total}`,
       loading: "Loading",
       errorPrefix: "Failed to load",
@@ -481,13 +483,23 @@ export default function TestListPage() {
           </datalist>
         </div>
 
-        <CsvExportButton onClick={exportCsv} count={sortedRows.length} lang={lang} />
-
         {activeFilterCount > 0 && (
           <button onClick={clearAll} className="tw-text-xs tw-font-semibold tw-text-red-500 hover:tw-text-red-700 tw-underline">
             {t.clearFilters}
           </button>
         )}
+
+        <div className="tw-ml-auto tw-flex tw-items-center tw-gap-2">
+          <CsvExportButton onClick={exportCsv} count={sortedRows.length} lang={lang} />
+          <button
+            type="button"
+            onClick={() => router.push("/dashboard/test-report")}
+            className="tw-inline-flex tw-h-9 tw-items-center tw-justify-center tw-gap-1.5 tw-rounded-lg tw-bg-gray-900 tw-px-3.5 tw-text-sm tw-font-semibold tw-text-white tw-shadow-sm tw-transition-colors hover:tw-bg-black focus:tw-outline-none focus-visible:tw-ring-2 focus-visible:tw-ring-gray-500"
+          >
+            <PlusIcon aria-hidden="true" className="tw-h-4 tw-w-4" />
+            <span>{t.addWorkOrder}</span>
+          </button>
+        </div>
       </div>
 
       {/* ── Search ── */}
