@@ -489,8 +489,10 @@ export default function TestListPage() {
           </button>
         )}
 
+        <CsvExportButton onClick={exportCsv} count={sortedRows.length} lang={lang} />
+
         <div className="tw-ml-auto tw-flex tw-items-center tw-gap-2">
-          <CsvExportButton onClick={exportCsv} count={sortedRows.length} lang={lang} />
+          
           <button
             type="button"
             onClick={() => router.push("/dashboard/test-report")}
