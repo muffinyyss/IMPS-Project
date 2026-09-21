@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { getRoutes }  from "@/routes";
-import { DashboardNavbar, Configurator } from "@/widgets/layout";
+import { DashboardNavbar } from "@/widgets/layout";
 import Sidenav from "@/widgets/layout/sidenav";
 import { usePathname } from "next/navigation";
 import { useMaterialTailwindController } from "@/context";
@@ -48,12 +48,9 @@ export default function InnerContent({ children }: { children: React.ReactNode }
       {showSidenav && <Sidenav routes={routes} />}
 
       <div className={showSidenav ? "tw-p-4 xl:tw-ml-[var(--content-ml)]" : "m-0"}>
-        {!isSimpleLayout && (
-          <>
-            <DashboardNavbar />
-            <Configurator />
-          </>
-        )}
+        {/* Configurator (แผงตั้งค่าของเทมเพลต) ถูกถอดออก — ไม่มีปุ่มไหนเปิดมันแล้ว
+            และมันยิง fetch ไป api.github.com ทุกครั้งที่โหลดหน้า dashboard */}
+        {!isSimpleLayout && <DashboardNavbar />}
 
         {children}
       </div>

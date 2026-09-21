@@ -352,7 +352,7 @@ export function DashboardNavbar() {
                 <>
                   {/* Breadcrumbs - Hidden on mobile */}
                   <div className="tw-hidden sm:tw-flex tw-items-center tw-gap-1 tw-text-xs tw-text-gray-400 tw-mb-1">
-                    <Link href="/" className="hover:tw-text-gray-600 tw-transition-colors">
+                    <Link href="/" prefetch={false} className="hover:tw-text-gray-600 tw-transition-colors">
                       <HomeIcon className="tw-h-3.5 tw-w-3.5" />
                     </Link>
                     {segs.slice(0, -1).map((seg, i) => (

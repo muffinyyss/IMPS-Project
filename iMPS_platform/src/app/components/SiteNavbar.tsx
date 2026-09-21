@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import HoverPrefetchLink from "@/components/HoverPrefetchLink";
 import { usePathname, useRouter } from "next/navigation";
 import React, { useEffect, useState } from "react";
 
@@ -96,21 +97,52 @@ export default function SiteNavbar() {
     return item.href;
   };
 
+  // Dashboard = หน้าถัดไปที่ผู้ใช้ที่ล็อกอินแล้วเกือบทุกคนจะกด
+  // บนเน็ตช้า ลำดับของ Next คือ RSC payload → chunk ของหน้า → ค่อยยิง API
+  // ถ้ารอให้กดก่อนค่อยเริ่ม ลูกโซ่นี้กินเวลา ~2 วินาที
+  // จึงอุ่นไว้ "หน้าเดียว" ตอนเบราว์เซอร์ว่าง หลังหน้าแรกโหลดเสร็จ
+  // (เมนูอื่นยังคงอุ่นตอนชี้เมาส์เท่านั้น — ไม่ได้กลับไปโหลดทุกหน้าเหมือนเดิม)
+  useEffect(() => {
+    if (!user) return;
+    const target = resolveHref(navItems.find((i) => i.label === "Dashboard")!);
+    let cancelled = false;
+    const warm = () => {
+      if (cancelled) return;
+      try {
+        router.prefetch(target);
+      } catch {
+        /* prefetch เป็นแค่ optimization */
+      }
+    };
+    const ric = (window as any).requestIdleCallback as
+      | ((cb: () => void, opts?: { timeout: number }) => number)
+      | undefined;
+    const id = ric ? ric(warm, { timeout: 2000 }) : window.setTimeout(warm, 1000);
+    return () => {
+      cancelled = true;
+      const cic = (window as any).cancelIdleCallback as ((h: number) => void) | undefined;
+      if (ric && cic) cic(id);
+      else window.clearTimeout(id);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.role]);
+
   // Handle Dashboard click - clear charger selection for admin
-  const handleNavClick = (item: NavItem, href: string, e: React.MouseEvent) => {
+  //
+  // เดิมตรงนี้ preventDefault แล้วรอ setTimeout 50ms ก่อนค่อย router.push
+  // → ทุกครั้งที่ admin กด Dashboard จะเสียเวลาเปล่า 50ms ก่อนเริ่มเปลี่ยนหน้า
+  // การล้าง localStorage และ dispatchEvent เป็น synchronous อยู่แล้ว
+  // (listener ใน routes.jsx ทำงานจบก่อน dispatchEvent จะ return)
+  // จึงปล่อยให้ <Link> พาไปเองตามปกติ = เริ่มเปลี่ยนหน้าทันทีที่คลิก
+  const handleNavClick = (item: NavItem, _href: string, _e: React.MouseEvent) => {
     if (item.label === "Dashboard" && user) {
       const role = user.role?.toLowerCase() ?? "";
       // Admin: clear selected_sn so menu shows Users/Stations
       if (role === "admin") {
-        e.preventDefault();
         // Clear only charger selection, keep station_id for reference
         localStorage.removeItem("selected_sn");
         localStorage.removeItem("selected_charger_no");
         window.dispatchEvent(new CustomEvent("charger:deselected"));
-        // Small delay to ensure state updates
-        setTimeout(() => {
-          router.push(href);
-        }, 50);
       }
     }
   };
@@ -134,7 +166,7 @@ export default function SiteNavbar() {
         md:tw-grid md:tw-grid-cols-[1fr_auto_1fr] md:tw-items-center
       ">
         {/* Brand */}
-        <Link href="/" className="tw-flex tw-items-center tw-space-x-2" aria-label="IMPS Home">
+        <Link href="/" prefetch={false} className="tw-flex tw-items-center tw-space-x-2" aria-label="IMPS Home">
           <span className="tw-text-3xl md:tw-text-4xl tw-font-extrabold">
             <span className="tw-text-yellow-500">i</span>
             <span className="tw-text-gray-900">MPS</span>
@@ -148,14 +180,13 @@ export default function SiteNavbar() {
             return (
               <li key={item.href}>
                 {!item.requireAuth || user ? (
-                  <Link 
-                    href={href} 
-                    className={linkClass(href)} 
-                    prefetch={false}
+                  <HoverPrefetchLink
+                    href={href}
+                    className={linkClass(href)}
                     onClick={(e) => handleNavClick(item, href, e)}
                   >
                     {item.label}
-                  </Link>
+                  </HoverPrefetchLink>
                 ) : (
                   <span
                     role="link"
@@ -188,14 +219,14 @@ export default function SiteNavbar() {
               </button>
             </>
           ) : (
-            <Link
+            <HoverPrefetchLink
               href="/auth/signin/basic"
               className="tw-rounded-full tw-bg-white tw-border tw-border-gray-300 tw-px-5 tw-h-10 
                          tw-shadow-sm tw-inline-flex tw-items-center tw-justify-center tw-text-sm
                          hover:tw-bg-black hover:tw-text-white hover:tw-border-black"
             >
               Login
-            </Link>
+            </HoverPrefetchLink>
           )}
         </div>
 
@@ -246,14 +277,13 @@ export default function SiteNavbar() {
               return (
                 <li key={item.href}>
                   {!item.requireAuth || user ? (
-                    <Link
+                    <HoverPrefetchLink
                       href={href}
                       className={`tw-block tw-py-2 ${linkClass(href)}`}
-                      prefetch={false}
                       onClick={(e) => handleNavClick(item, href, e)}
                     >
                       {item.label}
-                    </Link>
+                    </HoverPrefetchLink>
                   ) : (
                     <span
                       role="link"

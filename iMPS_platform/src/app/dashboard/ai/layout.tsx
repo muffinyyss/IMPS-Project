@@ -1,7 +1,24 @@
 "use client";
 import React, { useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
+import { Plus_Jakarta_Sans, JetBrains_Mono } from "next/font/google";
 import { AiNavContext } from "./ai-nav-context";
+
+// โหลดเฉพาะหน้า AI (ai-theme.css ใช้ --font-jakarta / --font-mono)
+// ไม่ได้อยู่ใน root layout แล้ว หน้าอื่นจะได้ไม่ต้องโหลดไฟล์ฟอนต์ที่ไม่ได้ใช้
+const jakarta = Plus_Jakarta_Sans({
+    subsets: ["latin"],
+    weight: ["400", "600", "700"],
+    variable: "--font-jakarta",
+    display: "swap",
+});
+
+const jetbrains = JetBrains_Mono({
+    subsets: ["latin"],
+    weight: ["400"],
+    variable: "--font-mono",
+    display: "swap",
+});
 
 function AiSubNav() {
     const router = useRouter();
@@ -31,8 +48,10 @@ export default function AiLayout({ children }: { children: React.ReactNode }) {
     const [hideNav, setHideNav] = useState(false);
     return (
         <AiNavContext.Provider value={{ hideNav, setHideNav }}>
-            {!hideNav && <AiSubNav />}
-            {children}
+            <div className={`${jakarta.variable} ${jetbrains.variable}`}>
+                {!hideNav && <AiSubNav />}
+                {children}
+            </div>
         </AiNavContext.Provider>
     );
 }

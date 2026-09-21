@@ -3,6 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 import React, { useState } from "react";
 import Link from "next/link";
+import HoverPrefetchLink from "@/components/HoverPrefetchLink";
 import { ArrowLeftIcon } from "@heroicons/react/24/outline";
 import { useRouter } from "next/navigation";
 // @material-tailwind/react
@@ -117,7 +118,7 @@ export default function BasicPage() {
 
       {/* ปุ่ม Back มุมซ้ายบน */}
       <div className="tw-absolute tw-top-4 tw-left-4">
-        <Link href="/">
+        <Link href="/" prefetch={false}>
           <Button
             variant="outlined"
             size="sm"
@@ -196,14 +197,14 @@ export default function BasicPage() {
             </div>
 
             <div className="tw-flex tw-justify-end tw-mt-2">
-              <Link href="/auth/reset/basic-reset">
+              <HoverPrefetchLink href="/auth/reset/basic-reset">
                 <Typography
                   variant="small"
                   className="!tw-font-medium !tw-text-blue-gray-500 hover:!tw-text-blue-gray-900 tw-transition-colors"
                 >
                   {t("forgotPassword", lang)}
                 </Typography>
-              </Link>
+              </HoverPrefetchLink>
             </div>
 
             {/* <Button className="tw-mt-6" fullWidth type="submit">
