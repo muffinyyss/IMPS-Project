@@ -3,7 +3,7 @@ import {
   PmRow,
   EMPTY_PM_FILTERS, FLEXXFAST_BRAND, UNKNOWN_BRAND, UNKNOWN_COMPANY,
   applyFilters, brandOf, bucketOf, companyOf, filterByDate, groupByMonth,
-  listBrands, listCompanies, listYears, matchesCompanyFilter, originOf,
+  groupByMonthByBrand, listBrands, listCompanies, listYears, matchesCompanyFilter, originOf,
   rowDate, stageOf, weekOfMonth, weeksInMonth,
 } from "./pm-dashboard";
 
@@ -202,6 +202,34 @@ describe("groupByMonth", () => {
     expect(completed[1]).toBe(1);
     // annulé + ligne sans date = jamais comptés
     expect(open.concat(inProgress, completed).reduce((s, v) => s + v, 0)).toBe(4);
+  });
+});
+
+describe("groupByMonthByBrand", () => {
+  it("compile des séries embarquées par marque et par étape, sans compter les lignes annulées", () => {
+    const rows = [
+      wo({ pm_date: "2026-01-15", charger_brand: "Delta", planning_status: "pending" }),
+      wo({ pm_date: "2026-01-20", charger_brand: "FlexxFast", planning_status: "pending" }),
+      report({ pm_date: "2026-01-25", charger_brand: "Delta", status: "Closed" }),
+      report({ pm_date: "2026-02-05", charger_brand: "FlexxFast", status: "draft" }),
+      wo({ pm_date: "2026-02-10", charger_brand: "Delta", status: "CAN" }),
+      report({ pm_date: "2026-02-20", charger_brand: "", status: "Closed" }),
+    ];
+
+    const { brands, series } = groupByMonthByBrand(rows);
+    expect(brands).toEqual(["Delta", FLEXXFAST_BRAND, UNKNOWN_BRAND]);
+
+    const deltaOpen = series.find((s) => s.name === `${"Delta"} • Open`)!.data;
+    const deltaDone = series.find((s) => s.name === `${"Delta"} • Complete`)!.data;
+    const flexOpen = series.find((s) => s.name === `${FLEXXFAST_BRAND} • Open`)!.data;
+    const flexInProgress = series.find((s) => s.name === `${FLEXXFAST_BRAND} • In Progress`)!.data;
+
+    expect(deltaOpen[0]).toBe(1);
+    expect(deltaDone[0]).toBe(1);
+    expect(flexOpen[0]).toBe(1);
+    expect(flexInProgress[1]).toBe(1);
+    expect(series.some((s) => s.name.startsWith(`${UNKNOWN_BRAND} • `))).toBe(true);
+    expect(series.flatMap((s) => s.data).reduce((sum, v) => sum + v, 0)).toBe(5);
   });
 });
 

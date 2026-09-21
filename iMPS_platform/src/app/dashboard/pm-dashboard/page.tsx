@@ -27,7 +27,7 @@ import useLanguage from "@/utils/useLanguage";
 import {
   PmRow, PmActiveFilters, PmBucket, PmOrigin, PmStage, DateSel,
   EMPTY_PM_FILTERS, UNKNOWN_BRAND, UNKNOWN_COMPANY, COMPANY_FILTER_OPTIONS, FLEXXFAST_BRAND,
-  applyFilters, brandOf, bucketOf, filterByDate, groupByMonth, listBrands, listYears,
+  applyFilters, brandOf, bucketOf, filterByDate, groupByMonth, groupByMonthByBrand, listBrands, listYears,
   matchesCompanyFilter, originOf, weeksInMonth,
 } from "@/utils/pm-dashboard";
 import { PM_LIST_ROUTE } from "@/app/dashboard/pm-report/lib/origin";
@@ -134,6 +134,7 @@ export default function PMDashboardPage() {
   const [weekSel, setWeekSel] = useState<DateSel>("all");
   const [stationFilter, setStationFilter] = useState<string>("All");
   const [filters, setFilters] = useState<PmActiveFilters>(EMPTY_PM_FILTERS);
+  const [selectedVendorLegend, setSelectedVendorLegend] = useState<string | null>(null);
 
   const router = useRouter();
   const [userRole, setUserRole] = useState("");
@@ -319,6 +320,7 @@ export default function PMDashboardPage() {
     [stationRows, yearSel, filters]
   );
   const monthData = useMemo(() => groupByMonth(monthRows), [monthRows]);
+  const vendorMonthData = useMemo(() => groupByMonthByBrand(monthRows), [monthRows]);
 
   // ── โดนัท + การ์ด 4 ใบ อ่านตัวเลขชุดเดียวกัน — ไม่กรองด้วย bucket ของตัวเอง
   const bucketRows = useMemo(() => applyFilters(periodRows, filters, "bucket"), [periodRows, filters]);
@@ -344,6 +346,7 @@ export default function PMDashboardPage() {
       afterFilter: (n: number) => `→ ${n} รายการหลังกรอง`,
       s1Title: "สัดส่วนความสำเร็จงาน PM",
       s3Title: "สถานะรวมรายเดือน (Overall Status by Month)",
+      s4Title: "สถานะรวมรายเดือนตาม vendor (Overall Status by Month · Vendor)",
       stationFilterLabel: "กรองตามสถานี",
       clickToFilter: "คลิกที่ส่วนของกราฟเพื่อกรอง",
       cancelHint: "(คลิกอีกครั้งเพื่อยกเลิก)",
@@ -388,6 +391,7 @@ export default function PMDashboardPage() {
       afterFilter: (n: number) => `→ ${n} after filters`,
       s1Title: "PM Success Rate",
       s3Title: "Overall Status by Month",
+      s4Title: "Overall Status by Month · Vendor",
       stationFilterLabel: "Filter by station",
       clickToFilter: "Click on the chart to filter",
       cancelHint: "(click again to cancel)",
@@ -512,7 +516,7 @@ export default function PMDashboardPage() {
     xaxis: { categories: t.monthsShort, labels: { rotate: 0, style: { fontSize: "12px" } } },
     // compte de travaux = entier, jamais 0.5
     yaxis: { labels: { formatter: (v: number) => String(Math.round(v)) } },
-    legend: { position: "top", onItemClick: { toggleDataSeries: false } },
+    legend: { show: false },
     dataLabels: { enabled: false },
     grid: { borderColor: "#f1f5f9" },
     states: { active: { filter: { type: "darken", value: 0.7 } } },
@@ -529,6 +533,62 @@ export default function PMDashboardPage() {
   const monthlyHasData = useMemo(
     () => monthData.open.concat(monthData.inProgress, monthData.completed).some((v) => v > 0),
     [monthData]
+  );
+
+  const vendorMonthlySeries = useMemo(() => vendorMonthData.series, [vendorMonthData]);
+  const displayedVendorMonthlySeries = useMemo(
+    () => selectedVendorLegend
+      ? vendorMonthlySeries.filter((series) => series.name.split(" • ")[0] === selectedVendorLegend)
+      : vendorMonthlySeries,
+    [selectedVendorLegend, vendorMonthlySeries]
+  );
+  const vendorColorMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    vendorMonthData.brands.forEach((brand, index) => {
+      map[brand] = BRAND_COLORS[index % BRAND_COLORS.length];
+    });
+    return map;
+  }, [vendorMonthData.brands]);
+
+  const vendorMonthlyBarOptions = useMemo<ApexCharts.ApexOptions>(() => ({
+    chart: {
+      type: "bar", stacked: true, toolbar: { show: false },
+      events: {
+        // ไม่ใช้การกรองจาก chart ในโหมด vendor — เป็นกราฟอ่านแนวโน้มตาม vendor + status เท่านั้น
+      },
+    },
+    colors: displayedVendorMonthlySeries.map((s) => {
+      const vendor = s.name.split(" • ")[0] ?? "Unknown";
+      return vendorColorMap[vendor] ?? "#94a3b8";
+    }),
+    xaxis: { categories: t.monthsShort, labels: { rotate: 0, style: { fontSize: "12px" } } },
+    yaxis: { labels: { formatter: (v: number) => String(Math.round(v)) } },
+    legend: { show: false },
+    dataLabels: { enabled: false },
+    grid: { borderColor: "#f1f5f9" },
+    plotOptions: { bar: { borderRadius: 3, columnWidth: "45%" } },
+    tooltip: {
+      shared: false,
+      y: { formatter: (v: number) => `${v} ${t.taskUnit}` },
+      custom: ({ series, seriesIndex, dataPointIndex, w }: any) => {
+        const fullName = w?.config?.series?.[seriesIndex]?.name ?? "Unknown";
+        const vendor = fullName.split(" • ")[0] ?? "Unknown";
+        const status = fullName.split(" • ").slice(1).join(" • ") || "Total";
+        const monthLabel = t.monthsLong[dataPointIndex] ?? "";
+        return `
+          <div style="padding:8px 10px; font-size:12px; color:#1f2937;">
+            <div style="font-weight:700; margin-bottom:4px;">${monthLabel}</div>
+            <div><span style="font-weight:600;">Vendor:</span> ${vendor}</div>
+            <div><span style="font-weight:600;">Status:</span> ${status}</div>
+            <div style="margin-top:4px;"><span style="font-weight:600;">Value:</span> ${series[seriesIndex][dataPointIndex]} ${t.taskUnit}</div>
+          </div>
+        `;
+      },
+    },
+  }), [displayedVendorMonthlySeries, t, vendorColorMap]);
+  const vendorMonthlyHasData = useMemo(
+    () => displayedVendorMonthlySeries.some((s) => s.data.some((v) => v > 0)),
+    [displayedVendorMonthlySeries]
   );
 
   /** ป้ายของตัวกรอง stage ที่มาจาก legend ของกราฟรายเดือน */
@@ -810,22 +870,78 @@ export default function PMDashboardPage() {
           )}
         </div>
         <Card className="tw-border tw-border-blue-gray-100 tw-shadow-sm">
-          <CardHeader floated={false} shadow={false} className="tw-m-4 tw-mb-0">
-            <Typography variant="small" className="!tw-font-normal !tw-text-blue-gray-400">
-              {t.barHint}
-            </Typography>
-          </CardHeader>
           <CardBody className="!tw-px-4 !tw-pt-2 !tw-pb-4">
             {monthlyHasData ? (
-              <Chart type="bar" options={monthlyBarOptions} series={monthlyBarSeries} width="100%" height={280} />
+              <>
+                <div className="tw-mb-3 tw-flex tw-flex-wrap tw-justify-center tw-gap-2">
+                  {monthlyBarSeries.map((series, index) => {
+                    const key = (["open", "in_progress", "closed"] as const)[index];
+                    const isActive = filters.stage === key;
+                    const color = ["#ef4444", "#f97316", "#22c55e"][index] ?? "#94a3b8";
+                    return (
+                      <button
+                        key={series.name}
+                        type="button"
+                        onClick={() => (key ? toggleFilter("stage", key) : undefined)}
+                        aria-pressed={isActive}
+                        className={`tw-inline-flex tw-items-center tw-gap-2 tw-rounded-full tw-px-2.5 tw-py-1 tw-text-[11px] tw-font-semibold tw-transition-all ${
+                          isActive ? "tw-bg-blue-100 tw-text-blue-700 tw-ring-1 tw-ring-blue-200" : "tw-bg-gray-100 tw-text-gray-700 hover:tw-bg-gray-200"
+                        }`}
+                      >
+                        <span aria-hidden="true" className="tw-h-2.5 tw-w-2.5 tw-rounded-full" style={{ background: color }} />
+                        {series.name}
+                      </button>
+                    );
+                  })}
+                </div>
+                <Chart type="bar" options={monthlyBarOptions} series={monthlyBarSeries} width="100%" height={360} />
+              </>
             ) : (
-              <EmptyChart message={t.noChartData} height={280} />
+              <EmptyChart message={t.noChartData} height={360} />
             )}
           </CardBody>
         </Card>
       </section>
 
-      {/* ── Section 3: entrée vers la page PM List ── */}
+      {/* ── Section 3: Overall Status by Month · Vendor ── */}
+      <section className="tw-mb-6">
+        <div className="tw-mb-3 tw-flex tw-items-center tw-justify-between">
+          <h2 className="tw-text-base tw-font-semibold tw-text-gray-700">{t.s4Title}</h2>
+        </div>
+        <Card className="tw-border tw-border-blue-gray-100 tw-shadow-sm">
+          <CardBody className="!tw-px-4 !tw-pt-2 !tw-pb-4">
+            {vendorMonthlyHasData ? (
+              <>
+                <div className="tw-mb-3 tw-flex tw-flex-wrap tw-justify-center tw-gap-2">
+                  {vendorMonthData.brands.map((brand, index) => {
+                    const isActive = selectedVendorLegend === brand;
+                    const color = BRAND_COLORS[index % BRAND_COLORS.length];
+                    return (
+                      <button
+                        key={brand}
+                        type="button"
+                        onClick={() => setSelectedVendorLegend((prev) => (prev === brand ? null : brand))}
+                        aria-pressed={isActive}
+                        className={`tw-inline-flex tw-items-center tw-gap-2 tw-rounded-full tw-px-2.5 tw-py-1 tw-text-[11px] tw-font-semibold tw-transition-all ${
+                          isActive ? "tw-bg-blue-100 tw-text-blue-700 tw-ring-1 tw-ring-blue-200" : "tw-bg-gray-100 tw-text-gray-700 hover:tw-bg-gray-200"
+                        }`}
+                      >
+                        <span aria-hidden="true" className="tw-h-2.5 tw-w-2.5 tw-rounded-full" style={{ background: color }} />
+                        {brand}
+                      </button>
+                    );
+                  })}
+                </div>
+                <Chart type="bar" options={vendorMonthlyBarOptions} series={displayedVendorMonthlySeries} width="100%" height={360} />
+              </>
+            ) : (
+              <EmptyChart message={t.noChartData} height={360} />
+            )}
+          </CardBody>
+        </Card>
+      </section>
+
+      {/* ── Section 4: entrée vers la page PM List ── */}
       <section>
         <Card className="tw-border tw-border-blue-gray-100 tw-shadow-sm">
           <CardBody className="tw-flex tw-flex-col tw-gap-3 sm:tw-flex-row sm:tw-items-center sm:tw-justify-between">
