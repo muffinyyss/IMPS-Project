@@ -15,12 +15,16 @@ import { ArrowLeftIcon, CheckIcon, ChevronDownIcon, ExclamationTriangleIcon, Mag
 import { apiFetch } from "@/utils/api";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
 import {
+  EMPTY_PM_ASSIGNEE_OPTIONS,
   equipKey,
   equipLabel,
+  fetchPmAssigneeOptions,
+  pmAssigneeGroups,
+  pmAssigneeNames,
   PM_PLANNING_ROLES,
   type EquipmentChoices,
   type EquipmentItem,
-  type TechnicianOption,
+  type PmAssigneeOptions,
 } from "./planning";
 
 // ใช้หัวเอกสารชุดเดียวกับหน้าวางแผน/ฟอร์ม CM
@@ -63,9 +67,12 @@ const T = {
     th: "วันที่เสร็จตามแผนต้องไม่มาก่อนวันที่เริ่ม",
     en: "Scheduled finish must not be before scheduled start",
   },
-  technician: { th: "Vendor", en: "Vendor" },
+  technician: { th: "ผู้รับผิดชอบ", en: "Assignees" },
   allTechnicians: { th: "ทั้งหมด", en: "All" },
-  noTechnicians: { th: "ไม่พบ Vendor ในระบบ", en: "No vendors found" },
+  noTechnicians: {
+    th: "ไม่พบ Technician / Vendor / Outsource ในบริษัทของคุณ",
+    en: "No technicians, vendors or outsources found in your company",
+  },
 
   equipSection: { th: "อุปกรณ์ที่จะ PM", en: "Equipment to maintain" },
   allEquipment: { th: "ทั้งหมด", en: "All" },
@@ -88,7 +95,7 @@ const T = {
 
   errStation: { th: "กรุณาเลือกสถานี", en: "Please select a station" },
   errSched: { th: "กรุณาระบุวันที่เริ่มและวันที่เสร็จตามแผน", en: "Scheduled start and finish are required" },
-  errTech: { th: "กรุณาเลือก Vendor อย่างน้อย 1 ราย", en: "Select at least one vendor" },
+  errTech: { th: "กรุณาเลือกผู้รับผิดชอบอย่างน้อย 1 ราย", en: "Select at least one assignee" },
   errStations: { th: "โหลดรายชื่อสถานีไม่สำเร็จ", en: "Failed to load stations" },
   errChoices: { th: "โหลดรายการอุปกรณ์ไม่สำเร็จ", en: "Failed to load equipment list" },
   errSave: { th: "เปิดใบงานไม่สำเร็จ", en: "Failed to create work order" },
@@ -147,7 +154,7 @@ export default function PmCreateWoForm({ onSaved, onCancel }: Props) {
   const { lang } = useLanguage();
 
   const [stations, setStations] = useState<StationOption[]>([]);
-  const [technicians, setTechnicians] = useState<TechnicianOption[]>([]);
+  const [assigneeOptions, setAssigneeOptions] = useState<PmAssigneeOptions>(EMPTY_PM_ASSIGNEE_OPTIONS);
   const [choices, setChoices] = useState<EquipmentChoices | null>(null);
   const [canPlan, setCanPlan] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -193,17 +200,17 @@ export default function PmCreateWoForm({ onSaved, onCancel }: Props) {
     setStationMenuOpen(false);
   };
 
-  // ── โหลดสิทธิ์ + สถานี + ช่าง ครั้งเดียวตอนเปิดฟอร์ม ──
+  // ── โหลดสิทธิ์ + สถานี + ผู้รับผิดชอบ (ช่าง/vendor/outsource) ครั้งเดียวตอนเปิดฟอร์ม ──
   useEffect(() => {
     let alive = true;
     (async () => {
       setLoading(true);
       setError("");
       try {
-        const [meRes, stRes, techRes] = await Promise.all([
+        const [meRes, stRes, options] = await Promise.all([
           apiFetch("/me"),
           apiFetch("/maximo/pm/stations"),
-          apiFetch("/users/by-role?role=technician"),
+          fetchPmAssigneeOptions(),
         ]);
         if (!alive) return;
 
@@ -214,8 +221,7 @@ export default function PmCreateWoForm({ onSaved, onCancel }: Props) {
         if (!stRes.ok) setError(String(stJson?.detail || t("errStations", lang)));
         else setStations(Array.isArray(stJson?.stations) ? stJson.stations : []);
 
-        const techJson = await techRes.json().catch(() => ({} as any));
-        if (techRes.ok) setTechnicians(Array.isArray(techJson?.users) ? techJson.users : []);
+        setAssigneeOptions(options);
       } catch (err) {
         console.error("pm create load error:", err);
         if (alive) setError(t("errStations", lang));
@@ -300,12 +306,10 @@ export default function PmCreateWoForm({ onSaved, onCancel }: Props) {
       prev.includes(username) ? prev.filter((u) => u !== username) : [...prev.filter(Boolean), username]
     );
 
-  const technicianNames = useMemo(
-    () => technicians.map((x) => x.username).filter(Boolean) as string[],
-    [technicians]
-  );
+  const assigneeGroups = useMemo(() => pmAssigneeGroups(assigneeOptions), [assigneeOptions]);
+  const assigneeNames = useMemo(() => pmAssigneeNames(assigneeGroups), [assigneeGroups]);
   const allTechChecked =
-    technicianNames.length > 0 && technicianNames.every((n) => assignees.includes(n));
+    assigneeNames.length > 0 && assigneeNames.every((n) => assignees.includes(n));
 
   // เทียบเป็น string ได้เพราะ datetime-local เป็น ISO เรียงตัวอักษรตรงกับเรียงเวลา
   const schedRangeInvalid = !!schedStart && !!schedFinish && schedFinish < schedStart;
@@ -556,35 +560,42 @@ export default function PmCreateWoForm({ onSaved, onCancel }: Props) {
                       <label className={LABEL}>
                         {t("technician", lang)} <span className="tw-text-red-500">*</span>
                       </label>
-                      {technicianNames.length > 0 ? (
+                      {assigneeNames.length > 0 ? (
                         <div className="tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-divide-y tw-divide-blue-gray-50 tw-max-h-56 tw-overflow-y-auto">
-                          {/* All = ติ๊กช่างทุกคนในลิสต์รวดเดียว */}
+                          {/* All = ติ๊กทุกคนในลิสต์ (ทุกกลุ่ม) รวดเดียว */}
                           <label className="tw-flex tw-items-center tw-gap-2.5 tw-px-3 tw-py-2.5 tw-cursor-pointer hover:tw-bg-blue-gray-50/60 tw-transition-colors">
                             <input
                               type="checkbox"
                               checked={allTechChecked}
                               disabled={locked}
-                              onChange={() => setAssignees(allTechChecked ? [] : technicianNames)}
+                              onChange={() => setAssignees(allTechChecked ? [] : assigneeNames)}
                               className="tw-h-4 tw-w-4 tw-shrink-0 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500 tw-cursor-pointer"
                             />
                             <span className="tw-text-sm tw-font-semibold tw-text-blue-gray-800">
                               {t("allTechnicians", lang)}
                             </span>
                             <span className="tw-ml-auto tw-text-xs tw-text-blue-gray-400">
-                              {assignees.length}/{technicianNames.length}
+                              {assignees.length}/{assigneeNames.length}
                             </span>
                           </label>
-                          {technicianNames.map((u) => (
-                            <label key={u} className="tw-flex tw-items-center tw-gap-2.5 tw-px-3 tw-py-2.5 tw-cursor-pointer hover:tw-bg-blue-gray-50/60 tw-transition-colors">
-                              <input
-                                type="checkbox"
-                                checked={assignees.includes(u)}
-                                disabled={locked}
-                                onChange={() => toggleAssignee(u)}
-                                className="tw-h-4 tw-w-4 tw-shrink-0 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500 tw-cursor-pointer"
-                              />
-                              <span className="tw-min-w-0 tw-truncate tw-text-sm tw-text-blue-gray-800">{u}</span>
-                            </label>
+                          {assigneeGroups.map((group) => (
+                            <React.Fragment key={group.key}>
+                              <div className="tw-bg-gray-50 tw-px-3 tw-py-1.5 tw-text-[11px] tw-font-bold tw-uppercase tw-tracking-wide tw-text-blue-gray-500">
+                                {group.label}
+                              </div>
+                              {group.names.map((name) => (
+                                <label key={`${group.key}-${name}`} className="tw-flex tw-items-center tw-gap-2.5 tw-px-3 tw-py-2.5 tw-cursor-pointer hover:tw-bg-blue-gray-50/60 tw-transition-colors">
+                                  <input
+                                    type="checkbox"
+                                    checked={assignees.includes(name)}
+                                    disabled={locked}
+                                    onChange={() => toggleAssignee(name)}
+                                    className="tw-h-4 tw-w-4 tw-shrink-0 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500 tw-cursor-pointer"
+                                  />
+                                  <span className="tw-min-w-0 tw-truncate tw-text-sm tw-text-blue-gray-800">{name}</span>
+                                </label>
+                              ))}
+                            </React.Fragment>
                           ))}
                         </div>
                       ) : (

@@ -5,6 +5,7 @@
  *   - flow.tsx             (แถว/สถานะใบงานในตารางของทั้ง 5 tab)
  * แยกออกมาเพื่อไม่ให้ต้องไล่แก้ตรรกะเดียวกันหลายที่
  */
+import { apiFetch } from "@/utils/api";
 import type { Lang } from "@/utils/useLanguage";
 
 export type MaximoSource = "charger" | "mdb" | "ccb" | "cbbox" | "station";
@@ -56,6 +57,63 @@ export type TechnicianOption = {
   email?: string | null;
   company?: string | null;
 };
+
+/** ผู้รับผิดชอบงาน PM ที่เลือกได้ — ทุกกลุ่มจำกัดด้วย company ของคนที่ login แล้วจาก backend */
+export type PmAssigneeOptions = {
+  technicians: string[];
+  vendors: string[];
+  outsources: string[];
+};
+
+/** 1 หัวข้อในลิสต์ checkbox — แยกให้เห็นว่าใครเป็น Technician / Vendor / Outsource */
+export type PmAssigneeGroup = {
+  key: "technician" | "vendor" | "outsource";
+  label: string;
+  names: string[];
+};
+
+export const EMPTY_PM_ASSIGNEE_OPTIONS: PmAssigneeOptions = {
+  technicians: [],
+  vendors: [],
+  outsources: [],
+};
+
+function toNameList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((x) => String(x ?? "").trim()).filter(Boolean);
+}
+
+/**
+ * GET /companies/pm-options — ช่าง + vendor + outsource ของบริษัทคนที่ login
+ * role ที่วางแผนไม่ได้ (เช่นช่าง) จะได้ 403 → คืนลิสต์ว่าง ให้ฝั่ง UI ไปแสดงโหมดอ่านอย่างเดียวเอง
+ */
+export async function fetchPmAssigneeOptions(): Promise<PmAssigneeOptions> {
+  const res = await apiFetch("/companies/pm-options");
+  const json = await res.json().catch(() => ({} as any));
+  if (!res.ok) return EMPTY_PM_ASSIGNEE_OPTIONS;
+  return {
+    technicians: toNameList(json?.technicians),
+    vendors: toNameList(json?.vendors),
+    outsources: toNameList(json?.outsources),
+  };
+}
+
+/** กลุ่มที่มีคนอยู่จริงเท่านั้น — กันหัวข้อลอยที่ไม่มีรายการอยู่ข้างใต้ */
+export function pmAssigneeGroups(options: PmAssigneeOptions): PmAssigneeGroup[] {
+  return [
+    { key: "technician" as const, label: "Technician", names: options.technicians },
+    { key: "vendor" as const, label: "Vendor", names: options.vendors },
+    { key: "outsource" as const, label: "Outsource", names: options.outsources },
+  ].filter((group) => group.names.length > 0);
+}
+
+/**
+ * ชื่อทั้งหมดในลิสต์แบบไม่ซ้ำ — ใช้กับปุ่ม "ทั้งหมด" และตัวนับ
+ * (ชื่อเดียวอยู่ได้ 2 กลุ่ม เช่น vendor ที่รับงาน outsource ให้บริษัทตัวเองด้วย)
+ */
+export function pmAssigneeNames(groups: PmAssigneeGroup[]): string[] {
+  return Array.from(new Set(groups.flatMap((group) => group.names)));
+}
 
 /** role ที่วางแผน PM ได้ — ต้องตรงกับ PM_PLANNING_ROLES ใน backend/routers/pm_maximo.py */
 export const PM_PLANNING_ROLES = ["admin", "owner", "planner"];
