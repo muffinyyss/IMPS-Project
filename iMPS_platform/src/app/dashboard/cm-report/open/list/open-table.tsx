@@ -25,6 +25,7 @@ import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
 import { failureCodeLabel } from "@/app/dashboard/cm-report/lib/failureCode";
 import { brandScopeOf, canOpenCmAtStation } from "@/utils/brandScope";
 import { COMPANY_FILTER_OPTIONS } from "@/utils/cm-dashboard";
+import TableSkeletonRows from "@/components/TableSkeletonRows";
 
 // ==================== TRANSLATIONS ====================
 const T = {
@@ -1092,14 +1093,8 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
               {/* Table Body */}
               <tbody className="tw-divide-y tw-divide-blue-gray-50">
                 {loading ? (
-                  <tr>
-                    <td colSpan={columns.length} className="tw-text-center tw-py-10 sm:tw-py-12 lg:tw-py-16">
-                      <div className="tw-flex tw-flex-col tw-items-center tw-gap-2 sm:tw-gap-3">
-                        <div className="tw-w-6 tw-h-6 sm:tw-w-8 sm:tw-h-8 lg:tw-w-10 lg:tw-h-10 tw-border-2 sm:tw-border-3 tw-border-blue-500 tw-border-t-transparent tw-rounded-full tw-animate-spin"></div>
-                        <span className="tw-text-blue-gray-400 tw-text-xs sm:tw-text-sm">{t("loading", lang)}</span>
-                      </div>
-                    </td>
-                  </tr>
+                      /* โครงร่างสูงเท่าหน้าจริง — กัน layout shift ตอนข้อมูลมาถึง */
+                      <TableSkeletonRows rows={table.getState().pagination.pageSize} cols={columns.length} />
                 ) : table.getRowModel().rows.length ? (
                   table.getRowModel().rows.map((row, index) => (
                     <tr

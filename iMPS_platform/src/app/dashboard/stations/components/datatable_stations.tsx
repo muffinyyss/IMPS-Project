@@ -21,6 +21,7 @@ import { WARRANTY_STATUS_OPTIONS, INVESTMENT_SCOPE_OPTIONS, MultiSelectDropdown 
 import { apiFetch } from "@/utils/api";
 import { isStaffRole, staffChargerPath } from "@/utils/roles";
 import { startVisiblePoll } from "@/utils/visible-poll";
+import TableSkeletonRows from "@/components/TableSkeletonRows";
 
 // const API_BASE = "http://localhost:8000";
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "";
@@ -310,16 +311,6 @@ const CHARGER_TONES = {
   red: { bar: "tw-bg-gradient-to-r tw-from-red-400 tw-to-rose-500", iconBox: "tw-bg-red-50 tw-ring-1 tw-ring-red-200", icon: "tw-text-red-500", chip: "tw-bg-red-100 tw-text-red-600", dot: "tw-bg-red-400" },
   gray: { bar: "tw-bg-gradient-to-r tw-from-gray-300 tw-to-gray-400", iconBox: "tw-bg-gray-50 tw-ring-1 tw-ring-gray-200", icon: "tw-text-gray-400", chip: "tw-bg-gray-100 tw-text-gray-500", dot: "tw-bg-gray-300" },
 } as const;
-
-const TableRowSkeleton = ({ cols }: { cols: number }) => (
-  <tr className="tw-animate-pulse">
-    {Array.from({ length: cols }).map((_, i) => (
-      <td key={i} className="tw-px-3 tw-py-4">
-        <div className="tw-h-4 tw-rounded-md tw-bg-blue-gray-100/60" style={{ width: i === 0 ? 32 : `${50 + Math.random() * 40}%` }} />
-      </td>
-    ))}
-  </tr>
-);
 
 export function SearchDataTables() {
   const router = useRouter();
@@ -1195,7 +1186,7 @@ export function SearchDataTables() {
             <div className="tw-overflow-x-auto tw-w-full">
               <table className="tw-w-full tw-border-separate tw-border-spacing-0 tw-min-w-[900px]">
                 <thead className="tw-bg-gradient-to-r tw-from-gray-900 tw-to-gray-800"><tr>{["", "Station", "Chargers", "Available", "Owner", "Status", ""].map((h, i) => (<th key={i} className="tw-px-3 tw-py-3"><div className="tw-h-3 tw-rounded tw-bg-white/20 tw-animate-pulse" style={{ width: h ? `${h.length * 8}px` : 32 }} /></th>))}</tr></thead>
-                <tbody>{/* จำนวนแถวโครงร่าง = ขนาดหน้าจริง ไม่งั้นตารางจะโตตอนข้อมูลมาถึงและดันทุกอย่างข้างล่างลง (layout shift) */}{Array.from({ length: table.getState().pagination.pageSize }).map((_, i) => <TableRowSkeleton key={i} cols={7} />)}</tbody>
+                <tbody><TableSkeletonRows rows={table.getState().pagination.pageSize} cols={7} /></tbody>
               </table>
             </div>
           ) : err ? (<div className="tw-p-4 tw-text-red-600">{err}</div>) : (

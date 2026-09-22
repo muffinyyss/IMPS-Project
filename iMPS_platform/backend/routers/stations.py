@@ -228,15 +228,27 @@ async def station_onoff_bulk(current: UserClaims = Depends(get_current_user)):
         for c in charger_collection.find(charger_query, {"_id": 0, "SN": 1})
     } - {"", "-"})
 
+    # edgeboxStatus เก็บ 1 collection ต่อ SN — ตู้ที่ยังไม่เคยรายงานจะไม่มี collection อยู่เลย
+    # ถามชื่อที่มีจริงครั้งเดียว แล้วยิงเฉพาะพวกนั้น (ผลลัพธ์เท่าเดิม: ไม่มีเอกสาร = status None)
+    # endpoint นี้ถูกเรียกทุกครั้งที่เปิดหน้า Stations และซ้ำทุก 10 วินาที จึงคุ้มที่สุด
+    try:
+        existing = set(await charger_onoff.list_collection_names())
+    except Exception:
+        existing = None          # ถามไม่สำเร็จ → ยิงทุก SN เหมือนเดิม
+
+    to_query = sns if existing is None else [sn for sn in sns if sn in existing]
+
     sem = asyncio.Semaphore(40)
 
     async def fetch_one(sn: str):
         async with sem:
             return sn, await latest_onoff(sn)
 
-    results = await asyncio.gather(*(fetch_one(sn) for sn in sns))
+    results = await asyncio.gather(*(fetch_one(sn) for sn in to_query))
 
-    statuses = {}
+    # ต้องคง key ของทุก SN ไว้ ไม่ใช่เฉพาะที่ query — ฝั่งหน้าเว็บแยก "ไม่มีข้อมูล"
+    # (undefined → ไม่แตะค่าเดิม) ออกจาก "รายงานว่าออฟไลน์" (status null → false)
+    statuses = {sn: {"status": None, "statusAt": None} for sn in sns}
     for sn, data in results:
         status_at = data["statusAt"]
         statuses[sn] = {
@@ -1470,19 +1482,28 @@ async def get_station_availability_bulk(current: UserClaims = Depends(get_curren
         if c.get("SN") and c["SN"].strip() and c["SN"].strip() != "-"
     ]
 
+    # settingParameter ก็เก็บ 1 collection ต่อ SN เช่นกัน — ข้ามตู้ที่ไม่มี collection
+    # charger_heads() คืน None เมื่อไม่มีเอกสาร และผู้เรียกข้ามอยู่แล้ว ผลลัพธ์จึงเท่าเดิม
+    try:
+        existing = set(await settingDB.list_collection_names())
+    except Exception:
+        existing = None
+
+    query_pairs = pairs if existing is None else [(sid, sn) for sid, sn in pairs if sn in existing]
+
     sem = asyncio.Semaphore(40)
 
     async def fetch_one(sn: str):
         async with sem:
             return await charger_heads(sn)
 
-    results = await asyncio.gather(*(fetch_one(sn) for _, sn in pairs))
+    results = await asyncio.gather(*(fetch_one(sn) for _, sn in query_pairs))
 
     stations: Dict[str, Dict[str, Any]] = {
         sid: {"station_id": sid, "total": 0, "available": 0, "chargers": []}
         for sid in station_ids
     }
-    for (sid, sn), heads in zip(pairs, results):
+    for (sid, sn), heads in zip(query_pairs, results):
         if not heads:
             continue
         st = stations[sid]

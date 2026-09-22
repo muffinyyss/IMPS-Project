@@ -43,6 +43,7 @@ import {
 import AddUser, { NewUserPayload } from "@/app/dashboard/users/components/adduser";
 import { apiFetch } from "@/utils/api";
 import useLanguage, { type Lang } from "@/utils/useLanguage";
+import TableSkeletonRows from "@/components/TableSkeletonRows";
 
 /* -------------------- Translations -------------------- */
 const T = {
@@ -694,9 +695,9 @@ export default function SearchDataTables() {
         </CardBody>
 
         <CardFooter className="tw-p-0 tw-overflow-scroll">
-          {loading ? (
-            <div className="tw-p-4">{t("loading", lang)}</div>
-          ) : err ? (
+          {/* เดิมซ่อนทั้งตาราง (รวมหัวตาราง) ระหว่างโหลด แล้วค่อยโผล่มาทั้งก้อน
+              ทำให้หน้าขยับทั้งบล็อก — ตอนนี้คงตารางไว้ แล้วใส่โครงร่างใน tbody แทน */}
+          {err ? (
             <div className="tw-p-4 tw-text-red-600">{err}</div>
           ) : (
             <table className="tw-table-auto tw-text-left tw-w-full tw-min-w-max">
@@ -722,7 +723,9 @@ export default function SearchDataTables() {
                 ))}
               </thead>
               <tbody>
-                {table.getRowModel().rows.length ? (
+                {loading ? (
+                  <TableSkeletonRows rows={table.getState().pagination.pageSize} cols={columns.length} />
+                ) : table.getRowModel().rows.length ? (
                   table.getRowModel().rows.map((row) => (
                     <tr key={row.id} className="odd:tw-bg-white even:tw-bg-blue-gray-50/30 hover:tw-bg-blue-50/40 hover:tw-shadow-[inset_3px_0_0_0_#2196F3] tw-transition-colors">
                       {row.getVisibleCells().map((cell) => (
