@@ -246,7 +246,7 @@ const T = {
     items: { th: "รายการ", en: "items" },
     missingPhoto: { th: "ยังไม่ได้แนบรูปข้อ:", en: "Missing photos:" },
     missingSummaryText: { th: "ยังไม่ได้กรอกข้อความสรุปผลการตรวจสอบ", en: "Summary text not filled" },
-    missingSummaryStatus: { th: "ยังไม่ได้เลือกสถานะสรุปผล (Pass/Fail/N/A)", en: "Summary status not selected" },
+    missingSummaryStatus: { th: "ยังไม่ได้เลือกระดับสรุปผล / N/A", en: "Summary rating / N/A not selected" },
     backToList: { th: "กลับไปหน้า List", en: "Back to List" },
     loading: { th: "กำลังโหลดข้อมูล...", en: "Loading..." },
     logoAlt: { th: "โลโก้บริษัท", en: "Company logo" },
@@ -389,7 +389,8 @@ const QUESTIONS = QUESTIONS_DATA as unknown as Question[];
 
 type MeasureRow<U extends string> = { value: string; unit: U };
 type MeasureState<U extends string> = Record<string, MeasureRow<U>>;
-type PF = "PASS" | "FAIL" | "NA" | "";
+type Rating = "VERY_GOOD" | "GOOD" | "FAIR" | "UNUSABLE";
+type PF = Rating | "PASS" | "FAIL" | "NA" | "";
 
 function initMeasureState<U extends string>(keys: readonly string[], defaultUnit: U): MeasureState<U> {
     return keys.reduce((acc, k) => { acc[k] = { value: "", unit: defaultUnit }; return acc; }, {} as MeasureState<U>);
@@ -566,17 +567,25 @@ function isMobileDevice(): boolean {
 
 // ==================== UI COMPONENTS ====================
 function PassFailRow({ label, value, onChange, remark, onRemarkChange, labels, aboveRemark, beforeRemark, belowRemark, inlineLeft, showPfButtons = true, lang, remarkId, pfButtonsId }: {
-    label: string; value: PF; onChange: (v: Exclude<PF, "">) => void;
+    label: string; value: PF; onChange: (v: Rating | "NA") => void;
     remark?: string; onRemarkChange?: (v: string) => void;
     labels?: Partial<Record<Exclude<PF, "">, React.ReactNode>>;
     aboveRemark?: React.ReactNode; beforeRemark?: React.ReactNode; belowRemark?: React.ReactNode; inlineLeft?: React.ReactNode; showPfButtons?: boolean;
     lang: Lang; remarkId?: string; pfButtonsId?: string;
 }) {
-    const text = { PASS: labels?.PASS ?? t("pass", lang), FAIL: labels?.FAIL ?? t("fail", lang), NA: labels?.NA ?? t("na", lang) };
+    const text = {
+        VERY_GOOD: labels?.VERY_GOOD ?? (lang === "th" ? "ดีมาก" : "Excellent"),
+        GOOD: labels?.GOOD ?? (lang === "th" ? "ดี" : "Good"),
+        FAIR: labels?.FAIR ?? (lang === "th" ? "พอใช้" : "Fair"),
+        UNUSABLE: labels?.UNUSABLE ?? (lang === "th" ? "ใช้งานไม่ได้" : "Unusable"),
+        NA: labels?.NA ?? t("na", lang),
+    };
     const buttonGroup = (
-        <div id={pfButtonsId} className="tw-flex tw-gap-2 tw-ml-auto tw-transition-all tw-duration-300">
-            <Button size="sm" color="green" variant={value === "PASS" ? "filled" : "outlined"} className="sm:tw-min-w-[84px]" onClick={() => onChange("PASS")}>{text.PASS}</Button>
-            <Button size="sm" color="red" variant={value === "FAIL" ? "filled" : "outlined"} className="sm:tw-min-w-[84px]" onClick={() => onChange("FAIL")}>{text.FAIL}</Button>
+        <div id={pfButtonsId} className="tw-flex tw-flex-wrap tw-gap-2 tw-ml-auto tw-transition-all tw-duration-300">
+            <Button size="sm" color="green" variant={value === "VERY_GOOD" || value === "PASS" ? "filled" : "outlined"} className="sm:tw-min-w-[84px]" onClick={() => onChange("VERY_GOOD")}>{text.VERY_GOOD}</Button>
+            <Button size="sm" color="light-green" variant={value === "GOOD" ? "filled" : "outlined"} className="sm:tw-min-w-[84px]" onClick={() => onChange("GOOD")}>{text.GOOD}</Button>
+            <Button size="sm" color="amber" variant={value === "FAIR" ? "filled" : "outlined"} className="sm:tw-min-w-[84px]" onClick={() => onChange("FAIR")}>{text.FAIR}</Button>
+            <Button size="sm" color="red" variant={value === "UNUSABLE" || value === "FAIL" ? "filled" : "outlined"} className="sm:tw-min-w-[112px]" onClick={() => onChange("UNUSABLE")}>{text.UNUSABLE}</Button>
             <Button size="sm" color="blue-gray" variant={value === "NA" ? "filled" : "outlined"} className="sm:tw-min-w-[84px]" onClick={() => onChange("NA")}>{text.NA}</Button>
         </div>
     );
@@ -646,7 +655,7 @@ function PMValidationCard({ lang, allPhotosAttached, missingPhotoItems, allRequi
             });
         }
         {
-            if (!allPFAnswered) missingPFItems.forEach(item => errors.push({ section: lang === "th" ? "สถานะ PASS/FAIL/N/A" : "PASS/FAIL/N/A Status", sectionIcon: "✅", itemName: `${t("itemLabel", lang)} ${item}`, message: lang === "th" ? "ยังไม่ได้เลือกสถานะ" : "Status not selected", scrollId: getPfScrollId(item) }));
+            if (!allPFAnswered) missingPFItems.forEach(item => errors.push({ section: lang === "th" ? "ระดับผลการตรวจ / N/A" : "Inspection rating / N/A", sectionIcon: "✅", itemName: `${t("itemLabel", lang)} ${item}`, message: lang === "th" ? "ยังไม่ได้เลือกสถานะ" : "Status not selected", scrollId: getPfScrollId(item) }));
             if (!isSummaryFilled) errors.push({ section: lang === "th" ? "สรุปผลการตรวจสอบ" : "Inspection Summary", sectionIcon: "📋", itemName: "Comment", message: t("missingSummaryText", lang), scrollId: "mdb-pm-summary-section" });
             if (!isSummaryCheckFilled) errors.push({ section: lang === "th" ? "สรุปผลการตรวจสอบ" : "Inspection Summary", sectionIcon: "📋", itemName: lang === "th" ? "สถานะสรุปผล" : "Summary Status", message: t("missingSummaryStatus", lang), scrollId: "mdb-pm-summary-section" });
         }
@@ -989,6 +998,8 @@ export default function MDBPMForm() {
     }, [router, searchParams]);
     // ใบที่เปิดจาก List (แก้ใบที่โดนตีกลับ / ใบเก่าที่ยังเป็น draft) — ใบใหม่เปิดมาไม่มี id
     const editId = searchParams.get("edit_id") ?? "";
+    // เปิดจากใบ PM สถานี "ใบเดียว 4 ส่วน" → ผูกใบนี้เป็นส่วนหนึ่งของใบแม่
+    const jobId = searchParams.get("job_id") ?? "";
 
     const [docApiLoaded, setDocApiLoaded] = useState(false);
     const [photos, setPhotos] = useState<Record<string | number, PhotoItem[]>>({});
@@ -1481,7 +1492,7 @@ export default function MDBPMForm() {
                 // (เดิมงานนี้อยู่ที่ /pre/submit ซึ่งตัดออกไปพร้อมด่านก่อน PM)
                 const { issue_id: issueIdFromJob, ...jobWithoutIssueId } = job;
                 const payload = {
-                    station_id: stationId, rows: flattenRows(),
+                    station_id: stationId, ...(jobId ? { job_id: jobId } : {}), rows: flattenRows(),
                     measures: { m4: m4State, m5: m5State, m6: m6State, m7: m7State },
                     summary, ...(summaryCheck ? { summaryCheck } : {}),
                     dust_filter: dustFilterChanged ? { changed: true } : null,
@@ -1788,7 +1799,7 @@ export default function MDBPMForm() {
             );
         }
 
-        // ข้อธรรมดา (มีรูป + PASS/FAIL/N-A + หมายเหตุ)
+        // ข้อธรรมดา (มีรูป + ระดับผลการตรวจ/N-A + หมายเหตุ)
         return (
             <SectionCard key={q.key} id={sectionId} title={q.label[lang]} tooltip={qTooltip}>
                 <div className="tw-py-2">

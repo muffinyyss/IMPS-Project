@@ -1,7 +1,7 @@
 import type { PhotoRef } from "./draftPhotos";
 import { delAllPhotosForDraft } from "./draftPhotos";
 
-type PF = "PASS" | "FAIL" | "NA" | "";
+type PF = "VERY_GOOD" | "GOOD" | "FAIR" | "UNUSABLE" | "PASS" | "FAIL" | "NA" | "";
 
 type MeasureRow = { value: string; unit: string };
 type MeasureState = Record<string, MeasureRow>;

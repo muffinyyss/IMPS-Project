@@ -313,6 +313,7 @@ from routers.pmreport_mdb import router as pmreport_mdb_router
 from routers.pmreport_ccb import router as pmreport_ccb_router
 from routers.pmreport_cbbox import router as pmreport_cbbox_router
 from routers.pmreport_station import router as pmreport_station_router
+from routers.pmreport_station_job import router as pmreport_station_job_router
 from routers.testreport_dc import router as testreport_dc_router
 from routers.testreport_ac import router as testreport_ac_router
 from routers.notifications import router as notifications_router
@@ -337,6 +338,7 @@ app.include_router(pmreport_mdb_router)
 app.include_router(pmreport_ccb_router)
 app.include_router(pmreport_cbbox_router)
 app.include_router(pmreport_station_router)
+app.include_router(pmreport_station_job_router)
 app.include_router(testreport_dc_router)
 app.include_router(testreport_ac_router)
 app.include_router(notifications_router)

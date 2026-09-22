@@ -201,6 +201,10 @@ def _fmt_date_thai_full(val) -> str:
 
 def _norm_result(val: str) -> str:
     s = (str(val) if val is not None else "").strip().lower()
+    if s in ("very_good", "good", "fair"):
+        return "pass"
+    if s == "unusable":
+        return "fail"
     if s in ("pass", "p", "true", "ok", "1", "✔", "✓"):
         return "pass"
     if s in ("fail", "f", "false", "0", "x", "✗", "✕"):
@@ -1097,14 +1101,14 @@ def _draw_result_cell(
     results = [_norm_result(r) for r in results]
     n_lines = max(1, len(results))
 
-    col_w = w / 3.0
+    col_w = w / 5.0
     labels = ["pass", "fail", "na"]
     label_text = {"pass": "Pass", "fail": "Fail", "na": "N/A"}
 
-    pdf.set_font(base_font, "", FONT_SMALL)
+    pdf.set_font(base_font, "", 6)
 
     # วาดเส้นแบ่งคอลัมน์แนวตั้งเต็ม cell
-    for i in range(1, 3):
+    for i in range(1, 5):
         sx = x + i * col_w
         pdf.line(sx, y, sx, y + h)
 
@@ -1968,10 +1972,10 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
 
     # ========== แถว Inspection Results (ความสูงคงที่) ==========
     summary_check_raw = str(doc.get("summaryCheck", "")).strip()
-    # Normalize ให้เป็น PASS, FAIL, N/A
-    if summary_check_raw.upper() in ("PASS", "P", "TRUE", "OK", "1"):
+    # Normalize ระดับผลการตรวจ โดยยังรองรับข้อมูล PASS/FAIL เดิม
+    if summary_check_raw.upper() in ("VERY_GOOD", "GOOD", "FAIR", "PASS", "P", "TRUE", "OK", "1"):
         summary_check = "PASS"
-    elif summary_check_raw.upper() in ("FAIL", "F", "FALSE", "0", "X"):
+    elif summary_check_raw.upper() in ("UNUSABLE", "FAIL", "F", "FALSE", "0", "X"):
         summary_check = "FAIL"
     elif summary_check_raw.upper() in ("NA", "N/A", "N / A", "-"):
         summary_check = "N/A"
@@ -1989,7 +1993,7 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
     pdf.set_font(base_font, "", 11)
     x_check_start = comment_x + comment_item_w + 10
     y_check = y + (h_checklist - CHECKBOX_SIZE) / 2.0
-    gap = 35
+    gap = 23
     options = [("Pass", summary_check == "PASS"), ("Fail", summary_check == "FAIL"), ("N/A", summary_check == "N/A")]
     for i, (label, checked) in enumerate(options):
         x_box = x_check_start + i * gap

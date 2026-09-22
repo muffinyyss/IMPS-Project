@@ -112,6 +112,8 @@ ACTestReportDB = client["ACTestReport"]
 ACUrlDB = client["ACUrl"]
 stationPMReportDB = client["stationPMReport"]
 stationPMUrlDB = client["stationPMReportURL"]
+# ใบ PM สถานี "ใบเดียว 4 ส่วน" — เอกสารแม่ที่ถือเลขที่/สถานะรวมของ Station+MDB+CCB+CB_BOX
+stationPMJobDB = client["stationPMJob"]
 CMReportDB = client["CMReport"]
 CMUrlDB = client["CMReportURL"]
 # handle แบบ sync ของ CMReport — ใช้สร้าง index จากโค้ดที่ไม่ใช่ async (cmreport.py)

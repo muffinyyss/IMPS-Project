@@ -51,24 +51,10 @@ const T = {
     en: "This work order is created in iMPS, not from Maximo",
   },
 
-  stationSection: { th: "สถานีที่จะเข้า PM", en: "Station to maintain" },
   station: { th: "สถานี", en: "Station" },
   stationPlaceholder: { th: "— เลือกสถานี —", en: "— Select station —" },
   stationSearchPlaceholder: { th: "พิมพ์ค้นหาชื่อสถานี...", en: "Type to search stations..." },
   noStationMatch: { th: "ไม่พบสถานีที่ค้นหา", en: "No matching station" },
-  pmDate: { th: "วันที่ PM", en: "PM date" },
-  location: { th: "Location (Maximo)", en: "Location (Maximo)" },
-  company: { th: "บริษัท", en: "Company" },
-  description: { th: "รายละเอียดงาน", en: "Description" },
-  descriptionPlaceholder: {
-    th: "เว้นว่างได้ — ระบบจะตั้งชื่อให้จากชื่อสถานี",
-    en: "Optional — defaults to the station name",
-  },
-  noLocation: {
-    th: "สถานีนี้ยังไม่ได้ตั้ง maximo_location",
-    en: "This station has no maximo_location yet",
-  },
-
   planSection: { th: "ข้อมูลการวางแผน", en: "Planning details" },
   plannedAt: { th: "วันที่/เวลาที่วางแผน", en: "Planned at" },
   schedStart: { th: "วันที่เริ่มตามแผน", en: "Scheduled start" },
@@ -77,9 +63,9 @@ const T = {
     th: "วันที่เสร็จตามแผนต้องไม่มาก่อนวันที่เริ่ม",
     en: "Scheduled finish must not be before scheduled start",
   },
-  technician: { th: "ช่างผู้รับผิดชอบ", en: "Technicians" },
+  technician: { th: "Vendor", en: "Vendor" },
   allTechnicians: { th: "ทั้งหมด", en: "All" },
-  noTechnicians: { th: "ไม่พบช่างในระบบ", en: "No technicians found" },
+  noTechnicians: { th: "ไม่พบ Vendor ในระบบ", en: "No vendors found" },
 
   equipSection: { th: "อุปกรณ์ที่จะ PM", en: "Equipment to maintain" },
   allEquipment: { th: "ทั้งหมด", en: "All" },
@@ -102,7 +88,7 @@ const T = {
 
   errStation: { th: "กรุณาเลือกสถานี", en: "Please select a station" },
   errSched: { th: "กรุณาระบุวันที่เริ่มและวันที่เสร็จตามแผน", en: "Scheduled start and finish are required" },
-  errTech: { th: "กรุณาเลือกช่างอย่างน้อย 1 คน", en: "Select at least one technician" },
+  errTech: { th: "กรุณาเลือก Vendor อย่างน้อย 1 ราย", en: "Select at least one vendor" },
   errStations: { th: "โหลดรายชื่อสถานีไม่สำเร็จ", en: "Failed to load stations" },
   errChoices: { th: "โหลดรายการอุปกรณ์ไม่สำเร็จ", en: "Failed to load equipment list" },
   errSave: { th: "เปิดใบงานไม่สำเร็จ", en: "Failed to create work order" },
@@ -173,8 +159,6 @@ export default function PmCreateWoForm({ onSaved, onCancel }: Props) {
   const [stationQuery, setStationQuery] = useState("");
   const [stationMenuOpen, setStationMenuOpen] = useState(false);
   const stationPickerRef = useRef<HTMLDivElement>(null);
-  const [pmDate, setPmDate] = useState(todayValue);
-  const [description, setDescription] = useState("");
   const [checked, setChecked] = useState<Record<string, boolean>>({});
   const [plannedAt] = useState(nowLocalValue);
   const [schedStart, setSchedStart] = useState("");
@@ -352,8 +336,8 @@ export default function PmCreateWoForm({ onSaved, onCancel }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           station_id: stationId,
-          pm_date: pmDate,
-          description: description.trim() || null,
+          pm_date: todayValue(),
+          description: null,
           equipment,
           planned_at: plannedAt,
           sched_start: schedStart,
@@ -375,7 +359,7 @@ export default function PmCreateWoForm({ onSaved, onCancel }: Props) {
     }
   }, [
     saving, stationId, schedStart, schedFinish, schedRangeInvalid, assignees,
-    equipmentOptions, checked, pmDate, description, plannedAt, lang, onSaved,
+    equipmentOptions, checked, plannedAt, lang, onSaved,
   ]);
 
   return (
@@ -451,11 +435,21 @@ export default function PmCreateWoForm({ onSaved, onCancel }: Props) {
             </div>
           ) : (
             <>
-              {/* ═══ 1. สถานี — ส่วนที่เพิ่มมาจากหน้าวางแผน ═══ */}
+              {/* ═══ 1. สถานีและข้อมูลการวางแผน ═══ */}
               <div className="tw-mb-6 tw-rounded-lg tw-overflow-hidden tw-border tw-border-blue-gray-100 tw-bg-white tw-shadow-sm">
-                <SectionHeader no={1} title={t("stationSection", lang)} />
+                <SectionHeader no={1} title={t("planSection", lang)} />
                 <div className="tw-p-4">
-                  <div className="tw-mb-4">
+                  <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-4">
+                    <div>
+                      <label className={LABEL}>{t("plannedAt", lang)}</label>
+                      <input
+                        type="text"
+                        readOnly
+                        value={plannedAt ? plannedAt.replace("T", " ") : "-"}
+                        className={FIELD_RO}
+                      />
+                    </div>
+                    <div>
                     <label className={LABEL}>
                       {t("station", lang)} <span className="tw-text-red-500">*</span>
                     </label>
@@ -529,60 +523,6 @@ export default function PmCreateWoForm({ onSaved, onCancel }: Props) {
                     </div>
                   </div>
 
-                  <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-3 tw-gap-4">
-                    <div>
-                      <label className={LABEL}>
-                        {t("pmDate", lang)} <span className="tw-text-red-500">*</span>
-                      </label>
-                      <input
-                        type="date"
-                        value={pmDate}
-                        disabled={locked}
-                        onChange={(e) => setPmDate(e.target.value)}
-                        className={FIELD}
-                      />
-                    </div>
-                    <div>
-                      <label className={LABEL}>{t("location", lang)}</label>
-                      <div className={FIELD_RO}>
-                        {station?.maximo_location || (station ? t("noLocation", lang) : "-")}
-                      </div>
-                    </div>
-                    <div>
-                      <label className={LABEL}>{t("company", lang)}</label>
-                      <div className={FIELD_RO}>{station?.company || "-"}</div>
-                    </div>
-                  </div>
-
-                  <div className="tw-mt-4">
-                    <label className={LABEL}>{t("description", lang)}</label>
-                    <input
-                      type="text"
-                      value={description}
-                      disabled={locked}
-                      onChange={(e) => setDescription(e.target.value)}
-                      placeholder={t("descriptionPlaceholder", lang)}
-                      className={FIELD}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* ═══ 2. ข้อมูลการวางแผน — ชุดเดียวกับหน้าวางแผน ═══ */}
-              <div className="tw-mb-6 tw-rounded-lg tw-overflow-hidden tw-border tw-border-blue-gray-100 tw-bg-white tw-shadow-sm">
-                <SectionHeader no={2} title={t("planSection", lang)} />
-                <div className="tw-p-4">
-                  <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-4">
-                    {/* วันที่/เวลาที่วางแผน — ประทับตอนเปิดฟอร์ม แก้ไม่ได้ (เหมือน CM) */}
-                    <div>
-                      <label className={LABEL}>{t("plannedAt", lang)}</label>
-                      <input
-                        type="text"
-                        readOnly
-                        value={plannedAt ? plannedAt.replace("T", " ") : "-"}
-                        className={FIELD_RO}
-                      />
-                    </div>
                     <div>
                       <label className={LABEL}>
                         {t("schedStart", lang)} <span className="tw-text-red-500">*</span>
@@ -655,10 +595,10 @@ export default function PmCreateWoForm({ onSaved, onCancel }: Props) {
                 </div>
               </div>
 
-              {/* ═══ 3. อุปกรณ์ที่จะ PM — ขึ้นตามสถานีที่เลือก ═══ */}
+              {/* ═══ 2. อุปกรณ์ที่จะ PM — ขึ้นตามสถานีที่เลือก ═══ */}
               <div className="tw-mb-6 tw-rounded-lg tw-overflow-hidden tw-border tw-border-blue-gray-100 tw-bg-white tw-shadow-sm">
                 <SectionHeader
-                  no={3}
+                  no={2}
                   title={t("equipSection", lang)}
                   right={
                     <span className="tw-text-xs tw-font-medium tw-text-white/90">

@@ -412,7 +412,7 @@ const T = {
     cancelNA: { th: "ยกเลิก N/A", en: "Cancel N/A" },
     backToList: { th: "กลับไปหน้า List", en: "Back to List" },
 
-    // Pass/Fail labels for summary
+    // Legacy Pass/Fail labels retained for previously saved reports
     summaryPassLabel: { th: "Pass", en: "Pass" },
     summaryFailLabel: { th: "Fail", en: "Fail" },
     summaryNALabel: { th: "N/A", en: "N/A" },
@@ -442,7 +442,7 @@ const T = {
     validationPhotoTitle: { th: "1) ตรวจสอบการแนบรูปภาพ (ทุกข้อ)", en: "1) Photo Attachments (all items)" },
     validationInputTitle: { th: "2) อินพุตข้อ 11 (ค่าที่วัด)", en: "2) Input Item 11 (measurements)" },
     validationRemarkTitle: { th: "3) หมายเหตุ (ทุกข้อ)", en: "3) Remarks (all items)" },
-    validationPFTitle: { th: "3) สถานะ PASS / FAIL / N/A ทุกข้อ", en: "3) PASS / FAIL / N/A for all items" },
+    validationPFTitle: { th: "3) ระดับผลการตรวจ / N/A ทุกข้อ", en: "3) Inspection rating / N/A for all items" },
     validationRemarkTitlePost: { th: "4) หมายเหตุ (ทุกข้อ)", en: "4) Remarks (all items)" },
     validationSummaryTitle: { th: "5) สรุปผลการตรวจสอบ", en: "5) Inspection Summary" },
 
@@ -451,7 +451,7 @@ const T = {
     missingInput: { th: "ยังขาดข้อ:", en: "Missing:" },
     missingPF: { th: "ยังไม่ได้เลือกข้อ:", en: "Not selected:" },
     missingSummaryText: { th: "ยังไม่ได้กรอก Comment", en: "Comment not filled" },
-    missingSummaryStatus: { th: "ยังไม่ได้เลือกสถานะสรุปผล (Pass/Fail/N/A)", en: "Summary status not selected (Pass/Fail/N/A)" },
+    missingSummaryStatus: { th: "ยังไม่ได้เลือกระดับสรุปผล / N/A", en: "Summary rating / N/A not selected" },
     // PMValidationCard translations
     itemLabel: { th: "ข้อ", en: "Item" },
     formStatus: { th: "สถานะการกรอกข้อมูล", en: "Form Completion Status" },
@@ -669,7 +669,8 @@ function resolveUploadFile(p: PhotoItem): Promise<File> {
     return resolveUsableFile(p.file, dbKey ? () => getPhotoByDbKey(dbKey) : undefined);
 }
 
-type PF = "PASS" | "FAIL" | "NA" | "";
+type Rating = "VERY_GOOD" | "GOOD" | "FAIR" | "UNUSABLE";
+type PF = Rating | "PASS" | "FAIL" | "NA" | "";
 
 const VOLTAGE_FIELDS_CCB = ["L-N", "L-G", "N-G"] as const;
 const LABELS: Record<string, string> = {
@@ -947,10 +948,10 @@ function PMValidationCard({
             if (!allPFAnsweredPost) {
                 missingPFItemsPost.forEach((item) => {
                     errors.push({
-                        section: lang === "th" ? "สถานะ Pass/Fail" : "Pass/Fail Status",
+                        section: lang === "th" ? "ระดับผลการตรวจ" : "Inspection rating",
                         sectionIcon: "✅",
                         itemName: `${t("itemLabel", lang)} ${item}`,
-                        message: lang === "th" ? "ยังไม่ได้เลือก Pass/Fail" : "Pass/Fail not selected",
+                        message: lang === "th" ? "ยังไม่ได้เลือกระดับผลการตรวจ" : "Inspection rating not selected",
                         scrollId: getPfButtonsScrollId(item),
                     });
                 });
@@ -970,7 +971,7 @@ function PMValidationCard({
                     section: lang === "th" ? "สรุปผล" : "Summary",
                     sectionIcon: "📋",
                     itemName: lang === "th" ? "สถานะสรุป" : "Summary Status",
-                    message: lang === "th" ? "ยังไม่ได้เลือก Pass/Fail/N/A" : "Status not selected",
+                    message: lang === "th" ? "ยังไม่ได้เลือกระดับผลการตรวจหรือ N/A" : "Inspection rating or N/A not selected",
                     scrollId: `${ID_PREFIX}-summary-section`,
                 });
             }
@@ -1104,14 +1105,22 @@ function InputWithUnit<U extends string>({ label, value, unit, units, onValueCha
 }
 
 function PassFailRow({ label, value, onChange, remark, onRemarkChange, labels, aboveRemark, beforeRemark, inlineLeft, showPfButtons = true, lang, id, remarkId }: {
-    label: string; value: PF; onChange: (v: Exclude<PF, "">) => void; remark?: string; onRemarkChange?: (v: string) => void;
+    label: string; value: PF; onChange: (v: Rating | "NA") => void; remark?: string; onRemarkChange?: (v: string) => void;
     labels?: Partial<Record<Exclude<PF, "">, React.ReactNode>>; aboveRemark?: React.ReactNode; beforeRemark?: React.ReactNode; inlineLeft?: React.ReactNode; showPfButtons?: boolean; lang: Lang; id?: string; remarkId?: string;
 }) {
-    const text = { PASS: labels?.PASS ?? t("pass", lang), FAIL: labels?.FAIL ?? t("fail", lang), NA: labels?.NA ?? t("na", lang) };
+    const text = {
+        VERY_GOOD: labels?.VERY_GOOD ?? (lang === "th" ? "ดีมาก" : "Excellent"),
+        GOOD: labels?.GOOD ?? (lang === "th" ? "ดี" : "Good"),
+        FAIR: labels?.FAIR ?? (lang === "th" ? "พอใช้" : "Fair"),
+        UNUSABLE: labels?.UNUSABLE ?? (lang === "th" ? "ใช้งานไม่ได้" : "Unusable"),
+        NA: labels?.NA ?? t("na", lang),
+    };
     const buttonGroup = (
         <div id={id} className="tw-flex tw-gap-1.5 sm:tw-gap-2 tw-flex-wrap sm:tw-flex-nowrap tw-justify-end sm:tw-justify-start">
-            <Button size="sm" color="green" variant={value === "PASS" ? "filled" : "outlined"} className="tw-min-w-[56px] sm:tw-min-w-[72px] lg:tw-min-w-[84px] tw-text-[10px] sm:tw-text-xs lg:tw-text-sm tw-px-2 sm:tw-px-3 tw-py-1.5 sm:tw-py-2" onClick={() => onChange("PASS")}>{text.PASS}</Button>
-            <Button size="sm" color="red" variant={value === "FAIL" ? "filled" : "outlined"} className="tw-min-w-[56px] sm:tw-min-w-[72px] lg:tw-min-w-[84px] tw-text-[10px] sm:tw-text-xs lg:tw-text-sm tw-px-2 sm:tw-px-3 tw-py-1.5 sm:tw-py-2" onClick={() => onChange("FAIL")}>{text.FAIL}</Button>
+            <Button size="sm" color="green" variant={value === "VERY_GOOD" || value === "PASS" ? "filled" : "outlined"} className="tw-min-w-[56px] sm:tw-min-w-[72px] lg:tw-min-w-[84px] tw-text-[10px] sm:tw-text-xs lg:tw-text-sm tw-px-2 sm:tw-px-3 tw-py-1.5 sm:tw-py-2" onClick={() => onChange("VERY_GOOD")}>{text.VERY_GOOD}</Button>
+            <Button size="sm" color="light-green" variant={value === "GOOD" ? "filled" : "outlined"} className="tw-min-w-[56px] sm:tw-min-w-[72px] lg:tw-min-w-[84px] tw-text-[10px] sm:tw-text-xs lg:tw-text-sm tw-px-2 sm:tw-px-3 tw-py-1.5 sm:tw-py-2" onClick={() => onChange("GOOD")}>{text.GOOD}</Button>
+            <Button size="sm" color="amber" variant={value === "FAIR" ? "filled" : "outlined"} className="tw-min-w-[56px] sm:tw-min-w-[72px] lg:tw-min-w-[84px] tw-text-[10px] sm:tw-text-xs lg:tw-text-sm tw-px-2 sm:tw-px-3 tw-py-1.5 sm:tw-py-2" onClick={() => onChange("FAIR")}>{text.FAIR}</Button>
+            <Button size="sm" color="red" variant={value === "UNUSABLE" || value === "FAIL" ? "filled" : "outlined"} className="tw-min-w-[80px] sm:tw-min-w-[104px] lg:tw-min-w-[120px] tw-text-[10px] sm:tw-text-xs lg:tw-text-sm tw-px-2 sm:tw-px-3 tw-py-1.5 sm:tw-py-2" onClick={() => onChange("UNUSABLE")}>{text.UNUSABLE}</Button>
             <Button size="sm" color="blue-gray" variant={value === "NA" ? "filled" : "outlined"} className="tw-min-w-[56px] sm:tw-min-w-[72px] lg:tw-min-w-[84px] tw-text-[10px] sm:tw-text-xs lg:tw-text-sm tw-px-2 sm:tw-px-3 tw-py-1.5 sm:tw-py-2" onClick={() => onChange("NA")}>{text.NA}</Button>
         </div>
     );
@@ -1385,6 +1394,8 @@ export default function CCBPMReport() {
         else router.back();
     }, [router, searchParams]);
     const editId = searchParams.get("edit_id") ?? "";
+    // เปิดจากใบ PM สถานี "ใบเดียว 4 ส่วน" → ผูกใบนี้เป็นส่วนหนึ่งของใบแม่
+    const jobId = searchParams.get("job_id") ?? "";
     const action = searchParams.get("action");
     const isPostMode = true;
 
@@ -2157,7 +2168,7 @@ export default function CCBPMReport() {
             const flatRows = flattenRows(rows, subBreakerCount);
 
             const payload = {
-                station_id: stationId, issue_id: issueIdFromJob, job: jobWithoutIssueId,
+                station_id: stationId, ...(jobId ? { job_id: jobId } : {}), issue_id: issueIdFromJob, job: jobWithoutIssueId,
                 inspector, measures_pre: measuresPre, rows_pre: flatRows,
                 pm_date, doc_name: docName, side: "pre" as TabId, comment_pre: summary, subBreakerCount,
             };
@@ -2223,7 +2234,7 @@ export default function CCBPMReport() {
             return;
         }
         if (!allPFAnsweredPost) {
-            alert(lang === "th" ? "กรุณาเลือก PASS/FAIL/N/A ทุกข้อ" : "Please select PASS/FAIL/N/A for all items");
+            alert(lang === "th" ? "กรุณาเลือกระดับผลการตรวจหรือ N/A ทุกข้อ" : "Please select an inspection rating or N/A for all items");
             const scrollId = getFirstMissingPFScrollId();
             if (scrollId) scrollToFirstError(scrollId);
             return;
@@ -2255,7 +2266,7 @@ export default function CCBPMReport() {
 
             const flatRows = flattenRows(rows, subBreakerCount);
             const payload = {
-                station_id: stationId, rows: flatRows, measures, summary,
+                station_id: stationId, ...(jobId ? { job_id: jobId } : {}), rows: flatRows, measures, summary,
                 ...(summaryCheck ? { summaryCheck } : {}),
                 work_start: workStart, work_finish: workFinish, maximo_labor: maximoLabor, maximo_contractor: contractorPicked ? maximoContractor.trim() : "", wonum: searchParams.get("wonum") ?? "", side: "post" as TabId, report_id: finalReportId, subBreakerCount,
             };

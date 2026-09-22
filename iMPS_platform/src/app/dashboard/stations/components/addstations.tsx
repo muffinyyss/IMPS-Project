@@ -341,8 +341,7 @@ export default function AddStationModal({
                 duplicateSN: "SN ซ้ำกัน กรุณาตรวจสอบ",
                 duplicateWO: "WO ซ้ำกัน กรุณาตรวจสอบ",
                 duplicateChargeBoxID: "Charge Box ID ซ้ำกัน กรุณาตรวจสอบ",
-                other: "อื่นๆ",
-                enterOwner: "ระบุชื่อเจ้าของ",
+                pleaseSelectOwner: "กรุณาเลือก Owner จาก Company Profile",
                 maximoSearch: "ค้นหา location...",
                 maximoEmpty: "ไม่พบ location",
                 maximoLoading: "กำลังโหลด…",
@@ -380,8 +379,7 @@ export default function AddStationModal({
                 duplicateSN: "Duplicate SN found, please check",
                 duplicateWO: "Duplicate WO found, please check",
                 duplicateChargeBoxID: "Duplicate Charge Box ID found, please check",
-                other: "Other",
-                enterOwner: "Enter owner name",
+                pleaseSelectOwner: "Please select an Owner from Company Profile",
                 maximoSearch: "Search location...",
                 maximoEmpty: "No location found",
                 maximoLoading: "Loading…",
@@ -407,7 +405,6 @@ export default function AddStationModal({
     // ตู้ชาร์จถูก auto-fill จาก Maximo หลังเลือก station location — เริ่มต้นว่างเสมอ
     const [chargers, setChargers] = useState<ChargerForm[]>([]);
     const [submitting, setSubmitting] = useState(false);
-    const [isOtherOwner, setIsOtherOwner] = useState(false);
 
     /* ── Maximo locations (station dropdown) ── */
     // station = location ไม่มี -EV ต่อท้าย (เช่น HMP0002)
@@ -699,6 +696,7 @@ export default function AddStationModal({
         setSubmitting(true);
         if (selectedSource !== "name" && !station.maximo_location.trim()) { alert(t.pleaseSelectMaximo); setSubmitting(false); return; }
         if (!station.station_name.trim()) { alert(t.pleaseEnterStationName); setSubmitting(false); return; }
+        if (isAdmin && !station.owner.trim()) { alert(t.pleaseSelectOwner); setSubmitting(false); return; }
         if (!chargers.length) { alert(t.atLeastOneCharger); setSubmitting(false); return; }
         if (chargers.some((c) => isFlexxfast(c.brand) && !c.chargeBoxID.trim())) { alert(t.pleaseFillChargerBoxId); setSubmitting(false); return; }
 
@@ -764,7 +762,6 @@ export default function AddStationModal({
         setStationPreviews({ station: [], mdb: [] });
         setChargerPreviews({});
         setChargers([]);
-        setIsOtherOwner(false);
         setSelectedSource("");
         onClose();
     };
@@ -860,26 +857,17 @@ export default function AddStationModal({
                                         <Input label={t.stationName} required value={station.station_name} onChange={(e) => onStationChange("station_name", e.target.value)} crossOrigin={undefined} />
                                     )}
                                     {isAdmin ? (
-                                        <div className="tw-flex tw-gap-2">
-                                            <div className="tw-relative tw-w-full tw-min-w-[200px] tw-h-10">
+                                        <div className="tw-relative tw-w-full tw-min-w-[200px] tw-h-10">
                                                 <select
-                                                    value={isOtherOwner ? "__other__" : (station.owner || "")}
-                                                    onChange={(e) => {
-                                                        if (e.target.value === "__other__") {
-                                                            setIsOtherOwner(true);
-                                                            onStationChange("owner", "");
-                                                        } else {
-                                                            setIsOtherOwner(false);
-                                                            onStationChange("owner", e.target.value);
-                                                        }
-                                                    }}
+                                                    required
+                                                    value={station.owner || ""}
+                                                    onChange={(e) => onStationChange("owner", e.target.value)}
                                                     className="tw-peer tw-w-full tw-h-full tw-bg-transparent tw-text-blue-gray-700 tw-font-sans tw-font-normal tw-outline-none tw-border tw-border-blue-gray-200 focus:tw-border-2 focus:tw-border-gray-900 tw-rounded-[7px] tw-px-3 tw-py-2.5 tw-text-sm tw-appearance-none tw-cursor-pointer"
                                                 >
-                                                    <option value="" disabled hidden />
-                                                    {(allOwners.length ? allOwners : [currentUser]).map((n) => (
+                                                    <option value="" disabled>{t.pleaseSelectOwner}</option>
+                                                    {allOwners.map((n) => (
                                                         <option key={n} value={n}>{n}</option>
                                                     ))}
-                                                    <option value="__other__">{t.other}</option>
                                                 </select>
                                                 <div className="tw-pointer-events-none tw-absolute tw-inset-y-0 tw-right-3 tw-flex tw-items-center">
                                                     <svg xmlns="http://www.w3.org/2000/svg" className="tw-h-4 tw-w-4 tw-text-blue-gray-400" viewBox="0 0 20 20" fill="currentColor">
@@ -889,19 +877,6 @@ export default function AddStationModal({
                                                 <label className="tw-pointer-events-none tw-absolute tw-left-3 tw--top-1.5 tw-text-[11px] tw-text-blue-gray-400 tw-bg-white tw-px-1 tw-font-normal">
                                                     {t.owner}
                                                 </label>
-                                            </div>
-                                            {isOtherOwner && (
-                                                <div className="tw-w-full">
-                                                    <Input
-                                                        label={t.enterOwner}
-                                                        required
-                                                        autoFocus
-                                                        value={station.owner}
-                                                        onChange={(e) => onStationChange("owner", e.target.value)}
-                                                        crossOrigin={undefined}
-                                                    />
-                                                </div>
-                                            )}
                                         </div>
                                     ) : (
                                         <Input label={t.owner} value={station.owner || currentUser || ""} readOnly disabled crossOrigin={undefined} />

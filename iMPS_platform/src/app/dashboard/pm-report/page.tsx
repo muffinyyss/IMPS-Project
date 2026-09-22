@@ -6,10 +6,8 @@ import React, { useState, useMemo, useEffect } from "react";
 // components
 import ChargerTables from "@/app/dashboard/pm-report/charger/list/components/charger-table";
 import FirmwareCards from "@/app/dashboard/pm-report/charger/list/components/firmware-cards";
-import MDBTables from "@/app/dashboard/pm-report/mdb/list/components/mdb-table";
-import CCBTables from "@/app/dashboard/pm-report/ccb/list/components/ccb-table";
-import StationTables from "@/app/dashboard/pm-report/station/list/components/station-table";
-import CBBoxTables from "@/app/dashboard/pm-report/cb-box/list/components/cb-box-table";
+// แท็บ Station = ใบ PM สถานีใบเดียวที่รวม สถานี/MDB/CCB/CB_BOX ไว้เป็น 4 ส่วน
+import StationPmJobTables from "@/app/dashboard/pm-report/components/StationPmJobTables";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import useLanguage from "@/utils/useLanguage";
 
@@ -17,29 +15,27 @@ import useLanguage from "@/utils/useLanguage";
 import { Tabs, TabsHeader, TabsBody, Tab, TabPanel } from "@material-tailwind/react";
 import { ChevronDoubleUpIcon, ChevronDoubleDownIcon } from "@heroicons/react/24/solid";
 
-type TabId = "charger" | "mdb" | "ccb" | "cb-box" | "station";
+type TabId = "charger" | "station";
 
 
-const TABS: { id: TabId; label: string; slug: "charger" | "mdb" | "ccb" | "cb-box" | "station" }[] = [
+const TABS: { id: TabId; label: string; slug: TabId }[] = [
   { id: "charger", label: "Charger", slug: "charger" },
-  { id: "mdb", label: "MDB", slug: "mdb" },
-  { id: "ccb", label: "CCB", slug: "ccb" },
-  { id: "cb-box", label: "CB_BOX", slug: "cb-box" },
   { id: "station", label: "Station", slug: "station" },
 ];
 
 function slugToTab(slug: string | null): TabId {
   switch (slug) {
-    case "mdb": return "mdb";
-    case "ccb": return "ccb";
-    case "cb-box": return "cb-box";
+    // MDB / CCB / CB_BOX เป็นส่วนหนึ่งของใบ PM สถานีแล้ว — ลิงก์เก่าพามาที่แท็บ Station
+    case "mdb":
+    case "ccb":
+    case "cb-box":
     case "station": return "station";
     case "charger":
     default: return "charger";
   }
 }
 
-function tabToSlug(tab: TabId): "charger" | "mdb" | "ccb" | "cb-box" | "station" {
+function tabToSlug(tab: TabId): TabId {
   return TABS.find(t => t.id === tab)!.slug;
 }
 
@@ -239,17 +235,8 @@ export default function DataTablesPage() {
             <ChargerTables />
           </div>
         )}
-        {active === "mdb" && (
-          <div className="tw-space-y-5"><MDBTables /></div>
-        )}
-        {active === "ccb" && (
-          <div className="tw-space-y-5"><CCBTables /></div>
-        )}
-        {active === "cb-box" && (
-          <div className="tw-space-y-5"><CBBoxTables /></div>
-        )}
         {active === "station" && (
-          <div className="tw-space-y-5"><StationTables /></div>
+          <div className="tw-space-y-5"><StationPmJobTables /></div>
         )}
       </div>
 

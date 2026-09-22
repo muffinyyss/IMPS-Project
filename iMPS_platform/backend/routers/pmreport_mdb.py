@@ -71,6 +71,15 @@ def resize_image_bytes(data: bytes, max_width: int = 1920, quality: int = 85) ->
 
 router = APIRouter()
 
+# ── ผูกกับใบ PM สถานี "ใบเดียว 4 ส่วน" ────────────────────────────
+async def _job_link(station_id: str, job_id: str | None) -> dict:
+    """ข้อมูลเลขที่เอกสารของใบแม่ — ไม่ได้ส่ง job_id มา = ใบเดี่ยวแบบเดิม คืน {}"""
+    if not (job_id or "").strip():
+        return {}
+    from routers.pmreport_station_job import job_numbering
+    return await job_numbering(station_id, job_id)
+
+
 
 # ============================================
 # Helpers
@@ -285,6 +294,8 @@ async def preview_docname(
 class MDBPMPostIn(BaseModel):
     report_id: Optional[str] = None
     station_id: str
+    # ใบนี้เป็นส่วนหนึ่งของใบ PM สถานี "ใบเดียว 4 ส่วน" (stationPMJob) หรือไม่
+    job_id: Optional[str] = None
     rows: Dict[str, Any]
     measures: Dict[str, Any]
     summary: str
@@ -505,6 +516,7 @@ async def mdbpmreport_post_submit(
         "summaryCheck": body.summaryCheck,
         "dust_filter": body.dust_filter,
         **pm_flow.post_submit_fields(body),
+        **({"job_id": body.job_id} if body.job_id else {}),
         "side": "post",
         "timestamp_post": datetime.now(timezone.utc),
     }
@@ -554,8 +566,15 @@ async def mdbpmreport_post_submit(
 
     # กดบันทึกซ้ำ (เน็ตหลุดกลางทาง / อัปรูปไม่ผ่านแล้วกดใหม่) ต้องลงใบเดิม
     # ไม่ใช่ออกเลขเอกสารใหม่ทุกครั้ง
+    # ใบที่ผูกกับใบแม่: ส่วน MDB ของใบแม่มีได้ใบเดียว หาเจอด้วย job_id ตรง ๆ
+    link = await _job_link(station_id, body.job_id)
+    draft_filter = (
+        {"station_id": station_id, "job_id": link["job_id"]}
+        if link else
+        {"station_id": station_id, "pm_date": pm_date, "status": "draft"}
+    )
     existing_draft = await coll.find_one(
-        {"station_id": station_id, "pm_date": pm_date, "status": "draft"},
+        draft_filter,
         {"_id": 1, "issue_id": 1, "doc_name": 1},
         sort=[("timestamp", -1)],
     )
@@ -564,6 +583,7 @@ async def mdbpmreport_post_submit(
         **update_fields,
         "job": job,
         "pm_date": pm_date,
+        **({"job_id": link["job_id"]} if link else {}),
         "inspector": body.inspector,
         "q4_items": body.q4_items or [{"key": "r6_1", "label": "6.1) Breaker Main ตัวที่ 1"}],
         "q6_items": body.q6_items or [{"key": "r8_1", "label": "8.1) Breaker CCB ตัวที่ 1"}],
@@ -580,9 +600,13 @@ async def mdbpmreport_post_submit(
             "doc_name": existing_draft.get("doc_name"),
         }
 
-    issue_id, doc_name = await _resolve_issue_and_doc(
-        coll, url_coll, db, station_id, pm_type, d, body.issue_id, body.doc_name,
-    )
+    if link:
+        # ส่วนหนึ่งของใบแม่ = ใช้เลขที่/ชื่อเอกสารใบเดียวกับแม่ ไม่ออกเลขใหม่
+        issue_id, doc_name = link["issue_id"], link["doc_name"]
+    else:
+        issue_id, doc_name = await _resolve_issue_and_doc(
+            coll, url_coll, db, station_id, pm_type, d, body.issue_id, body.doc_name,
+        )
 
     doc = {
         "station_id": station_id,

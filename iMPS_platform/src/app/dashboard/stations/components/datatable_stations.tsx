@@ -83,8 +83,7 @@ export type ChargerUpdatePayload = {
 
 type JwtClaims = { sub: string; user_id?: string; username?: string; role?: string; company?: string | null; station_ids?: string[]; exp?: number; };
 function decodeJwt(token: string | null): JwtClaims | null { try { if (!token) return null; const payload = token.split(".")[1]; const json = atob(payload.replace(/-/g, "+").replace(/_/g, "/")); return JSON.parse(json); } catch { return null; } }
-type UsernamesResp = { username: string[] };
-type Owner = { user_id: string; username: string };
+type CompanyOwner = { id: string; name: string };
 type Lang = "th" | "en";
 function getTodayDate(): string { return new Date().toISOString().split("T")[0]; }
 
@@ -323,11 +322,8 @@ const TableRowSkeleton = ({ cols }: { cols: number }) => (
 export function SearchDataTables() {
   const router = useRouter();
   const [me, setMe] = useState<{ user_id: string; username: string; role: string } | null>(null);
-  const [usernames, setUsernames] = useState<string[]>([]);
-  const [owners, setOwners] = useState<Owner[]>([]);
-  const [selectedOwnerId, setSelectedOwnerId] = useState<string>("");
-  const [isOtherOwnerEdit, setIsOtherOwnerEdit] = useState(false);
-  const [otherOwnerNameEdit, setOtherOwnerNameEdit] = useState("");
+  const [owners, setOwners] = useState<CompanyOwner[]>([]);
+  const [selectedOwnerName, setSelectedOwnerName] = useState<string>("");
   const [technicians, setTechnicians] = useState<Map<string, string[]>>(new Map());
   const [data, setData] = useState<StationRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -655,21 +651,9 @@ export function SearchDataTables() {
   useEffect(() => {
     if (openEditStation && editingStation) {
       setEditStationForm({ station_name: editingStation.station_name ?? "", is_active: !!editingStation.is_active, maximo_location: editingStation.maximo_location ?? "", maximo_desc: editingStation.maximo_desc ?? "", warranty_status: editingStation.warranty_status ?? "", investment_scope: editingStation.investment_scope ?? [], io_code: editingStation.io_code ?? "" });
-      const ownerExists = owners.some(o => o.user_id === editingStation.user_id);
-      if (ownerExists) {
-        setIsOtherOwnerEdit(false);
-        setSelectedOwnerId(editingStation.user_id ?? "");
-        setOtherOwnerNameEdit("");
-      } else if (editingStation.username) {
-        // ไม่เจอใน list → เข้า Other mode แล้วใส่ username เดิม
-        setIsOtherOwnerEdit(true);
-        setSelectedOwnerId("");
-        setOtherOwnerNameEdit(editingStation.username);
-      } else {
-        setIsOtherOwnerEdit(false);
-        setSelectedOwnerId("");
-        setOtherOwnerNameEdit("");
-      }
+      const ownerName = editingStation.username?.trim() ?? "";
+      const ownerProfile = owners.find(o => o.name.trim().toLowerCase() === ownerName.toLowerCase());
+      setSelectedOwnerName(ownerProfile?.name ?? "");
 
       resetEditImages();
     }
@@ -683,8 +667,19 @@ export function SearchDataTables() {
     }
   }, [openEditCharger, editingCharger]);
 
-  useEffect(() => { (async () => { if (me?.role !== "admin" && me?.role !== "super_admin") return; const res = await apiFetch(`/owners`); const json = await res.json(); setOwners(Array.isArray(json.owners) ? json.owners : []); })(); }, [me?.role]);
-  useEffect(() => { (async () => { if (me?.role !== "admin" && me?.role !== "super_admin") return; const res = await apiFetch(`/username`); if (!res.ok) return; const json: UsernamesResp = await res.json(); setUsernames(Array.isArray(json.username) ? json.username : []); })(); }, [me?.role]);
+  useEffect(() => {
+    (async () => {
+      if (me?.role !== "admin" && me?.role !== "super_admin") return;
+      try {
+        const res = await apiFetch(`/companies/?type=owner`);
+        if (!res.ok) return;
+        const json = await res.json();
+        setOwners(Array.isArray(json.companies) ? json.companies : []);
+      } catch (error) {
+        console.error("Failed to fetch owner profiles:", error);
+      }
+    })();
+  }, [me?.role]);
   useEffect(() => { (async () => { try { const res = await apiFetch(`/all-users/`); if (!res.ok) return; const json = await res.json(); const users = Array.isArray(json?.users) ? json.users : []; const technicianMap = new Map<string, string[]>(); users.forEach((user: any) => { if (user.role === "technician" && user.station_id && Array.isArray(user.station_id)) { user.station_id.forEach((stationId: string) => { if (!technicianMap.has(stationId)) technicianMap.set(stationId, []); technicianMap.get(stationId)!.push(user.username); }); } }); setTechnicians(technicianMap); } catch (e) { console.error("Failed to fetch technicians:", e); } })(); }, []);
 
   // สถานะ on/off ของตู้ทุกตัวในคำขอเดียว (แทนการยิง /charger-onoff/{sn} ทีละตู้)
@@ -844,11 +839,9 @@ export function SearchDataTables() {
     try {
       setSaving(true);
       const payload: StationUpdatePayload = {
-        station_name: editStationForm.station_name.trim(), is_active: editStationForm.is_active, maximo_location: editStationForm.maximo_location.trim(), maximo_desc: editStationForm.maximo_desc.trim(), warranty_status: editStationForm.warranty_status, investment_scope: editStationForm.investment_scope, io_code: editStationForm.io_code.trim(), ...(isAdmin && isOtherOwnerEdit && otherOwnerNameEdit.trim()
-          ? { username: otherOwnerNameEdit.trim() }
-          : isAdmin && selectedOwnerId
-            ? { user_id: selectedOwnerId }
-            : {})
+        station_name: editStationForm.station_name.trim(), is_active: editStationForm.is_active, maximo_location: editStationForm.maximo_location.trim(), maximo_desc: editStationForm.maximo_desc.trim(), warranty_status: editStationForm.warranty_status, investment_scope: editStationForm.investment_scope, io_code: editStationForm.io_code.trim(), ...(isAdmin && selectedOwnerName
+          ? { username: selectedOwnerName }
+          : {})
       };
       const res = await apiFetch(`/update_stations/${editingStation.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       if (!res.ok) { const errBody = await res.json().catch(() => ({})); throw new Error(errBody?.detail || `Update failed: ${res.status}`); }
@@ -1216,7 +1209,7 @@ export function SearchDataTables() {
         </div>
       </Card>
 
-      <AddStation open={openAdd} onClose={() => setOpenAdd(false)} onSubmit={handleCreateStation} onSubmitImages={handleSubmitImages} loading={saving} currentUser={me?.username ?? ""} isAdmin={isAdmin} allOwners={usernames} />
+      <AddStation open={openAdd} onClose={() => setOpenAdd(false)} onSubmit={handleCreateStation} onSubmitImages={handleSubmitImages} loading={saving} currentUser={me?.username ?? ""} isAdmin={isAdmin} allOwners={owners.map(owner => owner.name)} />
 
       {/* ========== Edit Station Modal ========== */}
       <Dialog open={openEditStation} handler={() => setOpenEditStation(false)} size="lg" dismiss={{ outsidePress: !saving, escapeKey: !saving }} className="tw-flex tw-flex-col tw-max-h-[95vh] sm:tw-max-h-[90vh] tw-overflow-hidden !tw-rounded-xl sm:!tw-rounded-2xl !tw-m-2 sm:!tw-m-4">
@@ -1264,28 +1257,18 @@ export function SearchDataTables() {
                     <Input label={t.stationName} required value={editStationForm.station_name} onChange={(e) => setEditStationForm(s => ({ ...s, station_name: e.target.value }))} crossOrigin={undefined} />
                   )}
                   {isAdmin ? (
-                    <div className="tw-flex tw-gap-2">
-                      <div className="tw-relative tw-w-full tw-min-w-[200px] tw-h-10">
+                    <div className="tw-relative tw-w-full tw-min-w-[200px] tw-h-10">
                         <select
-                          value={isOtherOwnerEdit ? "__other__" : selectedOwnerId}
-                          onChange={(e) => {
-                            if (e.target.value === "__other__") {
-                              setIsOtherOwnerEdit(true);
-                              setSelectedOwnerId("");
-                              setOtherOwnerNameEdit("");
-                            } else {
-                              setIsOtherOwnerEdit(false);
-                              setSelectedOwnerId(e.target.value);
-                            }
-                          }}
+                          required
+                          value={selectedOwnerName}
+                          onChange={(e) => setSelectedOwnerName(e.target.value)}
                           className="tw-peer tw-w-full tw-h-full tw-bg-transparent tw-text-blue-gray-700 tw-font-sans tw-font-normal tw-outline-none tw-border tw-border-blue-gray-200 focus:tw-border-2 focus:tw-border-gray-900 tw-rounded-[7px] tw-px-3 tw-py-2.5 tw-text-sm tw-appearance-none tw-cursor-pointer"
                         >
-                          <option value="" disabled hidden />
+                          <option value="" disabled>{lang === "th" ? "เลือก Owner จาก Company Profile" : "Select Owner from Company Profile"}</option>
                           {owners.length > 0
-                            ? owners.map(o => <option key={o.user_id} value={o.user_id}>{o.username}</option>)
+                            ? owners.map(o => <option key={o.id} value={o.name}>{o.name}</option>)
                             : <option value="" disabled>{t.loading}</option>
                           }
-                          <option value="__other__">{lang === "th" ? "อื่นๆ" : "Other"}</option>
                         </select>
                         <div className="tw-pointer-events-none tw-absolute tw-inset-y-0 tw-right-3 tw-flex tw-items-center">
                           <svg xmlns="http://www.w3.org/2000/svg" className="tw-h-4 tw-w-4 tw-text-blue-gray-400" viewBox="0 0 20 20" fill="currentColor">
@@ -1295,19 +1278,6 @@ export function SearchDataTables() {
                         <label className="tw-pointer-events-none tw-absolute tw-left-3 tw--top-1.5 tw-text-[11px] tw-text-blue-gray-400 tw-bg-white tw-px-1 tw-font-normal">
                           {t.owner}
                         </label>
-                      </div>
-                      {isOtherOwnerEdit && (
-                        <div className="tw-w-full">
-                          <Input
-                            label={lang === "th" ? "ระบุชื่อเจ้าของ" : "Enter owner name"}
-                            required
-                            autoFocus
-                            value={otherOwnerNameEdit}
-                            onChange={(e) => setOtherOwnerNameEdit(e.target.value)}
-                            crossOrigin={undefined}
-                          />
-                        </div>
-                      )}
                     </div>
                   ) : (
                     <Input label={t.owner} value={editingStation?.username ?? "-"} readOnly disabled crossOrigin={undefined} />
