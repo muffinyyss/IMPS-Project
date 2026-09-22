@@ -19,7 +19,7 @@ import { Card } from "@material-tailwind/react";
 import { DocumentArrowDownIcon, PlusIcon } from "@heroicons/react/24/outline";
 import { apiFetch } from "@/utils/api";
 import useLanguage from "@/utils/useLanguage";
-import { PM_ORIGIN_LIST } from "@/app/dashboard/pm-report/lib/origin";
+import { PM_LIST_ROUTE, PM_ORIGIN_LIST } from "@/app/dashboard/pm-report/lib/origin";
 import { PM_PLANNING_ROLES } from "@/app/dashboard/pm-report/components/planning";
 import { PM_APPROVE_ROLES } from "@/app/dashboard/pm-report/components/flow";
 import { COMPANY_FILTER_OPTIONS, matchesCompanyFilter } from "@/utils/pm-dashboard";
@@ -146,6 +146,16 @@ export default function PMListPage() {
   const router = useRouter();
   const { lang } = useLanguage();
 
+  // เลขใบงานที่เพิ่งเปิดจากหน้า "เพิ่มใบงาน" — โชว์แถบยืนยันแล้วล้าง query ทิ้ง
+  // (อ่านจาก window แทน useSearchParams เพื่อไม่ต้องห่อหน้านี้ด้วย Suspense)
+  const [createdWonum, setCreatedWonum] = useState("");
+  useEffect(() => {
+    const wonum = new URLSearchParams(window.location.search).get("created");
+    if (!wonum) return;
+    setCreatedWonum(wonum);
+    window.history.replaceState(null, "", PM_LIST_ROUTE);
+  }, []);
+
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -229,7 +239,7 @@ export default function PMListPage() {
               sn: String(w?.sn || ""),
               chargeBoxID: "",
               station_id: String(w?.station_id || ""),
-              station_name: String(w?.station_id || w?.location || ""),
+              station_name: String(w?.station_name || w?.station_id || w?.location || ""),
               company: String(w?.company || ""),
               charger_brand: String(w?.charger_brand || ""),
               side: "",
@@ -269,6 +279,7 @@ export default function PMListPage() {
       searchPlaceholder: "ค้นหา station, WO, ชื่อเอกสาร, ช่าง, SN…",
       clearFilters: "ล้างตัวกรอง",
       addWorkOrder: "เพิ่มใบงาน",
+      created: (wonum: string) => `เปิดใบงาน ${wonum} เรียบร้อยแล้ว`,
       pagination: (from: number, to: number, total: number) => `แสดง ${from}–${to} จาก ${total} รายการ`,
       loading: "กำลังโหลด",
       errorPrefix: "โหลดข้อมูลไม่สำเร็จ",
@@ -303,6 +314,7 @@ export default function PMListPage() {
       searchPlaceholder: "Search station, WO, document, technician, SN…",
       clearFilters: "Clear filters",
       addWorkOrder: "Add work order",
+      created: (wonum: string) => `Work order ${wonum} created`,
       pagination: (from: number, to: number, total: number) => `Showing ${from}–${to} of ${total}`,
       loading: "Loading",
       errorPrefix: "Failed to load",
@@ -546,6 +558,20 @@ export default function PMListPage() {
 
   return (
     <main className="tw-min-h-screen tw-bg-gray-50/60 tw-p-6">
+      {createdWonum && (
+        <div className="tw-mb-4 tw-flex tw-items-center tw-gap-3 tw-rounded-xl tw-border tw-border-green-200 tw-bg-green-50 tw-px-4 tw-py-3 tw-text-sm tw-text-green-800">
+          <span className="tw-text-base">✅</span>
+          <span>{t.created(createdWonum)}</span>
+          <button
+            type="button"
+            onClick={() => setCreatedWonum("")}
+            aria-label="close"
+            className="tw-ml-auto tw-text-xs tw-font-semibold tw-text-green-700 tw-underline hover:tw-text-green-900"
+          >
+            ✕
+          </button>
+        </div>
+      )}
       {error && (
         <div className="tw-mb-4 tw-flex tw-items-center tw-gap-3 tw-rounded-xl tw-border tw-border-red-200 tw-bg-red-50 tw-px-4 tw-py-3 tw-text-sm tw-text-red-700">
           <span className="tw-text-base">⚠️</span>
@@ -683,15 +709,17 @@ export default function PMListPage() {
         <CsvExportButton onClick={exportCsv} count={sortedRows.length} lang={lang} />
 
         <div className="tw-ml-auto tw-flex tw-items-center tw-gap-2">
-          
-          <button
-            type="button"
-            onClick={() => router.push("/dashboard/pm-report")}
-            className="tw-inline-flex tw-h-9 tw-items-center tw-justify-center tw-gap-1.5 tw-rounded-lg tw-bg-gray-900 tw-px-3.5 tw-text-sm tw-font-semibold tw-text-white tw-shadow-sm tw-transition-colors hover:tw-bg-black focus:tw-outline-none focus-visible:tw-ring-2 focus-visible:tw-ring-gray-500"
-          >
-            <PlusIcon aria-hidden="true" className="tw-h-4 tw-w-4" />
-            <span>{t.addWorkOrder}</span>
-          </button>
+          {/* เปิดใบงานเองได้เฉพาะ role ที่วางแผน PM ได้ — ชุดเดียวกับที่ backend เช็ค */}
+          {PM_PLANNING_ROLES.includes(me?.role ?? "") && (
+            <button
+              type="button"
+              onClick={() => router.push(`${PM_LIST_ROUTE}/create`)}
+              className="tw-inline-flex tw-h-9 tw-items-center tw-justify-center tw-gap-1.5 tw-rounded-lg tw-bg-gray-900 tw-px-3.5 tw-text-sm tw-font-semibold tw-text-white tw-shadow-sm tw-transition-colors hover:tw-bg-black focus:tw-outline-none focus-visible:tw-ring-2 focus-visible:tw-ring-gray-500"
+            >
+              <PlusIcon aria-hidden="true" className="tw-h-4 tw-w-4" />
+              <span>{t.addWorkOrder}</span>
+            </button>
+          )}
         </div>
       </div>
 
