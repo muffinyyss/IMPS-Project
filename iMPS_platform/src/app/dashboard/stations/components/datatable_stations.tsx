@@ -20,6 +20,7 @@ import AddStation, { type NewStationPayload, MaximoLocationSelect, type MaximoLo
 import { WARRANTY_STATUS_OPTIONS, INVESTMENT_SCOPE_OPTIONS, MultiSelectDropdown } from "@/app/dashboard/stations/components/stationOptions";
 import { apiFetch } from "@/utils/api";
 import { isStaffRole, staffChargerPath } from "@/utils/roles";
+import { startVisiblePoll } from "@/utils/visible-poll";
 
 // const API_BASE = "http://localhost:8000";
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "";
@@ -648,8 +649,8 @@ export function SearchDataTables() {
     if (data.length === 0) return;
     let stopped = false;
     const poll = async () => { if (stopped) return; try { await fetchAvailability(); } catch (e: any) { if (e?.status === 401 || e?.message?.includes("401")) { stopped = true; return; } console.error("[availability poll] error:", e); } };
-    const interval = setInterval(poll, 10000);
-    return () => { stopped = true; clearInterval(interval); };
+    const stop = startVisiblePoll(poll, 10000);
+    return () => { stopped = true; stop(); };
   }, [data]);
 
   useEffect(() => {

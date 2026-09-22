@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { onSelectionChange } from "@/utils/selection-events";
 
 import {
   Bars3Icon,
@@ -264,58 +265,13 @@ export function DashboardNavbar() {
       requestAnimationFrame(loadSelection);
     };
 
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === "selected_sn" ||
-        e.key === "selected_station_id" ||
-        e.key === "selected_station_name" ||
-        e.key === "selected_charger_no") {
-        requestAnimationFrame(loadSelection);
-      }
-    };
-
-    window.addEventListener("storage", handleStorageChange);
-    window.addEventListener("charger:selected", handleChargerEvent);
-    window.addEventListener("charger:deselected", handleChargerEvent);
-    window.addEventListener("station:selected", handleChargerEvent);
-
-    const interval = setInterval(loadSelection, 1000);
-
-    return () => {
-      window.removeEventListener("storage", handleStorageChange);
-      window.removeEventListener("charger:selected", handleChargerEvent);
-      window.removeEventListener("charger:deselected", handleChargerEvent);
-      window.removeEventListener("station:selected", handleChargerEvent);
-      clearInterval(interval);
-    };
+    // เดิมมี setInterval ทุก 1 s + listener แยกของ "storage" — selection-events
+    // รวมทั้ง event ในแท็บเดียวกันและจากแท็บอื่นไว้ที่เดียวแล้ว
+    return onSelectionChange(handleChargerEvent);
   }, [loadSelection]);
 
-  // ===== Listen for localStorage changes within same tab =====
-  useEffect(() => {
-    const originalSetItem = localStorage.setItem.bind(localStorage);
-    localStorage.setItem = (key: string, value: string) => {
-      originalSetItem(key, value);
-
-      if (key === "selected_sn" ||
-        key === "selected_station_id" ||
-        key === "selected_station_name" ||
-        key === "selected_charger_no") {
-        window.dispatchEvent(new CustomEvent("localStorageChange", {
-          detail: { key, value }
-        }));
-      }
-    };
-
-    const handleLocalStorageChange = () => {
-      requestAnimationFrame(loadSelection);
-    };
-
-    window.addEventListener("localStorageChange", handleLocalStorageChange);
-
-    return () => {
-      localStorage.setItem = originalSetItem;
-      window.removeEventListener("localStorageChange", handleLocalStorageChange);
-    };
-  }, [loadSelection]);
+  // การเขียน localStorage ใน tab เดียวกันถูก patch ไว้ใน selection-events แล้ว
+  // (เดิม patch ที่นี่ แต่ถูกถอดตอน navbar unmount ทำให้ผู้ฟังรายอื่น เช่น ai/useStation เงียบไป)
 
   const t = {
     currentStation: lang === "th" ? "สถานี" : "Station",

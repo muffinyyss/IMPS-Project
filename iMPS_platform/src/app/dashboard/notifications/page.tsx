@@ -15,6 +15,7 @@ import {
   UserCircleIcon,
   MagnifyingGlassIcon,
 } from "@heroicons/react/24/solid";
+import { startVisiblePoll } from "@/utils/visible-poll";
 
 type Lang = "th" | "en";
 
@@ -361,8 +362,7 @@ export default function NotificationsPage() {
   // ===== Auto-refresh =====
   useEffect(() => {
     if (settings.autoRefreshInterval <= 0) return;
-    const interval = setInterval(() => fetchNotifications(), settings.autoRefreshInterval * 1000);
-    return () => clearInterval(interval);
+    return startVisiblePoll(() => fetchNotifications(), settings.autoRefreshInterval * 1000);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings.autoRefreshInterval]);
 

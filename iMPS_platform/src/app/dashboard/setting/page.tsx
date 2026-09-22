@@ -12,6 +12,7 @@ import { apiFetch } from "@/utils/api"; // ← ปรับ path ตามโป
 import NoData from "@/app/dashboard/components/NoData";
 import BarProgress from "./components/BarProgress";
 import useLanguage from "@/utils/useLanguage";
+import { startVisiblePoll } from "@/utils/visible-poll";
 const POLL_INTERVAL_MS = 30_000;
 
 export default function SettingPage() {
@@ -20,7 +21,7 @@ export default function SettingPage() {
   const { lang } = useLanguage();
   const searchParams = useSearchParams();
   const abortRef = useRef<AbortController | null>(null);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const stopPollRef = useRef<(() => void) | null>(null);
 
   const SN =
     searchParams.get("SN") ||
@@ -52,13 +53,13 @@ export default function SettingPage() {
 
     setLoading(true);
     abortRef.current?.abort();
-    if (pollRef.current) clearInterval(pollRef.current);
+    stopPollRef.current?.();
 
     const ctrl = new AbortController();
     abortRef.current = ctrl;
     fetchData(ctrl.signal);
 
-    pollRef.current = setInterval(() => {
+    stopPollRef.current = startVisiblePoll(() => {
       const c = new AbortController();
       abortRef.current = c;
       fetchData(c.signal);
@@ -66,7 +67,7 @@ export default function SettingPage() {
 
     return () => {
       abortRef.current?.abort();
-      if (pollRef.current) clearInterval(pollRef.current);
+      stopPollRef.current?.();
     };
   }, [SN, fetchData]);
 
