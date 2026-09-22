@@ -8,10 +8,10 @@
  * บันทึกลง iMPS.maximo_pm_open ผ่าน POST /maximo/pm/work-orders (ไม่ยิงไป Maximo)
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { Button } from "@material-tailwind/react";
-import { ArrowLeftIcon, ExclamationTriangleIcon } from "@heroicons/react/24/outline";
+import { ArrowLeftIcon, CheckIcon, ChevronDownIcon, ExclamationTriangleIcon, MagnifyingGlassIcon } from "@heroicons/react/24/outline";
 import { apiFetch } from "@/utils/api";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
 import {
@@ -54,6 +54,8 @@ const T = {
   stationSection: { th: "สถานีที่จะเข้า PM", en: "Station to maintain" },
   station: { th: "สถานี", en: "Station" },
   stationPlaceholder: { th: "— เลือกสถานี —", en: "— Select station —" },
+  stationSearchPlaceholder: { th: "พิมพ์ค้นหาชื่อสถานี...", en: "Type to search stations..." },
+  noStationMatch: { th: "ไม่พบสถานีที่ค้นหา", en: "No matching station" },
   pmDate: { th: "วันที่ PM", en: "PM date" },
   location: { th: "Location (Maximo)", en: "Location (Maximo)" },
   company: { th: "บริษัท", en: "Company" },
@@ -168,6 +170,9 @@ export default function PmCreateWoForm({ onSaved, onCancel }: Props) {
   const [error, setError] = useState("");
 
   const [stationId, setStationId] = useState("");
+  const [stationQuery, setStationQuery] = useState("");
+  const [stationMenuOpen, setStationMenuOpen] = useState(false);
+  const stationPickerRef = useRef<HTMLDivElement>(null);
   const [pmDate, setPmDate] = useState(todayValue);
   const [description, setDescription] = useState("");
   const [checked, setChecked] = useState<Record<string, boolean>>({});
@@ -180,6 +185,29 @@ export default function PmCreateWoForm({ onSaved, onCancel }: Props) {
     () => stations.find((s) => s.station_id === stationId) ?? null,
     [stations, stationId]
   );
+  const filteredStations = useMemo(() => {
+    const query = stationQuery.trim().toLocaleLowerCase();
+    const selectedLabel = station ? (station.station_name || station.station_id) : "";
+    if (!query || selectedLabel === stationQuery) return stations;
+    return stations.filter((item) =>
+      [item.station_name, item.station_id, item.maximo_location]
+        .some((value) => String(value ?? "").toLocaleLowerCase().includes(query))
+    );
+  }, [stationQuery, station, stations]);
+
+  useEffect(() => {
+    const closeStationMenu = (event: MouseEvent) => {
+      if (!stationPickerRef.current?.contains(event.target as Node)) setStationMenuOpen(false);
+    };
+    document.addEventListener("mousedown", closeStationMenu);
+    return () => document.removeEventListener("mousedown", closeStationMenu);
+  }, []);
+
+  const selectStation = (item: StationOption) => {
+    setStationId(item.station_id);
+    setStationQuery(item.station_name || item.station_id);
+    setStationMenuOpen(false);
+  };
 
   // ── โหลดสิทธิ์ + สถานี + ช่าง ครั้งเดียวตอนเปิดฟอร์ม ──
   useEffect(() => {
@@ -431,19 +459,74 @@ export default function PmCreateWoForm({ onSaved, onCancel }: Props) {
                     <label className={LABEL}>
                       {t("station", lang)} <span className="tw-text-red-500">*</span>
                     </label>
-                    <select
-                      value={stationId}
-                      disabled={locked}
-                      onChange={(e) => setStationId(e.target.value)}
-                      className={FIELD}
-                    >
-                      <option value="">{t("stationPlaceholder", lang)}</option>
-                      {stations.map((s) => (
-                        <option key={s.station_id} value={s.station_id}>
-                          {s.station_name || s.station_id}
-                        </option>
-                      ))}
-                    </select>
+                    <div ref={stationPickerRef} className="tw-relative">
+                      <MagnifyingGlassIcon className="tw-pointer-events-none tw-absolute tw-left-3 tw-top-1/2 tw-z-10 tw-h-4 tw-w-4 tw--translate-y-1/2 tw-text-blue-gray-400" />
+                      <input
+                        type="text"
+                        role="combobox"
+                        aria-expanded={stationMenuOpen}
+                        aria-controls="pm-create-station-options"
+                        aria-autocomplete="list"
+                        value={stationQuery}
+                        disabled={locked}
+                        placeholder={t("stationSearchPlaceholder", lang)}
+                        onFocus={(event) => {
+                          setStationMenuOpen(true);
+                          event.currentTarget.select();
+                        }}
+                        onChange={(event) => {
+                          setStationQuery(event.target.value);
+                          setStationId("");
+                          setStationMenuOpen(true);
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === "Escape") setStationMenuOpen(false);
+                          if (event.key === "Enter" && stationMenuOpen && filteredStations.length === 1) {
+                            event.preventDefault();
+                            selectStation(filteredStations[0]);
+                          }
+                        }}
+                        className={`${FIELD} tw-pl-9 tw-pr-10`}
+                      />
+                      <button
+                        type="button"
+                        disabled={locked}
+                        aria-label={t("stationPlaceholder", lang)}
+                        onClick={() => setStationMenuOpen((open) => !open)}
+                        className="tw-absolute tw-right-1 tw-top-1/2 tw-flex tw-h-8 tw-w-8 tw--translate-y-1/2 tw-items-center tw-justify-center tw-rounded-md tw-text-blue-gray-400 hover:tw-bg-blue-gray-50 disabled:tw-cursor-not-allowed"
+                      >
+                        <ChevronDownIcon className={`tw-h-4 tw-w-4 tw-transition-transform ${stationMenuOpen ? "tw-rotate-180" : ""}`} />
+                      </button>
+
+                      {stationMenuOpen && !locked && (
+                        <div id="pm-create-station-options" role="listbox" className="tw-absolute tw-z-30 tw-mt-1 tw-max-h-64 tw-w-full tw-overflow-y-auto tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-py-1 tw-shadow-xl">
+                          {filteredStations.length > 0 ? filteredStations.map((item) => {
+                            const selected = item.station_id === stationId;
+                            return (
+                              <button
+                                key={item.station_id}
+                                type="button"
+                                role="option"
+                                aria-selected={selected}
+                                onMouseDown={(event) => event.preventDefault()}
+                                onClick={() => selectStation(item)}
+                                className={`tw-flex tw-w-full tw-items-center tw-gap-3 tw-px-3 tw-py-2.5 tw-text-left hover:tw-bg-blue-50 ${selected ? "tw-bg-blue-50" : ""}`}
+                              >
+                                <span className="tw-min-w-0 tw-flex-1">
+                                  <span className="tw-block tw-truncate tw-text-sm tw-font-medium tw-text-blue-gray-800">{item.station_name || item.station_id}</span>
+                                  {item.station_name && item.station_id !== item.station_name && (
+                                    <span className="tw-block tw-truncate tw-text-xs tw-text-blue-gray-400">{item.station_id}</span>
+                                  )}
+                                </span>
+                                {selected && <CheckIcon className="tw-h-4 tw-w-4 tw-flex-shrink-0 tw-text-blue-600" />}
+                              </button>
+                            );
+                          }) : (
+                            <p className="tw-px-3 tw-py-3 tw-text-sm tw-text-blue-gray-500">{t("noStationMatch", lang)}</p>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-3 tw-gap-4">
