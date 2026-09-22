@@ -115,6 +115,34 @@ export function pmAssigneeNames(groups: PmAssigneeGroup[]): string[] {
   return Array.from(new Set(groups.flatMap((group) => group.names)));
 }
 
+/** กรองลิสต์ตามคำค้น (เทียบเฉพาะชื่อ) — กลุ่มที่ไม่เหลือชื่อเลยหายไปทั้งหัวข้อ */
+export function filterPmAssigneeGroups(
+  groups: PmAssigneeGroup[],
+  query: string
+): PmAssigneeGroup[] {
+  const needle = query.trim().toLocaleLowerCase();
+  if (!needle) return groups;
+  return groups
+    .map((group) => ({
+      ...group,
+      names: group.names.filter((name) => name.toLocaleLowerCase().includes(needle)),
+    }))
+    .filter((group) => group.names.length > 0);
+}
+
+/**
+ * ติ๊ก/ปลดติ๊ก "ทั้งหมด" กับเฉพาะชื่อที่เห็นอยู่ตอนนั้น
+ * คนที่ติ๊กไว้แล้วแต่ถูกคำค้นกรองออกไปต้องอยู่ครบ ไม่งั้นพิมพ์ค้นหาแล้วกด All จะล้างของเดิมทิ้ง
+ */
+export function togglePmAssigneeBatch(
+  selected: string[],
+  names: string[],
+  allChecked: boolean
+): string[] {
+  if (allChecked) return selected.filter((name) => !names.includes(name));
+  return [...selected, ...names.filter((name) => !selected.includes(name))];
+}
+
 /** role ที่วางแผน PM ได้ — ต้องตรงกับ PM_PLANNING_ROLES ใน backend/routers/pm_maximo.py */
 export const PM_PLANNING_ROLES = ["admin", "owner", "planner"];
 

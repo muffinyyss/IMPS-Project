@@ -174,7 +174,9 @@ async def pm_assignee_options(current: UserClaims = Depends(get_current_user)):
                      (outsource.company เก็บได้ทั้งชื่อ owner และชื่อ vendor)
 
     คน login ที่ company เป็นชื่อ vendor จะได้ vendors ว่าง แต่ยังเห็น outsource ของตัวเอง
-    เพราะ lookup ทั้งสองชั้นใช้ชื่อเดียวกันนี้เทียบตรง ๆ — ยกเว้น super_admin ที่เห็นทุกบริษัท
+    เพราะ lookup ทั้งสองชั้นใช้ชื่อเดียวกันนี้เทียบตรง ๆ
+
+    ไม่มีข้อยกเว้นให้ role ไหน — super_admin ที่ company ไม่ตรงกับใครก็จะได้ลิสต์ว่าง
     """
     if (current.role or "").lower() not in PM_ASSIGNER_ROLES:
         raise HTTPException(status_code=403, detail="forbidden")
@@ -188,27 +190,21 @@ async def pm_assignee_options(current: UserClaims = Depends(get_current_user)):
         except (InvalidId, TypeError):
             pass  # user_id ใน token ไม่ใช่ ObjectId — ใช้ค่าจาก claims ต่อ
 
-    # super_admin ไม่ได้สังกัดบริษัทไหนจริง — กรองด้วย company ของตัวเองจะได้ลิสต์ว่าง
-    if current.is_super_admin:
-        tech_query: Dict[str, Any] = {"role": "technician"}
-        owner_docs = await companies_coll_async.find({"type": "vendor"}).to_list(length=None)
-        vendors = _dedupe_names(
-            v.get("name", "") for doc in owner_docs for v in (doc.get("vendors") or [])
-        )
-        outsource_query: Dict[str, Any] = {"type": "outsource"}
-    else:
-        # ไม่มี company = ไม่รู้ว่าอยู่ใต้ใคร จึงไม่ควรเห็นชื่อของบริษัทอื่น
-        if not company:
-            return {"company": "", "technicians": [], "vendors": [], "outsources": []}
+    # ไม่มี company = ไม่รู้ว่าอยู่ใต้ใคร จึงไม่ควรเห็นชื่อของบริษัทอื่น (super_admin ก็ไม่เว้น)
+    if not company:
+        return {"company": "", "technicians": [], "vendors": [], "outsources": []}
 
-        tech_query = {"role": "technician", "company": _ci(company)}
+    tech_query: Dict[str, Any] = {"role": "technician", "company": _ci(company)}
 
-        owner_doc = await companies_coll_async.find_one({"type": "vendor", "name": _ci(company)})
-        vendors = _dedupe_names(v.get("name", "") for v in ((owner_doc or {}).get("vendors") or []))
+    owner_doc = await companies_coll_async.find_one({"type": "vendor", "name": _ci(company)})
+    vendors = _dedupe_names(v.get("name", "") for v in ((owner_doc or {}).get("vendors") or []))
 
-        # outsource สังกัด owner ก็ได้ vendor ก็ได้ — รับทั้งสองชั้น
-        parents = [company, *vendors]
-        outsource_query = {"type": "outsource", "company": {"$in": [_ci(x) for x in parents]}}
+    # outsource สังกัด owner ก็ได้ vendor ก็ได้ — รับทั้งสองชั้นที่อยู่ใต้ company นี้
+    parents = [company, *vendors]
+    outsource_query: Dict[str, Any] = {
+        "type": "outsource",
+        "company": {"$in": [_ci(x) for x in parents]},
+    }
 
     tech_docs = (
         await users_coll_async.find(tech_query, {"username": 1})
