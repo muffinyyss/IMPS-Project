@@ -1,8 +1,15 @@
 const path = require("path");
 const loaderUtils = require("loader-utils");
 const MangleCssClassPlugin = require("mangle-css-class-webpack-plugin");
+const isDesktopBuild = process.env.IMPS_DESKTOP_BUILD === "1";
 
 module.exports = {
+  ...(isDesktopBuild
+    ? {
+        output: "standalone",
+        distDir: ".next-desktop",
+      }
+    : {}),
   typescript: {
     ignoreBuildErrors: true,
   },
