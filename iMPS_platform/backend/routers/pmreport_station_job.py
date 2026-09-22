@@ -1,23 +1,28 @@
 """
 routers/pmreport_station_job.py
 ===============================
-ใบ PM สถานี "ใบเดียว 4 ส่วน" — Station / MDB / CCB / CB_BOX
+ใบ PM สถานี "ใบเดียว 5 ส่วน" — Station / MDB / CCB / CB_BOX / Charger
 
-ที่มา: เดิม 4 ชนิดนี้เป็นคนละเอกสาร คนละเลขที่ คนละ PDF คนละคิวอนุมัติ
-ทั้งที่ช่างเข้าสถานีรอบเดียวแล้วตรวจทั้ง 4 อย่างพร้อมกัน ตอนนี้รวมเป็น
-เอกสารใบเดียว (1 เลขที่ / 1 PDF / อนุมัติครั้งเดียว) ที่ข้างในแบ่งเป็น 4 ส่วน
+ที่มา: เดิม 5 ชนิดนี้เป็นคนละเอกสาร คนละเลขที่ คนละ PDF คนละคิวอนุมัติ
+ทั้งที่ช่างเข้าสถานีรอบเดียวแล้วตรวจทั้งหมดพร้อมกัน ตอนนี้รวมเป็น
+เอกสารใบเดียว (1 เลขที่ / 1 PDF / อนุมัติครั้งเดียว) ที่ข้างในแบ่งเป็น 5 ส่วน
 กรอกแยกทีละส่วนได้
+
+ส่วน Charger ต่างจากอีก 4 ส่วนตรงที่สถานีหนึ่งมีหลายตู้ จึงมีใบย่อยได้หลายใบ
+(ตู้ละ 1 ใบ) แต่ยังนับเป็น "ส่วนที่ 5" ส่วนเดียว และใช้เลขที่เอกสารใบเดียวกัน
 
 โครงเก็บข้อมูล — ตั้งใจไม่ย้ายเนื้อ checklist ออกจากที่เดิม:
   stationPMJob.<station_id>   ← เอกสารแม่ (เลขที่, วันที่, สถานะรวม, ใบงาน Maximo)
   stationPMReport.<station_id> / MDBPMReport.<...> / CCBPMReport / CBBOXPMReport
                               ← เนื้อ checklist ของแต่ละส่วน (เหมือนเดิมทุกอย่าง)
                                 ผูกกลับมาที่แม่ด้วย field job_id
+  PMReport.<SN>               ← ส่วน Charger — keyed ด้วย SN ของตู้ ไม่ใช่ station_id
+                                ผูกกลับมาที่แม่ด้วย field job_id เหมือนกัน
 ผลคือฟอร์มกรอก, การอัปโหลดรูป และ template PDF ของแต่ละส่วนใช้ของเดิมได้ทั้งหมด
 ส่วนเลขที่เอกสาร/ชื่อเอกสารให้ลูกทุกใบ "ยืมของแม่" ใบเดียวกัน
 
 PDF: /stationpmjob/{job_id}/pdf — เรนเดอร์ PDF ของแต่ละส่วนด้วย template
-เดิม แล้วต่อกันเป็นไฟล์เดียวด้วย pypdf
+เดิม แล้วต่อกันเป็นไฟล์เดียวด้วย pypdf (ส่วน Charger ต่อท้ายทีละตู้)
 """
 
 from __future__ import annotations
@@ -31,13 +36,14 @@ from bson.objectid import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel
 
-from config import station_collection
+from config import charger_collection, station_collection
 from deps import UserClaims, get_current_user
 from routers import pm_flow
 from routers.pm_helpers import (
     get_cbboxpmreport_collection_for,
     get_ccbpmreport_collection_for,
     get_mdbpmreport_collection_for,
+    get_pmreport_collection_for,
     get_stationpmjob_collection_for,
     get_stationpmreport_collection_for,
     _next_issue_id_no_conflict,
@@ -49,14 +55,18 @@ log = logging.getLogger("uvicorn.error")
 
 router = APIRouter()
 
-# 4 ส่วนของใบ PM สถานี — ลำดับนี้คือลำดับที่โชว์ในหน้าเว็บและเรียงหน้าใน PDF
-SECTIONS: tuple[str, ...] = ("station", "mdb", "ccb", "cbbox")
+# 5 ส่วนของใบ PM สถานี — ลำดับนี้คือลำดับที่โชว์ในหน้าเว็บและเรียงหน้าใน PDF
+SECTIONS: tuple[str, ...] = ("station", "mdb", "ccb", "cbbox", "charger")
+
+# ส่วนที่ผูกกับตู้ (keyed ด้วย SN) ไม่ใช่กับสถานี — มีใบย่อยได้หลายใบในส่วนเดียว
+CHARGER_SECTION = "charger"
 
 SECTION_LABELS: dict[str, dict[str, str]] = {
     "station": {"th": "สถานี", "en": "Station"},
     "mdb": {"th": "MDB", "en": "MDB"},
     "ccb": {"th": "CCB", "en": "CCB"},
     "cbbox": {"th": "CB_BOX", "en": "CB_BOX"},
+    "charger": {"th": "ตู้ชาร์จ", "en": "Charger"},
 }
 
 # ชนิดส่วน → template PDF ของ /pdf/{kind}/{id}/export เดิม
@@ -65,13 +75,23 @@ SECTION_PDF_KIND: dict[str, str] = {
     "mdb": "mdb",
     "ccb": "ccb",
     "cbbox": "cbbox",
+    "charger": "charger",
 }
 
 JobStatus = Literal["draft", "Wait for approve", "Closed"]
 
 
-def section_collection(section: str, station_id: str):
-    """collection ที่เก็บเนื้อ checklist ของส่วนนั้น (ของเดิม ไม่ได้ย้าย)"""
+def section_collection(section: str, station_id: str, sn: str = ""):
+    """
+    collection ที่เก็บเนื้อ checklist ของส่วนนั้น (ของเดิม ไม่ได้ย้าย)
+
+    ส่วน charger แยกเป็นรายตู้ จึงต้องส่ง sn มาด้วย — อีก 4 ส่วนใช้ station_id
+    """
+    if section == CHARGER_SECTION:
+        sn = (sn or "").strip()
+        if not sn:
+            raise HTTPException(status_code=400, detail="ส่วน charger ต้องระบุ SN ของตู้")
+        return get_pmreport_collection_for(sn)
     getter = {
         "station": get_stationpmreport_collection_for,
         "mdb": get_mdbpmreport_collection_for,
@@ -81,6 +101,32 @@ def section_collection(section: str, station_id: str):
     if not getter:
         raise HTTPException(status_code=400, detail=f"ส่วนของเอกสารไม่ถูกต้อง: {section}")
     return getter(station_id)
+
+
+def section_scope_filter(section: str, station_id: str, sn: str = "") -> dict:
+    """filter ที่จำกัดขอบเขตใบลูกของส่วนนั้น — ใช้ตอน approve/reject"""
+    if section == CHARGER_SECTION:
+        return {"sn": (sn or "").strip()}
+    return {"station_id": station_id}
+
+
+def station_chargers(station_id: str) -> list[dict]:
+    """
+    ตู้ชาร์จทั้งหมดของสถานี — เรียงตามหมายเลขตู้ ลำดับส่วนในใบจะได้ไม่สลับไปมา
+
+    อ่านไม่ได้ = ไม่โชว์ใบย่อยของส่วน charger ส่วนอื่นยังใช้งานได้ตามปกติ
+    """
+    try:
+        docs = list(charger_collection.find(
+            {"station_id": station_id},
+            {"_id": 0, "SN": 1, "chargerNo": 1, "chargerType": 1, "brand": 1, "model": 1},
+        ))
+    except Exception as e:
+        log.warning(f"  ⚠️ อ่านรายชื่อตู้ชาร์จของสถานี {station_id} ไม่สำเร็จ: {e}")
+        return []
+    out = [d for d in docs if str(d.get("SN") or "").strip() not in ("", "-")]
+    out.sort(key=lambda d: (str(d.get("chargerNo") or "~"), str(d.get("SN") or "")))
+    return out
 
 
 def _norm_status(raw: Any) -> str:
@@ -107,7 +153,7 @@ def derive_job_status(section_states: list[dict]) -> str:
       ส่วนที่กรอกแล้วรออนุมัติอยู่อย่างน้อย 1 ส่วน    → Wait for approve
       กรอกแล้วและปิดครบทุกส่วนที่มี                  → Closed
 
-    ใบที่ยังไม่ได้เริ่มกรอกไม่ถ่วงสถานะ — ช่างอาจไม่ได้ตรวจครบทั้ง 4 ส่วนในรอบนั้น
+    ใบที่ยังไม่ได้เริ่มกรอกไม่ถ่วงสถานะ — ช่างอาจไม่ได้ตรวจครบทุกส่วนในรอบนั้น
     """
     filled = [s for s in section_states if s.get("report_id")]
     if not filled:
@@ -120,36 +166,77 @@ def derive_job_status(section_states: list[dict]) -> str:
     return pm_flow.PM_STATUS_CLOSED
 
 
+async def _find_section_report(section: str, station_id: str, sn: str, job_id: str) -> dict | None:
+    """ใบลูกของส่วนนั้นในใบแม่ใบนี้ — ไม่มี = ยังไม่ได้กรอก"""
+    try:
+        coll = section_collection(section, station_id, sn)
+        return await coll.find_one(
+            {"job_id": job_id},
+            {"_id": 1, "status": 1, "side": 1, "inspector": 1, "updatedAt": 1, "summary": 1},
+            sort=[("_id", -1)] if section == CHARGER_SECTION else [("createdAt", -1)],
+        )
+    except Exception as e:  # collection ยังไม่มี = ยังไม่เคยกรอกส่วนนี้
+        log.warning(f"  ⚠️ อ่านส่วน {section}{f'/{sn}' if sn else ''} ของใบ {job_id} ไม่สำเร็จ: {e}")
+        return None
+
+
+def _state_row(section: str, label: dict, doc: dict | None, sn: str = "", charger_no: str = "") -> dict:
+    return {
+        "section": section,
+        "label": label,
+        "sn": sn,
+        "charger_no": charger_no,
+        "report_id": str(doc["_id"]) if doc else "",
+        "status": _norm_status(doc.get("status")) if doc else "",
+        "side": (doc or {}).get("side") or "",
+        "inspector": (doc or {}).get("inspector") or "",
+    }
+
+
 async def _section_states(job: dict) -> list[dict]:
-    """สถานะของทั้ง 4 ส่วนในใบนี้ — อ่านจากใบลูกจริง ไม่ได้เชื่อค่าที่ cache ไว้"""
+    """
+    สถานะของทุกส่วนในใบนี้ — อ่านจากใบลูกจริง ไม่ได้เชื่อค่าที่ cache ไว้
+
+    ส่วน charger คืนมาหลายแถว (ตู้ละแถว) ฝั่งหน้าเว็บจับกลุ่มด้วย field section
+    สถานีที่ยังไม่มีตู้ในระบบจะไม่มีแถวของส่วนนี้เลย
+    """
     station_id = str(job.get("station_id") or "")
     job_id = str(job.get("_id"))
     out: list[dict] = []
     for section in SECTIONS:
-        try:
-            coll = section_collection(section, station_id)
-            doc = await coll.find_one(
-                {"job_id": job_id},
-                {"_id": 1, "status": 1, "side": 1, "inspector": 1, "updatedAt": 1, "summary": 1},
-                sort=[("createdAt", -1)],
-            )
-        except Exception as e:  # collection ยังไม่มี = ยังไม่เคยกรอกส่วนนี้
-            log.warning(f"  ⚠️ อ่านส่วน {section} ของใบ {job_id} ไม่สำเร็จ: {e}")
-            doc = None
-        out.append({
-            "section": section,
-            "label": SECTION_LABELS[section],
-            "report_id": str(doc["_id"]) if doc else "",
-            "status": _norm_status(doc.get("status")) if doc else "",
-            "side": (doc or {}).get("side") or "",
-            "inspector": (doc or {}).get("inspector") or "",
-        })
+        if section == CHARGER_SECTION:
+            for ch in station_chargers(station_id):
+                sn = str(ch.get("SN") or "").strip()
+                no = str(ch.get("chargerNo") or "").strip()
+                doc = await _find_section_report(section, station_id, sn, job_id)
+                label = {
+                    "th": f"ตู้ชาร์จ {no}" if no else sn,
+                    "en": f"Charger {no}" if no else sn,
+                }
+                out.append(_state_row(section, label, doc, sn=sn, charger_no=no))
+            continue
+        doc = await _find_section_report(section, station_id, "", job_id)
+        out.append(_state_row(section, SECTION_LABELS[section], doc))
     return out
+
+
+def _sections_done(sections: list[dict]) -> int:
+    """
+    นับ "ส่วนที่กรอกแล้ว" แบบ 1 ส่วน = 1 หน่วย เต็มที่ 5
+
+    ส่วน charger มีหลายใบย่อย นับว่ากรอกแล้วต่อเมื่อครบทุกตู้ของสถานี
+    """
+    done = 0
+    for section in SECTIONS:
+        rows = [s for s in sections if s.get("section") == section]
+        if rows and all(s.get("report_id") for s in rows):
+            done += 1
+    return done
 
 
 def _serialize_job(job: dict, sections: list[dict]) -> dict:
     status = derive_job_status(sections)
-    done = sum(1 for s in sections if s.get("report_id"))
+    done = _sections_done(sections)
     return {
         "id": str(job.get("_id")),
         "station_id": job.get("station_id") or "",
@@ -273,7 +360,7 @@ async def get_station_pm_job(
     station_id: str = Query(...),
     current: UserClaims = Depends(get_current_user),
 ):
-    """รายละเอียดใบ 1 ใบ + สถานะของทั้ง 4 ส่วน (ให้หน้า hub เอาไปแสดง)"""
+    """รายละเอียดใบ 1 ใบ + สถานะของทุกส่วน (ให้หน้า hub เอาไปแสดง)"""
     station_id = station_id.strip()
     jobs = get_stationpmjob_collection_for(station_id)
     job = await jobs.find_one({"_id": pm_flow.to_oid(job_id)})
@@ -336,12 +423,14 @@ async def approve_station_pm_job(
     for state in await _section_states(job):
         if not state["report_id"] or not _is_wait(state["status"]):
             continue
-        coll = section_collection(state["section"], station_id)
+        sn = state.get("sn") or ""
+        coll = section_collection(state["section"], station_id, sn)
+        scope = section_scope_filter(state["section"], station_id, sn)
         try:
-            await pm_flow.approve(coll, ObjectId(state["report_id"]), {"station_id": station_id}, current)
-            results.append({"section": state["section"], "ok": True})
+            await pm_flow.approve(coll, ObjectId(state["report_id"]), scope, current)
+            results.append({"section": state["section"], "sn": sn, "ok": True})
         except HTTPException as e:
-            results.append({"section": state["section"], "ok": False, "detail": e.detail})
+            results.append({"section": state["section"], "sn": sn, "ok": False, "detail": e.detail})
 
     sections = await _section_states(job)
     status = derive_job_status(sections)
@@ -377,12 +466,14 @@ async def reject_station_pm_job(
     for state in await _section_states(job):
         if not state["report_id"] or not _is_wait(state["status"]):
             continue
-        coll = section_collection(state["section"], station_id)
+        sn = state.get("sn") or ""
+        coll = section_collection(state["section"], station_id, sn)
+        scope = section_scope_filter(state["section"], station_id, sn)
         try:
-            await pm_flow.reject(coll, ObjectId(state["report_id"]), {"station_id": station_id}, current, body.remark)
-            results.append({"section": state["section"], "ok": True})
+            await pm_flow.reject(coll, ObjectId(state["report_id"]), scope, current, body.remark)
+            results.append({"section": state["section"], "sn": sn, "ok": True})
         except HTTPException as e:
-            results.append({"section": state["section"], "ok": False, "detail": e.detail})
+            results.append({"section": state["section"], "sn": sn, "ok": False, "detail": e.detail})
 
     sections = await _section_states(job)
     await jobs.update_one(
@@ -410,7 +501,8 @@ async def export_station_pm_job_pdf(
     current: UserClaims = Depends(get_current_user),
 ):
     """
-    PDF ของทั้งใบ = PDF ของแต่ละส่วนต่อกันตามลำดับ Station → MDB → CCB → CB_BOX
+    PDF ของทั้งใบ = PDF ของแต่ละส่วนต่อกันตามลำดับ
+    Station → MDB → CCB → CB_BOX → Charger (ตู้ละชุด เรียงตามหมายเลขตู้)
 
     ใช้ template เดิมของแต่ละชนิด (ไม่ได้เขียนใหม่) แล้วรวมไฟล์ด้วย pypdf
     ส่วนที่ยังไม่ได้กรอกจะถูกข้ามไป
@@ -435,7 +527,7 @@ async def export_station_pm_job_pdf(
         info = TEMPLATE_MAP.get(kind)
         if not info:
             continue
-        coll = section_collection(state["section"], station_id)
+        coll = section_collection(state["section"], station_id, state.get("sn") or "")
         doc = await coll.find_one({"_id": ObjectId(state["report_id"])})
         if not doc:
             continue
@@ -447,13 +539,13 @@ async def export_station_pm_job_pdf(
         except TypeError:
             part = info["func"](doc)
         except Exception as e:
-            log.warning(f"  ⚠️ สร้าง PDF ส่วน {state['section']} ของใบ {job_id} ไม่สำเร็จ: {e}")
+            log.warning(f"  ⚠️ สร้าง PDF ส่วน {state['section']} {state.get('sn') or ''} ของใบ {job_id} ไม่สำเร็จ: {e}")
             continue
         try:
             writer.append(io.BytesIO(part))
-            included.append(state["section"])
+            included.append(f"{state['section']}:{state['sn']}" if state.get("sn") else state["section"])
         except Exception as e:
-            log.warning(f"  ⚠️ ต่อ PDF ส่วน {state['section']} ไม่สำเร็จ: {e}")
+            log.warning(f"  ⚠️ ต่อ PDF ส่วน {state['section']} {state.get('sn') or ''} ไม่สำเร็จ: {e}")
 
     if not included:
         raise HTTPException(status_code=404, detail="ใบนี้ยังไม่มีส่วนไหนถูกกรอก จึงยังไม่มี PDF")

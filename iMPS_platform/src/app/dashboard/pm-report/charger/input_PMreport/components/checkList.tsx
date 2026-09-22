@@ -2175,6 +2175,9 @@ export default function ChargerPMForm() {
     const pathname = usePathname();
     const searchParams = useSearchParams();
     const editId = searchParams.get("edit_id") ?? "";
+    // เปิดจากใบ PM สถานี "ใบเดียว 5 ส่วน" → ส่วน Charger ของใบนั้น
+    // มีค่า = ยืมเลขที่/ชื่อเอกสารของใบแม่ ไม่ออกเลขของตัวเอง
+    const jobId = searchParams.get("job_id") ?? "";
     const action = searchParams.get("action");
     const isPostMode = true;
 
@@ -3164,7 +3167,7 @@ export default function ChargerPMForm() {
                 const { issue_id: issueIdFromJob, ...jobWithoutIssueId } = job;
                 // มาจากใบงาน Maximo ที่ planner วางแผนไว้ (?wonum=) → เก็บติดเอกสารเพื่อโยงกลับได้
                 const wonum = searchParams.get("wonum") ?? "";
-                const payload = { sn: sn, wonum, issue_id: issueIdFromJob, job: jobWithoutIssueId, inspector, measures_pre: { m16: m16.state, cp }, rows_pre: rows, pm_date, doc_name: docName, summary_pre: summaryPre, side: "pre" as TabId };
+                const payload = { sn: sn, ...(jobId ? { job_id: jobId } : {}), wonum, issue_id: issueIdFromJob, job: jobWithoutIssueId, inspector, measures_pre: { m16: m16.state, cp }, rows_pre: rows, pm_date, doc_name: docName, summary_pre: summaryPre, side: "pre" as TabId };
                 const submitRes = await apiFetch(`${API_BASE}/pmreport/pre/submit`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
                 if (!submitRes.ok) throw new Error(await submitRes.text());
                 const jsonRes = await submitRes.json() as { report_id: string; doc_name?: string };
@@ -3337,7 +3340,7 @@ export default function ChargerPMForm() {
                 }
             }
             if (!report_id) {
-                const payload = { sn: sn, rows, measures: { m16: m16.state, cp }, summary, ...(summaryCheck ? { summaryCheck } : {}), work_start: workStart, work_finish: workFinish, maximo_labor: maximoLabor, maximo_contractor: contractorPicked ? maximoContractor.trim() : "", wonum: searchParams.get("wonum") ?? "", dust_filter: dustFilterChanged, side: "post" as TabId, report_id: editId };
+                const payload = { sn: sn, ...(jobId ? { job_id: jobId } : {}), rows, measures: { m16: m16.state, cp }, summary, ...(summaryCheck ? { summaryCheck } : {}), work_start: workStart, work_finish: workFinish, maximo_labor: maximoLabor, maximo_contractor: contractorPicked ? maximoContractor.trim() : "", wonum: searchParams.get("wonum") ?? "", dust_filter: dustFilterChanged, side: "post" as TabId, report_id: editId };
                 const submitRes = await apiFetch(`${API_BASE}/pmreport/submit`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
                 if (!submitRes.ok) throw new Error(await submitRes.text());
                 const jsonRes = await submitRes.json() as { report_id: string };
