@@ -14,12 +14,14 @@ from bson.errors import InvalidId
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from config import companies_coll_async
+from config import companies_coll_async, users_coll_async
 from deps import UserClaims, get_current_user
 
 router = APIRouter(prefix="/companies", tags=["companies"])
 
 COMPANY_TYPES = {"owner", "vendor", "outsource"}
+# role ที่มอบหมายงาน PM ได้ — ต้องตรงกับ PM_PLANNING_ROLES ใน routers/pm_maximo.py
+PM_ASSIGNER_ROLES = {"admin", "owner", "planner"}
 
 
 def _require_admin(current: UserClaims):
@@ -83,6 +85,23 @@ def _clean_vendors(entries: List[VendorEntry]) -> List[Dict[str, Any]]:
     return cleaned
 
 
+def _ci(value: str) -> re.Pattern:
+    """match ชื่อแบบไม่สนตัวพิมพ์เล็ก-ใหญ่ — ชื่อ company ใน users/companies พิมพ์ไม่ตรงกันได้"""
+    return re.compile(f"^{re.escape(value)}$", re.IGNORECASE)
+
+
+def _dedupe_names(names) -> List[str]:
+    """ตัดชื่อว่าง/ซ้ำ (ไม่สนตัวพิมพ์) ออก — คงลำดับเดิมที่ query เรียงมาแล้ว"""
+    seen, out = set(), []
+    for raw in names:
+        name = str(raw or "").strip()
+        if not name or name.lower() in seen:
+            continue
+        seen.add(name.lower())
+        out.append(name)
+    return out
+
+
 async def _assert_name_free(
     company_type: str,
     name: str,
@@ -142,6 +161,75 @@ async def list_companies(
         query["type"] = type
     docs = await companies_coll_async.find(query).sort("name", 1).to_list(length=None)
     return {"companies": [_serialize(d) for d in docs]}
+
+
+@router.get("/pm-options")
+async def pm_assignee_options(current: UserClaims = Depends(get_current_user)):
+    """ตัวเลือก "ผู้รับผิดชอบ" ของฟอร์ม PM (วางแผน/เปิดใบงาน) — แยกเป็น 3 กลุ่ม
+
+    ทุกกลุ่มถูกจำกัดด้วย company ของคนที่ login:
+      - technicians: user role=technician ที่อยู่ company เดียวกัน
+      - vendors:     vendor ที่อยู่ใต้ company นั้น (doc type=vendor ที่ name = company)
+      - outsources:  outsource ที่สังกัด company นั้นโดยตรง หรือสังกัด vendor ข้างต้น
+                     (outsource.company เก็บได้ทั้งชื่อ owner และชื่อ vendor)
+
+    คน login ที่ company เป็นชื่อ vendor จะได้ vendors ว่าง แต่ยังเห็น outsource ของตัวเอง
+    เพราะ lookup ทั้งสองชั้นใช้ชื่อเดียวกันนี้เทียบตรง ๆ — ยกเว้น super_admin ที่เห็นทุกบริษัท
+    """
+    if (current.role or "").lower() not in PM_ASSIGNER_ROLES:
+        raise HTTPException(status_code=403, detail="forbidden")
+
+    # อ่าน company สดจาก DB — JWT อายุ 24 ชม. อาจเก่ากว่า profile ที่เพิ่งแก้
+    company = (current.company or "").strip()
+    if current.user_id:
+        try:
+            me = await users_coll_async.find_one({"_id": ObjectId(current.user_id)}, {"company": 1})
+            company = ((me or {}).get("company") or company).strip()
+        except (InvalidId, TypeError):
+            pass  # user_id ใน token ไม่ใช่ ObjectId — ใช้ค่าจาก claims ต่อ
+
+    # super_admin ไม่ได้สังกัดบริษัทไหนจริง — กรองด้วย company ของตัวเองจะได้ลิสต์ว่าง
+    if current.is_super_admin:
+        tech_query: Dict[str, Any] = {"role": "technician"}
+        owner_docs = await companies_coll_async.find({"type": "vendor"}).to_list(length=None)
+        vendors = _dedupe_names(
+            v.get("name", "") for doc in owner_docs for v in (doc.get("vendors") or [])
+        )
+        outsource_query: Dict[str, Any] = {"type": "outsource"}
+    else:
+        # ไม่มี company = ไม่รู้ว่าอยู่ใต้ใคร จึงไม่ควรเห็นชื่อของบริษัทอื่น
+        if not company:
+            return {"company": "", "technicians": [], "vendors": [], "outsources": []}
+
+        tech_query = {"role": "technician", "company": _ci(company)}
+
+        owner_doc = await companies_coll_async.find_one({"type": "vendor", "name": _ci(company)})
+        vendors = _dedupe_names(v.get("name", "") for v in ((owner_doc or {}).get("vendors") or []))
+
+        # outsource สังกัด owner ก็ได้ vendor ก็ได้ — รับทั้งสองชั้น
+        parents = [company, *vendors]
+        outsource_query = {"type": "outsource", "company": {"$in": [_ci(x) for x in parents]}}
+
+    tech_docs = (
+        await users_coll_async.find(tech_query, {"username": 1})
+        .sort("username", 1)
+        .to_list(length=None)
+    )
+    technicians = _dedupe_names(d.get("username", "") for d in tech_docs)
+
+    outsource_docs = (
+        await companies_coll_async.find(outsource_query, {"name": 1})
+        .sort("name", 1)
+        .to_list(length=None)
+    )
+    outsources = _dedupe_names(d.get("name", "") for d in outsource_docs)
+
+    return {
+        "company": company,
+        "technicians": technicians,
+        "vendors": vendors,
+        "outsources": outsources,
+    }
 
 
 @router.post("/")

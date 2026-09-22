@@ -18,17 +18,21 @@ import { apiFetch } from "@/utils/api";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
 import {
   derivePlanningStatus,
+  EMPTY_PM_ASSIGNEE_OPTIONS,
   equipKey,
   equipLabel,
+  fetchPmAssigneeOptions,
   formatDate,
   planningChipClass,
+  pmAssigneeGroups,
+  pmAssigneeNames,
   PM_PLANNING_ROLES,
   toDateTimeLocalValue,
   type EquipmentChoices,
   type EquipmentItem,
   type MaximoSource,
   type MaximoWorkOrder,
-  type TechnicianOption,
+  type PmAssigneeOptions,
 } from "./planning";
 
 // ใช้หัวเอกสารชุดเดียวกับ CM
@@ -87,9 +91,12 @@ const T = {
     th: "วันที่เสร็จต้องไม่ก่อนวันที่เริ่ม",
     en: "Finish date must not be before the start date",
   },
-  technician: { th: "Vendor / Technician", en: "Vendor / Technician" },
+  technician: { th: "ผู้รับผิดชอบ", en: "Assignees" },
   allTechnicians: { th: "ทั้งหมด", en: "All" },
-  noTechnicians: { th: "ไม่พบ Vendor หรือ Technician", en: "No vendors or technicians found" },
+  noTechnicians: {
+    th: "ไม่พบ Technician / Vendor / Outsource ในบริษัทของคุณ",
+    en: "No technicians, vendors or outsources found in your company",
+  },
   noAssignee: { th: "ยังไม่ได้มอบหมายช่าง", en: "No technician assigned" },
 
   editPlan: { th: "แก้ไขแผน", en: "Edit plan" },
@@ -145,8 +152,7 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
 
   const [wo, setWo] = useState<MaximoWorkOrder | null>(null);
   const [choices, setChoices] = useState<EquipmentChoices | null>(null);
-  const [technicians, setTechnicians] = useState<TechnicianOption[]>([]);
-  const [vendors, setVendors] = useState<string[]>([]);
+  const [assigneeOptions, setAssigneeOptions] = useState<PmAssigneeOptions>(EMPTY_PM_ASSIGNEE_OPTIONS);
   const [canPlan, setCanPlan] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -217,15 +223,7 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
         setChecked(preset);
       }
 
-      const optionsRes = await apiFetch("/companies/pm-options");
-      const optionsJson = await optionsRes.json().catch(() => ({} as any));
-      if (optionsRes.ok) {
-        setVendors(Array.isArray(optionsJson?.vendors) ? optionsJson.vendors : []);
-        setTechnicians(
-          (Array.isArray(optionsJson?.technicians) ? optionsJson.technicians : [])
-            .map((username: string) => ({ username }))
-        );
-      }
+      setAssigneeOptions(await fetchPmAssigneeOptions());
     } catch (err) {
       console.error("pm plan load error:", err);
       setError(t("errLoad", lang));
@@ -262,21 +260,8 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
       prev.includes(username) ? prev.filter((u) => u !== username) : [...prev.filter(Boolean), username]
     );
 
-  const technicianNames = useMemo(
-    () => technicians.map((x) => x.username).filter(Boolean) as string[],
-    [technicians]
-  );
-  const assigneeGroups = useMemo(
-    () => [
-      { label: "Vendor", names: vendors },
-      { label: "Technician", names: technicianNames },
-    ].filter(group => group.names.length),
-    [technicianNames, vendors]
-  );
-  const assigneeNames = useMemo(
-    () => assigneeGroups.flatMap(group => group.names),
-    [assigneeGroups]
-  );
+  const assigneeGroups = useMemo(() => pmAssigneeGroups(assigneeOptions), [assigneeOptions]);
+  const assigneeNames = useMemo(() => pmAssigneeNames(assigneeGroups), [assigneeGroups]);
   const allTechChecked =
     assigneeNames.length > 0 && assigneeNames.every((n) => assignees.includes(n));
 
@@ -513,8 +498,8 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
                       <label className={LABEL}>
                         {t("technician", lang)} <span className="tw-text-red-500">*</span>
                       </label>
-                      {/* คนที่วางแผนไม่ได้ (เช่นช่าง) เรียก /users/by-role ไม่ได้ — ได้ 403
-                          แล้ว list ว่าง ทำให้ขึ้น "ไม่พบช่าง" ซึ่งไม่จริง
+                      {/* คนที่วางแผนไม่ได้ (เช่นช่าง) เรียก /companies/pm-options ไม่ได้ — ได้ 403
+                          แล้ว list ว่าง ทำให้ขึ้น "ไม่พบ..." ซึ่งไม่จริง
                           โหมดอ่านอย่างเดียวจึงแสดงชื่อที่มอบหมายไว้เป็นข้อความแทน */}
                       {!canPlan ? (
                         <div className={FIELD_RO}>
@@ -538,13 +523,13 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
                               {assignees.length}/{assigneeNames.length}
                             </span>
                           </label>
-                          {assigneeGroups.map(group => (
-                            <React.Fragment key={group.label}>
+                          {assigneeGroups.map((group) => (
+                            <React.Fragment key={group.key}>
                               <div className="tw-bg-gray-50 tw-px-3 tw-py-1.5 tw-text-[11px] tw-font-bold tw-uppercase tw-tracking-wide tw-text-blue-gray-500">
                                 {group.label}
                               </div>
                               {group.names.map((name) => (
-                                <label key={`${group.label}-${name}`} className="tw-flex tw-items-center tw-gap-2.5 tw-px-3 tw-py-2.5 tw-cursor-pointer hover:tw-bg-blue-gray-50/60 tw-transition-colors">
+                                <label key={`${group.key}-${name}`} className="tw-flex tw-items-center tw-gap-2.5 tw-px-3 tw-py-2.5 tw-cursor-pointer hover:tw-bg-blue-gray-50/60 tw-transition-colors">
                                   <input
                                     type="checkbox"
                                     checked={assignees.includes(name)}
