@@ -322,6 +322,7 @@ from routers.pm_maximo import router as pm_maximo_router
 from routers.cm_maximo import router as cm_maximo_router
 from routers.ai_agent import router as ai_agent_router
 from routers.company import router as company_router
+from routers.fault_detection import router as fault_detection_router
 
 app.include_router(users_router)
 app.include_router(stations_router)
@@ -345,3 +346,4 @@ app.include_router(pm_maximo_router)
 app.include_router(cm_maximo_router)
 app.include_router(ai_agent_router)
 app.include_router(company_router)
+app.include_router(fault_detection_router)
