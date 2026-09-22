@@ -317,9 +317,20 @@ class PMRowPF(BaseModel):
     pf: Optional[Literal["VERY_GOOD","GOOD","FAIR","UNUSABLE","PASS","FAIL","NA",""]] = ""
     remark: Optional[str] = ""
 
+# ── ผูกกับใบ PM สถานี "ใบเดียว 5 ส่วน" ────────────────────────────
+async def _job_link(station_id: str, job_id: str | None) -> dict:
+    """ข้อมูลเลขที่เอกสารของใบแม่ — ไม่ได้ส่ง job_id มา = ใบเดี่ยวแบบเดิม คืน {}"""
+    if not (job_id or "").strip() or not (station_id or "").strip():
+        return {}
+    from routers.pmreport_station_job import job_numbering
+    return await job_numbering(station_id, job_id)
+
+
 class PMSubmitIn(BaseModel):
     side: Literal["pre", "post"]
     sn: str
+    # ใบนี้เป็นส่วน Charger ของใบ PM สถานี "ใบเดียว 5 ส่วน" (stationPMJob) หรือไม่
+    job_id: Optional[str] = None
     # ใบงาน Maximo ที่ planner วางแผนไว้ — โยงเอกสารกลับหาใบงานต้นทางได้
     wonum: Optional[str] = None
     job: dict
@@ -450,6 +461,10 @@ async def pmreport_pre_submit(body: PMSubmitIn, current: UserClaims = Depends(ge
         if not rep_exists and not url_exists:
             issue_id = client_issue
 
+    link = await _job_link(str(station_id or ""), body.job_id)
+    if link:
+        # ส่วน Charger ของใบ PM สถานีใบเดียว 5 ส่วน — ใช้เลขที่/ชื่อเอกสารของใบแม่
+        issue_id = link["issue_id"]
     if not issue_id:
         issue_id = await _next_issue_id_no_conflict(db, coll, url_coll, sn, pm_type, d)
 
@@ -459,11 +474,16 @@ async def pmreport_pre_submit(body: PMSubmitIn, current: UserClaims = Depends(ge
         if not rep_exists and not url_exists:
             doc_name = client_doc
 
+    if link:
+        doc_name = link["doc_name"]
     if not doc_name:
         year_seq = await _next_year_seq(db, sn, pm_type, d)
         doc_name = f"{sn}_{year_seq}/{d.year}"
 
+    # ใบที่ผูกกับใบแม่: ตู้ 1 ตู้มีได้ใบเดียวต่อใบแม่ 1 ใบ หาเจอด้วย job_id ตรง ๆ
     existing_draft = await coll.find_one(
+        {"sn": sn, "job_id": link["job_id"]}
+        if link else
         {"sn": sn, "pm_date": body.pm_date, "side": "pre", "status": "draft"},
         {"_id": 1, "issue_id": 1, "doc_name": 1},
     )
@@ -497,6 +517,7 @@ async def pmreport_pre_submit(body: PMSubmitIn, current: UserClaims = Depends(ge
         "wonum": (body.wonum or "").strip(),
         "doc_name": doc_name,
         "issue_id": issue_id,
+        **({"job_id": link["job_id"]} if link else {}),
         "job": body.job,
         "rows_pre": body.rows_pre or {},
         "measures_pre": body.measures_pre,
@@ -522,6 +543,8 @@ async def pmreport_pre_submit(body: PMSubmitIn, current: UserClaims = Depends(ge
 class PMPostIn(BaseModel):
     report_id: str | None = None
     sn: str
+    # ใบนี้เป็นส่วน Charger ของใบ PM สถานี "ใบเดียว 5 ส่วน" (stationPMJob) หรือไม่
+    job_id: Optional[str] = None
     # เลขใบงาน Maximo — ปกติผูกไว้ตั้งแต่ Pre-PM รับตรงนี้ด้วยเผื่อใบเก่าที่ยังไม่มี
     wonum: Optional[str] = None
     # เวลาทำงานจริงของช่าง — ส่งเข้า Maximo ทาง IN09 ตอนปิดใบงาน
@@ -570,6 +593,7 @@ async def pmreport_post_submit(
             "summaryCheck": body.summaryCheck,
             "dust_filter": body.dust_filter,
             **pm_flow.post_submit_fields(body),
+            **({"job_id": body.job_id} if body.job_id else {}),
             "side": "post",
             "timestamp_post": datetime.now(timezone.utc),
         }
@@ -579,7 +603,10 @@ async def pmreport_post_submit(
 
     charger = await _get_charger_by_sn(sn)
 
+    # ผูกกับใบแม่แล้วต้องไม่ไปเขียนทับ draft ของใบอื่นของตู้เดียวกัน
     existing_draft = await coll.find_one(
+        {"sn": sn, "job_id": body.job_id, "status": "draft"}
+        if body.job_id else
         {"sn": sn, "side": "post", "status": "draft"},
         {"_id": 1},
         sort=[("timestamp", -1)],
@@ -592,6 +619,7 @@ async def pmreport_post_submit(
         "summaryCheck": body.summaryCheck,
         "dust_filter": body.dust_filter,
         **pm_flow.post_submit_fields(body),
+        **({"job_id": body.job_id} if body.job_id else {}),
         "side": "post",
         "timestamp_post": datetime.now(timezone.utc),
     }

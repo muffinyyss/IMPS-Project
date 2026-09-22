@@ -170,11 +170,11 @@ async def pm_assignee_options(current: UserClaims = Depends(get_current_user)):
     ทุกกลุ่มถูกจำกัดด้วย company ของคนที่ login:
       - technicians: user role=technician ที่อยู่ company เดียวกัน
       - vendors:     vendor ที่อยู่ใต้ company นั้น (doc type=vendor ที่ name = company)
-      - outsources:  outsource ที่สังกัด company นั้นโดยตรง หรือสังกัด vendor ข้างต้น
-                     (outsource.company เก็บได้ทั้งชื่อ owner และชื่อ vendor)
+      - outsources:  outsource ที่สังกัด company นั้นโดยตรงเท่านั้น
+                     (outsource.company เก็บได้ทั้งชื่อ owner และชื่อ vendor — ไม่ไล่ลงไปอีกชั้น)
 
     คน login ที่ company เป็นชื่อ vendor จะได้ vendors ว่าง แต่ยังเห็น outsource ของตัวเอง
-    เพราะ lookup ทั้งสองชั้นใช้ชื่อเดียวกันนี้เทียบตรง ๆ
+    เพราะทั้งสอง lookup ใช้ชื่อ company เดียวกันนี้เทียบตรง ๆ
 
     ไม่มีข้อยกเว้นให้ role ไหน — super_admin ที่ company ไม่ตรงกับใครก็จะได้ลิสต์ว่าง
     """
@@ -199,12 +199,9 @@ async def pm_assignee_options(current: UserClaims = Depends(get_current_user)):
     owner_doc = await companies_coll_async.find_one({"type": "vendor", "name": _ci(company)})
     vendors = _dedupe_names(v.get("name", "") for v in ((owner_doc or {}).get("vendors") or []))
 
-    # outsource สังกัด owner ก็ได้ vendor ก็ได้ — รับทั้งสองชั้นที่อยู่ใต้ company นี้
-    parents = [company, *vendors]
-    outsource_query: Dict[str, Any] = {
-        "type": "outsource",
-        "company": {"$in": [_ci(x) for x in parents]},
-    }
+    # เอาเฉพาะ outsource ที่สังกัด company นี้ตรง ๆ — outsource ของ vendor เป็นคนของ vendor
+    # คน login จาก owner จึงไม่ควรเห็น (จะเห็นก็ต่อเมื่อ login ด้วย account ของ vendor นั้น)
+    outsource_query: Dict[str, Any] = {"type": "outsource", "company": _ci(company)}
 
     tech_docs = (
         await users_coll_async.find(tech_query, {"username": 1})

@@ -1,16 +1,20 @@
 "use client";
 
 /**
- * แท็บ Station ของหน้า PM report — "ใบเดียว 4 ส่วน"
+ * หน้า PM report — "ใบเดียว 5 ส่วน"
  *
- * เดิมแท็บ Station / MDB / CCB / CB_BOX แยกกัน 4 แท็บ 4 เอกสาร ตอนนี้รวมเป็น
- * เอกสารใบเดียว (1 เลขที่ / 1 PDF / อนุมัติครั้งเดียว) ที่ข้างในแบ่งเป็น 4 ส่วน
+ * เดิมแท็บ Charger / Station / MDB / CCB / CB_BOX แยกกัน 5 แท็บ 5 เอกสาร
+ * ตอนนี้ไม่มีแท็บแล้ว รวมเป็นเอกสารใบเดียว (1 เลขที่ / 1 PDF / อนุมัติครั้งเดียว)
+ * ที่ข้างในแบ่งเป็น 5 ส่วน — ส่วนที่ 5 (ตู้ชาร์จ) มีใบย่อยตู้ละ 1 ใบ เพราะสถานี
+ * หนึ่งมีหลายตู้ แต่ยังนับเป็นส่วนเดียวและใช้เลขที่เอกสารใบเดียวกัน
  *
- * 3 หน้าจออยู่ในไฟล์เดียว เลือกด้วย query string (แท็บต้องเป็น tab=station เสมอ
- * ไม่งั้นหน้าแม่จะสลับไป component อื่น):
- *   ไม่มีอะไร                     → ตารางใบ PM ของสถานีนี้
- *   ?view=form&job_id=            → หน้ารวม 4 ส่วนของใบนั้น (hub)
- *   ?view=form&job_id=&section=   → ฟอร์มกรอกของส่วนนั้น (ใช้ฟอร์มเดิมทั้งดุ้น)
+ * 3 หน้าจออยู่ในไฟล์เดียว เลือกด้วย query string:
+ *   ไม่มีอะไร                       → ตารางใบ PM ของสถานีนี้
+ *   ?view=form&job_id=              → หน้ารวม 5 ส่วนของใบนั้น (hub)
+ *   ?view=form&job_id=&section=     → ฟอร์มกรอกของส่วนนั้น (ใช้ฟอร์มเดิมทั้งดุ้น)
+ *                                     ส่วน charger ส่ง &sn= ของตู้ไปด้วย
+ *   ?view=form&edit_id= (ไม่มี job_id) → ลิงก์เก่าจากหน้า PM List ที่ชี้ไปเอกสาร
+ *                                     ใบเดี่ยวก่อนรวมใบ — เปิดฟอร์มของชนิดนั้นตรง ๆ
  *
  * backend: routers/pmreport_station_job.py
  */
@@ -36,16 +40,24 @@ import StationPMForm from "@/app/dashboard/pm-report/station/input_PMreport/comp
 import MDBPMForm from "@/app/dashboard/pm-report/mdb/input_PMreport/components/checkList";
 import CCBPMForm from "@/app/dashboard/pm-report/ccb/input_PMreport/components/checkList";
 import CBBOXPMForm from "@/app/dashboard/pm-report/cb-box/input_PMreport/components/checkList";
+import ChargerPMForm from "@/app/dashboard/pm-report/charger/input_PMreport/components/checkList";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
-type SectionId = "station" | "mdb" | "ccb" | "cbbox";
+type SectionId = "station" | "mdb" | "ccb" | "cbbox" | "charger";
+
+/** ลำดับส่วนในใบ — ตรงกับ SECTIONS ฝั่ง backend และลำดับหน้าใน PDF */
+const SECTION_ORDER: SectionId[] = ["station", "mdb", "ccb", "cbbox", "charger"];
+
+/** ส่วนที่ผูกกับตู้ (มีใบย่อยได้หลายใบ) ไม่ใช่กับสถานี */
+const CHARGER_SECTION: SectionId = "charger";
 
 const SECTION_FORMS: Record<SectionId, React.ComponentType> = {
   station: StationPMForm,
   mdb: MDBPMForm,
   ccb: CCBPMForm,
   cbbox: CBBOXPMForm,
+  charger: ChargerPMForm,
 };
 
 const SECTION_TITLE: Record<SectionId, { th: string; en: string }> = {
@@ -53,6 +65,7 @@ const SECTION_TITLE: Record<SectionId, { th: string; en: string }> = {
   mdb: { th: "MDB", en: "MDB" },
   ccb: { th: "CCB", en: "CCB" },
   cbbox: { th: "CB_BOX", en: "CB_BOX" },
+  charger: { th: "ตู้ชาร์จ", en: "Charger" },
 };
 
 const SECTION_HINT: Record<SectionId, { th: string; en: string }> = {
@@ -60,11 +73,25 @@ const SECTION_HINT: Record<SectionId, { th: string; en: string }> = {
   mdb: { th: "ตู้ MDB เบรกเกอร์ แรงดันไฟฟ้า Trip test", en: "MDB cabinet, breakers, voltage, trip tests" },
   ccb: { th: "ตู้ CCB เบรกเกอร์ย่อย แรงดันไฟฟ้า", en: "CCB cabinet, sub-breakers, voltage" },
   cbbox: { th: "CB Box จุดต่อ และอุปกรณ์ป้องกัน", en: "CB Box, connections and protection devices" },
+  charger: { th: "ตู้ชาร์จทุกตู้ในสถานี — กรอกทีละตู้", en: "Every charger at this station — one checklist each" },
+};
+
+/** slug ที่ลิงก์เก่า (tab=… ของหน้า PM List) ใช้ → ส่วนในใบรวม */
+const SLUG_TO_SECTION: Record<string, SectionId> = {
+  station: "station",
+  mdb: "mdb",
+  ccb: "ccb",
+  "cb-box": "cbbox",
+  cbbox: "cbbox",
+  charger: "charger",
 };
 
 type SectionState = {
   section: SectionId;
   label: { th: string; en: string };
+  /** ส่วน charger เท่านั้น — SN ของตู้ที่ใบย่อยนี้ผูกอยู่ */
+  sn: string;
+  charger_no: string;
   report_id: string;
   status: string;
   side: string;
@@ -93,8 +120,8 @@ type Me = { username: string; role: string };
 const T = {
   pageTitle: { th: "Preventive Maintenance Checklist - Station", en: "Preventive Maintenance Checklist - Station" },
   pageSubtitle: {
-    th: "ใบ PM ของสถานี — 1 ใบรวม สถานี / MDB / CCB / CB_BOX",
-    en: "Station PM document — Station / MDB / CCB / CB_BOX in one",
+    th: "ใบ PM ของสถานี — 1 ใบรวม สถานี / MDB / CCB / CB_BOX / ตู้ชาร์จ",
+    en: "Station PM document — Station / MDB / CCB / CB_BOX / Chargers in one",
   },
   newDoc: { th: "+ เปิดใบใหม่", en: "+ New document" },
   colNo: { th: "ลำดับ", en: "No." },
@@ -123,8 +150,8 @@ const T = {
   wonum: { th: "ใบงาน Maximo", en: "Maximo WO" },
   sectionsTitle: { th: "ส่วนของเอกสาร", en: "Document sections" },
   sectionsHint: {
-    th: "กรอกทีละส่วนได้ ทั้ง 4 ส่วนอยู่ในเอกสารเลขที่เดียวกัน",
-    en: "Fill one section at a time — all four share one document number",
+    th: "กรอกทีละส่วนได้ ทั้ง 5 ส่วนอยู่ในเอกสารเลขที่เดียวกัน",
+    en: "Fill one section at a time — all five share one document number",
   },
   fill: { th: "กรอก", en: "Fill in" },
   edit: { th: "แก้ไข", en: "Edit" },
@@ -143,6 +170,9 @@ const T = {
   errLoad: { th: "โหลดใบ PM ไม่สำเร็จ", en: "Failed to load PM documents" },
   errCreate: { th: "เปิดใบใหม่ไม่สำเร็จ", en: "Failed to create document" },
   errAction: { th: "ทำรายการไม่สำเร็จ", en: "Action failed" },
+
+  noChargers: { th: "สถานีนี้ยังไม่มีตู้ชาร์จในระบบ", en: "No chargers registered at this station" },
+  chargersDone: { th: "กรอกแล้ว", en: "filled" },
 } as const;
 
 const t = (k: keyof typeof T, lang: Lang) => T[k][lang === "en" ? "en" : "th"];
@@ -172,6 +202,25 @@ function sectionStatusLabel(status: string, lang: Lang) {
   return "Closed";
 }
 
+/**
+ * สถานะรวมของ 1 ส่วน — ส่วน charger มีหลายใบย่อย จึงต้องยุบให้เหลือสถานะเดียว
+ *
+ * ยังไม่มีใบไหนถูกกรอก = ""  (ยังไม่กรอก)
+ * มีใบที่ยังกรอกไม่เสร็จ หรือกรอกไม่ครบทุกตู้ = draft
+ * ส่งครบแล้วแต่ยังมีใบรออนุมัติ = wait for approve
+ * ปิดครบทุกใบ = closed
+ */
+function aggregateStatus(rows: SectionState[]): string {
+  if (!rows.length) return "";
+  const filled = rows.filter((r) => !!r.report_id);
+  if (!filled.length) return "";
+  const statuses = filled.map((r) => String(r.status || "").trim().toLowerCase());
+  if (filled.length < rows.length) return "draft";
+  if (statuses.some((x) => x === "draft")) return "draft";
+  if (statuses.some((x) => x === "wait for approve")) return "wait for approve";
+  return "closed";
+}
+
 /** สถานะของ 1 ส่วน → ป้ายสีในหน้า hub และในตาราง */
 function sectionChipClass(status: string) {
   const s = String(status || "").trim().toLowerCase();
@@ -188,6 +237,7 @@ export default function StationPmJobTables() {
   const searchParams = useSearchParams();
 
   const [stationId, setStationId] = useState<string | null>(null);
+  const [sn, setSn] = useState<string | null>(null);
   const [me, setMe] = useState<Me | null>(null);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
@@ -203,11 +253,14 @@ export default function StationPmJobTables() {
   const [rejectRemark, setRejectRemark] = useState("");
 
   const jobId = searchParams.get("job_id") ?? "";
-  // ทางเข้าจากใบงาน Maximo (หน้า PM List ส่งมา) — แท็บ MDB/CCB/CB_BOX เดิมเคยรับไว้
+  // ทางเข้าจากใบงาน Maximo (หน้า PM List ส่งมา) — ทุกชนิดเข้าทางนี้หมดแล้ว
   const planningWonum = searchParams.get("planning") === "1" ? (searchParams.get("wonum") ?? "") : "";
   const woInfoWonum = searchParams.get("wo_info") === "1" ? (searchParams.get("wonum") ?? "") : "";
   const section = (searchParams.get("section") ?? "") as SectionId | "";
+  const editId = searchParams.get("edit_id") ?? "";
   const isFormView = searchParams.get("view") === "form" && !!jobId;
+  // ใบงาน Maximo ของตู้ผูกกับ SN ไม่ใช่ station_id — ต้องบอก PmPlanForm/PmWorkOrderInfo ให้ถูก
+  const woSource = SLUG_TO_SECTION[searchParams.get("tab") ?? ""] === CHARGER_SECTION ? "charger" : "station";
 
   // ── สถานีที่เลือกอยู่ — กติกาเดียวกับตาราง PM ตัวอื่น ──
   useEffect(() => {
@@ -218,6 +271,18 @@ export default function StationPmJobTables() {
       return;
     }
     setStationId(localStorage.getItem("selected_station_id"));
+  }, [searchParams]);
+
+  // ── ตู้ที่เลือกอยู่ — ใช้กับใบงาน Maximo ของ charger เท่านั้น
+  // ส่วน charger ในใบรวมเลือกตู้จากการ์ดในหน้า hub ไม่ได้ใช้ค่านี้
+  useEffect(() => {
+    const fromUrl = searchParams.get("sn");
+    if (fromUrl) {
+      setSn(fromUrl);
+      localStorage.setItem("selected_sn", fromUrl);
+      return;
+    }
+    setSn(localStorage.getItem("selected_sn"));
   }, [searchParams]);
 
   useEffect(() => {
