@@ -87,9 +87,9 @@ const T = {
     th: "วันที่เสร็จต้องไม่ก่อนวันที่เริ่ม",
     en: "Finish date must not be before the start date",
   },
-  technician: { th: "Vendor", en: "Vendor" },
+  technician: { th: "Vendor / Technician", en: "Vendor / Technician" },
   allTechnicians: { th: "ทั้งหมด", en: "All" },
-  noTechnicians: { th: "ไม่พบช่าง", en: "No technicians found" },
+  noTechnicians: { th: "ไม่พบ Vendor หรือ Technician", en: "No vendors or technicians found" },
   noAssignee: { th: "ยังไม่ได้มอบหมายช่าง", en: "No technician assigned" },
 
   editPlan: { th: "แก้ไขแผน", en: "Edit plan" },
@@ -146,6 +146,7 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
   const [wo, setWo] = useState<MaximoWorkOrder | null>(null);
   const [choices, setChoices] = useState<EquipmentChoices | null>(null);
   const [technicians, setTechnicians] = useState<TechnicianOption[]>([]);
+  const [vendors, setVendors] = useState<string[]>([]);
   const [canPlan, setCanPlan] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -170,14 +171,13 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
     setLoading(true);
     setError("");
     try {
-      const [meRes, woRes, choicesRes, techRes] = await Promise.all([
+      const [meRes, woRes, choicesRes] = await Promise.all([
         apiFetch("/me"),
         apiFetch(
           `/maximo/pm/open?source=${encodeURIComponent(source)}` +
           `&identifier=${encodeURIComponent(identifier ?? "")}&only_open=true`
         ),
         apiFetch(`/maximo/pm/${encodeURIComponent(wonum)}/equipment-choices`),
-        apiFetch("/users/by-role?role=technician"),
       ]);
 
       const me = await meRes.json().catch(() => ({} as any));
@@ -217,14 +217,14 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
         setChecked(preset);
       }
 
-      const techJson = await techRes.json().catch(() => ({} as any));
-      if (techRes.ok) {
-        const workOrderCompany = String(found.company ?? "").trim().toLowerCase();
-        const companyTechnicians = (Array.isArray(techJson?.users) ? techJson.users : [])
-          .filter((user: TechnicianOption) =>
-            workOrderCompany && String(user.company ?? "").trim().toLowerCase() === workOrderCompany
-          );
-        setTechnicians(companyTechnicians);
+      const optionsRes = await apiFetch("/companies/pm-options");
+      const optionsJson = await optionsRes.json().catch(() => ({} as any));
+      if (optionsRes.ok) {
+        setVendors(Array.isArray(optionsJson?.vendors) ? optionsJson.vendors : []);
+        setTechnicians(
+          (Array.isArray(optionsJson?.technicians) ? optionsJson.technicians : [])
+            .map((username: string) => ({ username }))
+        );
       }
     } catch (err) {
       console.error("pm plan load error:", err);
@@ -266,8 +266,19 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
     () => technicians.map((x) => x.username).filter(Boolean) as string[],
     [technicians]
   );
+  const assigneeGroups = useMemo(
+    () => [
+      { label: "Vendor", names: vendors },
+      { label: "Technician", names: technicianNames },
+    ].filter(group => group.names.length),
+    [technicianNames, vendors]
+  );
+  const assigneeNames = useMemo(
+    () => assigneeGroups.flatMap(group => group.names),
+    [assigneeGroups]
+  );
   const allTechChecked =
-    technicianNames.length > 0 && technicianNames.every((n) => assignees.includes(n));
+    assigneeNames.length > 0 && assigneeNames.every((n) => assignees.includes(n));
 
   // เทียบเป็น string ได้เพราะ datetime-local เป็น ISO เรียงตัวอักษรตรงกับเรียงเวลา
   const schedRangeInvalid = !!schedStart && !!schedFinish && schedFinish < schedStart;
@@ -509,7 +520,7 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
                         <div className={FIELD_RO}>
                           {assignees.length > 0 ? assignees.join(", ") : t("noAssignee", lang)}
                         </div>
-                      ) : technicianNames.length > 0 ? (
+                      ) : assigneeNames.length > 0 ? (
                         <div className="tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-divide-y tw-divide-blue-gray-50 tw-max-h-56 tw-overflow-y-auto">
                           {/* All = ติ๊กช่างทุกคนในลิสต์รวดเดียว */}
                           <label className="tw-flex tw-items-center tw-gap-2.5 tw-px-3 tw-py-2.5 tw-cursor-pointer hover:tw-bg-blue-gray-50/60 tw-transition-colors">
@@ -517,27 +528,34 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
                               type="checkbox"
                               checked={allTechChecked}
                               disabled={locked}
-                              onChange={() => setAssignees(allTechChecked ? [] : technicianNames)}
+                              onChange={() => setAssignees(allTechChecked ? [] : assigneeNames)}
                               className="tw-h-4 tw-w-4 tw-shrink-0 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500 tw-cursor-pointer"
                             />
                             <span className="tw-text-sm tw-font-semibold tw-text-blue-gray-800">
                               {t("allTechnicians", lang)}
                             </span>
                             <span className="tw-ml-auto tw-text-xs tw-text-blue-gray-400">
-                              {assignees.length}/{technicianNames.length}
+                              {assignees.length}/{assigneeNames.length}
                             </span>
                           </label>
-                          {technicianNames.map((u) => (
-                            <label key={u} className="tw-flex tw-items-center tw-gap-2.5 tw-px-3 tw-py-2.5 tw-cursor-pointer hover:tw-bg-blue-gray-50/60 tw-transition-colors">
-                              <input
-                                type="checkbox"
-                                checked={assignees.includes(u)}
-                                disabled={locked}
-                                onChange={() => toggleAssignee(u)}
-                                className="tw-h-4 tw-w-4 tw-shrink-0 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500 tw-cursor-pointer"
-                              />
-                              <span className="tw-min-w-0 tw-truncate tw-text-sm tw-text-blue-gray-800">{u}</span>
-                            </label>
+                          {assigneeGroups.map(group => (
+                            <React.Fragment key={group.label}>
+                              <div className="tw-bg-gray-50 tw-px-3 tw-py-1.5 tw-text-[11px] tw-font-bold tw-uppercase tw-tracking-wide tw-text-blue-gray-500">
+                                {group.label}
+                              </div>
+                              {group.names.map((name) => (
+                                <label key={`${group.label}-${name}`} className="tw-flex tw-items-center tw-gap-2.5 tw-px-3 tw-py-2.5 tw-cursor-pointer hover:tw-bg-blue-gray-50/60 tw-transition-colors">
+                                  <input
+                                    type="checkbox"
+                                    checked={assignees.includes(name)}
+                                    disabled={locked}
+                                    onChange={() => toggleAssignee(name)}
+                                    className="tw-h-4 tw-w-4 tw-shrink-0 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500 tw-cursor-pointer"
+                                  />
+                                  <span className="tw-min-w-0 tw-truncate tw-text-sm tw-text-blue-gray-800">{name}</span>
+                                </label>
+                              ))}
+                            </React.Fragment>
                           ))}
                         </div>
                       ) : (
