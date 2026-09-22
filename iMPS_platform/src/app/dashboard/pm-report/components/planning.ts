@@ -209,6 +209,21 @@ export function planningChipClass(status: "pending" | "planned") {
     : "tw-bg-amber-50 tw-text-amber-700 tw-border-amber-200";
 }
 
+/** ช่วงเริ่ม-เสร็จตั้งต้นของแผน PM: เริ่มตอนนี้ เสร็จอีก 7 วัน */
+export const PM_DEFAULT_SPAN_DAYS = 7;
+
+/**
+ * ค่า YYYY-MM-DDTHH:mm ของ input type="datetime-local" — เวลาปัจจุบัน บวกจำนวนวันได้
+ * setDate() ข้ามเดือน/ปี/DST ให้เอง จึงไม่บวกเป็น millisecond
+ */
+export function dateTimeLocalFromNow(addDays = 0) {
+  const d = new Date();
+  if (addDays) d.setDate(d.getDate() + addDays);
+
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 export function toDateTimeLocalValue(value?: string | null) {
   if (!value) return "";
   const cleaned = value.replace(" ", "T");

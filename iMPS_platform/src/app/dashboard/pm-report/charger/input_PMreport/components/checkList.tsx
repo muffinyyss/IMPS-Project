@@ -2570,11 +2570,13 @@ export default function ChargerPMForm() {
     }, [sn, job.date, isPostMode]);
 
     useEffect(() => {
-        const params = new URLSearchParams(window.location.search);
-        const snParam = params.get("sn") || localStorage.getItem("selected_sn");
+        // อ่านจาก searchParams ของ next ไม่ใช่ window.location — สลับตู้ในส่วนที่ 5
+        // ของใบ PM สถานีเป็นการเปลี่ยน query อย่างเดียว ไม่ได้ remount component
+        const snParam = searchParams.get("sn") || localStorage.getItem("selected_sn");
         if (snParam) setSn(snParam);
-        // if (!snParam || isPostMode) return;
-        if (!snParam || isPostMode) { setPageLoading(false); return; }
+        // ใบที่เปิดจาก edit_id ได้หัวเอกสารจากตัวเอกสารเองอยู่แล้ว
+        // ใบใหม่ (ยังไม่มี edit_id) ต้องดึงข้อมูลตู้มาเติมหัวเอกสารเอง
+        if (!snParam || editId) { setPageLoading(false); return; }
         getChargerInfoBySN(snParam)
             .then((st) => {
                 setJob((prev) => ({
@@ -2588,7 +2590,7 @@ export default function ChargerPMForm() {
             })
             // .catch((err) => console.error("load charger info failed:", err));
             .catch((err) => { console.error("load charger info failed:", err); setPageLoading(false); });
-    }, [isPostMode]);
+    }, [editId, searchParams]);
 
     // === LOAD DRAFT (Pre mode) ===
     useEffect(() => {
@@ -3463,7 +3465,15 @@ export default function ChargerPMForm() {
             const allPhotos = Object.values(photosRef.current).flat();
             Promise.all(allPhotos.map(p => delPhoto(postKey, p.id))).catch(() => { });
             clearDraftLocal(postKey);
-            router.replace(`/dashboard/pm-report?sn=${encodeURIComponent(sn)}`);
+            if (jobId) {
+                // ส่วนที่ 5 ของใบ PM สถานี — กลับไปหน้ารวมของใบนั้น ช่างมักกรอกตู้ถัดไปต่อ
+                const back = new URLSearchParams({ view: "form", job_id: jobId });
+                const stationId = searchParams.get("station_id");
+                if (stationId) back.set("station_id", stationId);
+                router.replace(`/dashboard/pm-report?${back.toString()}`);
+            } else {
+                router.replace(`/dashboard/pm-report?sn=${encodeURIComponent(sn)}`);
+            }
         } catch (err: any) { alert(`${t("alertSaveFailed", lang)} ${err?.message ?? err}`); } finally { setSubmitting(false); }
     };
 

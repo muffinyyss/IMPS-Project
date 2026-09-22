@@ -230,6 +230,31 @@ function sectionChipClass(status: string) {
   return "tw-bg-green-50 tw-text-green-700 tw-border-green-200";
 }
 
+/** ปุ่ม กรอก/แก้ไข/ดู ของใบลูก 1 ใบ — ส่วนที่ผูกกับสถานีและรายตู้ใช้ตัวเดียวกัน */
+function SectionFillButton({
+  job, state, lang, onOpen, compact,
+}: {
+  job: Job;
+  state: SectionState;
+  lang: Lang;
+  onOpen: (job: Job, s: SectionState) => void;
+  compact?: boolean;
+}) {
+  const filled = !!state.report_id;
+  const closed = ["closed", "submitted"].includes(String(state.status).trim().toLowerCase());
+  const label = filled ? (closed ? t("view", lang) : t("edit", lang)) : t("fill", lang);
+  return (
+    <Button
+      size="sm"
+      variant={filled ? "outlined" : "filled"}
+      onClick={() => onOpen(job, state)}
+      className={`tw-flex tw-items-center tw-gap-1.5 ${compact ? "" : "tw-mt-3"}`}
+    >
+      <PencilSquareIcon className="tw-h-4 tw-w-4" /> {label}
+    </Button>
+  );
+}
+
 export default function StationPmJobTables() {
   const { lang } = useLanguage();
   const router = useRouter();
@@ -327,14 +352,14 @@ export default function StationPmJobTables() {
 
   const goto = useCallback((params: Record<string, string | null>) => {
     const next = new URLSearchParams(searchParams.toString());
-    next.set("tab", "station");
+    next.delete("tab");
     Object.entries(params).forEach(([k, v]) => (v === null ? next.delete(k) : next.set(k, v)));
     router.push(`${pathname}?${next.toString()}`, { scroll: true });
   }, [pathname, router, searchParams]);
 
-  const openJob = (job: Job) => goto({ view: "form", job_id: job.id, section: null, edit_id: null, station_id: job.station_id });
-  const backToList = () => goto({ view: null, job_id: null, section: null, edit_id: null, review: null, action: null, pmtab: null });
-  const backToHub = () => goto({ section: null, edit_id: null, review: null, action: null, pmtab: null });
+  const openJob = (job: Job) => goto({ view: "form", job_id: job.id, section: null, sn: null, edit_id: null, station_id: job.station_id });
+  const backToList = () => goto({ view: null, job_id: null, section: null, sn: null, edit_id: null, review: null, action: null, pmtab: null });
+  const backToHub = () => goto({ section: null, sn: null, edit_id: null, review: null, action: null, pmtab: null });
 
   /** เปิดฟอร์มของส่วนนั้น — มีเอกสารแล้วส่ง edit_id ไปให้ฟอร์มโหลดของเดิม */
   const openSection = (job: Job, s: SectionState) => {
@@ -345,6 +370,8 @@ export default function StationPmJobTables() {
       job_id: job.id,
       section: s.section,
       station_id: job.station_id,
+      // ฟอร์มของตู้อ่าน SN จาก URL — ส่วนอื่นไม่ต้องมี ลบทิ้งกันค้างจากส่วนก่อนหน้า
+      sn: s.section === CHARGER_SECTION ? (s.sn || null) : null,
       edit_id: s.report_id || null,
       // ใบที่ปิดแล้ว/รออนุมัติ เปิดเป็นโหมดตรวจอ่านอย่างเดียว เหมือนที่ตารางเดิมทำ
       ...(closed || waiting
@@ -357,14 +384,17 @@ export default function StationPmJobTables() {
   const leaveWo = useCallback(() => {
     const back = pmBackRoute(searchParams);
     if (back) { router.push(back); return; }
-    goto({ view: null, planning: null, wo_info: null, wonum: null, started: null, pmtab: null });
+    goto({ view: null, planning: null, wo_info: null, wonum: null, started: null, pmtab: null, edit_id: null });
   }, [goto, router, searchParams]);
 
   /**
    * ช่างกด "เริ่ม PM" จากใบงาน → เปิด (หรือหยิบ) ใบ PM สถานีของใบงานนั้น
-   * แล้วพาไปหน้ารวม 4 ส่วน ให้เลือกว่าจะกรอกส่วนไหนก่อน
+   * แล้วพาไปหน้ารวม 5 ส่วน ให้เลือกว่าจะกรอกส่วนไหนก่อน
+   *
+   * ใบงานของตู้ (source=charger) รู้อยู่แล้วว่าจะกรอกตู้ไหน — พาเข้าส่วนที่ 5
+   * ของตู้นั้นเลย ไม่ต้องให้ช่างเลือกซ้ำ
    */
-  const startPmFromWo = useCallback(async () => {
+  const startPmFromWo = useCallback(async (snFromWo?: string) => {
     if (!stationId || !woInfoWonum) return;
     setActing(true);
     try {
@@ -388,16 +418,21 @@ export default function StationPmJobTables() {
       const json = await res.json().catch(() => ({} as any));
       if (!res.ok) throw new Error(json?.detail || t("errCreate", lang));
       await loadJobs();
+      const targetSn = (snFromWo || sn || "").trim();
       goto({
-        view: "form", job_id: json?.job?.id ?? null, section: null, station_id: stationId,
+        view: "form", job_id: json?.job?.id ?? null, station_id: stationId,
+        ...(woSource === "charger" && targetSn
+          ? { section: CHARGER_SECTION, sn: targetSn }
+          : { section: null, sn: null }),
         wo_info: null, planning: null, started: null, pmtab: null,
+        edit_id: null, review: null, action: null,
       });
     } catch (err) {
       alert(err instanceof Error ? err.message : t("errCreate", lang));
     } finally {
       setActing(false);
     }
-  }, [stationId, woInfoWonum, goto, loadJobs, lang]);
+  }, [stationId, woInfoWonum, goto, loadJobs, lang, sn, woSource]);
 
   const createJob = async () => {
     if (!stationId || acting) return;
@@ -468,8 +503,8 @@ export default function StationPmJobTables() {
   if (planningWonum) {
     return (
       <PmPlanForm
-        source="station"
-        identifier={stationId}
+        source={woSource}
+        identifier={woSource === "charger" ? sn : stationId}
         wonum={planningWonum}
         onSaved={leaveWo}
         onCancel={leaveWo}
@@ -480,10 +515,10 @@ export default function StationPmJobTables() {
   if (woInfoWonum) {
     return (
       <PmWorkOrderInfo
-        source="station"
-        identifier={stationId}
+        source={woSource}
+        identifier={woSource === "charger" ? sn : stationId}
         wonum={woInfoWonum}
-        onStart={() => { void startPmFromWo(); }}
+        onStart={(snFromWo?: string) => { void startPmFromWo(snFromWo); }}
         onCancel={leaveWo}
       />
     );
@@ -492,12 +527,19 @@ export default function StationPmJobTables() {
   // ══════════════ ฟอร์มของส่วนที่เลือก — ฟอร์มเดิมทั้งดุ้น ══════════════
   if (isFormView && section && SECTION_FORMS[section]) {
     const SectionForm = SECTION_FORMS[section];
+    // ส่วนตู้ใช้ชื่อตู้บนปุ่มย้อนกลับ จะได้รู้ว่ากำลังกรอกตู้ไหนอยู่
+    const openedSection = currentJob?.sections.find(
+      (x) => x.section === section && (section !== CHARGER_SECTION || x.sn === (searchParams.get("sn") ?? ""))
+    );
+    const backLabel = openedSection && section === CHARGER_SECTION
+      ? `${pick(SECTION_TITLE[section], lang)} · ${pick(openedSection.label, lang)}`
+      : pick(SECTION_TITLE[section], lang);
     return (
       <div className="tw-mt-4 sm:tw-mt-6 lg:tw-mt-8">
         <div className="tw-mb-3 tw-flex tw-items-center tw-gap-2">
           <Button variant="outlined" size="sm" onClick={backToHub} className="tw-flex tw-items-center tw-gap-2">
             <ArrowLeftIcon className="tw-h-4 tw-w-4" />
-            {pick(SECTION_TITLE[section], lang)} · {t("back", lang)}
+            {backLabel} · {t("back", lang)}
           </Button>
         </div>
         <SectionForm />
@@ -505,7 +547,26 @@ export default function StationPmJobTables() {
     );
   }
 
-  // ══════════════ หน้ารวม 4 ส่วนของใบเดียว (hub) ══════════════
+  // ══════════════ ลิงก์เก่าที่ชี้ไปเอกสารใบเดี่ยว (ก่อนรวมใบ) ══════════════
+  // หน้า PM List ส่ง ?tab=<ชนิด>&view=form&edit_id=… มาโดยไม่มี job_id
+  // เอกสารพวกนี้ไม่ได้ผูกกับใบแม่ ยังต้องเปิดฟอร์มของชนิดนั้นตรง ๆ ได้เหมือนเดิม
+  if (!jobId && searchParams.get("view") === "form" && editId) {
+    const legacySection = SLUG_TO_SECTION[searchParams.get("tab") ?? ""] ?? "charger";
+    const LegacyForm = SECTION_FORMS[legacySection];
+    return (
+      <div className="tw-mt-4 sm:tw-mt-6 lg:tw-mt-8">
+        <div className="tw-mb-3 tw-flex tw-items-center tw-gap-2">
+          <Button variant="outlined" size="sm" onClick={leaveWo} className="tw-flex tw-items-center tw-gap-2">
+            <ArrowLeftIcon className="tw-h-4 tw-w-4" />
+            {pick(SECTION_TITLE[legacySection], lang)} · {t("back", lang)}
+          </Button>
+        </div>
+        <LegacyForm />
+      </div>
+    );
+  }
+
+  // ══════════════ หน้ารวม 5 ส่วนของใบเดียว (hub) ══════════════
   if (isFormView) {
     const job = currentJob;
     if (loading) return <LoadingOverlay show text={t("loading", lang)} />;
@@ -580,7 +641,7 @@ export default function StationPmJobTables() {
           </CardBody>
         </Card>
 
-        {/* 4 ส่วนของเอกสาร */}
+        {/* 5 ส่วนของเอกสาร — ส่วนที่ 5 (ตู้ชาร์จ) แตกเป็นใบย่อยรายตู้ */}
         <div className="tw-mb-2 tw-flex tw-items-baseline tw-gap-3">
           <Typography variant="h6" className="tw-text-gray-800">{t("sectionsTitle", lang)}</Typography>
           <span className="tw-text-xs tw-text-gray-500">{t("sectionsHint", lang)}</span>
@@ -590,12 +651,16 @@ export default function StationPmJobTables() {
         </div>
 
         <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-4">
-          {job.sections.map((s, idx) => {
-            const filled = !!s.report_id;
-            const closed = ["closed", "submitted"].includes(String(s.status).trim().toLowerCase());
-            const label = filled ? (closed ? t("view", lang) : t("edit", lang)) : t("fill", lang);
+          {SECTION_ORDER.map((id, idx) => {
+            const rows = job.sections.filter((x) => x.section === id);
+            const groupStatus = aggregateStatus(rows);
+            const isCharger = id === CHARGER_SECTION;
+            const doneCount = rows.filter((x) => !!x.report_id).length;
             return (
-              <Card key={s.section} className="tw-border tw-border-gray-200 tw-shadow-sm">
+              <Card
+                key={id}
+                className={`tw-border tw-border-gray-200 tw-shadow-sm ${isCharger ? "md:tw-col-span-2" : ""}`}
+              >
                 <CardBody className="tw-p-4">
                   <div className="tw-flex tw-items-start tw-gap-3">
                     <div className="tw-flex tw-h-8 tw-w-8 tw-shrink-0 tw-items-center tw-justify-center tw-rounded-full tw-bg-gray-800 tw-text-sm tw-font-bold tw-text-white">
@@ -604,21 +669,50 @@ export default function StationPmJobTables() {
                     <div className="tw-min-w-0 tw-flex-1">
                       <div className="tw-flex tw-flex-wrap tw-items-center tw-gap-2">
                         <span className="tw-font-semibold tw-text-gray-900">
-                          {pick(SECTION_TITLE[s.section], lang)}
+                          {pick(SECTION_TITLE[id], lang)}
                         </span>
-                        <span className={`tw-rounded-full tw-border tw-px-2 tw-py-0.5 tw-text-[11px] tw-font-semibold ${sectionChipClass(s.status)}`}>
-                          {sectionStatusLabel(s.status, lang)}
+                        <span className={`tw-rounded-full tw-border tw-px-2 tw-py-0.5 tw-text-[11px] tw-font-semibold ${sectionChipClass(groupStatus)}`}>
+                          {sectionStatusLabel(groupStatus, lang)}
                         </span>
+                        {isCharger && rows.length > 0 && (
+                          <span className="tw-text-[11px] tw-font-semibold tw-text-gray-500">
+                            {doneCount}/{rows.length} {t("chargersDone", lang)}
+                          </span>
+                        )}
                       </div>
-                      <p className="tw-mt-1 tw-text-xs tw-text-gray-500">{pick(SECTION_HINT[s.section], lang)}</p>
-                      <Button
-                        size="sm"
-                        variant={filled ? "outlined" : "filled"}
-                        onClick={() => openSection(job, s)}
-                        className="tw-mt-3 tw-flex tw-items-center tw-gap-1.5"
-                      >
-                        <PencilSquareIcon className="tw-h-4 tw-w-4" /> {label}
-                      </Button>
+                      <p className="tw-mt-1 tw-text-xs tw-text-gray-500">{pick(SECTION_HINT[id], lang)}</p>
+
+                      {/* ส่วนที่ผูกกับสถานี — ใบเดียวจบ */}
+                      {!isCharger && rows[0] && (
+                        <SectionFillButton job={job} state={rows[0]} lang={lang} onOpen={openSection} />
+                      )}
+
+                      {/* ส่วนที่ผูกกับตู้ — ตู้ละ 1 ใบ แต่ยังเป็นส่วนเดียวกัน */}
+                      {isCharger && (
+                        rows.length === 0 ? (
+                          <p className="tw-mt-3 tw-text-xs tw-text-gray-400">{t("noChargers", lang)}</p>
+                        ) : (
+                          <div className="tw-mt-3 tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-2">
+                            {rows.map((c) => (
+                              <div
+                                key={c.sn}
+                                className="tw-flex tw-flex-wrap tw-items-center tw-gap-2 tw-rounded-lg tw-border tw-border-gray-200 tw-px-3 tw-py-2"
+                              >
+                                <div className="tw-min-w-0 tw-flex-1">
+                                  <div className="tw-truncate tw-text-sm tw-font-semibold tw-text-gray-800">
+                                    {pick(c.label, lang)}
+                                  </div>
+                                  <div className="tw-truncate tw-text-[11px] tw-text-gray-400">{c.sn}</div>
+                                </div>
+                                <span className={`tw-rounded-full tw-border tw-px-2 tw-py-0.5 tw-text-[11px] tw-font-semibold ${sectionChipClass(c.status)}`}>
+                                  {sectionStatusLabel(c.status, lang)}
+                                </span>
+                                <SectionFillButton job={job} state={c} lang={lang} onOpen={openSection} compact />
+                              </div>
+                            ))}
+                          </div>
+                        )
+                      )}
                     </div>
                   </div>
                 </CardBody>
@@ -737,22 +831,30 @@ export default function StationPmJobTables() {
                       <td className="tw-px-3 tw-py-3 tw-text-sm tw-text-gray-700">{fmtDate(job.pm_date, lang)}</td>
                       <td className="tw-px-3 tw-py-3">
                         <div className="tw-flex tw-flex-wrap tw-gap-1">
-                          {job.sections.map((s) => (
-                            <span
-                              key={s.section}
-                              title={sectionStatusLabel(s.status, lang)}
-                              className={`tw-rounded tw-border tw-px-1.5 tw-py-0.5 tw-text-[10px] tw-font-semibold ${sectionChipClass(s.status)}`}
-                            >
-                              {pick(SECTION_TITLE[s.section], lang)}
-                            </span>
-                          ))}
+                          {SECTION_ORDER.map((id) => {
+                            const rows = job.sections.filter((x) => x.section === id);
+                            const st = aggregateStatus(rows);
+                            const filled = rows.filter((x) => !!x.report_id).length;
+                            return (
+                              <span
+                                key={id}
+                                title={sectionStatusLabel(st, lang)}
+                                className={`tw-rounded tw-border tw-px-1.5 tw-py-0.5 tw-text-[10px] tw-font-semibold ${sectionChipClass(st)}`}
+                              >
+                                {pick(SECTION_TITLE[id], lang)}
+                                {id === CHARGER_SECTION && rows.length > 1 ? ` ${filled}/${rows.length}` : ""}
+                              </span>
+                            );
+                          })}
                         </div>
                       </td>
                       <td className="tw-px-3 tw-py-3">
                         <PmStatusBadge flow={toPmFlow({ status: job.status, reject_remark: job.reject_remark })} />
                       </td>
                       <td className="tw-px-3 tw-py-3" onClick={(e) => e.stopPropagation()}>
-                        {job.sections_done > 0 ? (
+                        {/* sections_done นับเป็น "ส่วน" (ตู้ต้องครบทุกตู้ถึงจะนับ)
+                            แต่ PDF มีให้โหลดตั้งแต่กรอกใบแรก */}
+                        {job.sections.some((x) => !!x.report_id) ? (
                           <a
                             href={`${API_BASE}/stationpmjob/${encodeURIComponent(job.id)}/pdf?station_id=${encodeURIComponent(job.station_id)}&lang=${lang}`}
                             target="_blank"

@@ -18,6 +18,7 @@ import { apiFetch } from "@/utils/api";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
 import PmAssigneePicker from "./PmAssigneePicker";
 import {
+  dateTimeLocalFromNow,
   derivePlanningStatus,
   EMPTY_PM_ASSIGNEE_OPTIONS,
   equipKey,
@@ -25,6 +26,7 @@ import {
   fetchPmAssigneeOptions,
   formatDate,
   planningChipClass,
+  PM_DEFAULT_SPAN_DAYS,
   pmAssigneeGroups,
   pmAssigneeNames,
   PM_PLANNING_ROLES,
@@ -201,8 +203,11 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
 
       // ค่าตั้งต้นของฟอร์มมาจากแผนเดิม — เข้ามาแก้แผนซ้ำได้โดยไม่ต้องกรอกใหม่หมด
       setPlannedAt(toDateTimeLocalValue(found.planned_at ?? new Date().toISOString()));
-      setSchedStart(toDateTimeLocalValue(found.sched_start));
-      setSchedFinish(toDateTimeLocalValue(found.sched_finish));
+      // ใบงานที่ยังไม่เคยวางแผน → ตั้งต้นวันนี้ → อีก 7 วัน ให้ จะได้ไม่ต้องเลือกเองทุกใบ
+      setSchedStart(toDateTimeLocalValue(found.sched_start) || dateTimeLocalFromNow());
+      setSchedFinish(
+        toDateTimeLocalValue(found.sched_finish) || dateTimeLocalFromNow(PM_DEFAULT_SPAN_DAYS)
+      );
       setAssignees(Array.isArray(found.assignees) ? found.assignees.filter(Boolean) : []);
 
       const cJson = await choicesRes.json().catch(() => ({} as any));
