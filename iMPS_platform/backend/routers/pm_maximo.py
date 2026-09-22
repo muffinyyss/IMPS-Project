@@ -895,7 +895,7 @@ def _attach_owner_info(items: list[dict]) -> None:
         ))
         stations = list(station_collection.find(
             {"station_id": {"$in": list(station_ids)}},
-            {"_id": 0, "station_id": 1, "company": 1},
+            {"_id": 0, "station_id": 1, "station_name": 1, "company": 1},
         ))
     except Exception as e:
         log.warning(f"  ⚠️ หา brand/company ของใบงาน Maximo ไม่สำเร็จ: {e}")
@@ -919,12 +919,18 @@ def _attach_owner_info(items: list[dict]) -> None:
     station_company = {
         str(s.get("station_id") or ""): str(s.get("company") or "") for s in stations
     }
+    # ชื่อสถานีที่คนอ่านรู้เรื่อง — ไม่มีใน collection ใบงาน ต้องหยิบจาก iMPS.stations
+    station_name = {
+        str(s.get("station_id") or ""): str(s.get("station_name") or "") for s in stations
+    }
 
     for i in items:
         sid = str(i.get("station_id") or "").strip()
         i["charger_brand"] = sn_brand.get(str(i.get("sn") or "").strip()) or station_brand.get(sid, "")
         if not str(i.get("company") or "").strip():
             i["company"] = station_company.get(sid, "")
+        if station_name.get(sid):
+            i["station_name"] = station_name[sid]
 
 
 @router.get("/maximo/pm/open")
@@ -1027,11 +1033,14 @@ async def list_maximo_pm_open(
     # ล้มก็ปล่อยผ่าน (คืน exists_in_maximo = None = ยังไม่รู้) ไม่บล็อกการแสดงผล
     if verify:
         try:
-            found = await maximo_svc.workorders_exist([i.get("wonum") for i in items])
+            # ใบที่เปิดเองใน iMPS ไม่เคยมีใน Maximo โดยตั้งใจ — ไม่ต้องถามและไม่ต้องเตือน
+            found = await maximo_svc.workorders_exist(
+                [i.get("wonum") for i in items if not _is_manual_wo(i)]
+            )
             for i in items:
                 wn = str(i.get("wonum") or "").strip()
                 hit = found.get(wn)
-                i["exists_in_maximo"] = bool(hit) if wn else None
+                i["exists_in_maximo"] = None if _is_manual_wo(i) else (bool(hit) if wn else None)
                 if hit:
                     i["maximo_status"] = hit.get("status")
                     i["maximo_worktype"] = hit.get("worktype")
@@ -1233,22 +1242,13 @@ async def pm_sync_retry(
     return {"ok": True, "result": result, "interfaces": _serialize_sync(fresh)}
 
 
-@router.get("/maximo/pm/{wonum}/equipment-choices")
-async def pm_equipment_choices(
-    wonum: str,
-    current: UserClaims = Depends(get_current_user),
-):
+def _station_equipment_choices(station_id: str) -> tuple[list[dict], list[dict]]:
     """
-    รายการอุปกรณ์ที่เลือก PM ได้ภายใต้สถานีของใบงานนี้
-    (ตู้ชาร์จทุกตู้ในสถานี + อุปกรณ์ระดับสถานี mdb/ccb/cbbox/station)
-    ให้ frontend เอาไปทำ checkbox เลือกหลายตัว
-    """
-    wonum = (wonum or "").strip()
-    doc = await _find_open_wo(wonum)
-    if not doc:
-        raise HTTPException(status_code=404, detail=f"ไม่พบใบงาน wonum={wonum}")
+    (ตู้ชาร์จ, อุปกรณ์ระดับสถานี) ที่เลือก PM ได้ในสถานีหนึ่ง
 
-    station_id = _station_id_of_wo(doc)
+    ใช้ร่วมกันระหว่างใบงานที่ Maximo เปิดมา (มี wonum แล้ว) กับฟอร์มเพิ่มใบงานเอง
+    ในหน้า PM List ที่ยังไม่มี wonum — เลือกสถานีแล้วต้องได้รายการชุดเดียวกัน
+    """
     chargers: list[dict] = []
     if station_id:
         # charger_collection เป็น pymongo (sync) — วนตรง ๆ ได้
@@ -1272,6 +1272,86 @@ async def pm_equipment_choices(
             })
 
     fixed = [{"type": t} for t in ("mdb", "ccb", "cbbox", "station")]
+    return chargers, fixed
+
+
+def _build_equipment_items(station_id: str, equipment: list["EquipmentItem"]) -> list[dict]:
+    """
+    ตรวจ + ทำให้เป็นรูปที่เก็บลง selected_equipment ของใบงาน
+
+    ใช้ทั้งตอนวางแผนใบงานที่ Maximo เปิดมา และตอนเปิดใบงานเองในหน้า PM List
+    กติกาเดียวกัน: type ต้องอยู่ใน EQUIP_TYPES, charger ต้องมี sn ของตู้ที่อยู่ในสถานีนั้นจริง
+    และห้ามเลือกอุปกรณ์ตัวเดิมซ้ำในใบเดียว
+    """
+    items: list[dict] = []
+    seen: set[str] = set()
+    for e in equipment:
+        etype = _norm_equip_type(e.type)
+        if etype not in EQUIP_TYPES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"ประเภทอุปกรณ์ไม่ถูกต้อง: {e.type} — ต้องเป็น {', '.join(sorted(EQUIP_TYPES))}",
+            )
+        if etype == "charger" and not (e.sn or "").strip():
+            raise HTTPException(
+                status_code=400, detail="charger ต้องระบุ sn ของตู้ที่จะ PM"
+            )
+        key = f"charger:{(e.sn or '').strip()}" if etype == "charger" else etype
+        if key in seen:
+            raise HTTPException(status_code=400, detail="Duplicate equipment in PM plan")
+        seen.add(key)
+
+        item = {"type": etype}
+        if etype == "charger":
+            if not station_id:
+                raise HTTPException(
+                    status_code=409,
+                    detail="This PM work order is not mapped to an iMPS station",
+                )
+            sn = (e.sn or "").strip()
+            charger = charger_collection.find_one(
+                {"station_id": station_id, "SN": sn},
+                {"SN": 1, "chargeBoxID": 1, "name": 1, "charger_name": 1, "maximo_location": 1},
+            )
+            if not charger:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Charger SN={sn} is not in this work order station",
+                )
+            item["sn"] = sn
+            item["location"] = (charger.get("maximo_location") or "").strip() or None
+            item["label"] = (
+                charger.get("name")
+                or charger.get("charger_name")
+                or charger.get("chargeBoxID")
+                or sn
+            )
+        else:
+            if e.location:
+                item["location"] = e.location.strip()
+            if e.label:
+                item["label"] = e.label
+        items.append(item)
+    return items
+
+
+@router.get("/maximo/pm/{wonum}/equipment-choices")
+async def pm_equipment_choices(
+    wonum: str,
+    current: UserClaims = Depends(get_current_user),
+):
+    """
+    รายการอุปกรณ์ที่เลือก PM ได้ภายใต้สถานีของใบงานนี้
+    (ตู้ชาร์จทุกตู้ในสถานี + อุปกรณ์ระดับสถานี mdb/ccb/cbbox/station)
+    ให้ frontend เอาไปทำ checkbox เลือกหลายตัว
+    """
+    wonum = (wonum or "").strip()
+    doc = await _find_open_wo(wonum)
+    if not doc:
+        raise HTTPException(status_code=404, detail=f"ไม่พบใบงาน wonum={wonum}")
+
+    station_id = _station_id_of_wo(doc)
+    chargers, fixed = _station_equipment_choices(station_id)
 
     return {
         "wonum": wonum,
@@ -1311,8 +1391,9 @@ async def set_pm_equipment(
     # ใบที่เลขไม่มีอยู่จริงใน Maximo วางแผนไปก็ยิงสถานะกลับไม่ได้ (BMXAA1496E)
     # เตือนตั้งแต่ตอนกด Assign ดีกว่าไปพังตอนปิดงาน
     # เช็คกับ Maximo ไม่ได้ (ล่ม/เน็ตมีปัญหา) = ปล่อยผ่าน ไม่บล็อกงาน
+    # ใบที่เปิดเองใน iMPS ไม่มีเลขใน Maximo อยู่แล้วโดยตั้งใจ — ข้ามการเช็คไปเลย
     try:
-        found = await maximo_svc.workorders_exist([wonum])
+        found = {wonum: {}} if _is_manual_wo(wo) else await maximo_svc.workorders_exist([wonum])
     except Exception as e:
         log.warning(f"  ⚠️ เช็ค wonum {wonum} กับ Maximo ไม่สำเร็จ ปล่อยผ่าน: {e}")
         found = {wonum: {}}
@@ -1333,56 +1414,7 @@ async def set_pm_equipment(
                    f"ถ้าไม่ใช่ ให้ข้ามใบงานนี้ไป",
         )
 
-    items: list[dict] = []
-    seen: set[str] = set()
-    for e in (body.equipment or []):
-        etype = _norm_equip_type(e.type)
-        if etype not in EQUIP_TYPES:
-            raise HTTPException(
-                status_code=400,
-                detail=f"ประเภทอุปกรณ์ไม่ถูกต้อง: {e.type} — ต้องเป็น {', '.join(sorted(EQUIP_TYPES))}",
-            )
-        if etype == "charger" and not (e.sn or "").strip():
-            raise HTTPException(
-                status_code=400, detail="charger ต้องระบุ sn ของตู้ที่จะ PM"
-            )
-        key = f"charger:{(e.sn or '').strip()}" if etype == "charger" else etype
-        if key in seen:
-            raise HTTPException(status_code=400, detail="Duplicate equipment in PM plan")
-        seen.add(key)
-
-        item = {"type": etype}
-        if etype == "charger":
-            station_id = _station_id_of_wo(wo)
-            if not station_id:
-                raise HTTPException(
-                    status_code=409,
-                    detail="This PM work order is not mapped to an iMPS station",
-                )
-            sn = (e.sn or "").strip()
-            charger = charger_collection.find_one(
-                {"station_id": station_id, "SN": sn},
-                {"SN": 1, "chargeBoxID": 1, "name": 1, "charger_name": 1, "maximo_location": 1},
-            )
-            if not charger:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Charger SN={sn} is not in this work order station",
-                )
-            item["sn"] = sn
-            item["location"] = (charger.get("maximo_location") or "").strip() or None
-            item["label"] = (
-                charger.get("name")
-                or charger.get("charger_name")
-                or charger.get("chargeBoxID")
-                or sn
-            )
-        else:
-            if e.location:
-                item["location"] = e.location.strip()
-            if e.label:
-                item["label"] = e.label
-        items.append(item)
+    items = _build_equipment_items(_station_id_of_wo(wo), body.equipment or [])
 
     now = datetime.now(timezone.utc)
     planned_at_value = (body.planned_at or now.isoformat()).strip()
@@ -1422,10 +1454,213 @@ async def set_pm_equipment(
     # ── ขั้น 2 ของ sequencing: assign เสร็จ = ใบงานเข้าสถานะ In Progress ──
     # ยิงเฉพาะตอนวางแผนครบจริง ไม่ใช่ทุกครั้งที่กดบันทึก
     maximo_result = None
-    if planning_status == "planned":
+    if planning_status == "planned" and not _is_manual_wo(wo):
         from services import pm_maximo_out
         maximo_result = await pm_maximo_out.safe_sync_in_progress(
             wonum, memo=f"assigned by {current.username or current.sub}"
         )
 
     return {"ok": True, "wonum": wonum, "item": _serialize_open(doc), "maximo": maximo_result}
+
+
+# ══════════════════════════════════════════════════════════════════
+# 6) ใบงาน PM ที่เปิดเองใน iMPS (ไม่ได้มาจาก Maximo)
+#    หน้า PM List → ปุ่ม "เพิ่มใบงาน" → ฟอร์มเดียวกับหน้าวางแผน แต่เลือกสถานีเองได้
+#    เก็บลง collection เดียวกับใบงาน IN06 (iMPS.maximo_pm_open) เพื่อให้ทุกหน้า
+#    ที่อ่านใบงาน PM อยู่แล้วเห็นใบนี้ทันทีโดยไม่ต้องแก้ — ต่างกันแค่ field origin
+# ══════════════════════════════════════════════════════════════════
+MANUAL_WO_ORIGIN = "imps-manual"
+
+
+def _is_manual_wo(doc: dict) -> bool:
+    """ใบงานที่เปิดเองในระบบ — ไม่มีเลขนี้อยู่ใน Maximo จึงไม่ต้องไปถามหา"""
+    return str(doc.get("origin") or "").strip().lower() == MANUAL_WO_ORIGIN
+
+
+async def _next_manual_wonum() -> str:
+    """เลขใบงานของใบที่เปิดเอง — PM<ปีเดือน><running 4 หลัก> เช่น PM26090001"""
+    prefix = f"PM{datetime.now(timezone.utc).strftime('%y%m')}"
+    latest = await _open_coll().find_one(
+        {"wonum": {"$regex": rf"^{prefix}\d{{4}}$"}},
+        {"wonum": 1},
+        sort=[("wonum", -1)],
+    )
+    seq = 0
+    if latest:
+        try:
+            seq = int(str(latest.get("wonum") or "")[len(prefix):])
+        except ValueError:
+            seq = 0
+    return f"{prefix}{seq + 1:04d}"
+
+
+def _pm_station_query(current: UserClaims) -> Optional[dict]:
+    """ขอบเขตสถานีของ user คนนี้ — ชุดเดียวกับหน้า EV Stations (role + ยี่ห้อที่ดูแล)"""
+    from routers.stations import station_match_query  # import ตรงนี้กัน import วนกัน
+    return station_match_query(current)
+
+
+@router.get("/maximo/pm/stations")
+async def list_pm_stations(current: UserClaims = Depends(get_current_user)):
+    """
+    สถานีที่ผู้ใช้คนนี้เปิดใบงาน PM ได้ — ใช้เติม dropdown "สถานี" ในฟอร์มเพิ่มใบงาน
+    (หน้าวางแผนของใบงาน Maximo ไม่ต้องใช้ เพราะสถานีมากับ location ของใบงานอยู่แล้ว)
+    """
+    q = _pm_station_query(current)
+    if q is None:
+        return {"stations": [], "total": 0}
+
+    docs = station_collection.find(
+        q,
+        {"_id": 0, "station_id": 1, "station_name": 1, "maximo_location": 1, "company": 1},
+    ).sort([("station_name", 1)])
+
+    stations = [
+        {
+            "station_id": str(d.get("station_id") or ""),
+            "station_name": str(d.get("station_name") or d.get("station_id") or ""),
+            "maximo_location": (str(d.get("maximo_location") or "").strip() or None),
+            "company": (str(d.get("company") or "").strip() or None),
+        }
+        for d in docs
+        if str(d.get("station_id") or "").strip()
+    ]
+    return {"stations": stations, "total": len(stations)}
+
+
+@router.get("/maximo/pm/equipment-choices")
+async def pm_equipment_choices_by_station(
+    station_id: str = Query(..., description="station_id ของ iMPS"),
+    current: UserClaims = Depends(get_current_user),
+):
+    """
+    รายการอุปกรณ์ที่เลือก PM ได้ในสถานีหนึ่ง โดยยังไม่ต้องมีใบงาน
+    (ฟอร์มเพิ่มใบงานใช้ตอนผู้ใช้เลือกสถานี — ทรง response เดียวกับของใบงานที่มี wonum)
+    """
+    sid = (station_id or "").strip()
+    station = station_collection.find_one(
+        {"station_id": sid}, {"_id": 0, "station_id": 1, "maximo_location": 1}
+    )
+    if not station:
+        raise HTTPException(status_code=404, detail=f"ไม่พบสถานี station_id={sid}")
+
+    chargers, fixed = _station_equipment_choices(sid)
+    return {
+        "wonum": None,
+        "station_id": sid,
+        "location": (str(station.get("maximo_location") or "").strip() or None),
+        "chargers": chargers,
+        "fixed": fixed,
+        "selected_equipment": [],
+    }
+
+
+class CreatePmWorkOrderIn(BaseModel):
+    """ใบงาน PM ที่ผู้ใช้เปิดเองจากหน้า PM List"""
+    station_id: str
+    pm_date: Optional[str] = None
+    description: Optional[str] = None
+    equipment: list[EquipmentItem] = Field(default_factory=list)
+    planned_at: Optional[str] = None
+    sched_start: Optional[str] = None
+    sched_finish: Optional[str] = None
+    assignees: list[str] = Field(default_factory=list)
+
+
+@router.post("/maximo/pm/work-orders")
+async def create_pm_work_order(
+    body: CreatePmWorkOrderIn,
+    current: UserClaims = Depends(get_current_user),
+):
+    """
+    เปิดใบงาน PM ใหม่ในระบบ iMPS (ไม่ยิงไป Maximo)
+
+    ใช้ตอนงาน PM ไม่ได้ถูกเปิดมาจาก Maximo — planner เลือกสถานีเอง แล้ววางแผน
+    (กำหนดการ + ช่าง + อุปกรณ์) ในฟอร์มเดียวกับหน้าวางแผนใบงานของ Maximo
+    เลขใบงานระบบออกให้เอง (PM<ปีเดือน><running>) ไม่ทับกับเลขที่ Maximo ส่งมา
+    """
+    role = (current.role or "").strip().lower()
+    if role not in PM_PLANNING_ROLES:
+        raise HTTPException(
+            status_code=403,
+            detail="Only planner, owner or admin can create PM work orders",
+        )
+
+    sid = (body.station_id or "").strip()
+    if not sid:
+        raise HTTPException(status_code=400, detail="กรุณาเลือกสถานี")
+
+    # สถานีต้องอยู่ในขอบเขตที่ user คนนี้ดูแล — ไม่งั้นเปิดใบงานข้ามบริษัทได้
+    scope = _pm_station_query(current)
+    if scope is None:
+        raise HTTPException(status_code=403, detail="ไม่มีสิทธิ์เปิดใบงานของสถานีนี้")
+    query: dict[str, Any] = {"$and": [scope, {"station_id": sid}]} if scope else {"station_id": sid}
+    station = station_collection.find_one(
+        query,
+        {"_id": 0, "station_id": 1, "station_name": 1, "maximo_location": 1, "company": 1},
+    )
+    if not station:
+        raise HTTPException(status_code=404, detail=f"ไม่พบสถานี station_id={sid}")
+
+    sched_start = (body.sched_start or "").strip()
+    sched_finish = (body.sched_finish or "").strip()
+    # เทียบเป็น string ได้เพราะ datetime-local เรียงตัวอักษรตรงกับเรียงเวลา
+    if sched_start and sched_finish and sched_finish < sched_start:
+        raise HTTPException(
+            status_code=400, detail="วันที่เสร็จตามแผนต้องไม่มาก่อนวันที่เริ่ม"
+        )
+
+    items = _build_equipment_items(sid, body.equipment or [])
+    assignees = [str(x).strip() for x in body.assignees if str(x or "").strip()]
+
+    now = datetime.now(timezone.utc)
+    # ไม่ได้ตั้ง maximo_location ไว้ = ใช้ station_id แทน ใบงานจะได้ยังผูกกับสถานีได้
+    location = str(station.get("maximo_location") or "").strip() or sid
+    # เกณฑ์เดียวกับหน้าวางแผน: เลือกอุปกรณ์แล้ว หรือมีกำหนดการ + ช่างครบ = วางแผนเสร็จ
+    planning_status = (
+        "planned" if (items or (sched_start and sched_finish and assignees)) else "pending"
+    )
+    who = current.username or current.sub
+
+    doc: dict[str, Any] = {
+        "location": location,
+        "description": (body.description or "").strip()
+        or f"PM {station.get('station_name') or sid}",
+        "pm_date": _norm_pm_date(body.pm_date) or now.date().isoformat(),
+        "status": "OPEN",
+        "company": (str(station.get("company") or "").strip() or None),
+        "station_id": sid,
+        "sn": None,
+        "origin": MANUAL_WO_ORIGIN,
+        "created_by": who,
+        "receivedAt": now,
+        "updatedAt": now,
+        "selected_equipment": items,
+        "selected_at": now,
+        "selected_by": who,
+        "planning_status": planning_status,
+        "planned_at": (body.planned_at or now.isoformat()).strip(),
+        "planned_by": who,
+        "sched_start": sched_start,
+        "sched_finish": sched_finish,
+        "assignees": assignees,
+    }
+
+    # กดพร้อมกันแล้วได้เลขซ้ำ — ลองเลขถัดไปไม่กี่รอบก่อนยอมแพ้
+    for _ in range(5):
+        wonum = await _next_manual_wonum()
+        if await _open_coll().find_one({"wonum": wonum}, {"_id": 1}):
+            continue
+        try:
+            await _open_coll().insert_one({**doc, "wonum": wonum})
+        except Exception as e:
+            log.warning(f"  ⚠️ เปิดใบงาน PM {wonum} ไม่สำเร็จ ลองเลขถัดไป: {e}")
+            continue
+        saved = await _find_open_wo(wonum) or {**doc, "wonum": wonum}
+        log.info(
+            f"  ✅ เปิดใบงาน PM เอง {wonum} (station={sid}, {len(items)} อุปกรณ์, "
+            f"status={planning_status}) โดย {who}"
+        )
+        return {"ok": True, "wonum": wonum, "item": _serialize_open(saved)}
+
+    raise HTTPException(status_code=500, detail="ออกเลขใบงานไม่สำเร็จ กรุณาลองใหม่อีกครั้ง")
