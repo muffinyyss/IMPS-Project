@@ -193,19 +193,24 @@ def _state_row(section: str, label: dict, doc: dict | None, sn: str = "", charge
     }
 
 
-async def _section_states(job: dict) -> list[dict]:
+async def _section_states(job: dict, chargers: list[dict] | None = None) -> list[dict]:
     """
     สถานะของทุกส่วนในใบนี้ — อ่านจากใบลูกจริง ไม่ได้เชื่อค่าที่ cache ไว้
 
     ส่วน charger คืนมาหลายแถว (ตู้ละแถว) ฝั่งหน้าเว็บจับกลุ่มด้วย field section
     สถานีที่ยังไม่มีตู้ในระบบจะไม่มีแถวของส่วนนี้เลย
+
+    chargers ส่งมาได้ถ้าผู้เรียกดึงรายชื่อตู้ไว้แล้ว (หน้าตารางวนหลายใบของสถานี
+    เดียวกัน ไม่ต้องถาม DB ซ้ำทุกใบ)
     """
     station_id = str(job.get("station_id") or "")
     job_id = str(job.get("_id"))
+    if chargers is None:
+        chargers = station_chargers(station_id)
     out: list[dict] = []
     for section in SECTIONS:
         if section == CHARGER_SECTION:
-            for ch in station_chargers(station_id):
+            for ch in chargers:
                 sn = str(ch.get("SN") or "").strip()
                 no = str(ch.get("chargerNo") or "").strip()
                 doc = await _find_section_report(section, station_id, sn, job_id)
@@ -350,7 +355,8 @@ async def list_station_pm_jobs(
     station_id = station_id.strip()
     jobs = get_stationpmjob_collection_for(station_id)
     docs = await jobs.find({}).sort([("pm_date", -1), ("_id", -1)]).limit(limit).to_list(length=limit)
-    items = [_serialize_job(j, await _section_states(j)) for j in docs]
+    chargers = station_chargers(station_id)   # ทุกใบในหน้านี้เป็นสถานีเดียวกัน
+    items = [_serialize_job(j, await _section_states(j, chargers)) for j in docs]
     return {"items": items, "total": len(items)}
 
 

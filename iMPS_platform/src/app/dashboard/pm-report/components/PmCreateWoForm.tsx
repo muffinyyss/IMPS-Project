@@ -16,10 +16,12 @@ import { apiFetch } from "@/utils/api";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
 import PmAssigneePicker from "./PmAssigneePicker";
 import {
+  dateTimeLocalFromNow,
   EMPTY_PM_ASSIGNEE_OPTIONS,
   equipKey,
   equipLabel,
   fetchPmAssigneeOptions,
+  PM_DEFAULT_SPAN_DAYS,
   pmAssigneeGroups,
   pmAssigneeNames,
   PM_PLANNING_ROLES,
@@ -143,13 +145,6 @@ function todayValue() {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-/** YYYY-MM-DDTHH:mm ของตอนนี้ — ประทับเป็นเวลาที่วางแผน เหมือนหน้าวางแผน */
-function nowLocalValue() {
-  const d = new Date();
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
 export default function PmCreateWoForm({ onSaved, onCancel }: Props) {
   const { lang } = useLanguage();
 
@@ -167,9 +162,10 @@ export default function PmCreateWoForm({ onSaved, onCancel }: Props) {
   const [stationMenuOpen, setStationMenuOpen] = useState(false);
   const stationPickerRef = useRef<HTMLDivElement>(null);
   const [checked, setChecked] = useState<Record<string, boolean>>({});
-  const [plannedAt] = useState(nowLocalValue);
-  const [schedStart, setSchedStart] = useState("");
-  const [schedFinish, setSchedFinish] = useState("");
+  const [plannedAt] = useState(() => dateTimeLocalFromNow());
+  // ตั้งต้นเป็นช่วง วันนี้ → อีก 7 วัน — แก้ทับได้ แต่ส่วนใหญ่กดบันทึกได้เลย
+  const [schedStart, setSchedStart] = useState(() => dateTimeLocalFromNow());
+  const [schedFinish, setSchedFinish] = useState(() => dateTimeLocalFromNow(PM_DEFAULT_SPAN_DAYS));
   const [assignees, setAssignees] = useState<string[]>([]);
 
   const station = useMemo(
