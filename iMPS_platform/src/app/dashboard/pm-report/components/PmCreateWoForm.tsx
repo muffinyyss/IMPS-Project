@@ -14,6 +14,7 @@ import { Button } from "@material-tailwind/react";
 import { ArrowLeftIcon, CheckIcon, ChevronDownIcon, ExclamationTriangleIcon, MagnifyingGlassIcon } from "@heroicons/react/24/outline";
 import { apiFetch } from "@/utils/api";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
+import PmAssigneePicker from "./PmAssigneePicker";
 import {
   EMPTY_PM_ASSIGNEE_OPTIONS,
   equipKey,
@@ -68,7 +69,6 @@ const T = {
     en: "Scheduled finish must not be before scheduled start",
   },
   technician: { th: "ผู้รับผิดชอบ", en: "Assignees" },
-  allTechnicians: { th: "ทั้งหมด", en: "All" },
   noTechnicians: {
     th: "ไม่พบ Technician / Vendor / Outsource ในบริษัทของคุณ",
     en: "No technicians, vendors or outsources found in your company",
@@ -301,15 +301,8 @@ export default function PmCreateWoForm({ onSaved, onCancel }: Props) {
     setChecked(next);
   };
 
-  const toggleAssignee = (username: string) =>
-    setAssignees((prev) =>
-      prev.includes(username) ? prev.filter((u) => u !== username) : [...prev.filter(Boolean), username]
-    );
-
   const assigneeGroups = useMemo(() => pmAssigneeGroups(assigneeOptions), [assigneeOptions]);
   const assigneeNames = useMemo(() => pmAssigneeNames(assigneeGroups), [assigneeGroups]);
-  const allTechChecked =
-    assigneeNames.length > 0 && assigneeNames.every((n) => assignees.includes(n));
 
   // เทียบเป็น string ได้เพราะ datetime-local เป็น ISO เรียงตัวอักษรตรงกับเรียงเวลา
   const schedRangeInvalid = !!schedStart && !!schedFinish && schedFinish < schedStart;
@@ -561,43 +554,12 @@ export default function PmCreateWoForm({ onSaved, onCancel }: Props) {
                         {t("technician", lang)} <span className="tw-text-red-500">*</span>
                       </label>
                       {assigneeNames.length > 0 ? (
-                        <div className="tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-divide-y tw-divide-blue-gray-50 tw-max-h-56 tw-overflow-y-auto">
-                          {/* All = ติ๊กทุกคนในลิสต์ (ทุกกลุ่ม) รวดเดียว */}
-                          <label className="tw-flex tw-items-center tw-gap-2.5 tw-px-3 tw-py-2.5 tw-cursor-pointer hover:tw-bg-blue-gray-50/60 tw-transition-colors">
-                            <input
-                              type="checkbox"
-                              checked={allTechChecked}
-                              disabled={locked}
-                              onChange={() => setAssignees(allTechChecked ? [] : assigneeNames)}
-                              className="tw-h-4 tw-w-4 tw-shrink-0 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500 tw-cursor-pointer"
-                            />
-                            <span className="tw-text-sm tw-font-semibold tw-text-blue-gray-800">
-                              {t("allTechnicians", lang)}
-                            </span>
-                            <span className="tw-ml-auto tw-text-xs tw-text-blue-gray-400">
-                              {assignees.length}/{assigneeNames.length}
-                            </span>
-                          </label>
-                          {assigneeGroups.map((group) => (
-                            <React.Fragment key={group.key}>
-                              <div className="tw-bg-gray-50 tw-px-3 tw-py-1.5 tw-text-[11px] tw-font-bold tw-uppercase tw-tracking-wide tw-text-blue-gray-500">
-                                {group.label}
-                              </div>
-                              {group.names.map((name) => (
-                                <label key={`${group.key}-${name}`} className="tw-flex tw-items-center tw-gap-2.5 tw-px-3 tw-py-2.5 tw-cursor-pointer hover:tw-bg-blue-gray-50/60 tw-transition-colors">
-                                  <input
-                                    type="checkbox"
-                                    checked={assignees.includes(name)}
-                                    disabled={locked}
-                                    onChange={() => toggleAssignee(name)}
-                                    className="tw-h-4 tw-w-4 tw-shrink-0 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500 tw-cursor-pointer"
-                                  />
-                                  <span className="tw-min-w-0 tw-truncate tw-text-sm tw-text-blue-gray-800">{name}</span>
-                                </label>
-                              ))}
-                            </React.Fragment>
-                          ))}
-                        </div>
+                        <PmAssigneePicker
+                          groups={assigneeGroups}
+                          assignees={assignees}
+                          onChange={setAssignees}
+                          disabled={locked}
+                        />
                       ) : (
                         <p className="tw-mt-1.5 tw-text-xs tw-text-orange-600">{t("noTechnicians", lang)}</p>
                       )}
