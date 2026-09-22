@@ -287,3 +287,60 @@ export function groupByMonth(rows: PmRow[]): { open: number[]; inProgress: numbe
   }
   return { open, inProgress, completed };
 }
+
+/**
+ * Ventilation des 3 étapes par marque de chargeur, alignée sur le même modèle
+ * de 12 mois que les cartes de status global. Les séries gardent le même format
+ * que le graphe principal (Open / In Progress / Complete), mais le côté visuel
+ * du legend masque le suffixe status pour n'afficher que le vendor.
+ */
+export function groupByMonthByBrand(rows: PmRow[]): { brands: string[]; series: { name: string; data: number[] }[] } {
+  const perBrand = new Map<string, { open: number[]; inProgress: number[]; completed: number[] }>();
+  const totals = new Map<string, number>();
+
+  for (const r of rows) {
+    const d = rowDate(r);
+    if (!d) continue;
+    const brand = brandOf(r);
+    if (!perBrand.has(brand)) {
+      perBrand.set(brand, {
+        open: Array(12).fill(0),
+        inProgress: Array(12).fill(0),
+        completed: Array(12).fill(0),
+      });
+    }
+
+    const month = d.getMonth();
+    const stage = stageOf(r);
+    if (stage === "cancelled") continue;
+
+    const bucket = perBrand.get(brand)!;
+    if (stage === "closed") bucket.completed[month]++;
+    else if (stage === "in_progress" || stage === "wait_approve") bucket.inProgress[month]++;
+    else bucket.open[month]++;
+
+    totals.set(brand, (totals.get(brand) ?? 0) + 1);
+  }
+
+  const brands = Array.from(perBrand.keys()).sort((a, b) => {
+    if (a === UNKNOWN_BRAND) return 1;
+    if (b === UNKNOWN_BRAND) return -1;
+    return (totals.get(b) ?? 0) - (totals.get(a) ?? 0) || a.localeCompare(b);
+  });
+
+  const stageLabels: Record<"open" | "in_progress" | "closed", string> = {
+    open: "Open",
+    in_progress: "In Progress",
+    closed: "Complete",
+  };
+
+  const series: { name: string; data: number[] }[] = [];
+  for (const brand of brands) {
+    const counts = perBrand.get(brand)!;
+    series.push({ name: `${brand} • ${stageLabels.open}`, data: counts.open });
+    series.push({ name: `${brand} • ${stageLabels.in_progress}`, data: counts.inProgress });
+    series.push({ name: `${brand} • ${stageLabels.closed}`, data: counts.completed });
+  }
+
+  return { brands, series };
+}
