@@ -17,7 +17,8 @@ import "./globals.css";
 // (ดู src/app/dashboard/ai/layout.tsx) เพื่อไม่ให้หน้าอื่นโหลดไฟล์ฟอนต์ที่ไม่ได้ใช้
 const kanit = Kanit({
   subsets: ["thai", "latin"],
-  weight: ["400", "600", "700"],
+  // 500 = tw-font-medium ใช้อยู่ ~450 จุด ถ้าไม่โหลดเบราว์เซอร์จะสังเคราะห์น้ำหนักเอง
+  weight: ["400", "500", "600", "700"],
   variable: "--font-kanit",
   display: "swap",
 });

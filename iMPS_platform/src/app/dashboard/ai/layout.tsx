@@ -8,7 +8,8 @@ import { AiNavContext } from "./ai-nav-context";
 // ไม่ได้อยู่ใน root layout แล้ว หน้าอื่นจะได้ไม่ต้องโหลดไฟล์ฟอนต์ที่ไม่ได้ใช้
 const jakarta = Plus_Jakarta_Sans({
     subsets: ["latin"],
-    weight: ["400", "600", "700"],
+    // 500 = tw-font-medium ใช้อยู่ 17 จุดในหน้า AI
+    weight: ["400", "500", "600", "700"],
     variable: "--font-jakarta",
     display: "swap",
 });

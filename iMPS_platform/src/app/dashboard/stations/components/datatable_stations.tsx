@@ -1195,7 +1195,7 @@ export function SearchDataTables() {
             <div className="tw-overflow-x-auto tw-w-full">
               <table className="tw-w-full tw-border-separate tw-border-spacing-0 tw-min-w-[900px]">
                 <thead className="tw-bg-gradient-to-r tw-from-gray-900 tw-to-gray-800"><tr>{["", "Station", "Chargers", "Available", "Owner", "Status", ""].map((h, i) => (<th key={i} className="tw-px-3 tw-py-3"><div className="tw-h-3 tw-rounded tw-bg-white/20 tw-animate-pulse" style={{ width: h ? `${h.length * 8}px` : 32 }} /></th>))}</tr></thead>
-                <tbody>{Array.from({ length: 5 }).map((_, i) => <TableRowSkeleton key={i} cols={7} />)}</tbody>
+                <tbody>{/* จำนวนแถวโครงร่าง = ขนาดหน้าจริง ไม่งั้นตารางจะโตตอนข้อมูลมาถึงและดันทุกอย่างข้างล่างลง (layout shift) */}{Array.from({ length: table.getState().pagination.pageSize }).map((_, i) => <TableRowSkeleton key={i} cols={7} />)}</tbody>
               </table>
             </div>
           ) : err ? (<div className="tw-p-4 tw-text-red-600">{err}</div>) : (

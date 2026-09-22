@@ -56,12 +56,13 @@ export default function LoadingOverlay({
           />
           {/* Center bolt icon */}
           <div className="tw-absolute tw-inset-0 tw-flex tw-items-center tw-justify-center">
+            {/* transform บน <svg> เร่งด้วย compositor ไม่ได้ จึงใส่ animation ที่ <div> ที่ครอบแทน */}
+            <div style={{ animation: "overlay-pulse 1.5s ease-in-out infinite", willChange: "transform, opacity" }}>
             <svg
               xmlns="http://www.w3.org/2000/svg"
               viewBox="0 0 24 24"
               fill="currentColor"
               className="tw-w-5 tw-h-5 tw-text-gray-800"
-              style={{ animation: "overlay-pulse 1.5s ease-in-out infinite" }}
             >
               <path
                 fillRule="evenodd"
@@ -69,6 +70,7 @@ export default function LoadingOverlay({
                 clipRule="evenodd"
               />
             </svg>
+            </div>
           </div>
         </div>
 
@@ -95,9 +97,10 @@ export default function LoadingOverlay({
         {/* Progress bar */}
         <div className="tw-w-40 tw-h-1 tw-rounded-full tw-bg-gray-100 tw-overflow-hidden">
           <div
-            className="tw-h-full tw-rounded-full tw-bg-gradient-to-r tw-from-gray-800 tw-via-blue-500 tw-to-amber-400"
+            className="tw-h-full tw-w-2/5 tw-rounded-full tw-bg-gradient-to-r tw-from-gray-800 tw-via-blue-500 tw-to-amber-400"
             style={{
               animation: "overlay-progress 1.8s ease-in-out infinite",
+              willChange: "transform",
             }}
           />
         </div>
@@ -121,10 +124,12 @@ export default function LoadingOverlay({
           0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
           40%           { opacity: 1;   transform: scale(1.2); }
         }
+        /* transform เท่านั้น — width/margin-left บังคับให้เบราว์เซอร์คำนวณ layout ใหม่ทุกเฟรม
+           ทั้งที่ overlay นี้แสดงอยู่ระหว่างที่หน้ากำลังโหลดข้อมูลพอดี */
         @keyframes overlay-progress {
-          0%   { width: 0%; margin-left: 0; }
-          50%  { width: 70%; margin-left: 15%; }
-          100% { width: 0%; margin-left: 100%; }
+          0%   { transform: translateX(-100%) scaleX(0.3); }
+          50%  { transform: translateX(75%) scaleX(1); }
+          100% { transform: translateX(250%) scaleX(0.3); }
         }
       `}</style>
     </div>
