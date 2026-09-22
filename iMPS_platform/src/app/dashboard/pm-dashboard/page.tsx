@@ -567,24 +567,7 @@ export default function PMDashboardPage() {
     dataLabels: { enabled: false },
     grid: { borderColor: "#f1f5f9" },
     plotOptions: { bar: { borderRadius: 3, columnWidth: "45%" } },
-    tooltip: {
-      shared: false,
-      y: { formatter: (v: number) => `${v} ${t.taskUnit}` },
-      custom: ({ series, seriesIndex, dataPointIndex, w }: any) => {
-        const fullName = w?.config?.series?.[seriesIndex]?.name ?? "Unknown";
-        const vendor = fullName.split(" • ")[0] ?? "Unknown";
-        const status = fullName.split(" • ").slice(1).join(" • ") || "Total";
-        const monthLabel = t.monthsLong[dataPointIndex] ?? "";
-        return `
-          <div style="padding:8px 10px; font-size:12px; color:#1f2937;">
-            <div style="font-weight:700; margin-bottom:4px;">${monthLabel}</div>
-            <div><span style="font-weight:600;">Vendor:</span> ${vendor}</div>
-            <div><span style="font-weight:600;">Status:</span> ${status}</div>
-            <div style="margin-top:4px;"><span style="font-weight:600;">Value:</span> ${series[seriesIndex][dataPointIndex]} ${t.taskUnit}</div>
-          </div>
-        `;
-      },
-    },
+    tooltip: { y: { formatter: (v: number) => `${v} ${t.taskUnit}` } },
   }), [displayedVendorMonthlySeries, t, vendorColorMap]);
   const vendorMonthlyHasData = useMemo(
     () => displayedVendorMonthlySeries.some((s) => s.data.some((v) => v > 0)),
