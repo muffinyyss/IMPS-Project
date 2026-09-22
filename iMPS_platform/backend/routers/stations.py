@@ -14,7 +14,7 @@ from PIL import Image
 import io
 from config import (
     users_collection, station_collection, charger_collection,
-    charger_onoff, charger_onoff_sync, _validate_station_id, th_tz, settingDB,
+    charger_onoff, charger_onoff_sync, _validate_station_id, th_tz, settingDB, settingDB_sync,
     CBM_DB, ALL_STATIONS_ROLES,
 )
 from deps import UserClaims, get_current_user
@@ -528,6 +528,38 @@ def get_charger_status(station_id: str, chargeBoxID: str) -> bool:
         return False
 
 
+def ensure_status_indexes() -> int:
+    """index (timestamp desc, _id desc) sur chaque collection de edgeboxStatus / settingParameter
+
+    Ces deux bases gardent 1 collection par SN et le pipeline y écrit en continu.
+    Les lectures sont toutes des find_one(sort=[("timestamp", -1), ("_id", -1)]) :
+    sans index Mongo trie la collection entière en mémoire à chaque appel, donc le
+    coût grandit avec le nombre de documents. Mesuré en local sur une collection :
+    1,25 ms à 1 000 documents, 3,21 ms à 10 000, 9,45 ms à 50 000 — contre ~0,3 ms
+    constant avec l'index. /station-availability/bulk fait ~200 de ces lectures
+    toutes les 10 s, l'écart devient le coût dominant à mesure que les données
+    s'accumulent. Appelé au démarrage, comme ensure_cm_indexes().
+    """
+    created = 0
+    for db_sync in (charger_onoff_sync, settingDB_sync):
+        try:
+            names = db_sync.list_collection_names()
+        except Exception:
+            continue
+        for name in names:
+            if name.startswith("_") or name.startswith("system."):
+                continue
+            try:
+                db_sync.get_collection(name).create_index(
+                    [("timestamp", -1), ("_id", -1)],
+                    name="timestamp_-1__id_-1", background=True,
+                )
+                created += 1
+            except Exception:
+                pass  # l'index n'est qu'un accélérateur — l'app doit démarrer même s'il échoue
+    return created
+
+
 def get_station_status(station_id: str) -> bool:
     try:
         coll = charger_onoff_sync[str(station_id)]
@@ -551,12 +583,24 @@ def get_next_charger_no(station_id: str) -> int:
     return 1
 
 
-def format_charger(doc: dict, include_status: bool = True) -> ChargerOut:
+def format_charger(
+    doc: dict,
+    include_status: bool = True,
+    status_collections: Optional[set] = None,
+) -> ChargerOut:
+    """status_collections : ชื่อ collection ที่มีจริงใน edgeboxStatus (ผู้เรียกถามมาแล้ว)
+
+    ถ้าไม่มี collection ของคีย์นั้น ก็ไม่มีเอกสาร = False อยู่แล้ว จึงข้าม query ได้
+    /all-stations/ เรียกฟังก์ชันนี้ 1 ครั้งต่อตู้ (692 ตู้ = 692 คำสั่ง)
+    """
     charger_id = str(doc["_id"])
     station_id = doc.get("station_id", "")
     status = None
     if include_status:
-        status = get_charger_status(station_id, doc.get("chargeBoxID", ""))
+        if status_collections is not None and station_id not in status_collections:
+            status = False
+        else:
+            status = get_charger_status(station_id, doc.get("chargeBoxID", ""))
 
     normalized = _normalize_images(doc.get("images", {}))
 
@@ -593,19 +637,38 @@ def format_charger(doc: dict, include_status: bool = True) -> ChargerOut:
         updatedBy=doc.get("updatedBy"),
     )
 
-def format_station_with_chargers(station_doc: dict, charger_docs: List[dict]) -> StationOut:
+def format_station_with_chargers(
+    station_doc: dict,
+    charger_docs: List[dict],
+    username_by_id: Optional[Dict[str, str]] = None,
+    status_by_station: Optional[Dict[str, bool]] = None,
+    status_collections: Optional[set] = None,
+) -> StationOut:
+    """username_by_id / status_by_station : ตารางที่ผู้เรียกเตรียมมาแล้ว
+
+    /all-stations/ เรียกฟังก์ชันนี้ 1 ครั้งต่อสถานี ถ้าปล่อยให้แต่ละครั้งไป query เอง
+    จะกลายเป็น 2 คำสั่งต่อสถานี (355 สถานี = 710 คำสั่ง) ผู้เรียกที่ทำสถานีเดียว
+    ไม่ต้องส่งอะไรมา — พฤติกรรมเหมือนเดิมทุกประการ
+    """
     station_id = station_doc.get("station_id", "")
     user_id = station_doc.get("user_id")
     user_id_str = str(user_id) if user_id else ""
 
     username = station_doc.get("username")  # fallback ก่อน
     if user_id:
-        db_username = get_username_by_user_id(user_id if isinstance(user_id, ObjectId) else to_object_id(user_id))
+        if username_by_id is not None:
+            db_username = username_by_id.get(user_id_str)
+        else:
+            db_username = get_username_by_user_id(user_id if isinstance(user_id, ObjectId) else to_object_id(user_id))
         if db_username:
             username = db_username  
             
-    status = get_station_status(station_id)
-    chargers = [format_charger(c) for c in charger_docs]
+    status = (
+        status_by_station.get(station_id, False)
+        if status_by_station is not None
+        else get_station_status(station_id)
+    )
+    chargers = [format_charger(c, status_collections=status_collections) for c in charger_docs]
 
     normalized = _normalize_images(station_doc.get("images", {}))
     station_image_list = normalized.get("station", [])
@@ -769,10 +832,40 @@ def get_all_stations(current: UserClaims = Depends(get_current_user)):
         for charger_doc in filter_chargers(chargers_cursor, scope):
             chargers_by_station.setdefault(charger_doc.get("station_id"), []).append(charger_doc)
 
+    # ── ชื่อเจ้าของทุกสถานีในคำสั่งเดียว (เดิม find_one ต่อสถานี) ──
+    owner_oids = []
+    for s_doc in stations_list:
+        oid = s_doc.get("user_id")
+        if not oid:
+            continue
+        oid = oid if isinstance(oid, ObjectId) else to_object_id(oid)
+        if oid:
+            owner_oids.append(oid)
+    username_by_id: Dict[str, str] = {}
+    if owner_oids:
+        for u in users_collection.find({"_id": {"$in": list(set(owner_oids))}}, {"username": 1}):
+            username_by_id[str(u["_id"])] = u.get("username") or ""
+
+    # ── สถานะสถานี: edgeboxStatus มี 1 collection ต่อคีย์ ──
+    # ถามชื่อที่มีจริงครั้งเดียว แทนการยิง find_one ไปยังคีย์ที่ไม่มี collection อยู่เลย
+    # (ผลลัพธ์เท่าเดิม: ไม่มี collection / ไม่มีเอกสาร = False)
+    try:
+        existing_status = set(charger_onoff_sync.list_collection_names())
+    except Exception:
+        existing_status = None
+    status_by_station: Dict[str, bool] = {
+        sid: (get_station_status(sid)
+              if existing_status is None or sid in existing_status
+              else False)
+        for sid in station_ids
+    }
+
     result = []
     for station_doc in stations_list:
         charger_docs = chargers_by_station.get(station_doc.get("station_id"), [])
-        station_out = format_station_with_chargers(station_doc, charger_docs)
+        station_out = format_station_with_chargers(
+            station_doc, charger_docs, username_by_id, status_by_station, existing_status
+        )
         result.append(station_out.dict())
 
     return {"stations": result}

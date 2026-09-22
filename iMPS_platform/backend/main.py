@@ -86,6 +86,7 @@ async def lifespan(app: FastAPI):
     import logging
 
     from routers.cmreport import ensure_cm_indexes
+    from routers.stations import ensure_status_indexes
 
     app.state.errorDB = errorDB
     app.state.mongo_client = client
@@ -96,6 +97,13 @@ async def lifespan(app: FastAPI):
         logging.getLogger("startup").info(f"  ✓ CM indexes ensured on {n} collections")
     except Exception as e:
         logging.getLogger("startup").warning(f"  ⚠️ ensure CM indexes failed: {e}")
+
+    # index (timestamp, _id) de edgeboxStatus / settingParameter — voir ensure_status_indexes()
+    try:
+        n = await asyncio.to_thread(ensure_status_indexes)
+        logging.getLogger("startup").info(f"  ✓ status indexes ensured on {n} collections")
+    except Exception as e:
+        logging.getLogger("startup").warning(f"  ⚠️ ensure status indexes failed: {e}")
 
     start_watcher()
     await _warm_maximo_master_data()
