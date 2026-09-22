@@ -314,7 +314,7 @@ class PMMeasures(BaseModel):
     cp: PMMeasureRow = PMMeasureRow()
 
 class PMRowPF(BaseModel):
-    pf: Optional[Literal["PASS","FAIL","NA",""]] = ""
+    pf: Optional[Literal["VERY_GOOD","GOOD","FAIR","UNUSABLE","PASS","FAIL","NA",""]] = ""
     remark: Optional[str] = ""
 
 class PMSubmitIn(BaseModel):

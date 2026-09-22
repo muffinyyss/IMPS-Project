@@ -56,7 +56,7 @@ const T = {
     validationPhotoTitle: { th: "1) ตรวจสอบการแนบรูปภาพ", en: "1) Photo Attachments" },
     validationInputTitle: { th: "2) อินพุตข้อ 7", en: "2) Input Item 7" },
     validationRemarkTitle: { th: "3) หมายเหตุ", en: "3) Remarks" },
-    validationPFTitle: { th: "3) สถานะ PASS / FAIL / N/A", en: "3) PASS / FAIL / N/A status" },
+    validationPFTitle: { th: "3) ระดับผลการตรวจ / N/A", en: "3) Inspection rating / N/A" },
     validationRemarkTitlePost: { th: "4) หมายเหตุ", en: "4) Remarks" },
     validationSummaryTitle: { th: "5) สรุปผลการตรวจสอบ", en: "5) Inspection Summary" },
     allComplete: { th: "ครบเรียบร้อย ✅", en: "Complete ✅" },
@@ -408,7 +408,8 @@ function resolveUploadFile(p: PhotoItem): Promise<File> {
     const dbKey = p.ref?.dbKey;
     return resolveUsableFile(p.file, dbKey ? () => getPhotoByDbKey(dbKey) : undefined);
 }
-type PF = "PASS" | "FAIL" | "NA" | "";
+type Rating = "VERY_GOOD" | "GOOD" | "FAIR" | "UNUSABLE";
+type PF = Rating | "PASS" | "FAIL" | "NA" | "";
 
 const VOLTAGE_FIELDS = ["L1-N", "L2-N", "L3-N", "L1-G", "L2-G", "L3-G", "L1-L2", "L2-L3", "L3-L1", "N-G"] as const;
 const LABELS: Record<string, string> = { "L1-N": "L1-N", "L2-N": "L2-N", "L3-N": "L3-N", "L1-G": "L1-G", "L2-G": "L2-G", "L3-G": "L3-G", "L1-L2": "L1-L2", "L2-L3": "L2-L3", "L3-L1": "L3-L1", "N-G": "N-G" };
@@ -653,10 +654,10 @@ function PMValidationCard({
             if (!allPFAnsweredPost) {
                 missingPFItemsPost.forEach((item) => {
                     errors.push({
-                        section: lang === "th" ? "สถานะ Pass/Fail" : "Pass/Fail Status",
+                        section: lang === "th" ? "ระดับผลการตรวจ" : "Inspection rating",
                         sectionIcon: "✅",
                         itemName: `${t("itemLabel", lang)} ${item}`,
-                        message: lang === "th" ? "ยังไม่ได้เลือก Pass/Fail" : "Pass/Fail not selected",
+                        message: lang === "th" ? "ยังไม่ได้เลือกระดับผลการตรวจ" : "Inspection rating not selected",
                         scrollId: getPfButtonsScrollId(item),
                     });
                 });
@@ -677,7 +678,7 @@ function PMValidationCard({
                     section: lang === "th" ? "สรุปผล" : "Summary",
                     sectionIcon: "📋",
                     itemName: lang === "th" ? "สถานะสรุป" : "Summary Status",
-                    message: lang === "th" ? "ยังไม่ได้เลือก Pass/Fail/N/A" : "Status not selected",
+                    message: lang === "th" ? "ยังไม่ได้เลือกระดับผลการตรวจหรือ N/A" : "Inspection rating or N/A not selected",
                     scrollId: `${ID_PREFIX}-summary-section`,
                 });
             }
@@ -809,17 +810,25 @@ function InputWithUnit({ label, value, unit, onValueChange, readOnly, disabled, 
 }
 
 function PassFailRow({ label, value, onChange, remark, onRemarkChange, labels, aboveRemark, beforeRemark, showPfButtons = true, lang, id, remarkId }: {
-    label: string; value: PF; onChange: (v: Exclude<PF, "">) => void; remark?: string; onRemarkChange?: (v: string) => void;
+    label: string; value: PF; onChange: (v: Rating | "NA") => void; remark?: string; onRemarkChange?: (v: string) => void;
     labels?: Partial<Record<Exclude<PF, "">, React.ReactNode>>; aboveRemark?: React.ReactNode; beforeRemark?: React.ReactNode; showPfButtons?: boolean; lang: Lang; id?: string; remarkId?: string;
 }) {
-    const text = { PASS: labels?.PASS ?? t("pass", lang), FAIL: labels?.FAIL ?? t("fail", lang), NA: labels?.NA ?? t("na", lang) };
+    const text = {
+        VERY_GOOD: labels?.VERY_GOOD ?? (lang === "th" ? "ดีมาก" : "Excellent"),
+        GOOD: labels?.GOOD ?? (lang === "th" ? "ดี" : "Good"),
+        FAIR: labels?.FAIR ?? (lang === "th" ? "พอใช้" : "Fair"),
+        UNUSABLE: labels?.UNUSABLE ?? (lang === "th" ? "ใช้งานไม่ได้" : "Unusable"),
+        NA: labels?.NA ?? t("na", lang),
+    };
     return (
         <div className="tw-space-y-3 tw-py-3">
             <div className="tw-flex tw-flex-col sm:tw-flex-row tw-items-start sm:tw-items-center tw-justify-between tw-gap-2">
                 <Typography className="tw-font-medium">{label}</Typography>
-                {showPfButtons && <div id={id} className="tw-flex tw-gap-2">
-                    <Button size="sm" color="green" variant={value === "PASS" ? "filled" : "outlined"} className="tw-min-w-[72px]" onClick={() => onChange("PASS")}>{text.PASS}</Button>
-                    <Button size="sm" color="red" variant={value === "FAIL" ? "filled" : "outlined"} className="tw-min-w-[72px]" onClick={() => onChange("FAIL")}>{text.FAIL}</Button>
+                {showPfButtons && <div id={id} className="tw-flex tw-flex-wrap tw-gap-2">
+                    <Button size="sm" color="green" variant={value === "VERY_GOOD" || value === "PASS" ? "filled" : "outlined"} className="tw-min-w-[72px]" onClick={() => onChange("VERY_GOOD")}>{text.VERY_GOOD}</Button>
+                    <Button size="sm" color="light-green" variant={value === "GOOD" ? "filled" : "outlined"} className="tw-min-w-[72px]" onClick={() => onChange("GOOD")}>{text.GOOD}</Button>
+                    <Button size="sm" color="amber" variant={value === "FAIR" ? "filled" : "outlined"} className="tw-min-w-[72px]" onClick={() => onChange("FAIR")}>{text.FAIR}</Button>
+                    <Button size="sm" color="red" variant={value === "UNUSABLE" || value === "FAIL" ? "filled" : "outlined"} className="tw-min-w-[96px]" onClick={() => onChange("UNUSABLE")}>{text.UNUSABLE}</Button>
                     <Button size="sm" color="blue-gray" variant={value === "NA" ? "filled" : "outlined"} className="tw-min-w-[72px]" onClick={() => onChange("NA")}>{text.NA}</Button>
                 </div>}
             </div>
@@ -984,6 +993,8 @@ export default function CBBOXPMForm() {
         else router.back();
     }, [router, searchParams]);
     const editId = searchParams.get("edit_id") ?? "";
+    // เปิดจากใบ PM สถานี "ใบเดียว 4 ส่วน" → ผูกใบนี้เป็นส่วนหนึ่งของใบแม่
+    const jobId = searchParams.get("job_id") ?? "";
     const action = searchParams.get("action");
     const isPostMode = true;
 
@@ -1574,7 +1585,7 @@ export default function CBBOXPMForm() {
             const token = localStorage.getItem("access_token");
             const rowsPreData: Record<string, { pf: string; remark: string }> = {};
             QUESTIONS.forEach(q => { rowsPreData[q.key] = { pf: rows[q.key]?.pf || "", remark: rows[q.key]?.remark || "" }; });
-            const payload = { station_id: stationId, issue_id: job.issue_id, job: { station_name: job.station_name, date: job.date }, inspector, measures_pre: { m5: m5.state }, rows_pre: rowsPreData, pm_date: job.date, doc_name: docName, dropdownQ1, dropdownQ2, side: "pre", comment_pre: summary };
+            const payload = { station_id: stationId, ...(jobId ? { job_id: jobId } : {}), issue_id: job.issue_id, job: { station_name: job.station_name, date: job.date }, inspector, measures_pre: { m5: m5.state }, rows_pre: rowsPreData, pm_date: job.date, doc_name: docName, dropdownQ1, dropdownQ2, side: "pre", comment_pre: summary };
             // กดบันทึกซ้ำหลังอัปรูปหลุด ต้องใช้รายงานใบเดิม ไม่งั้นจะได้รายงานซ้ำอีกใบ
             let report_id: string = preReportIdRef.current || loadDraftLocal<any>(key)?.pendingReportId || "";
             if (!report_id) {
@@ -1602,7 +1613,7 @@ export default function CBBOXPMForm() {
 
         // Validation checks with scroll to error
         if (!allPhotosAttachedPost) { alert(t("alertFillPhoto", lang)); return; }
-        if (!allPFAnsweredPost) { alert(lang === "th" ? "กรุณาเลือก PASS/FAIL/N/A ทุกข้อ" : "Please select PASS/FAIL/N/A for all items"); return; }
+        if (!allPFAnsweredPost) { alert(lang === "th" ? "กรุณาเลือกระดับผลการตรวจหรือ N/A ทุกข้อ" : "Please select an inspection rating or N/A for all items"); return; }
         if (!allRequiredInputsFilled) { alert(t("alertInputNotComplete", lang)); return; }
         if (!isSummaryFilled || !isSummaryCheckFilled) { alert(t("alertCompleteAll", lang)); return; }
 
@@ -1612,7 +1623,7 @@ export default function CBBOXPMForm() {
             const token = localStorage.getItem("access_token");
             const finalReportId = reportId || editId;
             if (!finalReportId) throw new Error(t("noReportId", lang));
-            const payload = { station_id: stationId, rows, measures: { m5: m5.state }, summary, dropdownQ1, dropdownQ2, ...(summaryCheck ? { summaryCheck } : {}), work_start: workStart, work_finish: workFinish, maximo_labor: maximoLabor, maximo_contractor: contractorPicked ? maximoContractor.trim() : "", wonum: searchParams.get("wonum") ?? "", side: "post", report_id: finalReportId };
+            const payload = { station_id: stationId, ...(jobId ? { job_id: jobId } : {}), rows, measures: { m5: m5.state }, summary, dropdownQ1, dropdownQ2, ...(summaryCheck ? { summaryCheck } : {}), work_start: workStart, work_finish: workFinish, maximo_labor: maximoLabor, maximo_contractor: contractorPicked ? maximoContractor.trim() : "", wonum: searchParams.get("wonum") ?? "", side: "post", report_id: finalReportId };
             const res = await fetch(`${API_BASE}/cbboxpmreport/submit`, { method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, credentials: "include", body: JSON.stringify(payload) });
             if (!res.ok) throw new Error(await res.text());
             // ต้องยืนยันรูปครบก่อน ถึงจะ finalize + ลบรูปในเครื่อง

@@ -297,7 +297,7 @@ const T = {
     // Validation Sections
     validationPhotoTitle: { th: "1) ตรวจสอบการแนบรูปภาพ (ทุกข้อ)", en: "1) Photo Attachments (all items)" },
     validationRemarkTitle: { th: "2) หมายเหตุ (ทุกข้อ)", en: "2) Remarks (all items)" },
-    validationPFTitle: { th: "2) สถานะ PASS / FAIL / N/A ทั้ง 11 ข้อ", en: "2) PASS / FAIL / N/A for all 11 items" },
+    validationPFTitle: { th: "2) ระดับผลการตรวจ / N/A ทั้ง 11 ข้อ", en: "2) Inspection rating / N/A for all 11 items" },
     validationRemarkTitlePost: { th: "3) หมายเหตุ (ทุกข้อ)", en: "3) Remarks (all items)" },
     validationSummaryTitle: { th: "4) สรุปผลการตรวจสอบ", en: "4) Inspection Summary" },
 
@@ -306,7 +306,7 @@ const T = {
     missingPhoto: { th: "ยังไม่ได้แนบรูปข้อ:", en: "Missing photos for:" },
     missingPF: { th: "ยังไม่ได้เลือกข้อ:", en: "Not selected:" },
     missingSummaryText: { th: "ยังไม่ได้กรอก Comment", en: "Comment not filled" },
-    missingSummaryStatus: { th: "ยังไม่ได้เลือกสถานะสรุปผล (Pass/Fail/N/A)", en: "Summary status not selected (Pass/Fail/N/A)" },
+    missingSummaryStatus: { th: "ยังไม่ได้เลือกระดับสรุปผล / N/A", en: "Summary rating / N/A not selected" },
 
     // PMValidationCard translations
     itemLabel: { th: "ข้อ", en: "Item" },
@@ -419,7 +419,8 @@ function resolveUploadFile(p: PhotoItem): Promise<File> {
     const dbKey = p.ref?.dbKey;
     return resolveUsableFile(p.file, dbKey ? () => getPhotoByDbKey(dbKey) : undefined);
 }
-type PF = "PASS" | "FAIL" | "NA" | "";
+type Rating = "VERY_GOOD" | "GOOD" | "FAIR" | "UNUSABLE";
+type PF = Rating | "PASS" | "FAIL" | "NA" | "";
 
 type Question =
     | { no: number; key: string; label: { th: string; en: string }; labelPre?: { th: string; en: string }; labelPost?: { th: string; en: string }; kind: "simple"; hasPhoto?: boolean; tooltip?: { th: string; en: string } }
@@ -655,10 +656,10 @@ function PMValidationCard({
             if (!allPFAnswered) {
                 missingPFItems.forEach((item) => {
                     errors.push({
-                        section: lang === "th" ? "สถานะ Pass/Fail" : "Pass/Fail Status",
+                        section: lang === "th" ? "ระดับผลการตรวจ" : "Inspection rating",
                         sectionIcon: "✅",
                         itemName: `${t("itemLabel", lang)} ${item}`,
-                        message: lang === "th" ? "ยังไม่ได้เลือก Pass/Fail" : "Pass/Fail not selected",
+                        message: lang === "th" ? "ยังไม่ได้เลือกระดับผลการตรวจ" : "Inspection rating not selected",
                         scrollId: getPfScrollId(item),
                     });
                 });
@@ -679,7 +680,7 @@ function PMValidationCard({
                     section: lang === "th" ? "สรุปผล" : "Summary",
                     sectionIcon: "📋",
                     itemName: lang === "th" ? "สถานะสรุป" : "Summary Status",
-                    message: lang === "th" ? "ยังไม่ได้เลือก Pass/Fail/N/A" : "Status not selected",
+                    message: lang === "th" ? "ยังไม่ได้เลือกระดับผลการตรวจหรือ N/A" : "Inspection rating or N/A not selected",
                     scrollId: `${ID_PREFIX}-summary-section`,
                 });
             }
@@ -813,17 +814,25 @@ function scrollToFirstError(scrollId: string) {
 function PassFailRow({
     label, value, onChange, remark, onRemarkChange, labels, aboveRemark, beforeRemark, inlineLeft, showPfButtons = true, lang, id, remarkId,
 }: {
-    label: string; value: PF; onChange: (v: Exclude<PF, "">) => void;
+    label: string; value: PF; onChange: (v: Rating | "NA") => void;
     remark?: string; onRemarkChange?: (v: string) => void;
     labels?: Partial<Record<Exclude<PF, "">, React.ReactNode>>;
     aboveRemark?: React.ReactNode; beforeRemark?: React.ReactNode; inlineLeft?: React.ReactNode; showPfButtons?: boolean; lang: Lang;
     id?: string; remarkId?: string;
 }) {
-    const text = { PASS: labels?.PASS ?? t("pass", lang), FAIL: labels?.FAIL ?? t("fail", lang), NA: labels?.NA ?? t("na", lang) };
+    const text = {
+        VERY_GOOD: labels?.VERY_GOOD ?? (lang === "th" ? "ดีมาก" : "Excellent"),
+        GOOD: labels?.GOOD ?? (lang === "th" ? "ดี" : "Good"),
+        FAIR: labels?.FAIR ?? (lang === "th" ? "พอใช้" : "Fair"),
+        UNUSABLE: labels?.UNUSABLE ?? (lang === "th" ? "ใช้งานไม่ได้" : "Unusable"),
+        NA: labels?.NA ?? t("na", lang),
+    };
     const buttonGroup = (
-        <div id={id} className="tw-flex tw-gap-2 tw-ml-auto">
-            <Button size="sm" color="green" variant={value === "PASS" ? "filled" : "outlined"} className="sm:tw-min-w-[84px]" onClick={() => onChange("PASS")}>{text.PASS}</Button>
-            <Button size="sm" color="red" variant={value === "FAIL" ? "filled" : "outlined"} className="sm:tw-min-w-[84px]" onClick={() => onChange("FAIL")}>{text.FAIL}</Button>
+        <div id={id} className="tw-flex tw-flex-wrap tw-gap-2 tw-ml-auto">
+            <Button size="sm" color="green" variant={value === "VERY_GOOD" || value === "PASS" ? "filled" : "outlined"} className="sm:tw-min-w-[84px]" onClick={() => onChange("VERY_GOOD")}>{text.VERY_GOOD}</Button>
+            <Button size="sm" color="light-green" variant={value === "GOOD" ? "filled" : "outlined"} className="sm:tw-min-w-[84px]" onClick={() => onChange("GOOD")}>{text.GOOD}</Button>
+            <Button size="sm" color="amber" variant={value === "FAIR" ? "filled" : "outlined"} className="sm:tw-min-w-[84px]" onClick={() => onChange("FAIR")}>{text.FAIR}</Button>
+            <Button size="sm" color="red" variant={value === "UNUSABLE" || value === "FAIL" ? "filled" : "outlined"} className="sm:tw-min-w-[112px]" onClick={() => onChange("UNUSABLE")}>{text.UNUSABLE}</Button>
             <Button size="sm" color="blue-gray" variant={value === "NA" ? "filled" : "outlined"} className="sm:tw-min-w-[84px]" onClick={() => onChange("NA")}>{text.NA}</Button>
         </div>
     );
@@ -1040,6 +1049,8 @@ export default function StationPMReport() {
         else router.back();
     }, [router, searchParams]);
     const editId = searchParams.get("edit_id") ?? "";
+    // เปิดจากใบ PM สถานี "ใบเดียว 4 ส่วน" → ผูกใบนี้เป็นส่วนหนึ่งของใบแม่
+    const jobId = searchParams.get("job_id") ?? "";
     const action = searchParams.get("action");
     const isPostMode = true;
 
@@ -1646,7 +1657,7 @@ export default function StationPMReport() {
             const { issue_id: issueIdFromJob, ...jobWithoutIssueId } = job;
             const flatRows = flattenRows(rows);
             const payload = {
-                station_id: stationId, issue_id: issueIdFromJob, job: jobWithoutIssueId, inspector,
+                station_id: stationId, ...(jobId ? { job_id: jobId } : {}), issue_id: issueIdFromJob, job: jobWithoutIssueId, inspector,
                 rows_pre: flatRows, pm_date, doc_name: docName, side: "pre" as TabId,
                 comment_pre: summary,
             };
@@ -1692,7 +1703,7 @@ export default function StationPMReport() {
             return;
         }
         if (!allPFAnswered) {
-            alert(lang === "th" ? "กรุณาเลือก PASS/FAIL/N/A ทุกข้อ" : "Please select PASS/FAIL/N/A for all items");
+            alert(lang === "th" ? "กรุณาเลือกระดับผลการตรวจหรือ N/A ทุกข้อ" : "Please select an inspection rating or N/A for all items");
             const scrollId = getFirstMissingPFScrollId();
             if (scrollId) scrollToFirstError(scrollId);
             return;
@@ -1716,7 +1727,7 @@ export default function StationPMReport() {
             if (!finalReportId) throw new Error(t("noReportId", lang));
             const flatRows = flattenRows(rows);
             const payload = {
-                station_id: stationId, rows: flatRows, summary,
+                station_id: stationId, ...(jobId ? { job_id: jobId } : {}), rows: flatRows, summary,
                 ...(summaryCheck ? { summaryCheck } : {}), work_start: workStart, work_finish: workFinish, maximo_labor: maximoLabor, maximo_contractor: contractorPicked ? maximoContractor.trim() : "", wonum: searchParams.get("wonum") ?? "", side: "post" as TabId, report_id: finalReportId,
             };
             const res = await fetch(`${API_BASE}/stationpmreport/submit`, {

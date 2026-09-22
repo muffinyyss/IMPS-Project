@@ -11,7 +11,7 @@ from config import (
     MDBPMReportDB, MDBPMUrlDB,
     CCBPMReportDB, CCBPMUrlDB,
     CBBOXPMReportDB, CBBOXPMUrlDB,
-    stationPMReportDB, stationPMUrlDB,
+    stationPMReportDB, stationPMUrlDB, stationPMJobDB,
 )
 
 # ─── File Upload Constants ────────────────────────────────────
@@ -76,6 +76,13 @@ def get_stationpmreport_collection_for(station_id: str):
 def get_stationpmurl_coll_upload(station_id: str):
     _validate_station_id_th(station_id)
     return stationPMUrlDB.get_collection(str(station_id))
+
+
+# ─── Collection Getter (ใบ PM สถานีใบเดียว 4 ส่วน) ─────────────
+def get_stationpmjob_collection_for(station_id: str):
+    """เอกสารแม่ที่รวม Station/MDB/CCB/CB_BOX ไว้ในใบเดียว (routers/pmreport_station_job.py)"""
+    _validate_station_id_th(station_id)
+    return stationPMJobDB.get_collection(str(station_id))
 
 
 # ─── Source Router ─────────────────────────────────────────────

@@ -7,9 +7,9 @@
  * ข้อไหนก่อนกรอกอะไร หลังกรอกอะไร ตารางนี้วางคู่กันในบรรทัดเดียว
  *
  * โครงข้อมูลสองฝั่งไม่เหมือนกัน:
- *   ก่อน PM  = รูป + หมายเหตุ (ไม่มี PASS/FAIL — มีได้แค่ NA ว่าไม่เกี่ยวข้อง)
- *   หลัง PM  = รูป + หมายเหตุ + PASS/FAIL
- * จึงไม่เทียบ pf สองฝั่งกัน แต่ไฮไลต์ข้อที่หลัง PM เป็น FAIL ให้เห็นชัดแทน
+ *   ก่อน PM  = รูป + หมายเหตุ (มีได้แค่ NA ว่าไม่เกี่ยวข้อง)
+ *   หลัง PM  = รูป + หมายเหตุ + ระดับผลการตรวจ
+ * จึงไม่เทียบผลสองฝั่งกัน แต่ไฮไลต์ข้อที่หลัง PM ใช้งานไม่ได้ให้เห็นชัดแทน
  */
 
 import React from "react";
@@ -53,13 +53,17 @@ function photosOfQuestion(photos: PhotoMap | undefined, qNo?: number) {
 const T = {
   title: { th: "เทียบผลก่อน / หลัง PM", en: "Before / after PM comparison" },
   hint: {
-    th: "ก่อน PM มีแค่หมายเหตุกับรูป · หลัง PM ถึงมีผล PASS/FAIL — ข้อที่ผลเป็น FAIL ถูกไฮไลต์ไว้",
-    en: "Before PM has notes and photos only · PASS/FAIL comes after PM — failed items are highlighted",
+    th: "ก่อน PM มีแค่หมายเหตุกับรูป · หลัง PM มีระดับผลการตรวจ — ข้อที่ใช้งานไม่ได้ถูกไฮไลต์ไว้",
+    en: "Before PM has notes and photos only · Inspection ratings come after PM — unusable items are highlighted",
   },
   item: { th: "หัวข้อ", en: "Item" },
   before: { th: "ก่อน PM", en: "Before PM" },
   after: { th: "หลัง PM", en: "After PM" },
   na: { th: "ไม่เกี่ยวข้อง", en: "N/A" },
+  veryGood: { th: "ดีมาก", en: "Excellent" },
+  good: { th: "ดี", en: "Good" },
+  fair: { th: "พอใช้", en: "Fair" },
+  unusable: { th: "ใช้งานไม่ได้", en: "Unusable" },
   noPhoto: { th: "ไม่มีรูป", en: "No photo" },
   noNote: { th: "ไม่มีหมายเหตุ", en: "No note" },
   summary: { th: "สรุปผล", en: "Summary" },
@@ -71,6 +75,10 @@ const t = (k: keyof typeof T, lang: Lang) => T[k][lang === "en" ? "en" : "th"];
 
 function pfClass(pf?: string) {
   const v = String(pf ?? "").toUpperCase();
+  if (v === "VERY_GOOD") return "tw-bg-green-100 tw-text-green-800";
+  if (v === "GOOD") return "tw-bg-light-green-100 tw-text-light-green-800";
+  if (v === "FAIR") return "tw-bg-amber-100 tw-text-amber-800";
+  if (v === "UNUSABLE") return "tw-bg-red-100 tw-text-red-800";
   if (v === "PASS") return "tw-bg-green-100 tw-text-green-800";
   if (v === "FAIL") return "tw-bg-red-100 tw-text-red-800";
   if (v === "NA") return "tw-bg-gray-100 tw-text-gray-600";
@@ -115,13 +123,19 @@ function BeforeCell({ pf, remark, lang }: { pf?: string; remark?: string; lang: 
   );
 }
 
-/** ฝั่งหลัง PM — มีผล PASS/FAIL/NA พร้อมหมายเหตุ */
-function AfterCell({ pf, remark }: { pf?: string; remark?: string }) {
-  const v = String(pf ?? "").trim();
+/** ฝั่งหลัง PM — มีระดับผลการตรวจ/NA พร้อมหมายเหตุ */
+function AfterCell({ pf, remark, lang }: { pf?: string; remark?: string; lang: Lang }) {
+  const v = String(pf ?? "").trim().toUpperCase();
+  const label = v === "VERY_GOOD" ? t("veryGood", lang)
+    : v === "GOOD" ? t("good", lang)
+    : v === "FAIR" ? t("fair", lang)
+    : v === "UNUSABLE" ? t("unusable", lang)
+    : v === "NA" ? t("na", lang)
+    : v;
   return (
     <div className="tw-space-y-1">
       <span className={`tw-inline-block tw-rounded tw-px-2 tw-py-0.5 tw-text-xs tw-font-semibold ${pfClass(v)}`}>
-        {v || "—"}
+        {label || "—"}
       </span>
       {remark?.trim() && (
         <p className="tw-text-xs tw-text-blue-gray-500 tw-break-words">{remark}</p>
@@ -244,8 +258,9 @@ export default function PmCompareTable({
                     )}
 
                     {g.items.map(({ row: r, pre, post }) => {
-                      // FAIL = ข้อที่ยังไม่ผ่านหลังทำ PM ต้องอ่านให้ละเอียดกว่าข้ออื่น
-                      const failed = String(r.postPf ?? "").trim().toUpperCase() === "FAIL";
+                      // ใช้งานไม่ได้ = ข้อที่ต้องอ่านให้ละเอียดกว่าข้ออื่น
+                      const status = String(r.postPf ?? "").trim().toUpperCase();
+                      const failed = status === "UNUSABLE" || status === "FAIL";
                       return (
                         <tr key={r.key} className={`tw-border-t tw-border-blue-gray-50 ${failed ? "tw-bg-red-50/60" : ""}`}>
                           <td className="tw-px-4 tw-py-2.5 tw-align-top tw-text-blue-gray-800">{r.label}</td>
@@ -254,7 +269,7 @@ export default function PmCompareTable({
                             {pre.length > 0 && <Thumbs items={pre} apiBase={apiBase} lang={lang} />}
                           </td>
                           <td className="tw-px-4 tw-py-2.5 tw-align-top tw-space-y-2">
-                            <AfterCell pf={r.postPf} remark={r.postRemark} />
+                            <AfterCell pf={r.postPf} remark={r.postRemark} lang={lang} />
                             {post.length > 0 && <Thumbs items={post} apiBase={apiBase} lang={lang} />}
                           </td>
                         </tr>

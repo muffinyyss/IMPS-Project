@@ -897,6 +897,7 @@ def update_station(
         raise HTTPException(status_code=404, detail="Station not found")
 
     update_data = {}
+    unset_data = {}
     if body.station_name is not None:
         update_data["station_name"] = body.station_name.strip()
     if body.is_active is not None:
@@ -933,14 +934,18 @@ def update_station(
         else:
             # ไม่พบ user → บันทึกชื่อไว้ตรงๆ โดยไม่ผูก user_id
             update_data["username"] = username_stripped
+            unset_data["user_id"] = ""
 
-    if not update_data:
+    if not update_data and not unset_data:
         raise HTTPException(status_code=400, detail="No fields to update")
 
     update_data["updatedAt"] = datetime.now(timezone.utc)
     update_data["updatedBy"] = get_actor_id(current)
 
-    station_collection.update_one({"_id": oid}, {"$set": update_data})
+    update_ops = {"$set": update_data}
+    if unset_data:
+        update_ops["$unset"] = unset_data
+    station_collection.update_one({"_id": oid}, update_ops)
 
     updated = station_collection.find_one({"_id": oid})
     chargers = list(charger_collection.find({"station_id": updated["station_id"]}).sort("chargerNo", 1))

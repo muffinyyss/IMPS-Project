@@ -64,6 +64,15 @@ def resize_image_bytes(data: bytes, max_width: int = 1920, quality: int = 85) ->
 
 router = APIRouter()
 
+# ── ผูกกับใบ PM สถานี "ใบเดียว 4 ส่วน" ────────────────────────────
+async def _job_link(station_id: str, job_id: str | None) -> dict:
+    """ข้อมูลเลขที่เอกสารของใบแม่ — ไม่ได้ส่ง job_id มา = ใบเดี่ยวแบบเดิม คืน {}"""
+    if not (job_id or "").strip():
+        return {}
+    from routers.pmreport_station_job import job_numbering
+    return await job_numbering(station_id, job_id)
+
+
 
 # ============================================
 # Helpers
@@ -186,6 +195,8 @@ def parse_report_date_to_utc(s: str) -> datetime:
 class CBBOXPMSubmitIn(BaseModel):
     side: Literal["pre", "post"]
     station_id: str
+    # ใบนี้เป็นส่วนหนึ่งของใบ PM สถานี "ใบเดียว 4 ส่วน" (stationPMJob) หรือไม่
+    job_id: Optional[str] = None
     # ใบงาน Maximo ที่ planner assign — โยงเอกสารกลับหาใบงานต้นทาง
     wonum: Optional[str] = None
     job: Dict[str, Any]
@@ -203,6 +214,8 @@ class CBBOXPMSubmitIn(BaseModel):
 class CBBOXPMPostIn(BaseModel):
     report_id: str | None = None
     station_id: str
+    # ใบนี้เป็นส่วนหนึ่งของใบ PM สถานี "ใบเดียว 4 ส่วน" (stationPMJob) หรือไม่
+    job_id: Optional[str] = None
     rows: dict
     measures: dict
     summary: str
@@ -445,6 +458,10 @@ async def cbboxpmreport_pre_submit(
         if not rep_exists and not url_exists:
             issue_id = client_issue
 
+    link = await _job_link(station_id, body.job_id)
+    if link:
+        # ส่วนหนึ่งของใบ PM สถานีใบเดียว 4 ส่วน — ใช้เลขที่/ชื่อเอกสารของใบแม่
+        issue_id = link["issue_id"]
     if not issue_id:
         issue_id = await _next_issue_id_no_conflict(db, coll, url_coll, station_id, pm_type, d)
 
@@ -455,13 +472,20 @@ async def cbboxpmreport_pre_submit(
         if not rep_exists and not url_exists:
             doc_name = client_doc
 
+    if link:
+        doc_name = link["doc_name"]
     if not doc_name:
         year_seq = await _next_year_seq(db, station_id, pm_type, d)
         doc_name = f"{station_id}_{year_seq}/{d.year}"
 
     # Reuse existing draft (same station/date/pre) if exists
+    draft_filter = (
+        {"station_id": station_id, "job_id": link["job_id"]}
+        if link else
+        {"station_id": station_id, "pm_date": body.pm_date, "side": "pre", "status": "draft"}
+    )
     existing_draft = await coll.find_one(
-        {"station_id": station_id, "pm_date": body.pm_date, "side": "pre", "status": "draft"},
+        draft_filter,
         {"_id": 1, "issue_id": 1, "doc_name": 1},
     )
 
@@ -499,6 +523,7 @@ async def cbboxpmreport_pre_submit(
         "pm_date": body.pm_date,
         "inspector": body.inspector,
         "photos_pre": {},
+        **({"job_id": link["job_id"]} if link else {}),
         "status": "draft",
         "side": body.side,
         "createdAt": datetime.now(timezone.utc),
@@ -546,6 +571,7 @@ async def cbboxpmreport_post_submit(
             "dropdownQ1": body.dropdownQ1,
             "dropdownQ2": body.dropdownQ2,
             **pm_flow.post_submit_fields(body),
+            **({"job_id": body.job_id} if body.job_id else {}),
             "side": "post",
             "updatedAt": datetime.now(timezone.utc),
         }
@@ -568,6 +594,7 @@ async def cbboxpmreport_post_submit(
         "dropdownQ1": body.dropdownQ1,
         "dropdownQ2": body.dropdownQ2,
         **pm_flow.post_submit_fields(body),
+        **({"job_id": body.job_id} if body.job_id else {}),
         "side": "post",
         "updatedAt": datetime.now(timezone.utc),
     }

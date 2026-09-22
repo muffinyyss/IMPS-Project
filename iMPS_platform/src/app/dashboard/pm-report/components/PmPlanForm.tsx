@@ -87,7 +87,7 @@ const T = {
     th: "วันที่เสร็จต้องไม่ก่อนวันที่เริ่ม",
     en: "Finish date must not be before the start date",
   },
-  technician: { th: "ช่างผู้รับผิดชอบ", en: "Technician" },
+  technician: { th: "Vendor", en: "Vendor" },
   allTechnicians: { th: "ทั้งหมด", en: "All" },
   noTechnicians: { th: "ไม่พบช่าง", en: "No technicians found" },
   noAssignee: { th: "ยังไม่ได้มอบหมายช่าง", en: "No technician assigned" },
@@ -218,7 +218,14 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
       }
 
       const techJson = await techRes.json().catch(() => ({} as any));
-      if (techRes.ok) setTechnicians(Array.isArray(techJson?.users) ? techJson.users : []);
+      if (techRes.ok) {
+        const workOrderCompany = String(found.company ?? "").trim().toLowerCase();
+        const companyTechnicians = (Array.isArray(techJson?.users) ? techJson.users : [])
+          .filter((user: TechnicianOption) =>
+            workOrderCompany && String(user.company ?? "").trim().toLowerCase() === workOrderCompany
+          );
+        setTechnicians(companyTechnicians);
+      }
     } catch (err) {
       console.error("pm plan load error:", err);
       setError(t("errLoad", lang));

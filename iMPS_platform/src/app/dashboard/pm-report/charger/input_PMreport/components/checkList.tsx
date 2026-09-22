@@ -319,7 +319,7 @@ const T = {
     validationPhotoTitle: { th: "1) ตรวจสอบการแนบรูปภาพ (ทุกข้อ)", en: "1) Photo Attachments (all items)" },
     validationInputTitle: { th: "2) อินพุตข้อ 10 และ 16", en: "2) Input Item 10 and 16" },
     validationRemarkTitle: { th: "3) หมายเหตุ (ทุกข้อ)", en: "3) Remarks (all items)" },
-    validationPFTitle: { th: "3) สถานะ PASS / FAIL / N/A", en: "3) PASS / FAIL / N/A Status" },
+    validationPFTitle: { th: "3) ระดับผลการตรวจ / N/A", en: "3) Inspection rating / N/A" },
     validationRemarkTitlePost: { th: "4) หมายเหตุ (ทุกข้อ)", en: "4) Remarks (all items)" },
     validationSummaryTitle: { th: "5) สรุปผลการตรวจสอบ", en: "5) Inspection Summary" },
 
@@ -329,7 +329,7 @@ const T = {
     missingInput: { th: "ยังขาดข้อ:", en: "Missing:" },
     missingPF: { th: "ยังไม่ได้เลือกข้อ:", en: "Not selected:" },
     missingSummaryText: { th: "ยังไม่ได้กรอก Comment", en: "Comment not filled" },
-    missingSummaryStatus: { th: "ยังไม่ได้เลือกสถานะสรุปผล (Pass/Fail/N/A)", en: "Summary status not selected (Pass/Fail/N/A)" },
+    missingSummaryStatus: { th: "ยังไม่ได้เลือกระดับสรุปผล / N/A", en: "Summary rating / N/A not selected" },
     itemLabel: { th: "ข้อ", en: "Item" },
 
     // Validation Card (DCMasterValidation style)
@@ -435,7 +435,8 @@ const UNITS = { voltage: ["V"] as const };
 type UnitVoltage = (typeof UNITS.voltage)[number];
 type MeasureRow<U extends string> = { value: string; unit: U };
 type MeasureState<U extends string> = Record<string, MeasureRow<U>>;
-type PF = "PASS" | "FAIL" | "NA" | "";
+type Rating = "VERY_GOOD" | "GOOD" | "FAIR" | "UNUSABLE";
+type PF = Rating | "PASS" | "FAIL" | "NA" | "";
 
 // ==================== CONSTANTS ====================
 const VOLTAGE1_FIELDS = ["L1-L2", "L2-L3", "L3-L1", "L1-N", "L2-N", "L3-N", "L1-G", "L2-G", "L3-G", "N-G"] as const;
@@ -680,7 +681,7 @@ function PassFailRow({
 }: {
     label: string;
     value: PF;
-    onChange: (v: Exclude<PF, "">) => void;
+    onChange: (v: Rating | "NA") => void;
     remark?: string;
     onRemarkChange?: (v: string) => void;
     labels?: Partial<Record<Exclude<PF, "">, React.ReactNode>>;
@@ -695,7 +696,13 @@ function PassFailRow({
     remarkId?: string;
     pfButtonsId?: string;
 }) {
-    const text = { PASS: labels?.PASS ?? t("pass", lang), FAIL: labels?.FAIL ?? t("fail", lang), NA: labels?.NA ?? t("na", lang) };
+    const text = {
+        VERY_GOOD: labels?.VERY_GOOD ?? (lang === "th" ? "ดีมาก" : "Excellent"),
+        GOOD: labels?.GOOD ?? (lang === "th" ? "ดี" : "Good"),
+        FAIR: labels?.FAIR ?? (lang === "th" ? "พอใช้" : "Fair"),
+        UNUSABLE: labels?.UNUSABLE ?? (lang === "th" ? "ใช้งานไม่ได้" : "Unusable"),
+        NA: labels?.NA ?? t("na", lang),
+    };
 
     const buttonGroup = onlyNA ? (
         <div id={pfButtonsId} className="tw-flex tw-gap-2 tw-ml-auto tw-transition-all tw-duration-300">
@@ -705,9 +712,11 @@ function PassFailRow({
             </Button>
         </div>
     ) : (
-        <div id={pfButtonsId} className="tw-flex tw-gap-2 tw-ml-auto tw-transition-all tw-duration-300">
-            <Button size="sm" color="green" variant={value === "PASS" ? "filled" : "outlined"} className="sm:tw-min-w-[84px]" onClick={() => onChange("PASS")}>{text.PASS}</Button>
-            <Button size="sm" color="red" variant={value === "FAIL" ? "filled" : "outlined"} className="sm:tw-min-w-[84px]" onClick={() => onChange("FAIL")}>{text.FAIL}</Button>
+        <div id={pfButtonsId} className="tw-flex tw-flex-wrap tw-gap-2 tw-ml-auto tw-transition-all tw-duration-300">
+            <Button size="sm" color="green" variant={value === "VERY_GOOD" || value === "PASS" ? "filled" : "outlined"} className="sm:tw-min-w-[84px]" onClick={() => onChange("VERY_GOOD")}>{text.VERY_GOOD}</Button>
+            <Button size="sm" color="light-green" variant={value === "GOOD" ? "filled" : "outlined"} className="sm:tw-min-w-[84px]" onClick={() => onChange("GOOD")}>{text.GOOD}</Button>
+            <Button size="sm" color="amber" variant={value === "FAIR" ? "filled" : "outlined"} className="sm:tw-min-w-[84px]" onClick={() => onChange("FAIR")}>{text.FAIR}</Button>
+            <Button size="sm" color="red" variant={value === "UNUSABLE" || value === "FAIL" ? "filled" : "outlined"} className="sm:tw-min-w-[112px]" onClick={() => onChange("UNUSABLE")}>{text.UNUSABLE}</Button>
             <Button size="sm" color="blue-gray" variant={value === "NA" ? "filled" : "outlined"} className="sm:tw-min-w-[84px]" onClick={() => onChange("NA")}>{text.NA}</Button>
         </div>
     );
@@ -969,7 +978,7 @@ function PMValidationCard({
             if (!allPFAnsweredPost) {
                 missingPFItemsPost.forEach((item) => {
                     errors.push({
-                        section: lang === "th" ? "สถานะ PASS/FAIL/N/A" : "PASS/FAIL/N/A Status",
+                        section: lang === "th" ? "ระดับผลการตรวจ / N/A" : "Inspection rating / N/A",
                         sectionIcon: "✅",
                         itemName: `${t("itemLabel", lang)} ${item}`,
                         message: lang === "th" ? "ยังไม่ได้เลือกสถานะ" : "Status not selected",
