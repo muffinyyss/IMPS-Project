@@ -174,7 +174,7 @@ export function DashboardNavbar() {
   else if (segs[1] === "chargers") title = "My Charger Station";
   else if (segs[1] === "device") title = "Device";
   else if (segs[1] === "setting") title = "Configuration";
-  else if (segs[1] === "ai") title = "Ai Module";
+  else if (segs[1] === "ai") title = "AI Fault Intelligence";
   else if (segs[2] === "settings") title = "My Profile";
   else if (segs[1] === "pm-all") title = "PM Report All";
   else if (segs[1] === "pm-report") title = "PM Report";

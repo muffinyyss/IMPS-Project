@@ -15,11 +15,17 @@ module.exports = withMT({
   theme: {
     extend: {
       fontFamily: {
-        sans: ["var(--font-prompt)", "Prompt", "sans-serif"],
+        sans: [
+          "var(--font-kanit)",
+          "Kanit",
+          "var(--font-jakarta)",
+          "Plus Jakarta Sans",
+          "sans-serif",
+        ],
+        mono: ["var(--font-mono)", "JetBrains Mono", "monospace"],
       },
     },
   },
   plugins: [],
   prefix: "tw-",
-  theme: { extend: {} },
 });

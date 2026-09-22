@@ -124,7 +124,7 @@ const baseRoutes = [
       { name: "PM report", icon: <i className="fa fa-file-alt" />, path: "/dashboard/pm-report", allow: ["admin", "owner", "technician", "planner"], showMode: "after" },
       { name: "CM report", icon: <i className="far fa-file" />, path: "/dashboard/cm-report", allow: ["admin", "owner", "technician", "cs", "planner"], showMode: "after" },
       { name: "Test report", icon: <i className="fa fa-check-square" />, path: "/dashboard/test-report", allow: ["admin", "owner", "technician", "planner"], showMode: "after" },
-      { name: "AI Module", icon: <i className="fa fa-robot" />, path: "/dashboard/ai", allow: ["admin", "owner", "planner"], showMode: "after" },
+      { name: "AI Fault Intelligence", icon: <i className="fa fa-robot" />, path: "/dashboard/ai/fault-detection", allow: ["admin", "owner", "planner"], showMode: "after" },
     ],
   },
 ];
@@ -176,7 +176,7 @@ const canSeeByMode = (showMode, hasChargerSelected) => {
 
 function removeAiModule(items) {
   return items
-    .filter(item => item.path !== "/dashboard/ai")
+    .filter(item => !(typeof item.path === "string" && (item.path === "/dashboard/ai" || item.path.startsWith("/dashboard/ai/"))))
     .map(item => ({
       ...item,
       pages: Array.isArray(item.pages) ? removeAiModule(item.pages) : item.pages,

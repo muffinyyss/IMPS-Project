@@ -1,8 +1,6 @@
 "use client";
 
-/* eslint-disable @next/next/next-script-for-ga */
 import React from "react";
-import Script from "next/script";
 import ThemeProvider from "@/components/ThemeProvider";
 import theme from "@/theme";
 import { MaterialTailwindControllerProvider } from "@/context";
@@ -16,21 +14,21 @@ import "./globals.css";
 
 const kanit = Kanit({
   subsets: ["thai", "latin"],
-  weight: ["400", "600", "700"],
+  weight: ["400", "500", "600", "700", "800"],
   variable: "--font-kanit",
   display: "swap",
 });
 
 const jakarta = Plus_Jakarta_Sans({
   subsets: ["latin"],
-  weight: ["400", "600", "700"],
+  weight: ["400", "500", "600", "700", "800"],
   variable: "--font-jakarta",
   display: "swap",
 });
 
 const jetbrains = JetBrains_Mono({
   subsets: ["latin"],
-  weight: ["400"],
+  weight: ["400", "500", "600", "700"],
   variable: "--font-mono",
   display: "swap",
 });
@@ -43,11 +41,6 @@ export default function RootLayout({
   return (
     <html lang="th" className={`${kanit.variable} ${jakarta.variable} ${jetbrains.variable}`}>
       <head>
-        <Script
-          defer
-          data-site="YOUR_DOMAIN_HERE"
-          src="https://api.nepcha.com/js/nepcha-analytics.js"
-        />
         <link rel="icon" type="image/svg+xml" href="/img/favicon.png" />
         <title>iMPS</title>
       </head>

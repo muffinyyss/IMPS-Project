@@ -43,7 +43,7 @@
   --ai-Rx:       6px;
 
   /* ── Fonts (ตรงกับ iMPS layout.tsx ทุก font) ── */
-  --ai-font-body: var(--font-jakarta), 'Plus Jakarta Sans', var(--font-prompt), 'Prompt', system-ui, sans-serif;
+  --ai-font-body: var(--font-kanit), 'Kanit', var(--font-jakarta), 'Plus Jakarta Sans', var(--font-prompt), 'Prompt', system-ui, sans-serif;
   --ai-font-mono: var(--font-mono), 'JetBrains Mono', monospace;
 
   /* ── Shadow (iMPS: shadow-sm) ── */
@@ -80,13 +80,22 @@
 }
 
 /* ── Font application ── */
-.ai-platform, .ai-root,
-.ai-platform *, .ai-root * {
+.ai-platform,
+.ai-root {
   font-family: var(--ai-font-body);
 }
 
+.ai-platform *,
+.ai-root * {
+  font-family: inherit;
+}
+
 /* ── Mono ── */
-.ai-mono { font-family: var(--ai-font-mono); }
+.ai-platform .ai-mono,
+.ai-root .ai-mono {
+  font-family: var(--ai-font-mono);
+  font-variant-numeric: tabular-nums;
+}
 
 /* ── Card — bg-white rounded-xl border border-gray-100 shadow-sm ── */
 .ai-card {
