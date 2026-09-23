@@ -15,7 +15,7 @@ import { draftKey, saveDraftLocal, loadDraftLocal, clearDraftLocal } from "../li
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import PmApprovalBar from "@/app/dashboard/pm-report/components/PmApprovalBar";
-import PmCompareTable from "@/app/dashboard/pm-report/components/PmCompareTable";
+import PmResultTable from "@/app/dashboard/pm-report/components/PmResultTable";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 import { Tabs, TabsHeader, Tab } from "@material-tailwind/react";
 import { putPhoto, getPhotoByDbKey, delPhoto, type PhotoRef } from "../lib/draftPhotos";
@@ -1098,7 +1098,7 @@ export default function StationPMReport() {
         return keys;
     }, []);
 
-    // รูปจากเอกสาร (ใช้ในตารางเทียบตอนตรวจอนุมัติ)
+    // รูปจากเอกสาร (ใช้ในตารางผลการตรวจตอนตรวจอนุมัติ)
     // state รูปปกติของฟอร์มเป็นรูปในเครื่องที่กำลังกรอกอยู่ จึงต้องเก็บของ document ไว้ต่างหาก
     const [cmpPhotos, setCmpPhotos] = useState<any>({});
     const [rows, setRows] = useState<Record<string, { pf: PF; remark: string }>>(() => {
@@ -1597,7 +1597,7 @@ export default function StationPMReport() {
 
     useEffect(() => { void prefetchLocation(); }, []);
 
-    // ── ตารางเทียบก่อน/หลัง PM (โหมดตรวจอนุมัติ) ──
+    // ── ตารางผลการตรวจ PM (โหมดตรวจอนุมัติ) ──
     // ใช้ state ที่โหลดเอกสารมาแล้ว: rows = คำตอบหลัง PM
     // คีย์ที่ไม่ได้อยู่ใน QUESTIONS (ข้อย่อยแบบ r5_1) เอามาต่อท้ายด้วย จะได้ไม่ตกหล่น
     // station รวมรูปของทั้งข้อไว้ที่คีย์เดียว (toGroupKey ส่งทั้ง q{n} และ r{n}_{i}
@@ -1635,8 +1635,8 @@ export default function StationPMReport() {
             section,
             qNo,
             label,
-            postPf: (rows as any)?.[k]?.pf,
-            postRemark: (rows as any)?.[k]?.remark,
+            pf: (rows as any)?.[k]?.pf,
+            remark: (rows as any)?.[k]?.remark,
         });
         // วางโครงเดียวกับฟอร์มกรอก: หัวข้อใหญ่เป็นแถบคั่น แล้วข้อย่อยเรียงอยู่ใต้มัน
         // ข้อธรรมดาที่ไม่มีข้อย่อย ตัวมันเองคือเนื้อในของแถบ ช่องหัวข้อจึงเว้นว่าง
@@ -1644,7 +1644,7 @@ export default function StationPMReport() {
         (QUESTIONS as any[]).forEach((q: any) => {
             if (!q?.key) return;
             const section = labelOf(q.key);
-            // เลขข้อ — ใช้รวมรูปของทั้งข้อในตารางเทียบ แบบเดียวกับที่ PDF ทำ
+            // เลขข้อ — ใช้รวมรูปของทั้งข้อในตารางผลการตรวจ แบบเดียวกับที่ PDF ทำ
             const qNo: number | undefined = typeof q?.no === "number" ? q.no
                 : Number(String(q?.key ?? "").replace(/^r/, "")) || undefined;
             out.push(mk(q.key, section, "", qNo));
@@ -1662,7 +1662,7 @@ export default function StationPMReport() {
 
 
     // กล่องหมายเหตุ + สรุปผลการตรวจสอบ — ประกาศครั้งเดียว วางได้สองที่
-    // ตอนกรอกอยู่ในฟอร์มตามเดิม ตอนตรวจย้ายลงไปล่างสุดใต้ตารางเทียบ
+    // ตอนกรอกอยู่ในฟอร์มตามเดิม ตอนตรวจย้ายลงไปล่างสุดใต้ตารางผลการตรวจ
     const summaryBlock = (
                         <div id={`${ID_PREFIX}-summary-section`} className="tw-mt-6 sm:tw-mt-8 tw-space-y-3">
                             <Typography variant="h6" className="tw-mb-1 tw-text-sm sm:tw-text-base">{t("comment", lang)}</Typography>
@@ -1725,12 +1725,12 @@ export default function StationPMReport() {
                     </div>
 
                     <div className="tw-mt-6 sm:tw-mt-8 tw-space-y-4 sm:tw-space-y-6">
-                        {/* โหมดตรวจ: ตัดเฉพาะรายการข้อที่ช่างกรอก ดูจากตารางเทียบก่อน/หลังด้านล่างแทน
+                        {/* โหมดตรวจ: ตัดเฉพาะรายการข้อที่ช่างกรอก ดูจากตารางผลการตรวจก่อน/หลังด้านล่างแทน
                             ส่วนหัวเอกสารกับข้อมูลสถานีคงไว้ ผู้อนุมัติต้องรู้ว่ากำลังดูใบไหน */}
                         {!reviewMode && QUESTIONS.map((q) => renderQuestionBlock(q))}
                     </div>
 
-                    {/* โหมดตรวจ: ย้ายไปไว้ล่างสุด ให้อ่านหลังดูตารางเทียบเสร็จ */}
+                    {/* โหมดตรวจ: ย้ายไปไว้ล่างสุด ให้อ่านหลังดูตารางผลการตรวจเสร็จ */}
                     {!reviewMode && summaryBlock}
 
                     <div className="tw-mt-6 sm:tw-mt-8 tw-flex tw-flex-col tw-gap-3">
@@ -1833,15 +1833,14 @@ export default function StationPMReport() {
                 </div>
                 </fieldset>
             </form>
-            {/* เทียบผลก่อน/หลังของหัวข้อเดียวกันในบรรทัดเดียว */}
+            {/* ผลการตรวจของทุกหัวข้อในตารางเดียว */}
             {reviewMode && editId && (
-                <PmCompareTable
+                <PmResultTable
                     rows={compareRows}
                     lang={lang}
-                    postPhotos={cmpPhotos}
+                    photos={cmpPhotos}
                     apiBase={API_BASE}
                     photoKeysOf={photoKeysOf}
-                    summaryPost={summary}
                 />
             )}
             {reviewMode && editId && (

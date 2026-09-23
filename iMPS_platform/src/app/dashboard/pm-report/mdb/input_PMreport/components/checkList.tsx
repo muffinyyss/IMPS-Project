@@ -12,7 +12,7 @@ import Image from "next/image";
 import { draftKey, saveDraftLocal, loadDraftLocal, clearDraftLocal } from "../lib/draft";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import PmApprovalBar from "@/app/dashboard/pm-report/components/PmApprovalBar";
-import PmCompareTable from "@/app/dashboard/pm-report/components/PmCompareTable";
+import PmResultTable from "@/app/dashboard/pm-report/components/PmResultTable";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 import { putPhoto, getPhotoByDbKey, delPhoto, type PhotoRef } from "../lib/draftPhotos";
 import { isFileReadable, isImageDecodable, resolveUsableFile, reportMissingDraftPhoto, reportPhotoStorageFailure } from "@/utils/upload-safety";
@@ -1095,12 +1095,8 @@ export default function MDBPMForm() {
 
     useEffect(() => { void prefetchLocation(); }, []);
 
-    // เฉพาะใบเก่าที่กรอกสมัยยังมี 2 ด่าน — ฟอร์มไม่มีด่าน "ก่อน PM" แล้ว แต่เอกสารเก่า
-    // ที่มี rows_pre/photos_pre อยู่ ยังต้องเปิดตรวจแบบตารางเทียบก่อน/หลังได้เหมือนเดิม
-    // จึงอ่านมาเก็บไว้อย่างเดียว ไม่มีอะไรในฟอร์มเขียนค่าพวกนี้อีกแล้ว
-    const [rowsPre, setRowsPre] = useState<Record<string, { pf: PF; remark: string }>>({});
-    const [summaryPre, setSummaryPre] = useState<string>("");
-    const [cmpPhotos, setCmpPhotos] = useState<{ pre: any; post: any }>({ pre: {}, post: {} });
+    // รูปจากเอกสาร (ใช้ในตารางผลการตรวจตอนตรวจอนุมัติ) — state รูปของฟอร์มเป็นรูปในเครื่อง
+    const [cmpPhotos, setCmpPhotos] = useState<any>({});
 
     // ใบที่ไม่มี form_version (หรือต่ำกว่าปัจจุบัน) ใช้เลขข้อคนละชุด — คีย์ r1..r13
     // ของใบพวกนั้นคือหัวข้อ 1-13 แบบเก่า ถ้าเอามาเปิดในฟอร์มนี้จะจับคู่ผิดหัวข้อทั้งใบ
@@ -1190,7 +1186,7 @@ export default function MDBPMForm() {
                 if (data.q6_items) setQ8Items(data.q6_items.map((it: any, i: number) => ({ ...it, label: getDynamicLabel.breakerCCB(i + 1, lang) })));
                 if (data.doc_name) setDocName(data.doc_name);
                 if (data.inspector) setInspector(data.inspector);
-                setCmpPhotos({ pre: data.photos_pre ?? {}, post: data.photos ?? {} });
+                setCmpPhotos(data.photos ?? {});
                 // ค่าที่ช่างกรอกไว้เก็บอยู่ใน draft ของเครื่องช่างด้วย แต่คนอื่นที่เปิดใบเดียวกัน
                 // (ผู้อนุมัติ / ช่างที่มาแก้ใบโดนตีกลับจากอีกเครื่อง) ไม่มี draft นั้น
                 // ต้องอ่านจากตัวเอกสารเสมอ ไม่งั้นเปิดมาเจอช่องว่าง
@@ -1205,8 +1201,6 @@ export default function MDBPMForm() {
                 if (data?.measures?.m5) setM5State(data.measures.m5);
                 if (data?.measures?.m6) setM6State(data.measures.m6);
                 if (data?.measures?.m7) setM7State(data.measures.m7);
-                if (typeof data.summary_pre === "string") setSummaryPre(data.summary_pre);
-                if (data.rows_pre) setRowsPre(data.rows_pre);
                 if (data.rows) setRows(prev => { const n = { ...prev }; Object.entries(data.rows).forEach(([k, v]) => { n[k] = v as { pf: PF; remark: string }; }); return n; });
                 setDocApiLoaded(true);
             } catch (err) { console.error("load report failed:", err); setDocApiLoaded(true); }
@@ -1830,8 +1824,8 @@ export default function MDBPMForm() {
 
     // ==================== RENDER ====================
 
-    // ── ตารางเทียบก่อน/หลัง PM (โหมดตรวจอนุมัติ) ──
-    // ใช้ state ที่โหลดเอกสารมาแล้ว: rowsPre = คำตอบก่อน PM, rows = หลัง PM
+    // ── ตารางผลการตรวจ PM (โหมดตรวจอนุมัติ) ──
+    // ใช้ state ที่โหลดเอกสารมาแล้ว (rows = ผลการตรวจ)
     // คีย์ที่ไม่ได้อยู่ใน QUESTIONS (ข้อย่อยแบบ r5_1) เอามาต่อท้ายด้วย จะได้ไม่ตกหล่น
     // คีย์รูปของ mdb: ข้อหลักแปลงเป็น g{n} ส่วนข้อย่อยเก็บด้วยคีย์คำตอบตรงๆ
     // (normalizeGroup ปล่อย r{n}_{i} ผ่านโดยไม่เติม g)
@@ -1865,17 +1859,15 @@ export default function MDBPMForm() {
             (legacyDoc ? LEGACY_ROW_LABELS[key]?.[lang] : undefined) ?? labels.get(key) ?? key;
         // เรียงตามลำดับข้อในฟอร์มกรอก ข้อย่อยที่ช่างเพิ่มเอง (r5_1, r5_2)
         // ต้องต่อท้ายข้อแม่ของมัน ไม่ใช่ไปกองรวมกันท้ายตาราง
-        const answered = Array.from(new Set([...Object.keys(rowsPre ?? {}), ...Object.keys(rows ?? {})]));
+        const answered = Object.keys(rows ?? {});
         const subNo = (k: string) => Number(k.split("_")[1] ?? 0) || 0;
         const mk = (k: string, section: string, label: string, qNo?: number) => ({
             key: k,
             section,
             qNo,
             label,
-            prePf: (rowsPre as any)?.[k]?.pf,
-            preRemark: (rowsPre as any)?.[k]?.remark,
-            postPf: (rows as any)?.[k]?.pf,
-            postRemark: (rows as any)?.[k]?.remark,
+            pf: (rows as any)?.[k]?.pf,
+            remark: (rows as any)?.[k]?.remark,
         });
         // วางโครงเดียวกับฟอร์มกรอก: หัวข้อใหญ่เป็นแถบคั่น แล้วข้อย่อยเรียงอยู่ใต้มัน
         // ข้อธรรมดาที่ไม่มีข้อย่อย ตัวมันเองคือเนื้อในของแถบ ช่องหัวข้อจึงเว้นว่าง
@@ -1883,7 +1875,7 @@ export default function MDBPMForm() {
         (QUESTIONS as any[]).forEach((q: any) => {
             if (!q?.key) return;
             const section = labelOf(q.key);
-            // เลขข้อ — ใช้รวมรูปของทั้งข้อในตารางเทียบ แบบเดียวกับที่ PDF ทำ
+            // เลขข้อ — ใช้รวมรูปของทั้งข้อในตารางผลการตรวจ แบบเดียวกับที่ PDF ทำ
             const qNo: number | undefined = typeof q?.no === "number" ? q.no
                 : Number(String(q?.key ?? "").replace(/^r/, "")) || undefined;
             out.push(mk(q.key, section, "", qNo));
@@ -1897,11 +1889,11 @@ export default function MDBPMForm() {
             out.push(mk(k, "", labelOf(k), Number(k.replace(/^r/, "").split("_")[0]) || undefined));
         });
         return out;
-    }, [rowsPre, rows, lang, legacyDoc, q6Items, q7Items, q8Items, q9Items, q10Items, q11Items, q12Items, q13Items]);
+    }, [rows, lang, legacyDoc, q6Items, q7Items, q8Items, q9Items, q10Items, q11Items, q12Items, q13Items]);
 
 
     // กล่องหมายเหตุ + สรุปผลการตรวจสอบ — ประกาศครั้งเดียว วางได้สองที่
-    // ตอนกรอกอยู่ในฟอร์มตามเดิม ตอนตรวจย้ายลงไปล่างสุดใต้ตารางเทียบ
+    // ตอนกรอกอยู่ในฟอร์มตามเดิม ตอนตรวจย้ายลงไปล่างสุดใต้ตารางผลการตรวจ
     const summaryBlock = (
                         <div id="mdb-pm-summary-section" className="tw-mt-6 sm:tw-mt-8 tw-space-y-3 tw-transition-all tw-duration-300">
                             <Typography variant="h6" className="tw-mb-1 tw-text-sm sm:tw-text-base">{t("comment", lang)}</Typography>
@@ -2090,17 +2082,14 @@ export default function MDBPMForm() {
                 </fieldset>
             </form>
             <BackgroundUploadBanner lang={lang} />
-            {/* ใบรุ่นเก่า — อ่านคำตอบ/รูปจากตารางสรุป (ก่อน/หลัง PM ถ้าใบนั้นมีทั้งสองด่าน) */}
+            {/* ใบรุ่นเก่า — อ่านคำตอบ/รูปจากตารางผลการตรวจ */}
             {legacyDoc && (
-                <PmCompareTable
+                <PmResultTable
                     rows={compareRows}
                     lang={lang}
-                    prePhotos={cmpPhotos.pre}
-                    postPhotos={cmpPhotos.post}
+                    photos={cmpPhotos}
                     apiBase={API_BASE}
                     photoKeysOf={photoKeysOf}
-                    summaryPre={summaryPre}
-                    summaryPost={summary}
                 />
             )}
             {legacyDoc && (
