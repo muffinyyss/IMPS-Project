@@ -91,29 +91,20 @@ def list_fields(it: dict, ensure_utc_iso) -> dict:
     }
 
 
-async def finalize(coll, oid: ObjectId, scope_filter: dict) -> None:
+def validate_work_time(work_start: Any, work_finish: Any) -> tuple[str, str]:
     """
-    ช่างกดส่ง = เข้าคิวรอ planner อนุมัติ (ไม่ปิดงานเอง)
-
-    ตรวจก่อน 2 อย่าง: ปิดไปแล้วห้ามส่งซ้ำ · ต้องมีเวลาทำงานครบ (ใช้ส่ง IN09)
+    เวลาทำงานจริง (datetime-local ของไทย "YYYY-MM-DDTHH:MM") — ใช้ส่ง Maximo IN09
+    ต้องมีครบ, เสร็จไม่ก่อนเริ่ม และไม่เป็นเวลาในอนาคต
     """
-    doc = await coll.find_one(
-        {**scope_filter, "_id": oid},
-        {"_id": 1, "status": 1, "work_start": 1, "work_finish": 1},
-    )
-    if not doc:
-        raise HTTPException(status_code=404, detail="Report not found")
-
-    if str(doc.get("status") or "").strip().lower() in PM_CLOSED_STATUSES:
-        raise HTTPException(status_code=409, detail="Report is already closed")
-
-    work_start = str(doc.get("work_start") or "").strip()
-    work_finish = str(doc.get("work_finish") or "").strip()
+    work_start = str(work_start or "").strip()
+    work_finish = str(work_finish or "").strip()
     if not work_start or not work_finish:
         raise HTTPException(
             status_code=400,
             detail="กรุณากรอกเวลาเริ่มงานและเวลาเสร็จงานก่อนส่งปิดใบงาน",
         )
+    if work_finish < work_start:
+        raise HTTPException(status_code=400, detail="เวลาเสร็จงานต้องไม่ก่อนเวลาเริ่มงาน")
 
     # Maximo ตีกลับ IN09 ด้วย BMXAA2641E ถ้าเวลาทำงานยังมาไม่ถึง
     # ("You cannot enter actual labor with future dates and times")
@@ -129,6 +120,29 @@ async def finalize(coll, oid: ObjectId, scope_filter: dict) -> None:
                 "Maximo ไม่รับ กรุณาแก้ก่อนส่งปิดใบงาน"
             ),
         )
+    return work_start, work_finish
+
+
+async def finalize(coll, oid: ObjectId, scope_filter: dict) -> None:
+    """
+    ช่างกดส่ง = เข้าคิวรอ planner อนุมัติ (ไม่ปิดงานเอง)
+
+    ตรวจก่อน 2 อย่าง: ปิดไปแล้วห้ามส่งซ้ำ · ต้องมีเวลาทำงานครบ (ใช้ส่ง IN09)
+    ใบลูกของใบ PM สถานี (มี job_id) ไม่ต้องมีเวลาตอนนี้ — กรอกครั้งเดียวตอนกด
+    "ปิดใบงาน" ที่หน้ารวม แล้วระบบเขียนลงทุกส่วนให้ (pmreport_station_job)
+    """
+    doc = await coll.find_one(
+        {**scope_filter, "_id": oid},
+        {"_id": 1, "status": 1, "work_start": 1, "work_finish": 1, "job_id": 1},
+    )
+    if not doc:
+        raise HTTPException(status_code=404, detail="Report not found")
+
+    if str(doc.get("status") or "").strip().lower() in PM_CLOSED_STATUSES:
+        raise HTTPException(status_code=409, detail="Report is already closed")
+
+    if not doc.get("job_id"):
+        validate_work_time(doc.get("work_start"), doc.get("work_finish"))
 
     now = datetime.now(timezone.utc)
     res = await coll.update_one(
@@ -342,13 +356,19 @@ async def wo_completion(wonum: str) -> dict:
 
 def post_submit_fields(body: Any) -> dict:
     """ฟิลด์เพิ่มเติมตอนบันทึก Post-PM ที่ทุกชนิดใช้ร่วมกัน"""
-    fields = {
-        "work_start": (getattr(body, "work_start", None) or "").strip(),
-        "work_finish": (getattr(body, "work_finish", None) or "").strip(),
-        # laborcode ที่ช่างเลือกเอง + ชื่อผู้รับเหมา (ถ้าเลือกรหัสกลาง) — ใช้ส่ง IN09
-        "maximo_labor": list(getattr(body, "maximo_labor", None) or []),
-        "maximo_contractor": (getattr(body, "maximo_contractor", None) or "").strip(),
-    }
+    # ไม่ได้ส่งมา (None) = "ไม่รู้" ไม่ใช่ "ให้ล้าง" — ใบลูกของใบ PM สถานีไม่ส่งค่าพวกนี้
+    # เพราะกรอกครั้งเดียวตอนกด "ปิดใบงาน" ที่หน้ารวม ถ้าเขียนทับด้วยค่าว่าง ส่วนที่ส่งใหม่
+    # หลังโดนตีกลับจะไม่มีเวลาไปลง Maximo
+    fields: dict = {}
+    if getattr(body, "work_start", None) is not None:
+        fields["work_start"] = (body.work_start or "").strip()
+    if getattr(body, "work_finish", None) is not None:
+        fields["work_finish"] = (body.work_finish or "").strip()
+    # laborcode ที่ช่างเลือกเอง + ชื่อผู้รับเหมา (ถ้าเลือกรหัสกลาง) — ใช้ส่ง IN09
+    if getattr(body, "maximo_labor", None) is not None:
+        fields["maximo_labor"] = list(body.maximo_labor or [])
+    if getattr(body, "maximo_contractor", None) is not None:
+        fields["maximo_contractor"] = (body.maximo_contractor or "").strip()
 
     # wonum ว่าง = "ไม่รู้" ไม่ใช่ "ให้ลบ" — เลขนี้ผูกตั้งแต่ตอนบันทึก Pre-PM
     # ถ้าเขียนทับด้วยค่าว่างตอน Post ใบงานจะหลุดจาก Maximo ทันที ปิดงานแล้วก็

@@ -622,13 +622,16 @@ async def pmreport_finalize(report_id: str, sn: str = Form(...), current: UserCl
         raise HTTPException(status_code=400, detail="Bad report_id")
 
     doc = await coll.find_one(
-        {"_id": oid}, {"_id": 1, "status": 1, "work_start": 1, "work_finish": 1}
+        {"_id": oid}, {"_id": 1, "status": 1, "work_start": 1, "work_finish": 1, "job_id": 1}
     )
     if not doc:
         raise HTTPException(status_code=404, detail="Report not found")
 
     # เวลาทำงานเป็นข้อมูลที่ต้องส่งเข้า Maximo (IN09) — ขาดแล้วปิดงานไปก็ยิงไม่ได้
-    if not str(doc.get("work_start") or "").strip() or not str(doc.get("work_finish") or "").strip():
+    # ใบลูกของใบ PM สถานี (มี job_id) กรอกครั้งเดียวตอนกด "ปิดใบงาน" ที่หน้ารวม
+    if not doc.get("job_id") and (
+        not str(doc.get("work_start") or "").strip() or not str(doc.get("work_finish") or "").strip()
+    ):
         raise HTTPException(
             status_code=400,
             detail="กรุณากรอกเวลาเริ่มงานและเวลาเสร็จงานก่อนส่งปิดใบงาน",

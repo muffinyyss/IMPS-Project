@@ -364,6 +364,10 @@ def _serialize_job(job: dict, sections: list[dict], required: set[SectionKey] | 
         "missing": [s.get("label") or {"th": s["section"], "en": s["section"]} for s in progress["missing"]],
         "submitted_by": job.get("submitted_by") or "",
         "submitted_at": _iso(job.get("submitted_at")),
+        "work_start": job.get("work_start") or "",
+        "work_finish": job.get("work_finish") or "",
+        "maximo_labor": job.get("maximo_labor") or [],
+        "maximo_contractor": job.get("maximo_contractor") or "",
     }
 
 
@@ -536,9 +540,17 @@ async def job_numbering(station_id: str, job_id: str) -> dict:
 # ช่างกด "ปิดใบงาน" — ส่งทั้งใบเข้าคิวอนุมัติ
 # ══════════════════════════════════════════════════════════════════
 
+class SubmitJobIn(BaseModel):
+    work_start: str                       # datetime-local ของไทย "YYYY-MM-DDTHH:MM"
+    work_finish: str
+    maximo_labor: list[str] = []          # laborcode ที่ลงเวลาเข้า Maximo (IN09)
+    maximo_contractor: str = ""           # ชื่อจริง เมื่อเลือกรหัสกลางของผู้รับเหมา
+
+
 @router.post("/stationpmjob/{job_id}/submit")
 async def submit_station_pm_job(
     job_id: str,
+    body: SubmitJobIn,
     station_id: str = Query(...),
     current: UserClaims = Depends(get_current_user),
 ):
@@ -547,7 +559,23 @@ async def submit_station_pm_job(
     (ส่งครบทุกส่วนแล้วยังไม่ขึ้นเอง ช่างจะได้ทบทวนทั้งใบก่อน)
 
     กดได้เมื่อส่งครบทุกส่วนตามแผน และไม่มีส่วนที่ยังแก้ค้างอยู่
+    เวลาทำงาน + ช่างที่ลงเวลา Maximo กรอกครั้งเดียวตรงนี้ (ไม่ต้องกรอกซ้ำทุกส่วน)
+    แล้วเขียนลงใบลูกทุกใบ เพราะตอนอนุมัติ IN09 อ่านจากใบลูก
     """
+    from services.cm_maximo import CONTRACTOR_LABOR_CODE
+
+    work_start, work_finish = pm_flow.validate_work_time(body.work_start, body.work_finish)
+    labor = list(dict.fromkeys(str(c).strip() for c in body.maximo_labor if str(c or "").strip()))
+    contractor = (body.maximo_contractor or "").strip()
+    has_contractor_code = any(c.upper() == CONTRACTOR_LABOR_CODE for c in labor)
+    if has_contractor_code and not contractor:
+        raise HTTPException(status_code=400, detail="เลือกรหัสผู้รับเหมาแล้ว กรุณาระบุชื่อผู้รับเหมา")
+    work = {
+        "work_start": work_start,
+        "work_finish": work_finish,
+        "maximo_labor": labor,
+        "maximo_contractor": contractor if has_contractor_code else "",
+    }
     station_id = station_id.strip()
     jobs = get_stationpmjob_collection_for(station_id)
     job = await jobs.find_one({"_id": pm_flow.to_oid(job_id)})
@@ -566,10 +594,19 @@ async def submit_station_pm_job(
             detail=f"ยังกรอกไม่ครบ: {names}" if names else "ยังไม่มีส่วนไหนถูกกรอก",
         )
 
+    # เขียนลงใบลูกทุกใบที่ส่งแล้วก่อน — ใบแม่จะได้ไม่ขึ้นรออนุมัติทั้งที่ใบลูกยังไม่มีเวลา
+    for state in sections:
+        if not state["report_id"]:
+            continue
+        sn = state.get("sn") or ""
+        coll = section_collection(state["section"], station_id, sn)
+        await coll.update_one({"_id": ObjectId(state["report_id"])}, {"$set": work})
+
     now = datetime.now(timezone.utc)
     await jobs.update_one(
         {"_id": job["_id"]},
         {"$set": {
+            **work,
             "submitted_at": now,
             "submitted_by": current.username or current.sub,
             "status": pm_flow.PM_STATUS_WAIT_APPROVE,

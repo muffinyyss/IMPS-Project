@@ -10,7 +10,7 @@ import {
 import Image from "next/image";
 import { draftKey, saveDraftLocal, loadDraftLocal, clearDraftLocal } from "../lib/draft";
 import { useRouter, useSearchParams } from "next/navigation";
-import { pmBackRoute } from "@/app/dashboard/pm-report/lib/origin";
+import { pmFormReturnRoute } from "@/app/dashboard/pm-report/lib/origin";
 import { useDebouncedEffect } from "@/app/dashboard/pm-report/lib/useDebouncedEffect";
 import PmApprovalBar from "@/app/dashboard/pm-report/components/PmApprovalBar";
 import PmCompareTable from "@/app/dashboard/pm-report/components/PmCompareTable";
@@ -2419,7 +2419,8 @@ export default function ChargerPMForm() {
     // ปุ่มย้อนกลับ: เปิดมาจากหน้า PM List ให้กลับไปหน้านั้นตรง ๆ
     // (router.back() ไม่แน่นอน เพราะประวัติของเบราว์เซอร์อาจไม่ได้มาจากหน้า List)
     const goBackToList = useCallback(() => {
-        const back = pmBackRoute(searchParams);
+        // กลับหน้าที่เปิดเข้ามา: หน้ารวมของใบ PM สถานี / PM List — นอกนั้นถอยประวัติ
+        const back = pmFormReturnRoute(searchParams);
         if (back) router.push(back);
         else router.back();
     }, [router, searchParams]);
@@ -2625,14 +2626,14 @@ export default function ChargerPMForm() {
         if (!allRequiredInputsFilled) { alert(t("alertFillRequired", lang)); return; }
         if (!isSummaryFilled || !isSummaryCheckFilled) { alert(t("alertCompleteAll", lang)); return; }
         // เวลาทำงานต้องครบ — backend ก็กันไว้อีกชั้น เพราะ IN09 ต้องใช้
-        if (!workStart || !workFinish) { alert(t("alertWorkTime", lang)); return; }
-        if (contractorMissing) { alert(t("contractorRequired", lang)); return; }
-        if (workFinish < workStart) { alert(t("alertWorkTimeOrder", lang)); return; }
+        if (!jobId && (!workStart || !workFinish)) { alert(t("alertWorkTime", lang)); return; }
+        if (!jobId && contractorMissing) { alert(t("contractorRequired", lang)); return; }
+        if (!jobId && workFinish < workStart) { alert(t("alertWorkTimeOrder", lang)); return; }
         // Maximo ตีกลับ IN09 ด้วย BMXAA2641E ถ้าเวลาทำงานยังมาไม่ถึง
         // ปล่อยผ่านตรงนี้ = ปิดใบงานได้แต่ปิด WO ในระบบเขาไม่ได้ ต้องมาแก้ย้อนหลัง
         const nowLocal = new Date(Date.now() - new Date().getTimezoneOffset() * 60000)
             .toISOString().slice(0, 16);
-        if (workStart > nowLocal || workFinish > nowLocal) { alert(t("alertWorkTimeFuture", lang)); return; }
+        if (!jobId && (workStart > nowLocal || workFinish > nowLocal)) { alert(t("alertWorkTimeFuture", lang)); return; }
         if (submitting) return;
         setSubmitting(true);
         try {
@@ -2647,7 +2648,7 @@ export default function ChargerPMForm() {
                 }
             }
             if (!report_id) {
-                const payload = { sn: sn, ...(jobId ? { job_id: jobId } : {}), inspector, job: { station_name: job.station_name, date: job.date }, ...(job.date ? { pm_date: job.date } : {}), rows, measures: { m16: m16.state, cp }, summary, ...(summaryCheck ? { summaryCheck } : {}), work_start: workStart, work_finish: workFinish, maximo_labor: maximoLabor, maximo_contractor: contractorPicked ? maximoContractor.trim() : "", wonum: searchParams.get("wonum") ?? "", dust_filter: dustFilterChanged, side: "post" as const, report_id: editId };
+                const payload = { sn: sn, ...(jobId ? { job_id: jobId } : {}), inspector, job: { station_name: job.station_name, date: job.date }, ...(job.date ? { pm_date: job.date } : {}), rows, measures: { m16: m16.state, cp }, summary, ...(summaryCheck ? { summaryCheck } : {}), ...(jobId ? {} : { work_start: workStart, work_finish: workFinish, maximo_labor: maximoLabor, maximo_contractor: contractorPicked ? maximoContractor.trim() : "" }), wonum: searchParams.get("wonum") ?? "", dust_filter: dustFilterChanged, side: "post" as const, report_id: editId };
                 const submitRes = await apiFetch(`${API_BASE}/pmreport/submit`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
                 if (!submitRes.ok) throw new Error(await submitRes.text());
                 const jsonRes = await submitRes.json() as { report_id: string };
@@ -2771,15 +2772,9 @@ export default function ChargerPMForm() {
             Promise.all(allPhotos.map(p => delPhoto(postKey, p.id))).catch(() => { });
             draftClearedRef.current = true; // กัน autosave ที่ค้างอยู่เขียน draft กลับมาหลังล้าง
             clearDraftLocal(postKey);
-            if (jobId) {
-                // ส่วนที่ 5 ของใบ PM สถานี — กลับไปหน้ารวมของใบนั้น ช่างมักกรอกตู้ถัดไปต่อ
-                const back = new URLSearchParams({ view: "form", job_id: jobId });
-                const stationId = searchParams.get("station_id");
-                if (stationId) back.set("station_id", stationId);
-                router.replace(`/dashboard/pm-report?${back.toString()}`);
-            } else {
-                router.replace(`/dashboard/pm-report?sn=${encodeURIComponent(sn)}`);
-            }
+            // กลับหน้าที่เปิดเข้ามา — ส่วนที่ 5 ของใบ PM สถานีกลับหน้ารวมของใบนั้น (ช่างมักกรอกตู้ถัดไปต่อ)
+            // เปิดจาก PM List กลับ PM List — ไม่มีทั้งคู่ก็ไปตารางของตู้
+            router.replace(pmFormReturnRoute(searchParams) ?? `/dashboard/pm-report?sn=${encodeURIComponent(sn)}`);
         } catch (err: any) { alert(`${t("alertSaveFailed", lang)} ${err?.message ?? err}`); } finally { setSubmitting(false); }
     };
 
@@ -2888,6 +2883,9 @@ export default function ChargerPMForm() {
                                         />
                                     </div>}
 
+                                    {/* ใบที่เป็นส่วนหนึ่งของใบ PM สถานี: เวลาทำงาน/ช่างที่ลงเวลา Maximo กรอกครั้งเดียวตอนกด
+                                        "ปิดใบงาน" ที่หน้ารวมของใบ — ไม่ต้องกรอกซ้ำทุกส่วน (ใบเดี่ยวรุ่นเก่ายังกรอกที่นี่) */}
+                                    {!jobId && (<>
                                     {/* เวลาทำงานจริงของช่าง — ต้องกรอกก่อนส่งปิดใบงาน (ส่งเข้า Maximo IN09) */}
                                     <div className="tw-pt-3 sm:tw-pt-4 tw-border-t tw-border-gray-200">
                                         <div className="tw-mb-2">
@@ -2967,6 +2965,7 @@ export default function ChargerPMForm() {
                                             </div>
                                         )}
                                     </div>
+                                    </>)}
                                 </>
                         </div>
     );

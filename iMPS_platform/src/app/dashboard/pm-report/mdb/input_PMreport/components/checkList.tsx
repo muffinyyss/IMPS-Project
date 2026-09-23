@@ -21,7 +21,7 @@ import { collectPending, unrecoverablePhotos, expectedCountByGroup, findShortfal
 import { useLanguage, type Lang } from "@/utils/useLanguage";
 import { apiFetch } from "@/utils/api";
 import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
-import { pmBackRoute } from "@/app/dashboard/pm-report/lib/origin";
+import { pmFormReturnRoute } from "@/app/dashboard/pm-report/lib/origin";
 import { useDebouncedEffect } from "@/app/dashboard/pm-report/lib/useDebouncedEffect";
 
 // ==================== GPS + ADDRESS CACHE ====================
@@ -996,7 +996,8 @@ export default function MDBPMForm() {
     // router.back() ใช้ไม่ได้ เพราะสลับ pmtab ในฟอร์มก็ดันประวัติเพิ่มทุกครั้ง
     // กดกลับเลยแค่ถอยการสลับแท็บ ไม่ได้ออกจากใบงาน
     const goBackToList = useCallback(() => {
-        const back = pmBackRoute(searchParams);
+        // กลับหน้าที่เปิดเข้ามา: หน้ารวมของใบ PM สถานี / PM List — นอกนั้นถอยประวัติ
+        const back = pmFormReturnRoute(searchParams);
         if (back) router.push(back);
         else router.back();
     }, [router, searchParams]);
@@ -1528,8 +1529,11 @@ export default function MDBPMForm() {
                     measures: { m4: m4State, m5: m5State, m6: m6State, m7: m7State },
                     summary, ...(summaryCheck ? { summaryCheck } : {}),
                     dust_filter: dustFilterChanged ? { changed: true } : null,
-                    work_start: workStart, work_finish: workFinish, maximo_labor: maximoLabor,
-                    maximo_contractor: contractorPicked ? maximoContractor.trim() : "",
+                    // ส่วนหนึ่งของใบ PM สถานี: ค่าพวกนี้มาจากตอนกด "ปิดใบงาน" ไม่ส่งไปทับ
+                    ...(jobId ? {} : {
+                        work_start: workStart, work_finish: workFinish, maximo_labor: maximoLabor,
+                        maximo_contractor: contractorPicked ? maximoContractor.trim() : "",
+                    }),
                     wonum: searchParams.get("wonum") ?? "", side: "post" as const, report_id: editId,
                     job: jobWithoutIssueId, issue_id: issueIdFromJob, doc_name: docName,
                     pm_date: job.date?.trim() || "", inspector,
@@ -1660,13 +1664,13 @@ export default function MDBPMForm() {
                 }
             }
 
-            if (!workStart || !workFinish) { alert(t("alertWorkTime", lang)); setSubmitting(false); return; }
-            if (contractorMissing) { alert(t("contractorRequired", lang)); setSubmitting(false); return; }
-            if (workFinish < workStart) { alert(t("alertWorkTimeOrder", lang)); setSubmitting(false); return; }
+            if (!jobId && (!workStart || !workFinish)) { alert(t("alertWorkTime", lang)); setSubmitting(false); return; }
+            if (!jobId && contractorMissing) { alert(t("contractorRequired", lang)); setSubmitting(false); return; }
+            if (!jobId && workFinish < workStart) { alert(t("alertWorkTimeOrder", lang)); setSubmitting(false); return; }
             // Maximo ตีกลับ IN09 ด้วย BMXAA2641E ถ้าเวลาทำงานยังมาไม่ถึง
             // ปล่อยผ่านตรงนี้ = ปิดใบงานได้แต่ปิด WO ในระบบเขาไม่ได้ ต้องมาแก้ย้อนหลัง
             const nowLocal = nowLocalDatetime();
-            if (workStart > nowLocal || workFinish > nowLocal) { alert(t("alertWorkTimeFuture", lang)); setSubmitting(false); return; }
+            if (!jobId && (workStart > nowLocal || workFinish > nowLocal)) { alert(t("alertWorkTimeFuture", lang)); setSubmitting(false); return; }
 
             const finalizeRes = await apiFetch(`${API_BASE}/${PM_PREFIX}/${report_id}/finalize`, {
                 method: "POST", credentials: "include",
@@ -1680,6 +1684,9 @@ export default function MDBPMForm() {
             Promise.all(allPhotos.map(p => delPhoto(currentDraftKey, p.id))).catch(() => { });
             draftClearedRef.current = true; // กัน autosave ที่ค้างอยู่เขียน draft กลับมาหลังล้าง
             clearDraftLocal(currentDraftKey);
+            // กลับหน้าที่เปิดเข้ามา (หน้ารวมของใบ PM สถานี / PM List) — ไม่มีก็ไปตารางใบ PM ของสถานี
+            const returnTo = pmFormReturnRoute(searchParams);
+            if (returnTo) { router.replace(returnTo); return; }
             const listParams = new URLSearchParams();
             listParams.set("station_id", stationId);
             const viewParam = searchParams.get("view");
@@ -2015,6 +2022,9 @@ export default function MDBPMForm() {
                     {!legacyDoc && summaryBlock}
 
                     <div className="tw-mt-6 sm:tw-mt-8 tw-flex tw-flex-col tw-gap-3">
+                    {/* ใบที่เป็นส่วนหนึ่งของใบ PM สถานี: เวลาทำงาน/ช่างที่ลงเวลา Maximo กรอกครั้งเดียวตอนกด
+                        "ปิดใบงาน" ที่หน้ารวมของใบ — ไม่ต้องกรอกซ้ำทุกส่วน (ใบเดี่ยวรุ่นเก่ายังกรอกที่นี่) */}
+                    {!jobId && (<>
                     {/* เวลาทำงานจริงของช่าง — ต้องกรอกก่อนส่งปิดใบงาน (ส่งเข้า Maximo IN09) */}
                     <div className="tw-mt-6 tw-pt-4 tw-border-t tw-border-gray-200">
                         <div className="tw-mb-2">
@@ -2081,6 +2091,7 @@ export default function MDBPMForm() {
                             </div>
                         )}
                     </div>
+                    </>)}
 
                         {/* โหมดตรวจไม่ต้องมี ฟอร์มฝั่งช่างดักความครบถ้วนไว้ตั้งแต่ตอนกรอกแล้ว */}
                         {!reviewMode && !legacyDoc && (

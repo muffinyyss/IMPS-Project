@@ -118,7 +118,14 @@ type Job = {
   /** ส่วนที่ยังขาดก่อนกด "ปิดใบงาน" ได้ */
   missing?: { th: string; en: string }[];
   submitted_by?: string;
+  /** กรอกตอนกด "ปิดใบงาน" — เติมกลับให้ตอนกดใหม่หลังโดนตีกลับ */
+  work_start?: string;
+  work_finish?: string;
+  maximo_labor?: string[];
+  maximo_contractor?: string;
 };
+
+type LaborOption = { laborcode: string; name: string; needs_name?: boolean };
 
 type Me = { username: string; role: string };
 
@@ -165,10 +172,24 @@ const T = {
   downloadPdf: { th: "PDF ทั้งใบ", en: "Full PDF" },
   closeJob: { th: "ปิดใบงาน", en: "Close work order" },
   closingJob: { th: "กำลังปิดใบงาน…", en: "Closing…" },
-  closeJobConfirm: {
-    th: "ปิดใบงานนี้และส่งให้ผู้อนุมัติ?\nหลังจากนี้จะแก้ไขเอกสารไม่ได้ จนกว่าจะถูกตีกลับ",
-    en: "Close this work order and send it for approval?\nThe document can't be edited afterwards unless it is sent back.",
+  closeJobHint: {
+    th: "กรอกเวลาทำงานจริงและช่างที่ลงเวลาเข้า Maximo แล้วส่งให้ผู้อนุมัติ — หลังจากนี้แก้ไขเอกสารไม่ได้ จนกว่าจะถูกตีกลับ",
+    en: "Enter the actual work time and the technicians to log in Maximo, then send for approval. The document can't be edited afterwards unless it is sent back.",
   },
+  workStart: { th: "วันที่เวลาเริ่ม PM", en: "PM start" },
+  workFinish: { th: "วันที่เวลา PM เสร็จ", en: "PM finish" },
+  maximoLabor: { th: "ช่างที่ลงเวลากับ Maximo", en: "Technicians to log in Maximo" },
+  maximoLaborEmpty: { th: "โหลดรายชื่อช่างจาก Maximo ไม่ได้", en: "Could not load technicians from Maximo" },
+  contractorName: { th: "ชื่อผู้รับเหมา", en: "Contractor name" },
+  errWorkTime: { th: "กรุณากรอกวันที่เวลาเริ่มและเสร็จ", en: "Please enter the start and finish time" },
+  errWorkOrder: { th: "เวลาเสร็จต้องไม่ก่อนเวลาเริ่ม", en: "Finish must not be before start" },
+  errWorkFuture: {
+    th: "เวลาทำงานต้องไม่เป็นเวลาในอนาคต — Maximo ไม่รับเวลาที่ยังมาไม่ถึง",
+    en: "Work time cannot be in the future — Maximo rejects times that have not happened yet",
+  },
+  errLabor: { th: "กรุณาเลือกช่างที่ลงเวลากับ Maximo อย่างน้อย 1 คน", en: "Select at least one technician" },
+  errContractor: { th: "กรุณาระบุชื่อผู้รับเหมา", en: "Please enter the contractor name" },
+  confirmClose: { th: "ปิดใบงาน", en: "Close work order" },
   closeJobMissing: { th: "ยังกรอกไม่ครบ:", en: "Still missing:" },
   closeJobEmpty: { th: "ยังไม่มีส่วนไหนถูกกรอก", en: "No section has been filled yet" },
   sectionSent: { th: "กรอกแล้ว", en: "Done" },
@@ -289,6 +310,15 @@ export default function StationPmJobTables() {
   const [newDate, setNewDate] = useState(todayISO);
   const [newWonum, setNewWonum] = useState("");
 
+  // ปิดใบงาน: เวลาทำงานจริง + ช่างที่ลงเวลา Maximo กรอกครั้งเดียวที่นี่ (ฟอร์มแต่ละส่วนไม่มีแล้ว)
+  const [closeOpen, setCloseOpen] = useState(false);
+  const [workStart, setWorkStart] = useState("");
+  const [workFinish, setWorkFinish] = useState("");
+  const [maximoLabor, setMaximoLabor] = useState<string[]>([]);
+  const [maximoContractor, setMaximoContractor] = useState("");
+  const [laborOptions, setLaborOptions] = useState<LaborOption[]>([]);
+  const [closeError, setCloseError] = useState("");
+
   const [rejectOpen, setRejectOpen] = useState(false);
   const [rejectRemark, setRejectRemark] = useState("");
 
@@ -339,6 +369,20 @@ export default function StationPmJobTables() {
         console.error("fetch /me error:", err);
       }
     })();
+  }, []);
+
+  // laborcode ฝั่ง Maximo — username ใน iMPS ใช้แทนกันไม่ได้ ต้องให้เลือกเอง
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const res = await apiFetch("/cm-maximo/labor-codes");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (alive && Array.isArray(data?.items)) setLaborOptions(data.items);
+      } catch { /* โหลดไม่ได้ = ไม่บังคับเลือก ไม่บล็อกการปิดใบงาน */ }
+    })();
+    return () => { alive = false; };
   }, []);
 
   const loadJobs = useCallback(async () => {
@@ -475,21 +519,57 @@ export default function StationPmJobTables() {
     }
   };
 
-  /** ช่างกด "ปิดใบงาน" — ส่งทั้งใบเข้าคิวอนุมัติ */
-  const closeJob = async () => {
+  /** ช่างกด "ปิดใบงาน" → เปิดหน้าต่างกรอกเวลาทำงาน + ช่างที่ลงเวลา Maximo (เติมค่าเดิมถ้าเคยกรอก) */
+  const openCloseJob = () => {
     if (!currentJob || acting || !currentJob.ready_to_submit) return;
-    if (!window.confirm(t("closeJobConfirm", lang))) return;
+    setWorkStart(currentJob.work_start || "");
+    setWorkFinish(currentJob.work_finish || "");
+    setMaximoLabor(currentJob.maximo_labor || []);
+    setMaximoContractor(currentJob.maximo_contractor || "");
+    setCloseError("");
+    setCloseOpen(true);
+  };
+
+  const contractorPicked = laborOptions.some((o) => o.needs_name && maximoLabor.includes(o.laborcode));
+
+  /** ตรวจแบบเดียวกับ backend (pm_flow.validate_work_time) — บอกให้แก้ก่อนยิง */
+  const closeJobProblem = (): string => {
+    if (!workStart || !workFinish) return t("errWorkTime", lang);
+    if (workFinish < workStart) return t("errWorkOrder", lang);
+    const nowLocal = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    if (workStart > nowLocal || workFinish > nowLocal) return t("errWorkFuture", lang);
+    if (laborOptions.length > 0 && maximoLabor.length === 0) return t("errLabor", lang);
+    if (contractorPicked && !maximoContractor.trim()) return t("errContractor", lang);
+    return "";
+  };
+
+  /** ส่งทั้งใบเข้าคิวอนุมัติ พร้อมเวลาทำงาน/ช่าง — backend เขียนลงทุกส่วนให้ */
+  const submitCloseJob = async () => {
+    if (!currentJob || acting) return;
+    const problem = closeJobProblem();
+    if (problem) { setCloseError(problem); return; }
     setActing(true);
+    setCloseError("");
     try {
       const res = await apiFetch(
         `/stationpmjob/${encodeURIComponent(currentJob.id)}/submit?station_id=${encodeURIComponent(currentJob.station_id)}`,
-        { method: "POST" }
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            work_start: workStart,
+            work_finish: workFinish,
+            maximo_labor: maximoLabor,
+            maximo_contractor: contractorPicked ? maximoContractor.trim() : "",
+          }),
+        }
       );
       const json = await res.json().catch(() => ({} as any));
       if (!res.ok) throw new Error(json?.detail || t("errAction", lang));
+      setCloseOpen(false);
       await loadJobs();
     } catch (err) {
-      alert(err instanceof Error ? err.message : t("errAction", lang));
+      setCloseError(err instanceof Error ? err.message : t("errAction", lang));
     } finally {
       setActing(false);
     }
@@ -640,7 +720,7 @@ export default function StationPmJobTables() {
               <Button
                 size="sm"
                 disabled={!job.ready_to_submit || acting}
-                onClick={closeJob}
+                onClick={openCloseJob}
                 className="tw-flex tw-items-center tw-gap-1.5 tw-bg-green-600 disabled:tw-pointer-events-none"
               >
                 <CheckCircleIcon className="tw-h-4 tw-w-4" />
@@ -801,6 +881,85 @@ export default function StationPmJobTables() {
             </div>
           </div>
         )}
+
+        {/* ปิดใบงาน — เวลาทำงานจริง + ช่างที่ลงเวลา Maximo (ใช้ส่ง IN09) */}
+        <Dialog open={closeOpen} handler={() => { if (!acting) setCloseOpen(false); }} size="sm">
+          <DialogHeader>{t("closeJob", lang)}</DialogHeader>
+          <DialogBody className="tw-flex tw-max-h-[70vh] tw-flex-col tw-gap-4 tw-overflow-y-auto">
+            <p className="tw-text-sm tw-text-gray-600">{t("closeJobHint", lang)}</p>
+            <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 tw-gap-3">
+              <label className="tw-block">
+                <span className="tw-mb-1.5 tw-block tw-text-xs tw-font-semibold tw-text-gray-700">
+                  {t("workStart", lang)} <span className="tw-text-red-500">*</span>
+                </span>
+                <input
+                  type="datetime-local"
+                  value={workStart}
+                  onChange={(e) => setWorkStart(e.target.value)}
+                  className="tw-w-full tw-rounded-lg tw-border tw-border-gray-300 tw-px-3 tw-py-2 tw-text-sm focus:tw-border-blue-500 focus:tw-outline-none"
+                />
+              </label>
+              <label className="tw-block">
+                <span className="tw-mb-1.5 tw-block tw-text-xs tw-font-semibold tw-text-gray-700">
+                  {t("workFinish", lang)} <span className="tw-text-red-500">*</span>
+                </span>
+                <input
+                  type="datetime-local"
+                  value={workFinish}
+                  min={workStart || undefined}
+                  onChange={(e) => setWorkFinish(e.target.value)}
+                  className="tw-w-full tw-rounded-lg tw-border tw-border-gray-300 tw-px-3 tw-py-2 tw-text-sm focus:tw-border-blue-500 focus:tw-outline-none"
+                />
+              </label>
+            </div>
+
+            <div>
+              <div className="tw-mb-1.5 tw-text-xs tw-font-semibold tw-text-gray-700">
+                {t("maximoLabor", lang)} {laborOptions.length > 0 && <span className="tw-text-red-500">*</span>}
+              </div>
+              {laborOptions.length === 0 ? (
+                <p className="tw-text-xs tw-text-orange-600">{t("maximoLaborEmpty", lang)}</p>
+              ) : (
+                <div className="tw-max-h-56 tw-divide-y tw-divide-gray-100 tw-overflow-y-auto tw-rounded-lg tw-border tw-border-gray-200">
+                  {laborOptions.map((o) => (
+                    <label key={o.laborcode} className="tw-flex tw-cursor-pointer tw-items-center tw-gap-2.5 tw-px-3 tw-py-2 hover:tw-bg-gray-50">
+                      <input
+                        type="checkbox"
+                        checked={maximoLabor.includes(o.laborcode)}
+                        onChange={() => setMaximoLabor((prev) =>
+                          prev.includes(o.laborcode) ? prev.filter((c) => c !== o.laborcode) : [...prev, o.laborcode])}
+                        className="tw-h-4 tw-w-4 tw-shrink-0"
+                      />
+                      <span className="tw-min-w-0 tw-truncate tw-text-sm tw-text-gray-800">{o.name || o.laborcode}</span>
+                      <span className="tw-ml-auto tw-shrink-0 tw-text-xs tw-text-gray-400">{o.laborcode}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+              {contractorPicked && (
+                <input
+                  type="text"
+                  value={maximoContractor}
+                  placeholder={t("contractorName", lang)}
+                  onChange={(e) => setMaximoContractor(e.target.value)}
+                  className="tw-mt-2 tw-w-full tw-rounded-lg tw-border tw-border-gray-300 tw-px-3 tw-py-2 tw-text-sm focus:tw-border-blue-500 focus:tw-outline-none"
+                />
+              )}
+            </div>
+
+            {closeError && (
+              <div className="tw-rounded-lg tw-border tw-border-red-200 tw-bg-red-50 tw-px-3 tw-py-2 tw-text-sm tw-text-red-700">
+                {closeError}
+              </div>
+            )}
+          </DialogBody>
+          <DialogFooter className="tw-gap-2">
+            <Button variant="text" disabled={acting} onClick={() => setCloseOpen(false)}>{t("cancel", lang)}</Button>
+            <Button className="tw-bg-green-600" disabled={acting} onClick={submitCloseJob}>
+              {acting ? t("closingJob", lang) : t("confirmClose", lang)}
+            </Button>
+          </DialogFooter>
+        </Dialog>
 
         <Dialog open={rejectOpen} handler={() => setRejectOpen(false)} size="sm">
           <DialogHeader>{t("reject", lang)}</DialogHeader>
