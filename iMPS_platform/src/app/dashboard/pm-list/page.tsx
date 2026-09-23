@@ -348,10 +348,12 @@ export default function PMListPage() {
       localStorage.setItem("selected_station_name", r.station_name || r.station_id);
     }
 
-    // In Progress + ช่างกด "เริ่ม PM" แล้ว (มีใบ PM สถานีแล้ว) → เข้าหน้ารวม 5 ส่วนของใบนั้นเลย
-    //   แถวเอกสาร: ใบลูกรู้ job_id ของใบแม่อยู่แล้ว
-    //   แถวใบงาน : ยังไม่มีส่วนไหนถูกกรอก ต้องถามหาใบจาก wonum — ไม่เจอ = ยังไม่เริ่ม ไปหน้าใบงานตามเดิม
-    if (stageOf(r) === "in_progress" && r.station_id) {
+    // ใบที่เป็นส่วนหนึ่งของใบ PM สถานี → เข้าหน้ารวม 5 ส่วนของใบนั้นเลย
+    //   แถวเอกสาร: ใบลูกรู้ job_id ของใบแม่อยู่แล้ว — ทุกสถานะ เพราะสถานะที่โชว์คือของทั้งใบ
+    //              และอนุมัติ/ตีกลับทำทั้งใบที่หน้ารวม ไม่ใช่รายส่วน
+    //   แถวใบงาน : In Progress แต่ยังไม่มีส่วนไหนถูกกรอก ต้องถามหาใบจาก wonum
+    //              ไม่เจอ = ช่างยังไม่กด "เริ่ม PM" ไปหน้าใบงานตามเดิม
+    if (r.station_id && (r.kind === "report" ? !!r.job_id : stageOf(r) === "in_progress")) {
       let jobId = r.kind === "report" ? (r.job_id || "") : "";
       if (!jobId && r.kind === "wo" && r.wonum) {
         try {
