@@ -87,11 +87,6 @@ const T = {
     alertWorkTime: { th: "กรุณากรอกเวลาเริ่มงานและเวลาเสร็จงาน", en: "Please fill in the start and finish time" },
     alertWorkTimeOrder: { th: "เวลาเสร็จงานต้องไม่ก่อนเวลาเริ่มงาน", en: "Finish time must not be before the start time" },
     alertWorkTimeFuture: { th: "เวลาทำงานต้องไม่เป็นเวลาในอนาคต — Maximo ไม่รับเวลาที่ยังมาไม่ถึง", en: "Work time cannot be in the future — Maximo rejects labor times that have not happened yet" },
-    startPm: { th: "เริ่ม PM", en: "Start PM" },
-    startPmHint: {
-        th: "ตรวจข้อมูลใบงานด้านบนให้เรียบร้อย แล้วกด “เริ่ม PM” เพื่อเปิดแบบฟอร์มกรอก",
-        en: "Review the work order above, then press “Start PM” to open the checklist",
-    },
     maximoLabor: { th: "ช่างที่ลงเวลากับ Maximo", en: "Technicians for Maximo time log" },
     maximoLaborHint: {
         th: "เลือกคนที่จะลงเวลาทำงานเข้า Maximo (IN09) — ไม่เลือกจะใช้ช่างที่ผู้วางแผนมอบหมายแทน",
@@ -1014,9 +1009,6 @@ export default function CBBOXPMForm() {
     const [summary, setSummary] = useState("");
     const [summaryCheck, setSummaryCheck] = useState<PF>("");
     // เวลาทำงานจริงของช่าง (datetime-local) — ส่งเข้า Maximo ทาง IN09 ตอนปิดใบงาน
-    // ช่างต้องกด "เริ่ม PM" ก่อนถึงจะกรอกได้ — ใบที่เริ่มไปแล้ว (มีเวลาเริ่มงาน
-    // หรือเปิดจาก edit_id) ถือว่าเริ่มแล้ว ไม่ต้องกดซ้ำทุกครั้งที่เข้ามา
-    const [pmStartedManually, setPmStartedManually] = useState(false);
 
     const [workStart, setWorkStart] = useState<string>("");
     const [workFinish, setWorkFinish] = useState<string>("");
@@ -1025,9 +1017,6 @@ export default function CBBOXPMForm() {
     // ช่างเปิดดูใบที่ตัวเองส่งไปแล้ว (?review=1) — เห็นหน้าเดียวกับ planner
     // แต่แก้อะไรไม่ได้ และไม่มีปุ่ม Reject/Approve
     const reviewMode = approveMode || searchParams.get("review") === "1";
-
-    const pmStarted = pmStartedManually || !!editId || !!workStart
-        || searchParams.get("started") === "1";
 
     // laborcode ฝั่ง Maximo ที่ช่างเลือกเอง — username ใน iMPS ใช้แทนกันไม่ได้
     const [laborOptions, setLaborOptions] = useState<{ laborcode: string; name: string; needs_name?: boolean }[]>([]);
@@ -1252,7 +1241,7 @@ export default function CBBOXPMForm() {
     const REQUIRED_PHOTO_ITEMS_POST = useMemo(() => QUESTIONS.filter(q => q.hasPhoto).flatMap(photoKeysOfQuestion), []);
 
     const missingPhotoItemsPre = useMemo(() => REQUIRED_PHOTO_ITEMS_PRE.filter(no => { if (rows[rowKeyOfPhotoKey(no)]?.pf === "NA") return false; return (photos[no]?.length ?? 0) < 1; }), [photos, rows]);
-    const missingPhotoItemsPost = useMemo(() => REQUIRED_PHOTO_ITEMS_POST.filter(no => { if (rowsPre[rowKeyOfPhotoKey(no)]?.pf === "NA") return false; return (photos[no]?.length ?? 0) < 1; }), [photos, rowsPre]);
+    const missingPhotoItemsPost = useMemo(() => REQUIRED_PHOTO_ITEMS_POST.filter(no => { const rk = rowKeyOfPhotoKey(no); if (rowsPre[rk]?.pf === "NA" || rows[rk]?.pf === "NA") return false; return (photos[no]?.length ?? 0) < 1; }), [photos, rowsPre, rows]);
 
     const allPhotosAttachedPre = missingPhotoItemsPre.length === 0;
     const allPhotosAttachedPost = missingPhotoItemsPost.length === 0;
@@ -1820,21 +1809,6 @@ export default function CBBOXPMForm() {
                     {/* โหมดตรวจ: ย้ายไปไว้ล่างสุด ให้อ่านหลังดูตารางเทียบเสร็จ */}
                     {!reviewMode && summaryBlock}
                     <div className="tw-flex tw-flex-col tw-gap-3 tw-mt-8">
-                    {/* ด่านก่อนเริ่มกรอก — ช่างอ่านข้อมูลใบงานก่อน แล้วค่อยกดเริ่ม (เหมือนหน้า CM)
-                        ใบที่เคยเริ่มกรอกไปแล้วเข้ามาก็ทำต่อได้เลย ไม่ต้องกดซ้ำ */}
-                    {!pmStarted && (
-                        <div className="tw-mx-auto tw-max-w-6xl tw-mb-6 tw-rounded-xl tw-border tw-border-amber-200 tw-bg-amber-50 tw-px-5 tw-py-6 tw-text-center">
-                            <p className="tw-mb-4 tw-text-sm tw-text-amber-800">{t("startPmHint", lang)}</p>
-                            <Button
-                                type="button"
-                                onClick={() => setPmStartedManually(true)}
-                                className="tw-bg-amber-500 hover:tw-bg-amber-600 tw-text-white tw-font-semibold tw-text-base tw-px-8 tw-py-3 tw-rounded-xl hover:tw-shadow-xl hover:tw-shadow-amber-500/30 tw-transition-all"
-                            >
-                                {t("startPm", lang)}
-                            </Button>
-                        </div>
-                    )}
-
                     {/* เวลาทำงานจริงของช่าง — ต้องกรอกก่อนส่งปิดใบงาน (ส่งเข้า Maximo IN09) */}
                     {/* Temporarily disabled: Maximo labor input is hidden on all pages. */}
                     {false && isPostMode && (

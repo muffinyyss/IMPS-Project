@@ -366,11 +366,6 @@ const T = {
     photoPreviewAlt: { th: "ตัวอย่างรูป", en: "Photo preview" },
     removeItem: { th: "ลบรายการ", en: "Remove item" },
     uploadFailedItem: { th: "ข้อ", en: "Item" },
-    startPm: { th: "เริ่ม PM", en: "Start PM" },
-    startPmHint: {
-        th: "ตรวจข้อมูลใบงานด้านบนให้เรียบร้อย แล้วกด “เริ่ม PM” เพื่อเปิดแบบฟอร์มกรอก",
-        en: "Review the work order above, then press “Start PM” to open the checklist",
-    },
     maximoLabor: { th: "ช่างที่ลงเวลากับ Maximo", en: "Technicians for Maximo time log" },
     maximoLaborHint: {
         th: "เลือกคนที่จะลงเวลาทำงานเข้า Maximo (IN09) — ไม่เลือกจะใช้ช่างที่ผู้วางแผนมอบหมายแทน",
@@ -2203,9 +2198,6 @@ export default function ChargerPMForm() {
     const [sn, setSn] = useState<string | null>(null);
     const [summaryCheck, setSummaryCheck] = useState<PF>("");
     // เวลาทำงานจริงของช่าง (datetime-local) — ส่งเข้า Maximo ทาง IN09 ตอนปิดใบงาน
-    // ช่างต้องกด "เริ่ม PM" ก่อนถึงจะกรอกได้ — ใบที่เริ่มไปแล้ว (มีเวลาเริ่มงาน
-    // หรือเปิดจาก edit_id) ถือว่าเริ่มแล้ว ไม่ต้องกดซ้ำทุกครั้งที่เข้ามา
-    const [pmStartedManually, setPmStartedManually] = useState(false);
 
     const [workStart, setWorkStart] = useState<string>("");
     const [workFinish, setWorkFinish] = useState<string>("");
@@ -2214,9 +2206,6 @@ export default function ChargerPMForm() {
     // ช่างเปิดดูใบที่ตัวเองส่งไปแล้ว (?review=1) — เห็นหน้าเดียวกับ planner
     // แต่แก้อะไรไม่ได้ และไม่มีปุ่ม Reject/Approve
     const reviewMode = approveMode || searchParams.get("review") === "1";
-
-    const pmStarted = pmStartedManually || !!editId || !!workStart
-        || searchParams.get("started") === "1";
 
     // laborcode ฝั่ง Maximo ที่ช่างเลือกเอง — username ใน iMPS ใช้แทนกันไม่ได้
     const [laborOptions, setLaborOptions] = useState<{ laborcode: string; name: string; needs_name?: boolean }[]>([]);
@@ -2764,44 +2753,48 @@ export default function ChargerPMForm() {
     // Validations
     const validPhotoKeysPre = useMemo(() => {
         const keys: { key: string | number; label: string }[] = [];
+        // ข้อที่กด N/A ไม่ต้องแนบรูป
+        const isNA = (k: string) => rows[k]?.pf === "NA";
         QUESTIONS.filter(q => q.hasPhoto && !q.postOnly).forEach((q) => { // เพิ่ม !q.postOnly
             const displayNo = getDisplayedQuestionNo(q.no);
             if (q.kind === "power_source" && q.items) {
-                q.items.forEach((_, idx) => keys.push({ key: `${q.no}_${idx}`, label: `${displayNo}.${idx + 1}` }));
-            } else if (q.kind === "simple" || q.kind === "measure") { keys.push({ key: q.no, label: `${displayNo}` }); }
-            else if (q.no === 5) { q5Items.forEach((item, idx) => keys.push({ key: `${q.no}_${idx}`, label: `${displayNo}.${idx + 1}` })); }
-            else if (q.no === 7) { q7Items.forEach((item, idx) => keys.push({ key: `${q.no}_${idx}`, label: `${displayNo}.${idx + 1}` })); }
+                q.items.forEach((item, idx) => { if (isNA(item.key)) return; keys.push({ key: `${q.no}_${idx}`, label: `${displayNo}.${idx + 1}` }); });
+            } else if (q.kind === "simple" || q.kind === "measure") { if (!isNA(q.key)) keys.push({ key: q.no, label: `${displayNo}` }); }
+            else if (q.no === 5) { q5Items.forEach((item, idx) => { if (isNA(item.key)) return; keys.push({ key: `${q.no}_${idx}`, label: `${displayNo}.${idx + 1}` }); }); }
+            else if (q.no === 7) { q7Items.forEach((item, idx) => { if (isNA(item.key)) return; keys.push({ key: `${q.no}_${idx}`, label: `${displayNo}.${idx + 1}` }); }); }
             else if ([3, 4, 6, 8, 10, 11, 17].includes(q.no)) {
                 const fixedItems = fixedItemsMap[q.no as keyof typeof fixedItemsMap];
-                if (fixedItems) { fixedItems.forEach((item, idx) => keys.push({ key: `${q.no}_${idx}`, label: `${displayNo}.${idx + 1}` })); }
+                if (fixedItems) { fixedItems.forEach((item, idx) => { if (isNA(item.key)) return; keys.push({ key: `${q.no}_${idx}`, label: `${displayNo}.${idx + 1}` }); }); }
             }
         });
         return keys;
-    }, [q5Items, q7Items, fixedItemsMap]);
+    }, [q5Items, q7Items, fixedItemsMap, rows]);
 
     const validPhotoKeysPost = useMemo(() => {
         const keys: { key: string | number; label: string }[] = [];
+        // ข้อที่ N/A (ตั้งแต่ Pre หรือกด N/A ใน Post) ไม่ต้องแนบรูป
+        const isNA = (k: string) => rowsPre[k]?.pf === "NA" || rows[k]?.pf === "NA";
         QUESTIONS.filter(q => q.hasPhoto).forEach((q) => {
             const displayNo = getDisplayedQuestionNo(q.no);
             if (q.kind === "power_source" && q.items) {
                 q.items.forEach((item, idx) => {
-                    if (rowsPre[item.key]?.pf === "NA") return;
+                    if (isNA(item.key)) return;
                     keys.push({ key: `${q.no}_${idx}`, label: `${displayNo}.${idx + 1}` });
                 });
             } else if (q.kind === "simple" || q.kind === "measure") {
-                if (rowsPre[q.key]?.pf === "NA") return;
+                if (isNA(q.key)) return;
                 keys.push({ key: q.no, label: `${displayNo}` });
             } else if (q.no === 5) {
-                q5Items.forEach((item, idx) => { if (rowsPre[item.key]?.pf === "NA") return; keys.push({ key: `${q.no}_${idx}`, label: `${displayNo}.${idx + 1}` }); });
+                q5Items.forEach((item, idx) => { if (isNA(item.key)) return; keys.push({ key: `${q.no}_${idx}`, label: `${displayNo}.${idx + 1}` }); });
             } else if (q.no === 7) {
-                q7Items.forEach((item, idx) => { if (rowsPre[item.key]?.pf === "NA") return; keys.push({ key: `${q.no}_${idx}`, label: `${displayNo}.${idx + 1}` }); });
+                q7Items.forEach((item, idx) => { if (isNA(item.key)) return; keys.push({ key: `${q.no}_${idx}`, label: `${displayNo}.${idx + 1}` }); });
             } else if ([3, 4, 6, 8, 10, 11, 17, 18].includes(q.no)) {
                 const fixedItems = fixedItemsMap[q.no as keyof typeof fixedItemsMap];
-                if (fixedItems) { fixedItems.forEach((item, idx) => { if (rowsPre[item.key]?.pf === "NA") return; keys.push({ key: `${q.no}_${idx}`, label: `${displayNo}.${idx + 1}` }); }); }
+                if (fixedItems) { fixedItems.forEach((item, idx) => { if (isNA(item.key)) return; keys.push({ key: `${q.no}_${idx}`, label: `${displayNo}.${idx + 1}` }); }); }
             }
         });
         return keys;
-    }, [q5Items, q7Items, fixedItemsMap, rowsPre]);
+    }, [q5Items, q7Items, fixedItemsMap, rowsPre, rows]);
 
     const missingPhotoItemsPre = useMemo(() => validPhotoKeysPre.filter(({ key }) => (photos[key]?.length ?? 0) < 1).map(({ label }) => label).sort(compareDisplayedItemNos), [photos, validPhotoKeysPre]);
     const missingPhotoItemsPost = useMemo(() => validPhotoKeysPost.filter(({ key }) => (photos[key]?.length ?? 0) < 1).map(({ label }) => label).sort(compareDisplayedItemNos), [photos, validPhotoKeysPost]);
@@ -3628,21 +3621,6 @@ export default function ChargerPMForm() {
                                             lang={lang}
                                         />
                                     </div>}
-
-                        {/* ด่านก่อนเริ่มกรอก — ช่างอ่านข้อมูลใบงานก่อน แล้วค่อยกดเริ่ม (เหมือนหน้า CM)
-                            ใบที่เคยเริ่มกรอกไปแล้วเข้ามาก็ทำต่อได้เลย ไม่ต้องกดซ้ำ */}
-                        {!pmStarted && (
-                            <div className="tw-mx-auto tw-max-w-6xl tw-mb-6 tw-rounded-xl tw-border tw-border-amber-200 tw-bg-amber-50 tw-px-5 tw-py-6 tw-text-center">
-                                <p className="tw-mb-4 tw-text-sm tw-text-amber-800">{t("startPmHint", lang)}</p>
-                                <Button
-                                    type="button"
-                                    onClick={() => setPmStartedManually(true)}
-                                    className="tw-bg-amber-500 hover:tw-bg-amber-600 tw-text-white tw-font-semibold tw-text-base tw-px-8 tw-py-3 tw-rounded-xl hover:tw-shadow-xl hover:tw-shadow-amber-500/30 tw-transition-all"
-                                >
-                                    {t("startPm", lang)}
-                                </Button>
-                            </div>
-                        )}
 
                                     {/* เวลาทำงานจริงของช่าง — ต้องกรอกก่อนส่งปิดใบงาน (ส่งเข้า Maximo IN09) */}
                                     <div className="tw-pt-3 sm:tw-pt-4 tw-border-t tw-border-gray-200">
