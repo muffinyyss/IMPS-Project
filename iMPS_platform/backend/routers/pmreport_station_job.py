@@ -360,6 +360,25 @@ async def list_station_pm_jobs(
     return {"items": items, "total": len(items)}
 
 
+@router.get("/stationpmjob/by-wonum")
+async def find_station_pm_job_by_wonum(
+    station_id: str = Query(...),
+    wonum: str = Query(...),
+    current: UserClaims = Depends(get_current_user),
+):
+    """
+    ใบ PM สถานีของใบงาน Maximo นี้ (มี = ช่างกด "เริ่ม PM" ไปแล้ว)
+    หน้า PM List ใช้ตัดสินว่าจะพาเข้าหน้ารวม 5 ส่วน หรือหน้าข้อมูลใบงาน
+    ต้องประกาศก่อน /stationpmjob/{job_id} ไม่งั้น "by-wonum" โดนจับเป็น job_id
+    """
+    station_id = station_id.strip()
+    wonum = wonum.strip()
+    if not station_id or not wonum:
+        return {"id": ""}
+    job = await get_stationpmjob_collection_for(station_id).find_one({"wonum": wonum}, {"_id": 1})
+    return {"id": str(job["_id"]) if job else ""}
+
+
 @router.get("/stationpmjob/{job_id}")
 async def get_station_pm_job(
     job_id: str,
