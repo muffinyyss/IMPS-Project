@@ -180,6 +180,64 @@ async def _fetch_station_level_reports(
         return []
 
 
+_PM_TYPE_TO_SECTION = {
+    "CHARGER": "charger", "MDB": "mdb", "CCB": "ccb", "CB-BOX": "cbbox", "STATION": "station",
+}
+
+
+async def _apply_job_status(reports: list[dict], chargers: list[dict]) -> None:
+    """
+    เอกสารที่เป็นส่วนหนึ่งของใบ PM สถานี (มี job_id) → แสดงสถานะของทั้งใบแทนสถานะของส่วนนั้น
+    ไม่งั้นช่างส่งส่วน Station ส่วนเดียว แถวนั้นก็ขึ้น Wait for approve ทั้งที่ใบยังทำไม่ครบแผน
+
+    คิดจากแถวที่ดึงมาแล้วในหน้านี้ ไม่ถาม DB รายใบ (หน้านี้มีได้เป็นร้อยใบ)
+    กติกาเดียวกับหน้ารวม 5 ส่วน — pmreport_station_job.derive_job_status
+    """
+    # import ตรงนี้ กัน import วน (router ของแต่ละชนิดก็ import แบบนี้)
+    from routers.pmreport_station_job import (
+        derive_job_status, planned_keys_by_wonum, section_key, SECTIONS, CHARGER_SECTION,
+    )
+
+    groups: dict[tuple[str, str], list[dict]] = {}
+    for r in reports:
+        job_id = r.get("job_id") or ""
+        if job_id and r.get("pm_type") in _PM_TYPE_TO_SECTION:
+            groups.setdefault((r.get("station_id") or "", job_id), []).append(r)
+    if not groups:
+        return
+
+    sns_by_station: dict[str, list[str]] = {}
+    for c in chargers:
+        sn = str(c.get("SN") or "").strip()
+        if sn and sn != "-":
+            sns_by_station.setdefault(c.get("station_id") or "", []).append(sn)
+
+    plans = await planned_keys_by_wonum(
+        [r.get("wonum") or "" for rows in groups.values() for r in rows]
+    )
+
+    for (station_id, _job_id), rows in groups.items():
+        # ส่วนทั้งหมดของใบ = 4 ส่วนระดับสถานี + ตู้ละ 1 ใบ (เหมือน _section_states)
+        states: dict[tuple[str, str], dict] = {}
+        for section in SECTIONS:
+            if section == CHARGER_SECTION:
+                for sn in sns_by_station.get(station_id, []):
+                    states[section_key(section, sn)] = {"section": section, "sn": sn, "report_id": "", "status": ""}
+            else:
+                states[section_key(section)] = {"section": section, "sn": "", "report_id": "", "status": ""}
+        for r in rows:
+            section = _PM_TYPE_TO_SECTION[r["pm_type"]]
+            sn = r.get("sn") or ""
+            key = section_key(section, sn)
+            if key in states and not states[key]["report_id"]:
+                states[key].update(report_id=r.get("id") or "", status=r.get("status") or "")
+
+        wonum = next((str(r.get("wonum") or "").strip() for r in rows if r.get("wonum")), "")
+        job_status = derive_job_status(list(states.values()), plans.get(wonum))
+        for r in rows:
+            r["status"] = job_status
+
+
 # ===== Endpoint =====
 
 @router.get("/pm-reports/all-stations")
@@ -306,6 +364,8 @@ async def get_all_station_pm_reports(
 
     # ✅ กรอง pre ออก
     all_reports = [r for r in all_reports if r.get("side") not in ("pre", "Pre", "PRE")]
+
+    await _apply_job_status(all_reports, chargers)
 
     if pm_type:
         all_reports = [r for r in all_reports if r.get("pm_type") == pm_type]

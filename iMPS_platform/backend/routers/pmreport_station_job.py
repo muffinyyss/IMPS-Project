@@ -145,15 +145,72 @@ def _is_wait(status: str) -> bool:
     return str(status).strip().lower() == pm_flow.PM_STATUS_WAIT_APPROVE.lower()
 
 
-def derive_job_status(section_states: list[dict]) -> str:
+SectionKey = tuple[str, str]
+
+
+def section_key(section: str, sn: str = "") -> SectionKey:
+    """ตัวระบุใบลูก 1 ใบในใบแม่ — ส่วน charger แยกรายตู้ด้วย SN อีก 4 ส่วนมีใบเดียว"""
+    return (section, (sn or "").strip() if section == CHARGER_SECTION else "")
+
+
+def planned_section_keys(wo: dict | None) -> set[SectionKey] | None:
     """
-    สถานะของใบแม่ = สรุปจากส่วนที่กรอกแล้ว
+    อุปกรณ์ที่ planner เลือกไว้ในแผนของใบงาน → ส่วนในใบที่ต้องกรอก
+    type ของ selected_equipment ใช้ชื่อชุดเดียวกับ SECTIONS อยู่แล้ว
+    ไม่มีแผน = None (ถือว่าต้องครบทุกส่วน)
+    """
+    keys: set[SectionKey] = set()
+    for item in (wo or {}).get("selected_equipment") or []:
+        t = str(item.get("type") or "").strip().lower()
+        if t not in SECTIONS:
+            continue
+        if t == CHARGER_SECTION:
+            sn = str(item.get("sn") or "").strip()
+            if sn:
+                keys.add(section_key(t, sn))
+        else:
+            keys.add(section_key(t))
+    return keys or None
 
-      ยังไม่มีส่วนไหนถูกกรอก / มีส่วนที่ยังเป็น draft → draft
-      ส่วนที่กรอกแล้วรออนุมัติอยู่อย่างน้อย 1 ส่วน    → Wait for approve
-      กรอกแล้วและปิดครบทุกส่วนที่มี                  → Closed
 
-    ใบที่ยังไม่ได้เริ่มกรอกไม่ถ่วงสถานะ — ช่างอาจไม่ได้ตรวจครบทุกส่วนในรอบนั้น
+async def planned_keys_by_wonum(wonums: list[str]) -> dict[str, set[SectionKey] | None]:
+    """แผนของใบงานหลายใบในครั้งเดียว — หน้าตารางไม่ต้องถาม DB ทีละใบ"""
+    from config import client
+
+    wanted = sorted({(w or "").strip() for w in wonums} - {""})
+    if not wanted:
+        return {}
+    out: dict[str, set[SectionKey] | None] = {}
+    try:
+        cursor = client["iMPS"]["maximo_pm_open"].find(
+            {"wonum": {"$in": wanted}}, {"_id": 0, "wonum": 1, "selected_equipment": 1}
+        )
+        async for wo in cursor:
+            out[str(wo.get("wonum") or "")] = planned_section_keys(wo)
+    except Exception as e:
+        log.warning(f"  ⚠️ อ่านแผนของใบงาน {wanted} ไม่สำเร็จ: {e}")
+    return out
+
+
+async def job_planned_keys(job: dict) -> set[SectionKey] | None:
+    wonum = str(job.get("wonum") or "").strip()
+    if not wonum:
+        return None
+    return (await planned_keys_by_wonum([wonum])).get(wonum)
+
+
+def derive_job_status(section_states: list[dict], required: set[SectionKey] | None = None) -> str:
+    """
+    สถานะของใบแม่ = สรุปจากใบลูก
+
+      ยังไม่มีส่วนไหนถูกกรอก / มีส่วนที่ยังเป็น draft      → draft (In Progress)
+      ปิดครบทุกส่วนที่กรอก (planner อนุมัติทั้งใบแล้ว)     → Closed
+      ส่วนที่อยู่ในแผนยังส่งไม่ครบ                        → draft (In Progress)
+      ส่งครบทุกส่วนในแผนแล้ว รออนุมัติ                   → Wait for approve
+
+    required = ส่วนที่ planner เลือกไว้ในแผน (planned_section_keys)
+    ไม่มีแผน หรือแผนไม่ตรงกับส่วนที่สถานีมีเลย → ต้องครบทุกส่วนของใบ
+    ส่วนที่ไม่อยู่ในแผนไม่ถ่วงสถานะ แต่ถ้ากรอกไว้ก็ต้องผ่านอนุมัติด้วยกัน
     """
     filled = [s for s in section_states if s.get("report_id")]
     if not filled:
@@ -161,9 +218,18 @@ def derive_job_status(section_states: list[dict]) -> str:
     statuses = [_norm_status(s.get("status")) for s in filled]
     if any(not _is_closed(x) and not _is_wait(x) for x in statuses):
         return pm_flow.PM_STATUS_DRAFT
-    if any(_is_wait(x) for x in statuses):
-        return pm_flow.PM_STATUS_WAIT_APPROVE
-    return pm_flow.PM_STATUS_CLOSED
+    # ปิดหมดแล้ว = อนุมัติไปแล้ว — ใบที่อนุมัติไว้ก่อนมีกติกาครบแผนก็ยังเป็น Closed
+    if all(_is_closed(x) for x in statuses):
+        return pm_flow.PM_STATUS_CLOSED
+
+    present = {section_key(s["section"], s.get("sn") or "") for s in section_states}
+    need = (required & present) if required else set()
+    if not need:
+        need = present
+    done = {section_key(s["section"], s.get("sn") or "") for s in filled}
+    if need - done:
+        return pm_flow.PM_STATUS_DRAFT
+    return pm_flow.PM_STATUS_WAIT_APPROVE
 
 
 async def _find_section_report(section: str, station_id: str, sn: str, job_id: str) -> dict | None:
@@ -239,8 +305,8 @@ def _sections_done(sections: list[dict]) -> int:
     return done
 
 
-def _serialize_job(job: dict, sections: list[dict]) -> dict:
-    status = derive_job_status(sections)
+def _serialize_job(job: dict, sections: list[dict], required: set[SectionKey] | None = None) -> dict:
+    status = derive_job_status(sections, required)
     done = _sections_done(sections)
     return {
         "id": str(job.get("_id")),
@@ -302,7 +368,8 @@ async def open_station_pm_job(
         {"wonum": wonum} if wonum else {"pm_date": pm_date, "wonum": {"$in": ["", None]}}
     )
     if existing:
-        return {"ok": True, "created": False, "job": _serialize_job(existing, await _section_states(existing))}
+        return {"ok": True, "created": False,
+                "job": _serialize_job(existing, await _section_states(existing), await job_planned_keys(existing))}
 
     station = station_collection.find_one({"station_id": station_id}, {"_id": 0, "station_name": 1}) or {}
 
@@ -342,7 +409,8 @@ async def open_station_pm_job(
     res = await jobs.insert_one(doc)
     saved = await jobs.find_one({"_id": res.inserted_id}) or {**doc, "_id": res.inserted_id}
     log.info(f"  ✅ เปิดใบ PM สถานี {issue_id} ({station_id}, wonum={wonum or '-'})")
-    return {"ok": True, "created": True, "job": _serialize_job(saved, await _section_states(saved))}
+    return {"ok": True, "created": True,
+            "job": _serialize_job(saved, await _section_states(saved), await job_planned_keys(saved))}
 
 
 @router.get("/stationpmjob/list")
@@ -356,7 +424,11 @@ async def list_station_pm_jobs(
     jobs = get_stationpmjob_collection_for(station_id)
     docs = await jobs.find({}).sort([("pm_date", -1), ("_id", -1)]).limit(limit).to_list(length=limit)
     chargers = station_chargers(station_id)   # ทุกใบในหน้านี้เป็นสถานีเดียวกัน
-    items = [_serialize_job(j, await _section_states(j, chargers)) for j in docs]
+    plans = await planned_keys_by_wonum([str(j.get("wonum") or "") for j in docs])
+    items = [
+        _serialize_job(j, await _section_states(j, chargers), plans.get(str(j.get("wonum") or "").strip()))
+        for j in docs
+    ]
     return {"items": items, "total": len(items)}
 
 
@@ -391,7 +463,7 @@ async def get_station_pm_job(
     job = await jobs.find_one({"_id": pm_flow.to_oid(job_id)})
     if not job:
         raise HTTPException(status_code=404, detail=f"ไม่พบใบ PM สถานี id={job_id}")
-    return {"job": _serialize_job(job, await _section_states(job))}
+    return {"job": _serialize_job(job, await _section_states(job), await job_planned_keys(job))}
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -444,8 +516,14 @@ async def approve_station_pm_job(
     if not job:
         raise HTTPException(status_code=404, detail=f"ไม่พบใบ PM สถานี id={job_id}")
 
+    # อนุมัติได้เฉพาะใบที่ส่งครบทุกส่วนในแผนแล้ว — กันปิดใบทั้งที่ช่างยังทำไม่เสร็จ
+    required = await job_planned_keys(job)
+    states = await _section_states(job)
+    if derive_job_status(states, required) != pm_flow.PM_STATUS_WAIT_APPROVE:
+        raise HTTPException(status_code=409, detail="ใบนี้ยังส่งไม่ครบทุกส่วนตามแผน จึงยังอนุมัติไม่ได้")
+
     results: list[dict] = []
-    for state in await _section_states(job):
+    for state in states:
         if not state["report_id"] or not _is_wait(state["status"]):
             continue
         sn = state.get("sn") or ""
@@ -458,7 +536,7 @@ async def approve_station_pm_job(
             results.append({"section": state["section"], "sn": sn, "ok": False, "detail": e.detail})
 
     sections = await _section_states(job)
-    status = derive_job_status(sections)
+    status = derive_job_status(sections, required)
     await jobs.update_one(
         {"_id": job["_id"]},
         {"$set": {
@@ -469,7 +547,7 @@ async def approve_station_pm_job(
         }},
     )
     fresh = await jobs.find_one({"_id": job["_id"]}) or job
-    return {"ok": True, "results": results, "job": _serialize_job(fresh, sections)}
+    return {"ok": True, "results": results, "job": _serialize_job(fresh, sections, required)}
 
 
 @router.post("/stationpmjob/{job_id}/reject")
@@ -501,16 +579,17 @@ async def reject_station_pm_job(
             results.append({"section": state["section"], "sn": sn, "ok": False, "detail": e.detail})
 
     sections = await _section_states(job)
+    required = await job_planned_keys(job)
     await jobs.update_one(
         {"_id": job["_id"]},
         {"$set": {
-            "status": derive_job_status(sections),
+            "status": derive_job_status(sections, required),
             "reject_remark": body.remark,
             "rejected_by": current.username or current.sub,
         }},
     )
     fresh = await jobs.find_one({"_id": job["_id"]}) or job
-    return {"ok": True, "results": results, "job": _serialize_job(fresh, sections)}
+    return {"ok": True, "results": results, "job": _serialize_job(fresh, sections, required)}
 
 
 # ══════════════════════════════════════════════════════════════════
