@@ -490,7 +490,8 @@ async def stationpmreport_post_submit(
 # ============================================
 
 # Station group pattern: r1, r2, r3, ...
-PHOTO_GROUP_PATTERN = re.compile(r"^r\d+$")
+# pre_r1/pre_r2 = ข้อ 1-2 (สภาพก่อนเริ่มงาน) เป็นคำถามของใบ Post ตั้งแต่ตัดด่าน Pre-PM ออก
+PHOTO_GROUP_PATTERN = re.compile(r"^(pre_)?r\d+$")
 
 
 @router.post("/stationpmreport/{report_id}/post/photos")
