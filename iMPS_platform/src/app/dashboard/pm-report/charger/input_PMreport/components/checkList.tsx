@@ -11,6 +11,7 @@ import Image from "next/image";
 import { draftKey, saveDraftLocal, loadDraftLocal, clearDraftLocal } from "../lib/draft";
 import { useRouter, useSearchParams } from "next/navigation";
 import { pmBackRoute } from "@/app/dashboard/pm-report/lib/origin";
+import { useDebouncedEffect } from "@/app/dashboard/pm-report/lib/useDebouncedEffect";
 import PmApprovalBar from "@/app/dashboard/pm-report/components/PmApprovalBar";
 import PmCompareTable from "@/app/dashboard/pm-report/components/PmCompareTable";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
@@ -535,12 +536,6 @@ function useMeasure<U extends string>(keys: readonly string[], defaultUnit: U) {
     return { state, setState, patch, syncUnits };
 }
 
-function useDebouncedEffect(effect: () => void, deps: any[], delay = 800) {
-    useEffect(() => {
-        const h = setTimeout(effect, delay);
-        return () => clearTimeout(h);
-    }, deps);
-}
 
 // ==================== UI COMPONENTS ====================
 function PassFailRow({
