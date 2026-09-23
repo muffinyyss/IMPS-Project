@@ -6,6 +6,7 @@ import Image from "next/image";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { ArrowLeftIcon, ArrowUturnLeftIcon, PaperClipIcon, PhotoIcon, XMarkIcon, CheckCircleIcon, ExclamationTriangleIcon, PencilIcon, DocumentArrowDownIcon } from "@heroicons/react/24/solid";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
+import { ensureViewableImages } from "@/utils/heic";
 import CreatableSelect from "react-select/creatable";
 import { useDraft, type DraftData, type DraftImage, type DraftCorrectiveAction } from "../lib/draft";
 import { useReportLock } from "@/app/dashboard/cm-report/lib/lock";
@@ -771,7 +772,7 @@ function ProblemGroupBlock({ faultyEquipment, value, onChange, onRemove, onAddGr
     }, [value.repaired_equipment]);
 
     const setText = (i: number, text: string) => onChange({ ...value, corrective_actions: value.corrective_actions.map((a, j) => j === i ? { ...a, text } : a) });
-    const addImgs = (i: number, kind: "beforeImages" | "afterImages", files: FileList | null) => {
+    const addImgs = async (i: number, kind: "beforeImages" | "afterImages", files: FileList | null) => {
         if (!files) return;
         const currentCount = value.corrective_actions[i]?.[kind]?.length ?? 0;
         const remain = Math.max(0, MAX_PHOTOS - currentCount);
@@ -782,7 +783,9 @@ function ProblemGroupBlock({ faultyEquipment, value, onChange, onRemove, onAddGr
         }
         if (remain === 0) return;
         const pfx = kind === "beforeImages" ? "before" : "after";
-        const imgs: PhotoItem[] = Array.from(files).slice(0, remain).map((f, k) => ({ id: `${pfx}-${Date.now()}-${i}-${k}-${f.name}`, file: f, preview: URL.createObjectURL(f) }));
+        // HEIC จาก iPhone เบราว์เซอร์เปิดไม่ได้ → preview ขึ้นกรอบว่าง แปลงเป็น JPEG ก่อน
+        const picked = await ensureViewableImages(Array.from(files).slice(0, remain));
+        const imgs: PhotoItem[] = picked.map((f, k) => ({ id: `${pfx}-${Date.now()}-${i}-${k}-${f.name}`, file: f, preview: URL.createObjectURL(f) }));
         onChange({ ...value, corrective_actions: value.corrective_actions.map((a, j) => j === i ? { ...a, [kind]: [...a[kind], ...imgs].slice(0, MAX_PHOTOS) } : a) });
     };
     const removeImg = (i: number, kind: "beforeImages" | "afterImages", id: string) => {
@@ -1813,7 +1816,7 @@ export default function CMInProgressForm() {
         }));
     };
 
-    const addCorrectiveBeforeImages = (index: number, files: FileList | null) => {
+    const addCorrectiveBeforeImages = async (index: number, files: FileList | null) => {
         if (!files) return;
         const currentCount = job.corrective_actions[index]?.beforeImages.length ?? 0;
         const remain = Math.max(0, MAX_PHOTOS - currentCount);
@@ -1826,7 +1829,9 @@ export default function CMInProgressForm() {
         const now = getNowTimestamp();
         const nowISO = new Date().toISOString();
         const cachedLoc = gpsCache.current.fetched ? gpsCache.current.location : undefined;
-        const newImages: PhotoItem[] = Array.from(files).slice(0, remain).map((file, i) => ({
+        // HEIC จาก iPhone เบราว์เซอร์เปิดไม่ได้ → preview ขึ้นกรอบว่าง แปลงเป็น JPEG ก่อน
+        const picked = await ensureViewableImages(Array.from(files).slice(0, remain));
+        const newImages: PhotoItem[] = picked.map((file, i) => ({
             id: `before-${Date.now()}-${index}-${i}-${file.name}`,
             file,
             preview: URL.createObjectURL(file),
@@ -1855,7 +1860,7 @@ export default function CMInProgressForm() {
         }
     };
 
-    const addCorrectiveAfterImages = (index: number, files: FileList | null) => {
+    const addCorrectiveAfterImages = async (index: number, files: FileList | null) => {
         if (!files) return;
         const currentCount = job.corrective_actions[index]?.afterImages.length ?? 0;
         const remain = Math.max(0, MAX_PHOTOS - currentCount);
@@ -1868,7 +1873,9 @@ export default function CMInProgressForm() {
         const now = getNowTimestamp();
         const nowISO = new Date().toISOString();
         const cachedLoc = gpsCache.current.fetched ? gpsCache.current.location : undefined;
-        const newImages: PhotoItem[] = Array.from(files).slice(0, remain).map((file, i) => ({
+        // HEIC จาก iPhone เบราว์เซอร์เปิดไม่ได้ → preview ขึ้นกรอบว่าง แปลงเป็น JPEG ก่อน
+        const picked = await ensureViewableImages(Array.from(files).slice(0, remain));
+        const newImages: PhotoItem[] = picked.map((file, i) => ({
             id: `after-${Date.now()}-${index}-${i}-${file.name}`,
             file,
             preview: URL.createObjectURL(file),

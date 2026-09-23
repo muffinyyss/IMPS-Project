@@ -10,8 +10,7 @@ from zoneinfo import ZoneInfo
 from pymongo.errors import DuplicateKeyError
 from typing import List, Dict, Any, Optional
 import asyncio, json, re, uuid, pathlib, secrets
-from PIL import Image
-import io
+from image_convert import normalize_image_bytes, ImageConversionError
 from config import (
     users_collection, station_collection, charger_collection,
     charger_onoff, charger_onoff_sync, _validate_station_id, th_tz, settingDB,
@@ -626,7 +625,15 @@ def format_station_with_chargers(station_doc: dict, charger_docs: List[dict]) ->
 # Image Upload Helpers
 # ============================================================
 
-ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
+# iPhone อัปรูปมาเป็น image/heic (บางเครื่องส่ง application/octet-stream มาแทน)
+# เดิมด่านนี้เด้ง 415 ทำให้อัปรูปสถานี/ตู้ชาร์จจาก iPhone ไม่ได้เลย
+# รับเข้ามาก่อน แล้วให้ normalize_image_bytes เป็นคนตัดสินว่า decode ได้จริงไหม
+ALLOWED_IMAGE_TYPES = {
+    "image/jpeg", "image/jpg", "image/png", "image/webp",
+    "image/heic", "image/heif", "image/heic-sequence", "image/heif-sequence",
+    "image/avif", "image/gif", "image/bmp", "image/tiff",
+    "application/octet-stream", "",
+}
 MAX_IMAGE_BYTES = 3 * 1024 * 1024
 MAX_IMAGES_PER_KIND = 5
 
@@ -647,32 +654,21 @@ async def save_image(folder: str, item_id: str, kind: str, upload: UploadFile) -
     if len(data) > MAX_IMAGE_BYTES:
         raise HTTPException(status_code=413, detail="File too large (> 3MB)")
 
+    # แปลงเป็น JPEG เสมอ (รวมถึง HEIC จาก iPhone) — ของเดิมแยก save_format ตาม
+    # content_type ซึ่งเชื่อไม่ได้ และไม่รองรับ HEIC อยู่แล้ว
     try:
-        img = Image.open(io.BytesIO(data))
-
-        if img.mode in ("RGBA", "P"):
-            img = img.convert("RGB")
-
-        img.thumbnail((MAX_WIDTH, MAX_HEIGHT), Image.LANCZOS)
-
-        if upload.content_type == "image/png":
-            save_format, ext = "PNG", ".png"
-            save_kwargs = {"optimize": True}
-        elif upload.content_type == "image/webp":
-            save_format, ext = "WEBP", ".webp"
-            save_kwargs = {"quality": JPEG_QUALITY}
-        else:
-            save_format, ext = "JPEG", ".jpg"
-            save_kwargs = {"quality": JPEG_QUALITY, "optimize": True}
-
-        buf = io.BytesIO()
-        img.save(buf, format=save_format, **save_kwargs)
-        data = buf.getvalue()
-
-    except HTTPException:
-        raise
+        data, out_ext = normalize_image_bytes(
+            data, upload.filename or "",
+            max_width=MAX_WIDTH, max_height=MAX_HEIGHT, quality=JPEG_QUALITY,
+        )
+    except ImageConversionError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid image: {e}")
+
+    if out_ext not in ("jpg", "jpeg", "png", "webp", "gif"):
+        raise HTTPException(status_code=415, detail="Unsupported file type")
+    ext = f".{out_ext}"
 
     subdir = pathlib.Path(UPLOADS_ROOT) / folder / item_id
     _ensure_dir(subdir)

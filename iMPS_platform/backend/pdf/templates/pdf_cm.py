@@ -16,6 +16,16 @@ except Exception:
     Image = None
     ExifTags = None
 
+# ลงทะเบียน HEIC/HEIF opener ให้ Pillow (ผลข้างเคียงตอน import — ดู image_convert.py)
+# ถ้าไม่มีบรรทัดนี้ Image.open() เปิดไฟล์ HEIC ไม่ได้ แล้ว _load_image_with_cache จะ
+# except เงียบ ๆ ผลคือ "รูปหายจาก PDF" โดยไม่มี error ให้เห็น
+# เดิมมันใช้ได้เพราะบังเอิญ routers/* import image_convert ไว้ตอน app start เท่านั้น
+# ซึ่งพังทันทีถ้าโมดูล PDF ถูกเรียกจากสคริปต์/worker ที่ไม่ได้โหลด routers
+try:
+    import image_convert  # noqa: F401
+except Exception:
+    pass
+
 try:
     import requests
 except Exception:
@@ -944,7 +954,10 @@ def _load_image_with_cache(url_path: str) -> Tuple[Optional[BytesIO], Optional[s
 # -------------------- Attachments (รูป / ไฟล์แนบ) --------------------
 # ฟอร์ม CM แนบได้ทั้งรูปและไฟล์ (pdf/csv) เก็บปนกันใน group เดียว
 # เอกสารจึงต้องแยกเอง: รูปวาดเป็น grid ส่วนไฟล์อื่นวาดเป็นรูปไม่ได้ ทำเป็นลิงก์ให้กดเปิดแทน
-_IMAGE_EXT_RE = re.compile(r"\.(jpe?g|png|webp|gif|heic|heif)(\?|#|$)", re.I)
+# ชุดนี้ต้องตรงกับที่ Pillow เปิดได้ (ผ่าน load_image_autorotate) — ถ้าตกหล่นนามสกุลไหน
+# รูปนั้นจะถูกลดชั้นไปเป็น "ลิงก์ไฟล์แนบ" ทั้งที่วาดลง PDF ได้
+# svg ไม่อยู่ในชุดนี้โดยตั้งใจ — Pillow เปิด svg ไม่ได้ ต้องเป็นลิงก์เท่านั้น
+_IMAGE_EXT_RE = re.compile(r"\.(jpe?g|png|webp|gif|bmp|tiff?|heic|heif|hif|avif)(\?|#|$)", re.I)
 
 
 def _attachment_url(item: Any) -> str:

@@ -10,6 +10,16 @@ from datetime import datetime, date
 from typing import Optional, Tuple, List, Dict, Any, Union
 from io import BytesIO
 from PIL import Image, ExifTags
+
+# ลงทะเบียน HEIC/HEIF opener ให้ Pillow (ผลข้างเคียงตอน import — ดู image_convert.py)
+# ถ้าไม่มีบรรทัดนี้ Image.open() เปิดไฟล์ HEIC ไม่ได้ แล้ว _load_image_with_cache จะ
+# except เงียบ ๆ ผลคือ "รูปหายจาก PDF" โดยไม่มี error ให้เห็น
+# เดิมมันใช้ได้เพราะบังเอิญ routers/* import image_convert ไว้ตอน app start เท่านั้น
+# ซึ่งพังทันทีถ้าโมดูล PDF ถูกเรียกจากสคริปต์/worker ที่ไม่ได้โหลด routers
+try:
+    import image_convert  # noqa: F401
+except Exception:
+    pass
 from functools import lru_cache
 
 try:
@@ -464,7 +474,13 @@ def _load_image_source_from_urlpath(
 def load_image_autorotate(path_or_bytes):
 
     # โหลดภาพ
+    # BytesIO ต้องแยกเคส — _load_image_source_from_urlpath คืน BytesIO เมื่อดึงรูปผ่าน
+    # PHOTOS_BASE_URL (ไม่ได้อยู่บนดิสก์เครื่องเดียวกัน) ของเดิมตกไปเข้า BytesIO(BytesIO)
+    # ซึ่ง TypeError แล้วถูก except กลืน = รูปหายจาก PDF เงียบ ๆ
     if isinstance(path_or_bytes, (str, Path)):
+        img = Image.open(path_or_bytes)
+    elif isinstance(path_or_bytes, BytesIO):
+        path_or_bytes.seek(0)
         img = Image.open(path_or_bytes)
     else:
         img = Image.open(BytesIO(path_or_bytes))

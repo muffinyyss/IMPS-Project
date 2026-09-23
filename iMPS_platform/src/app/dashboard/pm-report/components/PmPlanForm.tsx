@@ -101,6 +101,13 @@ const T = {
   },
   noAssignee: { th: "ยังไม่ได้มอบหมายช่าง", en: "No technician assigned" },
 
+  startPm: { th: "เริ่ม PM", en: "Start PM" },
+  pickCharger: { th: "เลือกตู้ที่จะเริ่ม PM", en: "Pick a charger to start" },
+  waitPlanner: {
+    th: "ผู้วางแผนยังไม่ได้เลือกอุปกรณ์ที่ต้อง PM — รอให้วางแผนเสร็จก่อนจึงเริ่มได้",
+    en: "The planner has not selected the equipment yet — wait for the plan to be completed",
+  },
+
   editPlan: { th: "แก้ไขแผน", en: "Edit plan" },
   cancelEdit: { th: "ยกเลิกการแก้ไข", en: "Cancel edit" },
   plannedNotice: {
@@ -127,6 +134,11 @@ type Props = {
   /** บันทึกสำเร็จ → กลับไปหน้ารายการและ refresh */
   onSaved: () => void;
   onCancel: () => void;
+  /**
+   * ช่างกด "เริ่ม PM" จากใบงานนี้ — sn = ตู้ที่เลือกเริ่ม (เฉพาะใบงานของตู้)
+   * ไม่ส่ง prop นี้มา = ไม่มีปุ่ม (เช่นตอน planner เปิดหน้านี้มาวางแผน)
+   */
+  onStart?: (sn?: string) => void;
 };
 
 // class ชุดเดียวกับ CM form
@@ -149,7 +161,7 @@ function SectionHeader({ no, title, right }: { no: number; title: string; right?
   );
 }
 
-export default function PmPlanForm({ source, identifier, wonum, onSaved, onCancel }: Props) {
+export default function PmPlanForm({ source, identifier, wonum, onSaved, onCancel, onStart }: Props) {
   const { lang } = useLanguage();
 
   const [wo, setWo] = useState<MaximoWorkOrder | null>(null);
@@ -316,6 +328,17 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
 
   const planStatus = derivePlanningStatus(selectedCount, wo?.planning_status ?? "pending");
   const alreadyPlanned = planStatus === "planned";
+
+  // เริ่ม PM ได้ต่อเมื่อ planner เลือกอุปกรณ์ไว้แล้ว — อ่านจากแผนที่บันทึกแล้ว
+  // ไม่ใช่ state ของ checkbox ที่ planner อาจกำลังแก้ค้างอยู่
+  const plannedEquipment = wo?.selected_equipment ?? [];
+  // ใบงานเดียวครอบได้หลายตู้ — ต้องรู้ว่าจะเริ่มตู้ไหนก่อนถึงจะเปิดฟอร์มถูกใบ
+  const startChargers =
+    source === "charger"
+      ? plannedEquipment.filter((e) => e.type === "charger" && (e.sn ?? "").trim())
+      : [];
+  const showStart = !canPlan && !!onStart;
+  const canStart = !loading && !!wo && plannedEquipment.length > 0;
   const locked = !canPlan || (alreadyPlanned && !editMode);
 
   return (
@@ -396,13 +419,23 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
           )}
 
           {/* ไม่มีสิทธิ์แก้แผน */}
-          {!loading && !canPlan && (
+          {/* ช่างเข้าหน้านี้เป็นทางปกติเพื่อมาดูแผนแล้วกดเริ่มงาน ไม่ใช่คนหลงมา
+              — จึงไม่ขึ้นคำเตือนสิทธิ์ให้ เตือนเฉพาะ role อื่นที่หลงมาจริง ๆ */}
+          {!loading && !canPlan && !showStart && (
             <div className="tw-mb-4 tw-flex tw-items-start tw-gap-3 tw-px-4 tw-py-3 tw-rounded-lg tw-bg-amber-50 tw-border tw-border-amber-200">
               <ExclamationTriangleIcon className="tw-w-5 tw-h-5 tw-text-amber-500 tw-mt-0.5 tw-flex-shrink-0" />
               <div>
                 <p className="tw-text-sm tw-font-semibold tw-text-amber-800">{t("plannerOnlyTitle", lang)}</p>
                 <p className="tw-text-sm tw-text-amber-700 tw-mt-0.5">{t("plannerOnlyBody", lang)}</p>
               </div>
+            </div>
+          )}
+
+          {/* ช่างเปิดใบที่ยังวางแผนไม่เสร็จ — บอกว่ารออะไรอยู่ แทนที่จะให้ปุ่มจางเฉย ๆ */}
+          {!loading && showStart && plannedEquipment.length === 0 && (
+            <div className="tw-mb-4 tw-flex tw-items-start tw-gap-3 tw-px-4 tw-py-3 tw-rounded-lg tw-bg-amber-50 tw-border tw-border-amber-200">
+              <ExclamationTriangleIcon className="tw-w-5 tw-h-5 tw-text-amber-500 tw-mt-0.5 tw-flex-shrink-0" />
+              <p className="tw-text-sm tw-text-amber-800">{t("waitPlanner", lang)}</p>
             </div>
           )}
 
@@ -609,8 +642,8 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
                       {t("cancelEdit", lang)}
                     </Button>
                   )}
-                  {/* โหมดอ่านอย่างเดียวไม่ต้องมีปุ่ม Assign ให้กดพลาด */}
-                  {!(alreadyPlanned && !editMode) && (
+                  {/* โหมดอ่านอย่างเดียวไม่ต้องมีปุ่ม Assign ให้กดพลาด — ช่างก็ไม่ต้องเห็นปุ่มจาง */}
+                  {canPlan && !(alreadyPlanned && !editMode) && (
                     <Button
                       onClick={onSave}
                       disabled={locked || saving || !wo}
@@ -618,6 +651,28 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
                     >
                       {saving ? t("saving", lang) : t("save", lang)}
                     </Button>
+                  )}
+
+                  {/* ช่าง: ปุ่มเดียวที่กดได้คือเริ่มงาน — ใบงานหลายตู้แยกปุ่มต่อตู้ */}
+                  {showStart && (
+                    <>
+                      {startChargers.length > 1 && (
+                        <span className="tw-mr-auto tw-text-sm tw-text-blue-gray-500">
+                          {t("pickCharger", lang)}
+                        </span>
+                      )}
+                      {(startChargers.length > 1 ? startChargers : [null]).map((c, i) => (
+                        <Button
+                          key={c?.sn ?? `start-${i}`}
+                          type="button"
+                          onClick={() => onStart?.(c?.sn ?? startChargers[0]?.sn ?? undefined)}
+                          disabled={!canStart}
+                          className="tw-bg-amber-500 hover:tw-bg-amber-600 tw-text-white tw-font-semibold hover:tw-shadow-lg hover:tw-shadow-amber-500/30 tw-transition-all disabled:tw-opacity-50 disabled:tw-shadow-none"
+                        >
+                          {c ? `${t("startPm", lang)} · ${equipLabel(c)}` : t("startPm", lang)}
+                        </Button>
+                      ))}
+                    </>
                   )}
                 </div>
               </div>

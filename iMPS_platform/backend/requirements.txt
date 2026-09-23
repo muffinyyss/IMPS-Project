@@ -33,6 +33,8 @@ pandas==2.3.2
 paramiko==4.0.0
 passlib==1.7.4
 pillow==11.3.0
+# อ่านไฟล์ .HEIC/.HEIF จาก iPhone (register opener ให้ Pillow) — ดู image_convert.py
+pillow-heif==1.8.0
 pyasn1==0.6.1
 pycparser==2.22
 pydantic==2.11.7

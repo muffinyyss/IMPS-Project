@@ -8,6 +8,16 @@ from pathlib import Path
 from datetime import datetime, date
 from typing import Optional, Tuple, List, Dict, Any, Union
 from PIL import Image, ImageOps
+
+# ลงทะเบียน HEIC/HEIF opener ให้ Pillow (ผลข้างเคียงตอน import — ดู image_convert.py)
+# ถ้าไม่มีบรรทัดนี้ Image.open() เปิดไฟล์ HEIC ไม่ได้ แล้ว _load_image_with_cache จะ
+# except เงียบ ๆ ผลคือ "รูปหายจาก PDF" โดยไม่มี error ให้เห็น
+# เดิมมันใช้ได้เพราะบังเอิญ routers/* import image_convert ไว้ตอน app start เท่านั้น
+# ซึ่งพังทันทีถ้าโมดูล PDF ถูกเรียกจากสคริปต์/worker ที่ไม่ได้โหลด routers
+try:
+    import image_convert  # noqa: F401
+except Exception:
+    pass
 from io import BytesIO
 
     

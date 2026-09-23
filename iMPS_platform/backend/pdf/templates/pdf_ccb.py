@@ -10,6 +10,16 @@ from datetime import datetime, date
 from typing import Optional, Tuple, List, Dict, Any, Union
 from io import BytesIO
 from PIL import Image, ExifTags
+
+# ลงทะเบียน HEIC/HEIF opener ให้ Pillow (ผลข้างเคียงตอน import — ดู image_convert.py)
+# ถ้าไม่มีบรรทัดนี้ Image.open() เปิดไฟล์ HEIC ไม่ได้ แล้ว _load_image_with_cache จะ
+# except เงียบ ๆ ผลคือ "รูปหายจาก PDF" โดยไม่มี error ให้เห็น
+# เดิมมันใช้ได้เพราะบังเอิญ routers/* import image_convert ไว้ตอน app start เท่านั้น
+# ซึ่งพังทันทีถ้าโมดูล PDF ถูกเรียกจากสคริปต์/worker ที่ไม่ได้โหลด routers
+try:
+    import image_convert  # noqa: F401
+except Exception:
+    pass
 from functools import lru_cache
 
 try:
@@ -424,7 +434,13 @@ def _load_image_source_from_urlpath(
 
 def load_image_autorotate(path_or_bytes):
     # โหลดภาพ
+    # BytesIO ต้องแยกเคส — _load_image_source_from_urlpath คืน BytesIO เมื่อดึงรูปผ่าน
+    # PHOTOS_BASE_URL (ไม่ได้อยู่บนดิสก์เครื่องเดียวกัน) ของเดิมตกไปเข้า BytesIO(BytesIO)
+    # ซึ่ง TypeError แล้วถูก except กลืน = รูปหายจาก PDF เงียบ ๆ
     if isinstance(path_or_bytes, (str, Path)):
+        img = Image.open(path_or_bytes)
+    elif isinstance(path_or_bytes, BytesIO):
+        path_or_bytes.seek(0)
         img = Image.open(path_or_bytes)
     else:
         img = Image.open(BytesIO(path_or_bytes))
@@ -456,6 +472,17 @@ def load_image_autorotate(path_or_bytes):
 
     # ลดขนาดรูปก่อนฝังลง PDF — แสดงจริงสูง ~40mm เท่านั้น ฝังรูป >1400px จึงเปลือง file size
     img.thumbnail((1400, 1400))
+
+    # JPEG เขียน mode RGBA/P ไม่ได้ — ถ้าไม่แปลงก่อน save จะ throw แล้วถูก except กลืน
+    # ใน _load_image_with_cache ผลคือ "รูปหายจาก PDF เงียบ ๆ" ไม่มีที่ไหนฟ้องเลย
+    # (รูปโปร่งใสวางบนพื้นขาว ไม่ใช่ทิ้ง alpha channel ไปดื้อ ๆ ซึ่งจะได้ขอบดำ)
+    if img.mode in ("RGBA", "LA", "PA") or (img.mode == "P" and "transparency" in img.info):
+        img = img.convert("RGBA")
+        bg = Image.new("RGB", img.size, (255, 255, 255))
+        bg.paste(img, mask=img.split()[-1])
+        img = bg
+    elif img.mode not in ("RGB", "L"):
+        img = img.convert("RGB")
 
     # ส่งออก
     buf = BytesIO()
