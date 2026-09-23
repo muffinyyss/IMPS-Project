@@ -40,6 +40,7 @@ PROJECTION = {
     "chargeBoxID": 1,
     "station_id": 1, "createdAt": 1, "timestamp": 1,
     "urls": 1, "url": 1, "file_url": 1,
+    "job_id": 1,
     }
 
 
@@ -89,6 +90,8 @@ def _serialize_report(doc: dict, source: str, station_id: str) -> dict:
         "issue_id":      doc.get("issue_id") or "-",
         # เลขใบงาน Maximo ที่ผูกไว้ตอนช่างเปิดฟอร์มจากใบงานที่ planner assign
         "wonum":         doc.get("wonum") or "",
+        # ใบลูกของใบ PM สถานี (ใบรวม 5 ส่วน) — หน้า PM List ใช้พาเข้าหน้ารวมของใบแม่
+        "job_id":        str(doc.get("job_id") or ""),
         "pm_type":       source,
         "pm_date":       doc.get("pm_date") or "-",
         "status":        doc.get("status") or "submitted",

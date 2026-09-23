@@ -361,7 +361,12 @@ export default function StationPmJobTables() {
   }, [pathname, router, searchParams]);
 
   const openJob = (job: Job) => goto({ view: "form", job_id: job.id, section: null, sn: null, edit_id: null, station_id: job.station_id });
-  const backToList = () => goto({ view: null, job_id: null, section: null, sn: null, edit_id: null, review: null, action: null, pmtab: null });
+  // เข้าหน้ารวมมาจาก PM List → ย้อนกลับไปหน้านั้น ไม่ใช่ตารางใบ PM ของสถานี
+  const backToList = () => {
+    const back = pmBackRoute(searchParams);
+    if (back) { router.push(back); return; }
+    goto({ view: null, job_id: null, section: null, sn: null, edit_id: null, review: null, action: null, pmtab: null });
+  };
   const backToHub = () => goto({ section: null, sn: null, edit_id: null, review: null, action: null, pmtab: null });
 
   /** เปิดฟอร์มของส่วนนั้น — มีเอกสารแล้วส่ง edit_id ไปให้ฟอร์มโหลดของเดิม */
@@ -853,9 +858,9 @@ export default function StationPmJobTables() {
                         <PmStatusBadge flow={toPmFlow({ status: job.status, reject_remark: job.reject_remark })} />
                       </td>
                       <td className="tw-px-3 tw-py-3" onClick={(e) => e.stopPropagation()}>
-                        {/* sections_done นับเป็น "ส่วน" (ตู้ต้องครบทุกตู้ถึงจะนับ)
-                            แต่ PDF มีให้โหลดตั้งแต่กรอกใบแรก */}
-                        {job.sections.some((x) => !!x.report_id) ? (
+                        {/* PDF ให้โหลดได้เฉพาะใบที่อนุมัติปิดแล้ว (Closed) */}
+                        {toPmFlow({ status: job.status, reject_remark: job.reject_remark }) === "closed"
+                          && job.sections.some((x) => !!x.report_id) ? (
                           <a
                             href={`${API_BASE}/stationpmjob/${encodeURIComponent(job.id)}/pdf?station_id=${encodeURIComponent(job.station_id)}&lang=${lang}`}
                             target="_blank"

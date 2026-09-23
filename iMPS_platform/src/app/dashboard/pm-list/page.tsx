@@ -58,6 +58,8 @@ type PMRow = {
   assignees?: string[];
   /** false = เลข wonum นี้ไม่มีอยู่จริงใน Maximo · null = เช็คไม่ได้ */
   exists_in_maximo?: boolean | null;
+  /** เอกสารที่เป็นส่วนหนึ่งของใบ PM สถานี (ใบรวม 5 ส่วน) — id ของใบแม่ */
+  job_id?: string;
 };
 
 /** ด่านของงาน — ชื่อเดียวกับที่ใช้ในหน้า PM report */
@@ -334,7 +336,7 @@ export default function PMListPage() {
 
   const stageLabel = t.stage as Record<PmStage, string>;
 
-  const openReport = useCallback((r: PMRow) => {
+  const openReport = useCallback(async (r: PMRow) => {
     if (!r.id) return;
     const tab = TYPE_TO_TAB[r.pm_type] ?? "charger";
 
@@ -345,6 +347,29 @@ export default function PMListPage() {
     if (r.station_name || r.station_id) {
       localStorage.setItem("selected_station_name", r.station_name || r.station_id);
     }
+
+    // In Progress + ช่างกด "เริ่ม PM" แล้ว (มีใบ PM สถานีแล้ว) → เข้าหน้ารวม 5 ส่วนของใบนั้นเลย
+    //   แถวเอกสาร: ใบลูกรู้ job_id ของใบแม่อยู่แล้ว
+    //   แถวใบงาน : ยังไม่มีส่วนไหนถูกกรอก ต้องถามหาใบจาก wonum — ไม่เจอ = ยังไม่เริ่ม ไปหน้าใบงานตามเดิม
+    if (stageOf(r) === "in_progress" && r.station_id) {
+      let jobId = r.kind === "report" ? (r.job_id || "") : "";
+      if (!jobId && r.kind === "wo" && r.wonum) {
+        try {
+          const res = await apiFetch(
+            `/stationpmjob/by-wonum?station_id=${encodeURIComponent(r.station_id)}&wonum=${encodeURIComponent(r.wonum)}`
+          );
+          if (res.ok) jobId = String((await res.json())?.id || "");
+        } catch { /* หาไม่ได้ก็เปิดหน้าใบงานตามเดิม */ }
+      }
+      if (jobId) {
+        window.dispatchEvent(new CustomEvent("station:selected"));
+        const params = new URLSearchParams({
+          view: "form", job_id: jobId, station_id: r.station_id, from: PM_ORIGIN_LIST,
+        });
+        router.push(`/dashboard/pm-report?${params.toString()}`);
+        return;
+      }
+    }
     if (tab === "charger" && r.sn && r.sn !== "-") {
       localStorage.setItem("selected_sn", r.sn);
       window.dispatchEvent(new CustomEvent("charger:selected"));
@@ -353,7 +378,7 @@ export default function PMListPage() {
     }
 
     // แถวใบงาน Maximo ยังไม่มีเอกสาร → เข้าหน้าวางแผนเหมือนกันทุก role
-    // ผู้วางแผนแก้แผนได้ ส่วนช่างเห็นแผนแบบอ่านอย่างเดียว + ปุ่ม "เริ่ม PM" ท้ายหน้า
+    // ผู้วางแผน assign ใบที่ยังไม่วางแผน (วางแผนแล้วแก้ไม่ได้) ส่วนช่างเห็นแผนแบบอ่านอย่างเดียว + ปุ่ม "เริ่ม PM" ท้ายหน้า
     // from= ให้ปุ่มย้อนกลับในฟอร์มรู้ว่าต้องพากลับมาหน้านี้ ไม่ใช่ตาราง tab
     // สิทธิ์อนุมัติแคบกว่าสิทธิ์วางแผน (owner วางแผนได้ แต่อนุมัติไม่ได้)
     // ใช้ชุดเดียวกับที่ backend เช็ค ไม่งั้นโชว์ปุ่มแล้วกดไปโดน 403
@@ -534,7 +559,7 @@ export default function PMListPage() {
       { header: t.headers.technician, value: (r) => (r.technician === "-" ? "" : r.technician) },
       { header: t.headers.date, value: (r) => csvDate(r.pm_date) },
       { header: t.headers.status, value: (r) => stageLabel[stageOf(r)] },
-      { header: "PDF", value: (r) => (r.file_url ? (r.file_url.startsWith("http") ? r.file_url : `${API_BASE}${r.file_url}`) : "") },
+      { header: "PDF", value: (r) => (stageOf(r) === "closed" && r.file_url ? (r.file_url.startsWith("http") ? r.file_url : `${API_BASE}${r.file_url}`) : "") },
     ]);
     downloadCsv(csvFilename("pm-list"), csv);
   };
@@ -780,13 +805,14 @@ export default function PMListPage() {
               ) : tableRows.map((r, i) => {
                 const stage = stageOf(r);
                 const style = STAGE_STYLE[stage];
-                const pdfHref = r.file_url
+                // PDF ให้โหลดได้เฉพาะใบที่อนุมัติปิดแล้ว (Closed)
+                const pdfHref = stage === "closed" && r.file_url
                   ? (r.file_url.startsWith("http") ? r.file_url : `${API_BASE}${r.file_url}`)
                   : "";
                 return (
                   <tr
                     key={`${r.id}-${r.pm_type}-${i}`}
-                    onClick={() => openReport(r)}
+                    onClick={() => { void openReport(r); }}
                     title={`${r.kind === "wo" ? t.openPlanTitle : t.openReportTitle} · ${r.station_name || r.station_id}`}
                     className="tw-cursor-pointer tw-border-t tw-border-gray-100 hover:tw-bg-blue-50/30"
                   >

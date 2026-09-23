@@ -107,11 +107,9 @@ const T = {
     en: "The planner has not selected the equipment yet — wait for the plan to be completed",
   },
 
-  editPlan: { th: "แก้ไขแผน", en: "Edit plan" },
-  cancelEdit: { th: "ยกเลิกการแก้ไข", en: "Cancel edit" },
   plannedNotice: {
-    th: "ใบงานนี้วางแผนเรียบร้อยแล้ว — ข้อมูลเป็นแบบอ่านอย่างเดียว กด “แก้ไขแผน” ถ้าต้องการเปลี่ยน",
-    en: "This work order is already planned — fields are read-only. Press “Edit plan” to change it",
+    th: "ใบงานนี้วางแผนเรียบร้อยแล้ว — ข้อมูลเป็นแบบอ่านอย่างเดียว",
+    en: "This work order is already planned — fields are read-only",
   },
   save: { th: "Assign", en: "Assign" },
   saving: { th: "กำลังมอบหมาย…", en: "Assigning…" },
@@ -169,9 +167,6 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
   const [canPlan, setCanPlan] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  // วางแผนเสร็จแล้ว = อ่านอย่างเดียว ต้องกด "แก้ไขแผน" ก่อนถึงจะแก้ได้
-  // (กันแก้ทับโดยไม่ตั้งใจ แต่ยังเปิดทางให้ planner แก้แผนที่ผิดได้)
-  const [editMode, setEditMode] = useState(false);
   const [error, setError] = useState("");
 
   const [checked, setChecked] = useState<Record<string, boolean>>({});
@@ -315,7 +310,6 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
         setError(String(j?.detail || t("errSave", lang)));
         return;
       }
-      setEditMode(false);
       onSaved();
     } catch (err) {
       console.error("pm plan save error:", err);
@@ -333,7 +327,8 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
   const plannedEquipment = wo?.selected_equipment ?? [];
   const showStart = !canPlan && !!onStart;
   const canStart = !loading && !!wo && plannedEquipment.length > 0;
-  const locked = !canPlan || (alreadyPlanned && !editMode);
+  // วางแผนเสร็จแล้ว = อ่านอย่างเดียวถาวร (PM ไม่มีแก้ไขแผน)
+  const locked = !canPlan || alreadyPlanned;
 
   return (
     <section className="tw-pb-24">
@@ -404,8 +399,8 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
             </div>
           )}
 
-          {/* วางแผนแล้ว — อ่านอย่างเดียวจนกว่าจะกดแก้ไข */}
-          {!loading && canPlan && alreadyPlanned && !editMode && (
+          {/* วางแผนแล้ว — อ่านอย่างเดียว */}
+          {!loading && canPlan && alreadyPlanned && (
             <div className="tw-mb-4 tw-flex tw-items-start tw-gap-3 tw-px-4 tw-py-3 tw-rounded-lg tw-bg-blue-50 tw-border tw-border-blue-200">
               <ExclamationTriangleIcon className="tw-w-5 tw-h-5 tw-text-blue-500 tw-mt-0.5 tw-flex-shrink-0" />
               <p className="tw-text-sm tw-text-blue-800">{t("plannedNotice", lang)}</p>
@@ -615,27 +610,8 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
                   >
                     {t("backToList", lang)}
                   </Button>
-                  {/* วางแผนแล้ว → ปุ่มเดียวคือเข้าโหมดแก้ไข ยังไม่ให้ยิงทับเลย */}
-                  {canPlan && alreadyPlanned && !editMode && (
-                    <Button
-                      variant="outlined"
-                      onClick={() => setEditMode(true)}
-                      className="tw-border-blue-gray-200 tw-text-blue-gray-700 hover:tw-border-blue-gray-300"
-                    >
-                      {t("editPlan", lang)}
-                    </Button>
-                  )}
-                  {canPlan && alreadyPlanned && editMode && (
-                    <Button
-                      variant="text"
-                      onClick={() => { setEditMode(false); load(); }}
-                      disabled={saving}
-                    >
-                      {t("cancelEdit", lang)}
-                    </Button>
-                  )}
-                  {/* โหมดอ่านอย่างเดียวไม่ต้องมีปุ่ม Assign ให้กดพลาด — ช่างก็ไม่ต้องเห็นปุ่มจาง */}
-                  {canPlan && !(alreadyPlanned && !editMode) && (
+                  {/* วางแผนแล้วไม่ต้องมีปุ่ม Assign ให้กดทับ — ช่างก็ไม่ต้องเห็นปุ่มจาง */}
+                  {canPlan && !alreadyPlanned && (
                     <Button
                       onClick={onSave}
                       disabled={locked || saving || !wo}
