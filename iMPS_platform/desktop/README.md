@@ -48,6 +48,9 @@ Runtime logs are written to:
 %APPDATA%\iMPS Fault Detection\logs\desktop-runtime.log
 ```
 
+(For another edition the folder is named after its product name, e.g.
+`%APPDATA%\iMPS Fault Detection Snapshot 2026-09-12`.)
+
 ## Build the installers
 
 Build prerequisites on Windows are Node.js/npm, Python with NumPy and
@@ -105,6 +108,40 @@ hash embedded by electron-builder. The two installers install the same local
 application—"online" describes the installation transport, not a different app
 mode or an auto-update service.
 
+### Editions (side-by-side installs)
+
+Product identity comes from `package.json` (`build.productName`, `build.appId`)
+and can be overridden per build, so a second edition installs next to the
+current line as its own Windows application with its own install folder,
+shortcuts, uninstall entry and `%APPDATA%` folder:
+
+| Variable | Effect |
+|---|---|
+| `IMPS_PRODUCT_NAME` | Product name: window title, shortcuts, `<name>.exe`, `%APPDATA%\<name>`, and the artifact names `<slug>-Offline-Setup-<version>.exe` / `<slug>-Online-Setup-<version>.exe` |
+| `IMPS_APP_ID` | Windows App ID (uninstall entry and NSIS registry keys). Two editions must differ here, otherwise installing one replaces the other |
+| `IMPS_RESOURCES_ROOT` | Reuse the `resources` directory of an earlier unpacked build (`app`, `data\summary.json`, `runtime`, `models`) instead of `.desktop-build`, to re-issue a frozen snapshot without rebuilding it |
+
+Published editions:
+
+| Edition | Product name | App ID | Version |
+|---|---|---|---|
+| Current line | `iMPS Fault Detection` | `th.co.imps.faultdetection` | 1.2.0 (v4 benchmark, artifact `53b6f14244c2e633`) |
+| Snapshot 2026-09-12 | `iMPS Fault Detection Snapshot 2026-09-12` | `th.co.imps.faultdetection.snapshot20260912` | 1.1.0 (artifact `41ded2cdd5c2ba3f`) |
+
+The snapshot edition was packaged from the unpacked 1.1.0 build with
+`package.json` temporarily at version 1.1.0:
+
+```powershell
+$env:IMPS_PRODUCT_NAME = "iMPS Fault Detection Snapshot 2026-09-12"
+$env:IMPS_APP_ID = "th.co.imps.faultdetection.snapshot20260912"
+$env:IMPS_RESOURCES_ROOT = "dist-desktop/final-build/win-unpacked/resources"
+$env:IMPS_ONLINE_PACKAGE_URL = "https://github.com/SukritJaAIproject/EV_Charger_Fault_Detection_AI/releases/download/imps-fault-detection-v1.1.0/material-tailwind-dashboard-nextjs-pro-1.1.0-x64.nsis.7z"
+node desktop/scripts/build-installers.mjs --kind both --output dist-desktop/release-snapshot
+```
+
+`desktop\electron\main.cjs` reads the product name from the `package.json`
+baked into the asar, which is why each edition keeps its own `%APPDATA%` data.
+
 ## Verification
 
 Run the packaged sidecar against both the known-fault and healthy reference
@@ -143,6 +180,12 @@ The installer retains upstream Wireshark and dsV2Gshark licenses and notices.
 Anyone distributing the installer must also satisfy the corresponding-source
 requirements for the exact GPL Wireshark binaries being shipped. See
 `desktop\licenses\THIRD_PARTY_NOTICES.md`.
+
+The upstream uninstallers (`uninstall-wireshark.exe`, `unins000.exe` and
+`unins000.dat`) are not copied into the portable runtime. They would only offer
+to remove the build machine's own Wireshark installation, and the dsV2Gshark
+one is the only unsigned executable in the installed tree. Every other file of
+the installed Wireshark directory is shipped unchanged.
 
 The legacy `Start-iMPS-FaultDetection.ps1` launcher remains available for local
 development against the external Conda environment. It is not used by the
