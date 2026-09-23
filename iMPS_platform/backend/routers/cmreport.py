@@ -24,7 +24,7 @@ import inspect                                                     # ← รอ�
 # หมายเหตุ: /cmurl/upload-files ยังบังคับ pdf อย่างเดียวของมันเอง
 ALLOWED_EXTS = {
     "pdf", "docx", "doc", "xlsx", "xls", "pptx", "ppt", "txt", "csv",
-    "jpg", "jpeg", "png", "gif", "webp", "svg", "heic", "bmp",
+    "jpg", "jpeg", "png", "gif", "webp", "svg", "heic", "heif", "avif", "bmp",
     "mp4", "mov", "mkv", "avi", "webm", "wmv",
 }
 MAX_FILE_MB = 20
@@ -32,6 +32,7 @@ MAX_CM_PHOTOS_PER_GROUP = 10
 from deps import UserClaims, get_current_user
 from brand_scope import brand_scope_of
 from uploads_access import assert_station_access, assert_sn_access
+from image_convert import normalize_image_bytes, ImageConversionError
 
 router = APIRouter()
 
@@ -1257,7 +1258,16 @@ async def cmreport_upload_photos(
         if len(data) > MAX_FILE_MB * 1024 * 1024:
             raise HTTPException(status_code=413, detail=f"File too large (> {MAX_FILE_MB} MB)")
 
-        fname = _safe_name(f.filename or f"image_{secrets.token_hex(3)}.{ext}")
+        # รูปจาก iPhone เป็น HEIC ซึ่งมีแต่ Safari ที่เปิดได้ → แปลงเป็น JPEG ก่อนเขียนลงดิสก์
+        # ไฟล์ที่ไม่ใช่รูป (pdf / เอกสาร / วิดีโอ) normalize_image_bytes คืนค่าเดิมไม่แตะต้อง
+        try:
+            data, out_ext = normalize_image_bytes(data, f.filename or "")
+        except ImageConversionError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+        fname = _safe_name(f.filename or f"image_{secrets.token_hex(3)}.{out_ext or ext}")
+        if out_ext and out_ext != ext:
+            fname = f"{pathlib.Path(fname).stem}.{out_ext}"
         path = dest_dir / fname
         with open(path, "wb") as out:
             out.write(data)

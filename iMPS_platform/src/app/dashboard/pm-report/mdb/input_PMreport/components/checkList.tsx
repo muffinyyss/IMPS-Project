@@ -16,6 +16,7 @@ import PmCompareTable from "@/app/dashboard/pm-report/components/PmCompareTable"
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 import { putPhoto, getPhotoByDbKey, delPhoto, type PhotoRef } from "../lib/draftPhotos";
 import { isFileReadable, isImageDecodable, resolveUsableFile, reportMissingDraftPhoto, reportPhotoStorageFailure } from "@/utils/upload-safety";
+import { ensureViewableImage } from "@/utils/heic";
 import { collectPending, unrecoverablePhotos, expectedCountByGroup, findShortfall, shortfallMessage, pendingMessage, unrecoverableMessage } from "@/utils/pm-photo-sync";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
 import { apiFetch } from "@/utils/api";
@@ -803,13 +804,17 @@ async function compressImage(
     const isMobile = useMemo(() => isMobileDevice(), []);
     const [landscapeWarning, setLandscapeWarning] = useState(false);
 
-    const processFile = async (file: File): Promise<PhotoItem | null> => {
+    const processFile = async (rawFile: File): Promise<PhotoItem | null> => {
         try {
             // กันไฟล์ว่าง (size=0) ตั้งแต่ต้นทาง — เป็นต้นเหตุของ error "Empty file (size=0)" ตอนอัปโหลด
-            if (!file || file.size === 0) {
-                console.warn("processFile: empty source file", file?.name);
+            if (!rawFile || rawFile.size === 0) {
+                console.warn("processFile: empty source file", rawFile?.name);
                 return null;
             }
+            // รูป HEIC จาก iPhone: เบราว์เซอร์นอกจาก Safari decode ไม่ได้ ทำให้ทั้งท่อพังเงียบ ๆ
+            // — addTimestampToImage ไม่ประทับเวลา/พิกัด, compressImage ไม่บีบ, preview ขึ้นกรอบว่าง
+            // แปลงเป็น JPEG ที่ server ก่อน (ล้มเหลวก็คืนไฟล์เดิม backend แปลงให้อีกชั้นตอนอัปโหลด)
+            const file = await ensureViewableImage(rawFile);
             const locationText = await getCachedLocation();
             const stamped = await addTimestampToImage(file, locationText);
             // ถ้า encode แล้วได้ไฟล์ว่าง (เช่น canvas ล้มเหลวบางเครื่อง) ให้ fallback ไฟล์เดิม แล้วเช็กซ้ำ

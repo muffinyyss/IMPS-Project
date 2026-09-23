@@ -352,17 +352,15 @@ export default function PMListPage() {
       window.dispatchEvent(new CustomEvent("station:selected"));
     }
 
-    // แถวใบงาน Maximo ยังไม่มีเอกสาร → planner ไปหน้าวางแผน
-    // ส่วนคนที่วางแผนไม่ได้ (ช่าง) ไปหน้าข้อมูลใบงานที่มีปุ่ม "เริ่ม PM"
+    // แถวใบงาน Maximo ยังไม่มีเอกสาร → เข้าหน้าวางแผนเหมือนกันทุก role
+    // ผู้วางแผนแก้แผนได้ ส่วนช่างเห็นแผนแบบอ่านอย่างเดียว + ปุ่ม "เริ่ม PM" ท้ายหน้า
     // from= ให้ปุ่มย้อนกลับในฟอร์มรู้ว่าต้องพากลับมาหน้านี้ ไม่ใช่ตาราง tab
-    const canPlan = PM_PLANNING_ROLES.includes(me?.role ?? "");
     // สิทธิ์อนุมัติแคบกว่าสิทธิ์วางแผน (owner วางแผนได้ แต่อนุมัติไม่ได้)
     // ใช้ชุดเดียวกับที่ backend เช็ค ไม่งั้นโชว์ปุ่มแล้วกดไปโดน 403
     const canApprove = PM_APPROVE_ROLES.includes(me?.role ?? "");
     const params = r.kind === "wo"
       ? new URLSearchParams({
-          tab, view: "form", wonum: r.wonum || r.id, from: PM_ORIGIN_LIST,
-          ...(canPlan ? { planning: "1" } : { wo_info: "1" }),
+          tab, view: "form", wonum: r.wonum || r.id, from: PM_ORIGIN_LIST, planning: "1",
         })
       // ใบที่รออนุมัติหรือปิดไปแล้ว → เปิดหน้าตรวจหน้าเดียวกันทุก role
       //   ผู้อนุมัติ + ยังรออนุมัติ → approve=1 มีปุ่มอนุมัติ/ตีกลับ

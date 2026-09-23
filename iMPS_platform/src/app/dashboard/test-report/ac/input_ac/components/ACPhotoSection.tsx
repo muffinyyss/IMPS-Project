@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import Image from "next/image";
 import { Textarea, Typography, Tooltip } from "@material-tailwind/react";
+import { ensureViewableImage, ensureViewableImages } from "@/utils/heic";
 
 /* ===================== Types ===================== */
 
@@ -344,9 +345,12 @@ const ACPhotoSection: React.FC<ACPhotoSectionProps> = ({ initialItems, onItemsCh
     updateItems(newItems);
   };
 
-  const addItemImages = (i: number, files: FileList | null) => {
+  const addItemImages = async (i: number, files: FileList | null) => {
     if (!files?.length) return;
-    const imgs = Array.from(files).map((file) => ({
+    // HEIC จาก iPhone เบราว์เซอร์นอกจาก Safari เปิดไม่ได้ → preview ขึ้นกรอบว่าง
+    // แปลงเป็น JPEG ที่ server ก่อน (ตอนอัปโหลดจริง backend ก็แปลงให้อีกชั้น)
+    const picked = await ensureViewableImages(Array.from(files));
+    const imgs = picked.map((file) => ({
       file,
       url: URL.createObjectURL(file),
     }));
@@ -411,10 +415,10 @@ const ACPhotoSection: React.FC<ACPhotoSectionProps> = ({ initialItems, onItemsCh
                       onChange={(e) => {
                         // เปลี่ยนรูปใหม่ (แทนรูปเดิม)
                         if (e.target.files && e.target.files[0]) {
-                          const file = e.target.files[0];
-                          const url = URL.createObjectURL(file);
-                          const imgs = [{ file, url }];
-                          patchItem(categoryIndex, { images: imgs });
+                          void ensureViewableImage(e.target.files[0]).then((file) => {
+                            const url = URL.createObjectURL(file);
+                            patchItem(categoryIndex, { images: [{ file, url }] });
+                          });
                         }
                       }}
                     />
@@ -450,7 +454,7 @@ const ACPhotoSection: React.FC<ACPhotoSectionProps> = ({ initialItems, onItemsCh
                       type="file"
                       accept="image/*"
                       className="tw-hidden"
-                      onChange={(e) => addItemImages(categoryIndex, e.target.files)}
+                      onChange={(e) => void addItemImages(categoryIndex, e.target.files)}
                     />
                     <div className="tw-w-12 tw-h-12 tw-rounded-full tw-bg-blue-50 tw-flex tw-items-center tw-justify-center">
                       <svg className="tw-w-6 tw-h-6 tw-text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -510,7 +514,7 @@ const ACPhotoSection: React.FC<ACPhotoSectionProps> = ({ initialItems, onItemsCh
                       multiple
                       capture="environment"
                       className="tw-hidden"
-                      onChange={(e) => addItemImages(actualIndex, e.target.files)}
+                      onChange={(e) => void addItemImages(actualIndex, e.target.files)}
                     />
                     <span className="tw-text-sm">+ {t.addPhoto}</span>
                   </label>

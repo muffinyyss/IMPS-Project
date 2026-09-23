@@ -11,6 +11,7 @@ import re, json, uuid, pathlib, secrets
 from config import normalize_pm_date, ACTestReportDB, ACUrlDB, station_collection, _validate_station_id_th, th_tz, _ensure_utc_iso
 from deps import UserClaims, get_current_user
 from uploads_access import assert_station_access, assert_sn_access
+from image_convert import normalize_image_bytes, ImageConversionError
 from routers.pm_helpers import (
     UPLOADS_ROOT, ALLOWED_DOC_EXTS, MAX_DOC_FILE_MB,
     ALLOWED_IMAGE_EXTS, MAX_IMAGE_FILE_MB,
@@ -219,8 +220,17 @@ async def ac_testreport_upload_test_files(
     dest_dir = pathlib.Path(UPLOADS_ROOT) / "actest" / sn / report_id / "test_files" / test_type / str(item_index) / str(round_index) / handgun
     dest_dir.mkdir(parents=True, exist_ok=True)
 
-    # Save file
-    fname = _safe_name(file.filename or f"file_{secrets.token_hex(3)}.{ext}")
+    # ไฟล์แนบชุดนี้เป็นได้ทั้งเอกสารและรูป — ถ้าเป็นรูป HEIC (มาในชื่อ .jpg ได้)
+    # ต้องแปลงเป็น JPEG ก่อน ไม่งั้นเปิดดูไม่ได้ ส่วนเอกสารจะถูกส่งคืนตามเดิม
+    try:
+        data, out_ext = normalize_image_bytes(data, file.filename or "")
+    except ImageConversionError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    out_ext = out_ext or ext
+    fname = _safe_name(file.filename or f"file_{secrets.token_hex(3)}.{out_ext}")
+    if out_ext and out_ext != ext:
+        fname = f"{pathlib.Path(fname).stem}.{out_ext}"
     path = dest_dir / fname
     with open(path, "wb") as out:
         out.write(data)
@@ -362,7 +372,17 @@ async def ac_testreport_upload_photos(
         if len(data) > MAX_IMAGE_FILE_MB * 1024 * 1024:
             raise HTTPException(status_code=413, detail=f"File too large (> {MAX_IMAGE_FILE_MB} MB)")
 
-        fname = _safe_name(f.filename or f"image_{secrets.token_hex(3)}.{ext}")
+        # เดิมช่างที่ถ่ายด้วย iPhone (HEIC) แนบรูปไม่ได้เลย เพราะ ext ไม่อยู่ใน allow-list
+        # ตอนนี้รับเข้ามาแล้วแปลงเป็น JPEG ให้ตรงนี้
+        try:
+            data, out_ext = normalize_image_bytes(data, f.filename or "")
+        except ImageConversionError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+        out_ext = out_ext or ext or "jpg"
+        fname = _safe_name(f.filename or f"image_{secrets.token_hex(3)}.{out_ext}")
+        if out_ext != ext:
+            fname = f"{pathlib.Path(fname).stem}.{out_ext}"
         path = dest_dir / fname
         with open(path, "wb") as out:
             out.write(data)

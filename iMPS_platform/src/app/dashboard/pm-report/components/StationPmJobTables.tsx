@@ -281,6 +281,9 @@ export default function StationPmJobTables() {
   // ทางเข้าจากใบงาน Maximo (หน้า PM List ส่งมา) — ทุกชนิดเข้าทางนี้หมดแล้ว
   const planningWonum = searchParams.get("planning") === "1" ? (searchParams.get("wonum") ?? "") : "";
   const woInfoWonum = searchParams.get("wo_info") === "1" ? (searchParams.get("wonum") ?? "") : "";
+  // ช่างกด "เริ่ม PM" ได้จากทั้งสองทางเข้า — หน้าวางแผน (planning=1) คือทางเข้าปกติของช่างแล้ว
+  // ส่วน wo_info=1 เหลือไว้ให้ลิงก์เก่าที่ผู้ใช้ bookmark ไว้ยังเปิดได้
+  const openWonum = planningWonum || woInfoWonum;
   const section = (searchParams.get("section") ?? "") as SectionId | "";
   const editId = searchParams.get("edit_id") ?? "";
   const isFormView = searchParams.get("view") === "form" && !!jobId;
@@ -395,7 +398,7 @@ export default function StationPmJobTables() {
    * ของตู้นั้นเลย ไม่ต้องให้ช่างเลือกซ้ำ
    */
   const startPmFromWo = useCallback(async (snFromWo?: string) => {
-    if (!stationId || !woInfoWonum) return;
+    if (!stationId || !openWonum) return;
     setActing(true);
     try {
       // วันที่ PM ของใบงานนั้น — หาไม่เจอก็ใช้วันนี้
@@ -406,14 +409,14 @@ export default function StationPmJobTables() {
         );
         const woJson = await woRes.json().catch(() => ({} as any));
         const hit = (Array.isArray(woJson?.items) ? woJson.items : [])
-          .find((w: any) => String(w?.wonum ?? "") === woInfoWonum);
+          .find((w: any) => String(w?.wonum ?? "") === openWonum);
         if (hit?.pm_date) pmDate = String(hit.pm_date).slice(0, 10);
       } catch { /* ใช้วันนี้แทน */ }
 
       const res = await apiFetch("/stationpmjob/open", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ station_id: stationId, pm_date: pmDate, wonum: woInfoWonum }),
+        body: JSON.stringify({ station_id: stationId, pm_date: pmDate, wonum: openWonum }),
       });
       const json = await res.json().catch(() => ({} as any));
       if (!res.ok) throw new Error(json?.detail || t("errCreate", lang));
@@ -432,7 +435,7 @@ export default function StationPmJobTables() {
     } finally {
       setActing(false);
     }
-  }, [stationId, woInfoWonum, goto, loadJobs, lang, sn, woSource]);
+  }, [stationId, openWonum, goto, loadJobs, lang, sn, woSource]);
 
   const createJob = async () => {
     if (!stationId || acting) return;
@@ -499,7 +502,8 @@ export default function StationPmJobTables() {
   };
 
   // ══════════════ ทางเข้าจากใบงาน Maximo ══════════════
-  // ผู้วางแผนกดจาก PM List → หน้าวางแผน (มอบหมายช่าง/กำหนดการ)
+  // ทุก role เข้าหน้าเดียวกันจาก PM List — ผู้วางแผนได้ฟอร์มวางแผน
+  // ช่างได้หน้าเดียวกันแบบอ่านอย่างเดียว + ปุ่ม "เริ่ม PM" ท้ายหน้า
   if (planningWonum) {
     return (
       <PmPlanForm
@@ -508,6 +512,7 @@ export default function StationPmJobTables() {
         wonum={planningWonum}
         onSaved={leaveWo}
         onCancel={leaveWo}
+        onStart={(snFromWo?: string) => { void startPmFromWo(snFromWo); }}
       />
     );
   }

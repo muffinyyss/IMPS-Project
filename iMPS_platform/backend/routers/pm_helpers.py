@@ -18,7 +18,7 @@ from config import (
 UPLOADS_ROOT = os.getenv("UPLOADS_ROOT", "./uploads")
 os.makedirs(UPLOADS_ROOT, exist_ok=True)
 
-ALLOWED_EXTS = {"jpg", "jpeg", "png", "webp", "gif", "pdf", "heic", "heif"}
+ALLOWED_EXTS = {"jpg", "jpeg", "png", "webp", "gif", "pdf", "heic", "heif", "avif"}
 MAX_FILE_MB = 20
 
 
@@ -280,7 +280,9 @@ from config import ACTestReportDB, ACUrlDB, DCTestReportDB, DCUrlDB
 ALLOWED_DOC_EXTS = {"pdf", "doc", "docx", "xls", "xlsx", "jpg", "jpeg", "png"}
 MAX_DOC_FILE_MB = 20
 
-ALLOWED_IMAGE_EXTS = {"jpg", "jpeg", "png", "webp", "gif"}
+# heic/heif = iPhone (High Efficiency), avif = Android รุ่นใหม่
+# รับเข้ามาได้ แล้วแปลงเป็น JPEG ที่ image_convert ก่อนเขียนลงดิสก์
+ALLOWED_IMAGE_EXTS = {"jpg", "jpeg", "png", "webp", "gif", "heic", "heif", "avif"}
 MAX_IMAGE_FILE_MB = 10
 
 PHOTO_GROUP_KEYS = [

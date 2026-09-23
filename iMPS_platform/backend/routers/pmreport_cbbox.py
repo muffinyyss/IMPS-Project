@@ -39,27 +39,16 @@ from routers.pm_helpers import (
 )
 
 from PIL import Image
+from image_convert import normalize_image_bytes, ImageConversionError
 from io import BytesIO
 
 
+# เดิมแต่ละ router มี resize_image_bytes ของตัวเอง (ซ้ำกัน 5 ที่) ซึ่ง `except: return data`
+# กลืนเคส "เปิด HEIC ไม่ได้" ไปเงียบ ๆ ตอนนี้ย้ายไปรวมที่ image_convert.normalize_image_bytes
+# ที่แปลงเป็น JPEG เสมอ และ raise เมื่อแปลงไม่ได้จริง ๆ
 def resize_image_bytes(data: bytes, max_width: int = 1920, quality: int = 85) -> bytes:
-    """Resize รูปถ้าใหญ่เกิน max_width, return JPEG bytes"""
-    try:
-        img = Image.open(BytesIO(data))
-        if img.width <= max_width:
-            return data
-        ratio = max_width / img.width
-        new_size = (max_width, int(img.height * ratio))
-        img = img.resize(new_size, Image.LANCZOS)
-        if img.mode in ("RGBA", "P", "LA"):
-            img = img.convert("RGB")
-        elif img.mode != "RGB":
-            img = img.convert("RGB")
-        buf = BytesIO()
-        img.save(buf, format="JPEG", quality=quality, optimize=True)
-        return buf.getvalue()
-    except Exception:
-        return data
+    """คงชื่อเดิมไว้เผื่อมีโค้ดอื่นเรียก — ผลลัพธ์เป็น JPEG ที่เบราว์เซอร์เปิดได้เสมอ"""
+    return normalize_image_bytes(data, max_width=max_width, quality=quality)[0]
 
 
 router = APIRouter()
@@ -674,10 +663,17 @@ async def cbboxpmreport_upload_pre_photos(
         if len(data) > MAX_FILE_MB * 1024 * 1024:
             raise HTTPException(status_code=413, detail=f"File too large (> {MAX_FILE_MB} MB)")
 
-        data = resize_image_bytes(data, max_width=1280, quality=75)
+        # บังคับให้เป็น JPEG เสมอ — iPhone ส่ง HEIC มาซึ่ง Chrome/Edge/Firefox เปิดไม่ได้
+        # ของเดิม (resize_image_bytes) เปิด HEIC ไม่ได้แล้วคืนไบต์เดิมเงียบ ๆ จึงได้ไฟล์
+        # "ไบต์ HEIC ในชื่อ .jpg" ที่เปิดไม่ขึ้นทั้งบนเว็บและใน PDF
+        try:
+            data, out_ext = normalize_image_bytes(data, f.filename or "", max_width=1280, quality=75)
+        except ImageConversionError as e:
+            raise HTTPException(status_code=400, detail=str(e))
 
-        fname = _safe_name(f.filename or f"image_{secrets.token_hex(3)}.jpg")
-        fname = pathlib.Path(fname).stem + ".jpg"
+        out_ext = out_ext or "jpg"
+        fname = _safe_name(f.filename or f"image_{secrets.token_hex(3)}.{out_ext}")
+        fname = pathlib.Path(fname).stem + "." + out_ext
         path = dest_dir / fname
         with open(path, "wb") as out:
             out.write(data)
@@ -755,10 +751,17 @@ async def cbboxpmreport_upload_post_photos(
         if len(data) > MAX_FILE_MB * 1024 * 1024:
             raise HTTPException(status_code=413, detail=f"File too large (> {MAX_FILE_MB} MB)")
 
-        data = resize_image_bytes(data, max_width=1280, quality=75)
+        # บังคับให้เป็น JPEG เสมอ — iPhone ส่ง HEIC มาซึ่ง Chrome/Edge/Firefox เปิดไม่ได้
+        # ของเดิม (resize_image_bytes) เปิด HEIC ไม่ได้แล้วคืนไบต์เดิมเงียบ ๆ จึงได้ไฟล์
+        # "ไบต์ HEIC ในชื่อ .jpg" ที่เปิดไม่ขึ้นทั้งบนเว็บและใน PDF
+        try:
+            data, out_ext = normalize_image_bytes(data, f.filename or "", max_width=1280, quality=75)
+        except ImageConversionError as e:
+            raise HTTPException(status_code=400, detail=str(e))
 
-        fname = _safe_name(f.filename or f"image_{secrets.token_hex(3)}.jpg")
-        fname = pathlib.Path(fname).stem + ".jpg"
+        out_ext = out_ext or "jpg"
+        fname = _safe_name(f.filename or f"image_{secrets.token_hex(3)}.{out_ext}")
+        fname = pathlib.Path(fname).stem + "." + out_ext
         path = dest_dir / fname
         with open(path, "wb") as out:
             out.write(data)
