@@ -25,7 +25,7 @@ import {
   Button, Card, CardBody, CardHeader, Dialog, DialogBody, DialogFooter, DialogHeader, Input, Typography,
 } from "@material-tailwind/react";
 import {
-  ArrowLeftIcon, CheckCircleIcon, DocumentArrowDownIcon, PencilSquareIcon, PlusIcon,
+  ArrowLeftIcon, CheckCircleIcon, DocumentArrowDownIcon, EyeIcon, PencilSquareIcon, PlusIcon,
 } from "@heroicons/react/24/outline";
 import { apiFetch } from "@/utils/api";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
@@ -277,8 +277,25 @@ function SectionFillButton({
   compact?: boolean;
 }) {
   const filled = !!state.report_id;
-  const closed = ["closed", "submitted"].includes(String(state.status).trim().toLowerCase());
-  const label = filled ? (closed ? t("view", lang) : t("edit", lang)) : t("fill", lang);
+  const status = String(state.status).trim().toLowerCase();
+  // ส่งแล้ว (กรอกแล้ว / รออนุมัติ / ปิดแล้ว) เปิดเป็นหน้าดูอย่างเดียว → ปุ่มรูปตา
+  // ส่วนที่ยังเป็น draft (เช่นโดนตีกลับ) ยังเปิดไปแก้ได้ จึงคงปุ่ม "แก้ไข" ไว้
+  const sent = filled && ["closed", "submitted", "wait for approve"].includes(status);
+  if (sent) {
+    return (
+      <Button
+        size="sm"
+        variant="outlined"
+        onClick={() => onOpen(job, state)}
+        title={t("view", lang)}
+        aria-label={t("view", lang)}
+        className={`tw-flex tw-items-center tw-justify-center tw-px-2.5 ${compact ? "" : "tw-mt-3"}`}
+      >
+        <EyeIcon className="tw-h-4 tw-w-4" />
+      </Button>
+    );
+  }
+  const label = filled ? t("edit", lang) : t("fill", lang);
   return (
     <Button
       size="sm"
