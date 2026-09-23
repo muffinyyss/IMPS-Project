@@ -1004,7 +1004,7 @@ function PMValidationCard({
 }
 
 function InputWithUnit<U extends string>({
-    label, value, unit, units, onValueChange, onUnitChange, readOnly, disabled, labelOnTop, required = true, isNA = false, onNAChange, lang
+    label, value, unit, units, onValueChange, onUnitChange, readOnly, disabled, labelOnTop, required = false, isNA = false, onNAChange, lang
 }: {
     label: string; value: string; unit: U; units: readonly U[];
     onValueChange: (v: string) => void; onUnitChange: (u: U) => void;
@@ -2353,39 +2353,10 @@ export default function ChargerPMForm() {
     const MEASURE_BY_NO: Record<number, ReturnType<typeof useMeasure<UnitVoltage>> | undefined> = { 16: m16 };
 
     // missingInputs now stores detailed info for each missing item
-    const missingInputsDetailed = useMemo(() => {
-        const result: { qNo: number; subNo?: number; label: string; fieldKey: string }[] = [];
+    // ค่าที่วัดได้ (แรงดัน / CP ฯลฯ) ไม่บังคับกรอกแล้ว — ช่างเว้นว่างได้ ส่วนรูป/ผลตรวจ/สรุปยังบังคับเหมือนเดิม
+    const missingInputsDetailed: React.ComponentProps<typeof PMValidationCard>["missingInputsDetailed"] = [];
 
-        // Item 10 - CP values
-        (fixedItemsMap[10] || []).forEach((item, idx) => {
-            if (rows[item.key]?.pf === "NA") return;
-            if (!cp[item.key]?.value?.trim()) {
-                result.push({
-                    qNo: 10,
-                    subNo: idx + 1,
-                    label: `CP`,
-                    fieldKey: item.key,
-                });
-            }
-        });
-
-        // Item 16 - Voltage measurements
-        if (rows["r16"]?.pf !== "NA") {
-            VOLTAGE1_FIELDS.forEach((k) => {
-                if (!m16.state[k]?.value?.toString().trim()) {
-                    result.push({
-                        qNo: 16,
-                        label: LABELS[k] ?? k,
-                        fieldKey: k,
-                    });
-                }
-            });
-        }
-
-        return result;
-    }, [cp, fixedItemsMap, m16.state, rows]);
-
-    const allRequiredInputsFilled = useMemo(() => missingInputsDetailed.length === 0, [missingInputsDetailed]);
+    const allRequiredInputsFilled = true;
 
     // Keep missingInputsTextLines for backward compatibility (used in button title)
     const missingInputsTextLines = useMemo(() => {
@@ -2516,7 +2487,7 @@ export default function ChargerPMForm() {
                                 <div className="tw-max-w-xs">
                                     <InputWithUnit<UnitVoltage> label="CP" value={cp[item.key]?.value ?? ""} unit={cp[item.key]?.unit ?? "V"} units={["V"] as const}
                                         onValueChange={(v) => setCp((s) => ({ ...s, [item.key]: { ...(s[item.key] ?? { unit: "V" }), value: v } }))}
-                                        onUnitChange={(u) => setCp((s) => ({ ...s, [item.key]: { ...(s[item.key] ?? { value: "" }), unit: u } }))} disabled={isNA} required lang={lang} />
+                                        onUnitChange={(u) => setCp((s) => ({ ...s, [item.key]: { ...(s[item.key] ?? { value: "" }), unit: u } }))} disabled={isNA} lang={lang} />
                                 </div>
                             )} />
                     )}

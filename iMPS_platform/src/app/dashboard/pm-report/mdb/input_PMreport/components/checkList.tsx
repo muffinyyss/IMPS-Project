@@ -721,7 +721,7 @@ function PMValidationCard({ lang, allPhotosAttached, missingPhotoItems, allRequi
     );
 }
 
-function InputWithUnit<U extends string>({ label, value, unit, units, onValueChange, onUnitChange, readOnly, disabled, required = true }: {
+function InputWithUnit<U extends string>({ label, value, unit, units, onValueChange, onUnitChange, readOnly, disabled, required = false }: {
     label: string; value: string; unit: U; units: readonly U[];
     onValueChange: (v: string) => void; onUnitChange: (u: U) => void;
     readOnly?: boolean; disabled?: boolean; required?: boolean;
@@ -1376,39 +1376,11 @@ export default function MDBPMForm() {
     const allPFAnswered = useMemo(() => PF_KEYS_ALL.every(k => rows[k]?.pf !== ""), [rows, PF_KEYS_ALL]);
     const missingPFItems = useMemo(() => sortLabels(PF_KEYS_ALL.filter(k => !rows[k]?.pf).map(k => { const m = k.match(/^r(\d+)(?:_(\d+))?$/); return m ? (m[2] ? `${m[1]}.${m[2]}` : m[1]) : k; })), [rows, PF_KEYS_ALL]);
 
-    const missingInputs = useMemo(() => {
-        const r: Record<string, string[]> = {};
-        const checkItems = (items: typeof q6Items, state: Record<string, MeasureState<UnitVoltage>>, fields: readonly string[]) => {
-            items.forEach(item => {
-                if (rows[item.key]?.pf === "NA") return;
-                const s = state[item.key];
-                const missing = fields.filter(k => !String(s?.[k]?.value ?? "").trim());
-                if (missing.length > 0) r[item.label] = missing;
-            });
-        };
-        checkItems(q6Items, m4State, VOLTAGE_FIELDS);
-        checkItems(q7Items, m5State, VOLTAGE_FIELDS);
-        checkItems(q8Items, m6State, VOLTAGE_FIELDS_CCB);
-        checkItems(q9Items, m7State, VOLTAGE_FIELDS_CCB);
-        return r;
-    }, [m4State, m5State, m6State, m7State, q6Items, q7Items, q8Items, q9Items, rows]);
 
-    const allRequiredInputsFilled = useMemo(() => Object.values(missingInputs).every(a => a.length === 0), [missingInputs]);
+    const allRequiredInputsFilled = true;
 
-    const missingInputsDetailed: MissingInputItem[] = useMemo(() => {
-        const items: MissingInputItem[] = [];
-        const check = (list: typeof q6Items, state: Record<string, MeasureState<UnitVoltage>>, fields: readonly string[], qNo: number) => {
-            list.forEach((item, idx) => {
-                if (rows[item.key]?.pf === "NA") return;
-                fields.forEach(fieldKey => { if (!String(state[item.key]?.[fieldKey]?.value ?? "").trim()) items.push({ qNo, subNo: idx + 1, label: LABELS[fieldKey] ?? fieldKey, fieldKey }); });
-            });
-        };
-        check(q6Items, m4State, VOLTAGE_FIELDS, 6);
-        check(q7Items, m5State, VOLTAGE_FIELDS, 7);
-        check(q8Items, m6State, VOLTAGE_FIELDS_CCB, 8);
-        check(q9Items, m7State, VOLTAGE_FIELDS_CCB, 9);
-        return items;
-    }, [m4State, m5State, m6State, m7State, q6Items, q7Items, q8Items, q9Items, rows]);
+    // ค่าที่วัดได้ (แรงดัน / CP ฯลฯ) ไม่บังคับกรอกแล้ว — ช่างเว้นว่างได้ ส่วนรูป/ผลตรวจ/สรุปยังบังคับเหมือนเดิม
+    const missingInputsDetailed: React.ComponentProps<typeof PMValidationCard>["missingInputsDetailed"] = [];
 
     const isSummaryFilled = summary.trim().length > 0;
     const isSummaryCheckFilled = summaryCheck !== "";
