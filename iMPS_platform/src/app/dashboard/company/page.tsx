@@ -376,7 +376,7 @@ export default function CompanyPage() {
         ? c.vendors.map(v => ({ name: v.name || "", brands: [...(v.brands || [])] }))
         : [emptyVendor()]
     );
-      setOutsourceNames([c.name]);
+    setOutsourceNames([c.name]);
     setFormError("");
     setAddOpen(true);
   };
@@ -428,11 +428,6 @@ export default function CompanyPage() {
     setSaving(true);
     setFormError("");
     try {
-      const body = isVendorTab
-        ? { name: form.name.trim(), type: activeType, vendors: cleanVendors }
-        : isOutsourceTab
-          ? null
-          : { ...form, name: form.name.trim(), type: activeType };
       const saveCompany = (payload: object, id: string | null = null) => apiFetch(id ? `/companies/${id}` : "/companies/", {
         method: id ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
@@ -447,7 +442,12 @@ export default function CompanyPage() {
               ...cleanOutsourceNames.slice(1).map(name => saveCompany(outsourcePayload(name))),
             ])
           : await Promise.all(cleanOutsourceNames.map(name => saveCompany(outsourcePayload(name))))
-        : [await saveCompany(body, editId)];
+        : [await saveCompany(
+            isVendorTab
+              ? { name: form.name.trim(), type: activeType, vendors: cleanVendors }
+              : { ...form, name: form.name.trim(), type: activeType },
+            editId
+          )];
       const res = responses.find(response => !response.ok) || responses[0];
       if (responses.every(response => response.ok)) {
         setAddOpen(false);

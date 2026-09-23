@@ -291,7 +291,7 @@ export default function PMListPage() {
       sortAsc: "เรียงจากน้อยไปมาก", sortDesc: "เรียงจากมากไปน้อย",
       headers: {
         station: "สถานี", wo: "WO (Maximo)",
-        technician: "ผู้ตรวจสอบ", date: "วันที่ PM", status: "สถานะ",
+        technician: "ผู้ตรวจสอบ", date: "PM Plan", status: "สถานะ",
       },
       stage: { open: "Open", in_progress: "In Progress", wait_approve: "Wait for approve", closed: "Closed" },
     },
@@ -326,7 +326,7 @@ export default function PMListPage() {
       sortAsc: "Sort ascending", sortDesc: "Sort descending",
       headers: {
         station: "Station", wo: "WO (Maximo)",
-        technician: "Inspector", date: "PM date", status: "Status",
+        technician: "Inspector", date: "PM Plan", status: "Status",
       },
       stage: { open: "Open", in_progress: "In Progress", wait_approve: "Wait for approve", closed: "Closed" },
     },
