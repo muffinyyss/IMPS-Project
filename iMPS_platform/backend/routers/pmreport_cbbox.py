@@ -498,7 +498,8 @@ async def cbboxpmreport_post_submit(
 # ============================================
 
 # CB-BOX group pattern: g1, g2, ... (no underscore variant)
-PHOTO_GROUP_PATTERN = re.compile(r"^g\d+$")
+# g103_1..g103_4 = ข้อย่อยของข้อ 3 แหล่งจ่ายไฟ MDB
+PHOTO_GROUP_PATTERN = re.compile(r"^g\d+(_\d+)?$")
 
 
 @router.post("/cbboxpmreport/{report_id}/post/photos")
