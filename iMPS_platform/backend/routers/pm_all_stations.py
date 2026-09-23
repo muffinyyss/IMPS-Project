@@ -215,6 +215,7 @@ async def _apply_job_status(reports: list[dict], chargers: list[dict]) -> None:
     plans = await planned_keys_by_wonum(
         [r.get("wonum") or "" for rows in groups.values() for r in rows]
     )
+    submitted = await _submitted_job_ids(groups.keys())
 
     for (station_id, _job_id), rows in groups.items():
         # ส่วนทั้งหมดของใบ = 4 ส่วนระดับสถานี + ตู้ละ 1 ใบ (เหมือน _section_states)
@@ -233,9 +234,34 @@ async def _apply_job_status(reports: list[dict], chargers: list[dict]) -> None:
                 states[key].update(report_id=r.get("id") or "", status=r.get("status") or "")
 
         wonum = next((str(r.get("wonum") or "").strip() for r in rows if r.get("wonum")), "")
-        job_status = derive_job_status(list(states.values()), plans.get(wonum))
+        job_status = derive_job_status(
+            list(states.values()), plans.get(wonum), (station_id, _job_id) in submitted
+        )
         for r in rows:
             r["status"] = job_status
+
+
+async def _submitted_job_ids(keys) -> set[tuple[str, str]]:
+    """ใบ PM สถานีที่ช่างกด "ปิดใบงาน" แล้ว — ถามทีละสถานี ใบละ field เดียว"""
+    from routers.pm_helpers import get_stationpmjob_collection_for
+
+    by_station: dict[str, list[ObjectId]] = {}
+    for station_id, job_id in keys:
+        if station_id and ObjectId.is_valid(job_id):
+            by_station.setdefault(station_id, []).append(ObjectId(job_id))
+
+    async def one(station_id: str, ids: list[ObjectId]) -> list[tuple[str, str]]:
+        try:
+            cursor = get_stationpmjob_collection_for(station_id).find(
+                {"_id": {"$in": ids}, "submitted_at": {"$nin": [None, ""]}}, {"_id": 1}
+            )
+            return [(station_id, str(d["_id"])) async for d in cursor]
+        except Exception:
+            traceback.print_exc()
+            return []
+
+    results = await asyncio.gather(*(one(sid, ids) for sid, ids in by_station.items()))
+    return {k for part in results for k in part}
 
 
 # ===== Endpoint =====

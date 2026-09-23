@@ -1731,8 +1731,7 @@ export default function StationPMReport() {
 
                     <div className="tw-mt-6 sm:tw-mt-8 tw-flex tw-flex-col tw-gap-3">
                     {/* เวลาทำงานจริงของช่าง — ต้องกรอกก่อนส่งปิดใบงาน (ส่งเข้า Maximo IN09) */}
-                    {/* Temporarily disabled: Maximo labor input is hidden on all pages. */}
-                    {false && (
+                    {(
                         <div className="tw-mt-6 tw-pt-4 tw-border-t tw-border-gray-200">
                             <div className="tw-mb-2">
                                 <Typography variant="h6" className="tw-text-sm sm:tw-text-base">
@@ -1745,13 +1744,13 @@ export default function StationPMReport() {
                             <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 tw-gap-3">
                                 <div>
                                     <label className="tw-mb-1.5 tw-block tw-text-xs tw-font-semibold tw-text-blue-gray-700">{t("workStart", lang)}</label>
-                                    <input type="datetime-local" value={workStart} onChange={(e) => setWorkStart(e.target.value)}
+                                    <input type="datetime-local" value={workStart} disabled={reviewMode} onChange={(e) => setWorkStart(e.target.value)}
                                         className="tw-w-full tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-px-3 tw-py-2.5 tw-text-sm tw-text-blue-gray-800 focus:tw-outline-none focus:tw-border-blue-500" />
                                 </div>
                                 <div>
                                     <label className="tw-mb-1.5 tw-block tw-text-xs tw-font-semibold tw-text-blue-gray-700">{t("workFinish", lang)}</label>
                                     {/* min กัน picker เลือกย้อนหลัง — ยังต้อง validate เพราะพิมพ์มือเลี่ยงได้ */}
-                                    <input type="datetime-local" value={workFinish} min={workStart || undefined} onChange={(e) => setWorkFinish(e.target.value)}
+                                    <input type="datetime-local" value={workFinish} disabled={reviewMode} min={workStart || undefined} onChange={(e) => setWorkFinish(e.target.value)}
                                         className={`tw-w-full tw-rounded-lg tw-border tw-bg-white tw-px-3 tw-py-2.5 tw-text-sm tw-text-blue-gray-800 focus:tw-outline-none ${workStart && workFinish && workFinish < workStart ? "tw-border-red-400 focus:tw-border-red-500" : "tw-border-blue-gray-200 focus:tw-border-blue-500"}`} />
                                     {workStart && workFinish && workFinish < workStart && (
                                         <p className="tw-mt-1.5 tw-text-xs tw-text-red-600">{t("alertWorkTimeOrder", lang)}</p>

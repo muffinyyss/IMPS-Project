@@ -199,37 +199,66 @@ async def job_planned_keys(job: dict) -> set[SectionKey] | None:
     return (await planned_keys_by_wonum([wonum])).get(wonum)
 
 
-def derive_job_status(section_states: list[dict], required: set[SectionKey] | None = None) -> str:
+def job_progress(
+    section_states: list[dict],
+    required: set[SectionKey] | None = None,
+    submitted: bool = False,
+) -> dict:
     """
-    สถานะของใบแม่ = สรุปจากใบลูก
+    สถานะของใบแม่ + ใบพร้อมให้ช่างกด "ปิดใบงาน" หรือยัง
 
-      ยังไม่มีส่วนไหนถูกกรอก / มีส่วนที่ยังเป็น draft      → draft (In Progress)
-      ปิดครบทุกส่วนที่กรอก (planner อนุมัติทั้งใบแล้ว)     → Closed
-      ส่วนที่อยู่ในแผนยังส่งไม่ครบ                        → draft (In Progress)
-      ส่งครบทุกส่วนในแผนแล้ว รออนุมัติ                   → Wait for approve
+      ปิดครบทุกส่วนที่กรอก (planner อนุมัติทั้งใบแล้ว)          → Closed
+      ช่างกด "ปิดใบงาน" แล้ว และส่งครบทุกส่วนในแผน           → Wait for approve
+      นอกนั้น (ยังไม่ครบ / มีส่วนที่ยังแก้อยู่ / ครบแต่ยังไม่กด)  → draft (In Progress)
+
+    ส่วนที่ "ส่งแล้ว" = ใบลูกที่ช่างกดส่งจากฟอร์ม (Wait for approve) หรือปิดแล้ว
+    ส่วนที่บันทึกไว้แต่ยังเป็น draft (เช่นโดนตีกลับ) ยังไม่นับ
 
     required = ส่วนที่ planner เลือกไว้ในแผน (planned_section_keys)
     ไม่มีแผน หรือแผนไม่ตรงกับส่วนที่สถานีมีเลย → ต้องครบทุกส่วนของใบ
-    ส่วนที่ไม่อยู่ในแผนไม่ถ่วงสถานะ แต่ถ้ากรอกไว้ก็ต้องผ่านอนุมัติด้วยกัน
+    ส่วนนอกแผนไม่ต้องรอ แต่ถ้ากรอกไว้แล้วก็ต้องส่งให้เรียบร้อยก่อน
+
+    Returns: {"status", "ready_to_submit", "missing": [state ของส่วนที่ยังขาด]}
     """
     filled = [s for s in section_states if s.get("report_id")]
-    if not filled:
-        return pm_flow.PM_STATUS_DRAFT
     statuses = [_norm_status(s.get("status")) for s in filled]
-    if any(not _is_closed(x) and not _is_wait(x) for x in statuses):
-        return pm_flow.PM_STATUS_DRAFT
     # ปิดหมดแล้ว = อนุมัติไปแล้ว — ใบที่อนุมัติไว้ก่อนมีกติกาครบแผนก็ยังเป็น Closed
-    if all(_is_closed(x) for x in statuses):
-        return pm_flow.PM_STATUS_CLOSED
+    if filled and all(_is_closed(x) for x in statuses):
+        return {"status": pm_flow.PM_STATUS_CLOSED, "ready_to_submit": False, "missing": []}
+
+    def sent(s: dict) -> bool:
+        st = _norm_status(s.get("status"))
+        return bool(s.get("report_id")) and (_is_wait(st) or _is_closed(st))
 
     present = {section_key(s["section"], s.get("sn") or "") for s in section_states}
     need = (required & present) if required else set()
     if not need:
         need = present
-    done = {section_key(s["section"], s.get("sn") or "") for s in filled}
-    if need - done:
-        return pm_flow.PM_STATUS_DRAFT
-    return pm_flow.PM_STATUS_WAIT_APPROVE
+    missing = [
+        s for s in section_states
+        if not sent(s) and (section_key(s["section"], s.get("sn") or "") in need or s.get("report_id"))
+    ]
+
+    if not missing and filled and submitted:
+        return {"status": pm_flow.PM_STATUS_WAIT_APPROVE, "ready_to_submit": False, "missing": []}
+    return {
+        "status": pm_flow.PM_STATUS_DRAFT,
+        "ready_to_submit": bool(filled) and not missing,
+        "missing": missing,
+    }
+
+
+def derive_job_status(
+    section_states: list[dict],
+    required: set[SectionKey] | None = None,
+    submitted: bool = False,
+) -> str:
+    return job_progress(section_states, required, submitted)["status"]
+
+
+def _job_submitted(job: dict) -> bool:
+    """ช่างกด "ปิดใบงาน" แล้ว (ตีกลับจะล้างค่านี้ ต้องกดใหม่หลังแก้)"""
+    return bool(job.get("submitted_at"))
 
 
 async def _find_section_report(section: str, station_id: str, sn: str, job_id: str) -> dict | None:
@@ -305,8 +334,13 @@ def _sections_done(sections: list[dict]) -> int:
     return done
 
 
+def _iso(v: Any) -> str:
+    return v.isoformat() if isinstance(v, datetime) else (v or "")
+
+
 def _serialize_job(job: dict, sections: list[dict], required: set[SectionKey] | None = None) -> dict:
-    status = derive_job_status(sections, required)
+    progress = job_progress(sections, required, _job_submitted(job))
+    status = progress["status"]
     done = _sections_done(sections)
     return {
         "id": str(job.get("_id")),
@@ -325,6 +359,11 @@ def _serialize_job(job: dict, sections: list[dict], required: set[SectionKey] | 
         "approved_at": job.get("approved_at").isoformat() if isinstance(job.get("approved_at"), datetime) else (job.get("approved_at") or ""),
         "reject_remark": job.get("reject_remark") or "",
         "createdAt": job.get("createdAt").isoformat() if isinstance(job.get("createdAt"), datetime) else (job.get("createdAt") or ""),
+        # ปุ่ม "ปิดใบงาน" — กดได้เมื่อส่งครบทุกส่วนในแผนแล้ว ไม่ครบก็บอกว่าขาดส่วนไหน
+        "ready_to_submit": progress["ready_to_submit"],
+        "missing": [s.get("label") or {"th": s["section"], "en": s["section"]} for s in progress["missing"]],
+        "submitted_by": job.get("submitted_by") or "",
+        "submitted_at": _iso(job.get("submitted_at")),
     }
 
 
@@ -494,6 +533,55 @@ async def job_numbering(station_id: str, job_id: str) -> dict:
 
 
 # ══════════════════════════════════════════════════════════════════
+# ช่างกด "ปิดใบงาน" — ส่งทั้งใบเข้าคิวอนุมัติ
+# ══════════════════════════════════════════════════════════════════
+
+@router.post("/stationpmjob/{job_id}/submit")
+async def submit_station_pm_job(
+    job_id: str,
+    station_id: str = Query(...),
+    current: UserClaims = Depends(get_current_user),
+):
+    """
+    ส่งทั้งใบให้ planner อนุมัติ — ใบจะเป็น Wait for approve ก็ต่อเมื่อช่างกดตรงนี้
+    (ส่งครบทุกส่วนแล้วยังไม่ขึ้นเอง ช่างจะได้ทบทวนทั้งใบก่อน)
+
+    กดได้เมื่อส่งครบทุกส่วนตามแผน และไม่มีส่วนที่ยังแก้ค้างอยู่
+    """
+    station_id = station_id.strip()
+    jobs = get_stationpmjob_collection_for(station_id)
+    job = await jobs.find_one({"_id": pm_flow.to_oid(job_id)})
+    if not job:
+        raise HTTPException(status_code=404, detail=f"ไม่พบใบ PM สถานี id={job_id}")
+
+    required = await job_planned_keys(job)
+    sections = await _section_states(job)
+    progress = job_progress(sections, required, _job_submitted(job))
+    if progress["status"] != pm_flow.PM_STATUS_DRAFT:
+        raise HTTPException(status_code=409, detail=f"ใบนี้เป็น {progress['status']} อยู่แล้ว")
+    if not progress["ready_to_submit"]:
+        names = ", ".join((s.get("label") or {}).get("th") or s["section"] for s in progress["missing"])
+        raise HTTPException(
+            status_code=400,
+            detail=f"ยังกรอกไม่ครบ: {names}" if names else "ยังไม่มีส่วนไหนถูกกรอก",
+        )
+
+    now = datetime.now(timezone.utc)
+    await jobs.update_one(
+        {"_id": job["_id"]},
+        {"$set": {
+            "submitted_at": now,
+            "submitted_by": current.username or current.sub,
+            "status": pm_flow.PM_STATUS_WAIT_APPROVE,
+            "updatedAt": now,
+        }},
+    )
+    fresh = await jobs.find_one({"_id": job["_id"]}) or job
+    log.info(f"  ✅ ปิดใบงาน PM สถานี {fresh.get('issue_id') or job_id} → รออนุมัติ ({current.username or current.sub})")
+    return {"ok": True, "job": _serialize_job(fresh, sections, required)}
+
+
+# ══════════════════════════════════════════════════════════════════
 # อนุมัติ / ตีกลับ ทั้งใบ (ทุกส่วนพร้อมกัน)
 # ══════════════════════════════════════════════════════════════════
 
@@ -519,8 +607,11 @@ async def approve_station_pm_job(
     # อนุมัติได้เฉพาะใบที่ส่งครบทุกส่วนในแผนแล้ว — กันปิดใบทั้งที่ช่างยังทำไม่เสร็จ
     required = await job_planned_keys(job)
     states = await _section_states(job)
-    if derive_job_status(states, required) != pm_flow.PM_STATUS_WAIT_APPROVE:
-        raise HTTPException(status_code=409, detail="ใบนี้ยังส่งไม่ครบทุกส่วนตามแผน จึงยังอนุมัติไม่ได้")
+    if derive_job_status(states, required, _job_submitted(job)) != pm_flow.PM_STATUS_WAIT_APPROVE:
+        raise HTTPException(
+            status_code=409,
+            detail="ช่างยังไม่ได้กดปิดใบงาน หรือยังส่งไม่ครบทุกส่วนตามแผน จึงยังอนุมัติไม่ได้",
+        )
 
     results: list[dict] = []
     for state in states:
@@ -536,7 +627,7 @@ async def approve_station_pm_job(
             results.append({"section": state["section"], "sn": sn, "ok": False, "detail": e.detail})
 
     sections = await _section_states(job)
-    status = derive_job_status(sections, required)
+    status = derive_job_status(sections, required, _job_submitted(job))
     await jobs.update_one(
         {"_id": job["_id"]},
         {"$set": {
@@ -582,11 +673,15 @@ async def reject_station_pm_job(
     required = await job_planned_keys(job)
     await jobs.update_one(
         {"_id": job["_id"]},
-        {"$set": {
-            "status": derive_job_status(sections, required),
-            "reject_remark": body.remark,
-            "rejected_by": current.username or current.sub,
-        }},
+        {
+            "$set": {
+                "status": derive_job_status(sections, required),
+                "reject_remark": body.remark,
+                "rejected_by": current.username or current.sub,
+            },
+            # ตีกลับ = ช่างต้องแก้แล้วกด "ปิดใบงาน" ใหม่
+            "$unset": {"submitted_at": "", "submitted_by": ""},
+        },
     )
     fresh = await jobs.find_one({"_id": job["_id"]}) or job
     return {"ok": True, "results": results, "job": _serialize_job(fresh, sections, required)}
