@@ -22,7 +22,12 @@ from image_convert import ImageConversionError, normalize_image_bytes
 router = APIRouter()
 
 # ใหญ่กว่า MAX_FILE_MB ของฝั่งอัปโหลดได้ เพราะไฟล์ต้นทางจาก iPhone ยังไม่ถูกบีบ
-MAX_CONVERT_MB = 30
+#
+# ตั้งต่ำกว่า client_max_body_size ของ nginx (30M ที่ /etc/nginx/conf.d/imps-upload.conf)
+# ไว้หนึ่งขั้น เพื่อให้เคสไฟล์ใหญ่เกินถูกปฏิเสธที่นี่พร้อมข้อความที่ frontend อ่านได้
+# ไม่ใช่โดน nginx ตัดทิ้งเป็นหน้า HTML 413 เปล่า ๆ ที่ ensureViewableImage แปลไม่ออก
+# (multipart มี overhead ด้วย ไฟล์ 30MB เป๊ะ ๆ จะเกินเพดาน nginx อยู่ดี)
+MAX_CONVERT_MB = 25
 
 
 @router.post("/images/convert")

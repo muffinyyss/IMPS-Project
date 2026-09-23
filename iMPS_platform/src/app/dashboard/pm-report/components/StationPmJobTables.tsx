@@ -392,12 +392,12 @@ export default function StationPmJobTables() {
 
   /**
    * ช่างกด "เริ่ม PM" จากใบงาน → เปิด (หรือหยิบ) ใบ PM สถานีของใบงานนั้น
-   * แล้วพาไปหน้ารวม 5 ส่วน ให้เลือกว่าจะกรอกส่วนไหนก่อน
+   * แล้วพาไปหน้ารวม 5 ส่วน ให้เลือกเองว่าจะกรอกส่วนไหนก่อน
    *
-   * ใบงานของตู้ (source=charger) รู้อยู่แล้วว่าจะกรอกตู้ไหน — พาเข้าส่วนที่ 5
-   * ของตู้นั้นเลย ไม่ต้องให้ช่างเลือกซ้ำ
+   * ใบงานของตู้ก็ลงหน้ารวมเหมือนกัน ไม่กระโดดเข้าส่วนที่ 5 ให้ — ช่างต้องเห็นภาพรวม
+   * ของใบก่อนว่ามีส่วนไหนต้องทำบ้าง (หน้ารวมมีตัวเลือกตู้ให้อยู่แล้ว)
    */
-  const startPmFromWo = useCallback(async (snFromWo?: string) => {
+  const startPmFromWo = useCallback(async () => {
     if (!stationId || !openWonum) return;
     setActing(true);
     try {
@@ -421,12 +421,9 @@ export default function StationPmJobTables() {
       const json = await res.json().catch(() => ({} as any));
       if (!res.ok) throw new Error(json?.detail || t("errCreate", lang));
       await loadJobs();
-      const targetSn = (snFromWo || sn || "").trim();
       goto({
         view: "form", job_id: json?.job?.id ?? null, station_id: stationId,
-        ...(woSource === "charger" && targetSn
-          ? { section: CHARGER_SECTION, sn: targetSn }
-          : { section: null, sn: null }),
+        section: null, sn: null,
         wo_info: null, planning: null, started: null, pmtab: null,
         edit_id: null, review: null, action: null,
       });
@@ -435,7 +432,7 @@ export default function StationPmJobTables() {
     } finally {
       setActing(false);
     }
-  }, [stationId, openWonum, goto, loadJobs, lang, sn, woSource]);
+  }, [stationId, openWonum, goto, loadJobs, lang]);
 
   const createJob = async () => {
     if (!stationId || acting) return;
@@ -512,7 +509,7 @@ export default function StationPmJobTables() {
         wonum={planningWonum}
         onSaved={leaveWo}
         onCancel={leaveWo}
-        onStart={(snFromWo?: string) => { void startPmFromWo(snFromWo); }}
+        onStart={() => { void startPmFromWo(); }}
       />
     );
   }
@@ -523,7 +520,7 @@ export default function StationPmJobTables() {
         source={woSource}
         identifier={woSource === "charger" ? sn : stationId}
         wonum={woInfoWonum}
-        onStart={(snFromWo?: string) => { void startPmFromWo(snFromWo); }}
+        onStart={() => { void startPmFromWo(); }}
         onCancel={leaveWo}
       />
     );
