@@ -14,7 +14,6 @@ import {
 } from "@material-tailwind/react";
 import Image from "next/image";
 import { draftKey, saveDraftLocal, loadDraftLocal, clearDraftLocal } from "../lib/draft";
-import { findMissingCcbMeasurementInputs } from "../lib/validation";
 
 import { useRouter, useSearchParams } from "next/navigation";
 import PmApprovalBar from "@/app/dashboard/pm-report/components/PmApprovalBar";
@@ -1038,7 +1037,7 @@ function PMValidationCard({
     );
 }
 
-function InputWithUnit<U extends string>({ label, value, unit, units, onValueChange, onUnitChange, readOnly, disabled, required = true }: {
+function InputWithUnit<U extends string>({ label, value, unit, units, onValueChange, onUnitChange, readOnly, disabled, required = false }: {
     label: string; value: string; unit: U; units: readonly U[];
     onValueChange: (v: string) => void; onUnitChange: (u: U) => void;
     readOnly?: boolean; disabled?: boolean; required?: boolean;
@@ -1802,16 +1801,10 @@ export default function CCBPMReport() {
         return getDisplayedRowNo(k);
     }), [rows, PF_KEYS_POST]);
 
-    const missingInputsDetailed = useMemo(() => {
-        return findMissingCcbMeasurementInputs({
-            rows,
-            mainMeasurements: mMain.state,
-            subMeasurements: [mSub1.state, mSub2.state, mSub3.state, mSub4.state, mSub5.state, mSub6.state],
-            subBreakerCount,
-        });
-    }, [mMain.state, mSub1.state, mSub2.state, mSub3.state, mSub4.state, mSub5.state, mSub6.state, rows, subBreakerCount]);
+    // ค่าที่วัดได้ (แรงดัน / CP ฯลฯ) ไม่บังคับกรอกแล้ว — ช่างเว้นว่างได้ ส่วนรูป/ผลตรวจ/สรุปยังบังคับเหมือนเดิม
+    const missingInputsDetailed: React.ComponentProps<typeof PMValidationCard>["missingInputsDetailed"] = [];
 
-    const allRequiredInputsFilled = missingInputsDetailed.length === 0;
+    const allRequiredInputsFilled = true;
     const isSummaryFilled = summary.trim().length > 0;
     const isSummaryCheckFilled = summaryCheck !== "";
 

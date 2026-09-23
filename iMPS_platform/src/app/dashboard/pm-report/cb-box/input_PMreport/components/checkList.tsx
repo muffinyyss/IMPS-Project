@@ -753,7 +753,7 @@ function PMValidationCard({
     );
 }
 
-function InputWithUnit({ label, value, unit, onValueChange, readOnly, disabled, required = true, id }: {
+function InputWithUnit({ label, value, unit, onValueChange, readOnly, disabled, required = false, id }: {
     label: string; value: string; unit: string; onValueChange: (v: string) => void; readOnly?: boolean; disabled?: boolean; required?: boolean; id?: string;
 }) {
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1152,26 +1152,12 @@ export default function CBBOXPMForm() {
     }), [rows, PF_KEYS_POST]);
 
     // ข้อ 5 ตอบ N/A ไม่ต้องกรอกค่าแรงดัน
-    const missingInputs = useMemo(() => {
-        const r: string[] = [];
-        if (rows["r5"]?.pf === "NA") return r;
-        const missingKeys = FIELD_GROUPS[5]?.keys.filter(k => !m5.state[k]?.value?.trim()) || [];
-        if (missingKeys.length > 0) r.push(`${getDisplayedQuestionNo(5)}: ${missingKeys.join(", ")}`);
-        return r;
-    }, [m5.state, rows]);
 
     // Detailed missing inputs for PMValidationCard
-    const missingInputsDetailed = useMemo(() => {
-        const r: MissingInputItem[] = [];
-        if (rows["r5"]?.pf === "NA") return r;
-        FIELD_GROUPS[5]?.keys.forEach((k) => {
-            const v = m5.state[k]?.value ?? "";
-            if (!String(v).trim()) r.push({ qNo: 5, label: LABELS[k], fieldKey: k });
-        });
-        return r;
-    }, [m5.state, rows]);
+    // ค่าที่วัดได้ (แรงดัน / CP ฯลฯ) ไม่บังคับกรอกแล้ว — ช่างเว้นว่างได้ ส่วนรูป/ผลตรวจ/สรุปยังบังคับเหมือนเดิม
+    const missingInputsDetailed: React.ComponentProps<typeof PMValidationCard>["missingInputsDetailed"] = [];
 
-    const allRequiredInputsFilled = missingInputs.length === 0;
+    const allRequiredInputsFilled = true;
     const isSummaryFilled = summary.trim().length > 0;
     const isSummaryCheckFilled = summaryCheck !== "";
 
