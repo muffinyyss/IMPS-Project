@@ -113,6 +113,11 @@ type Job = {
   sections_total: number;
   approved_by?: string;
   reject_remark?: string;
+  /** ส่งครบทุกส่วนในแผนแล้ว ช่างกด "ปิดใบงาน" ได้ */
+  ready_to_submit?: boolean;
+  /** ส่วนที่ยังขาดก่อนกด "ปิดใบงาน" ได้ */
+  missing?: { th: string; en: string }[];
+  submitted_by?: string;
 };
 
 type Me = { username: string; role: string };
@@ -158,6 +163,15 @@ const T = {
   view: { th: "ดู", en: "View" },
   notFilled: { th: "ยังไม่กรอก", en: "Not filled" },
   downloadPdf: { th: "PDF ทั้งใบ", en: "Full PDF" },
+  closeJob: { th: "ปิดใบงาน", en: "Close work order" },
+  closingJob: { th: "กำลังปิดใบงาน…", en: "Closing…" },
+  closeJobConfirm: {
+    th: "ปิดใบงานนี้และส่งให้ผู้อนุมัติ?\nหลังจากนี้จะแก้ไขเอกสารไม่ได้ จนกว่าจะถูกตีกลับ",
+    en: "Close this work order and send it for approval?\nThe document can't be edited afterwards unless it is sent back.",
+  },
+  closeJobMissing: { th: "ยังกรอกไม่ครบ:", en: "Still missing:" },
+  closeJobEmpty: { th: "ยังไม่มีส่วนไหนถูกกรอก", en: "No section has been filled yet" },
+  sectionSent: { th: "กรอกแล้ว", en: "Done" },
   back: { th: "ย้อนกลับ", en: "Back" },
 
   approve: { th: "อนุมัติทั้งใบ", en: "Approve document" },
@@ -194,10 +208,11 @@ function fmtDate(iso: string, lang: Lang) {
 }
 
 /** ชื่อสถานะของ 1 ส่วนที่คนอ่านรู้เรื่อง — ใบเก่าเก็บเป็น "submitted" */
-function sectionStatusLabel(status: string, lang: Lang) {
+function sectionStatusLabel(status: string, lang: Lang, jobClosedByTech = true) {
   const s = String(status || "").trim().toLowerCase();
   if (!s) return t("notFilled", lang);
-  if (s === "wait for approve") return "Wait for approve";
+  // ส่วนที่ช่างส่งจากฟอร์มแล้ว แต่ยังไม่ได้กด "ปิดใบงาน" — ยังไม่ได้รออนุมัติจริง
+  if (s === "wait for approve") return jobClosedByTech ? "Wait for approve" : t("sectionSent", lang);
   if (s === "draft") return lang === "en" ? "Draft" : "กำลังกรอก";
   return "Closed";
 }
@@ -460,6 +475,26 @@ export default function StationPmJobTables() {
     }
   };
 
+  /** ช่างกด "ปิดใบงาน" — ส่งทั้งใบเข้าคิวอนุมัติ */
+  const closeJob = async () => {
+    if (!currentJob || acting || !currentJob.ready_to_submit) return;
+    if (!window.confirm(t("closeJobConfirm", lang))) return;
+    setActing(true);
+    try {
+      const res = await apiFetch(
+        `/stationpmjob/${encodeURIComponent(currentJob.id)}/submit?station_id=${encodeURIComponent(currentJob.station_id)}`,
+        { method: "POST" }
+      );
+      const json = await res.json().catch(() => ({} as any));
+      if (!res.ok) throw new Error(json?.detail || t("errAction", lang));
+      await loadJobs();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : t("errAction", lang));
+    } finally {
+      setActing(false);
+    }
+  };
+
   const approveJob = async () => {
     if (!currentJob || acting) return;
     setActing(true);
@@ -586,12 +621,33 @@ export default function StationPmJobTables() {
     }
 
     const waiting = job.status === "Wait for approve";
+    const closeJobHint = job.ready_to_submit
+      ? undefined
+      : job.missing?.length
+        ? `${t("closeJobMissing", lang)} ${job.missing.map((m) => pick(m, lang)).join(", ")}`
+        : t("closeJobEmpty", lang);
     return (
       <div className="tw-mt-4 sm:tw-mt-6 lg:tw-mt-8 tw-mx-auto tw-max-w-5xl">
         <div className="tw-mb-4 tw-flex tw-items-center tw-justify-between tw-gap-3">
           <Button variant="outlined" size="sm" onClick={backToList} className="tw-flex tw-items-center tw-gap-2">
             <ArrowLeftIcon className="tw-h-4 tw-w-4" /> {t("back", lang)}
           </Button>
+          <div className="tw-flex tw-flex-wrap tw-items-center tw-justify-end tw-gap-2">
+          {/* ปิดใบงาน — มีเฉพาะใบที่ยังทำอยู่ กดได้เมื่อส่งครบทุกส่วนในแผนแล้ว
+              ยังไม่ครบ: ปุ่มจาง ชี้ค้างเห็นว่าขาดส่วนไหน */}
+          {job.status === "draft" && (
+            <span title={closeJobHint}>
+              <Button
+                size="sm"
+                disabled={!job.ready_to_submit || acting}
+                onClick={closeJob}
+                className="tw-flex tw-items-center tw-gap-1.5 tw-bg-green-600 disabled:tw-pointer-events-none"
+              >
+                <CheckCircleIcon className="tw-h-4 tw-w-4" />
+                {acting ? t("closingJob", lang) : t("closeJob", lang)}
+              </Button>
+            </span>
+          )}
           <a
             href={`${API_BASE}/stationpmjob/${encodeURIComponent(job.id)}/pdf?station_id=${encodeURIComponent(job.station_id)}&lang=${lang}`}
             target="_blank"
@@ -600,6 +656,7 @@ export default function StationPmJobTables() {
           >
             <DocumentArrowDownIcon className="tw-h-4 tw-w-4" /> {t("downloadPdf", lang)}
           </a>
+          </div>
         </div>
 
         {/* หัวเอกสาร */}
@@ -680,7 +737,7 @@ export default function StationPmJobTables() {
                           {pick(SECTION_TITLE[id], lang)}
                         </span>
                         <span className={`tw-whitespace-nowrap tw-rounded-full tw-border tw-px-2 tw-py-0.5 tw-text-[11px] tw-font-semibold ${sectionChipClass(groupStatus)}`}>
-                          {sectionStatusLabel(groupStatus, lang)}
+                          {sectionStatusLabel(groupStatus, lang, job.status !== "draft")}
                         </span>
                         {isCharger && rows.length > 0 && (
                           <span className="tw-text-[11px] tw-font-semibold tw-text-gray-500">
@@ -714,7 +771,7 @@ export default function StationPmJobTables() {
                                   <div className="tw-truncate tw-text-[11px] tw-text-gray-400">{c.sn}</div>
                                 </div>
                                 <span className={`tw-shrink-0 tw-whitespace-nowrap tw-rounded-full tw-border tw-px-2 tw-py-0.5 tw-text-[11px] tw-font-semibold ${sectionChipClass(c.status)}`}>
-                                  {sectionStatusLabel(c.status, lang)}
+                                  {sectionStatusLabel(c.status, lang, job.status !== "draft")}
                                 </span>
                                 <SectionFillButton job={job} state={c} lang={lang} onOpen={openSection} compact />
                               </div>
@@ -847,7 +904,7 @@ export default function StationPmJobTables() {
                             return (
                               <span
                                 key={id}
-                                title={sectionStatusLabel(st, lang)}
+                                title={sectionStatusLabel(st, lang, job.status !== "draft")}
                                 className={`tw-rounded tw-border tw-px-1.5 tw-py-0.5 tw-text-[10px] tw-font-semibold ${sectionChipClass(st)}`}
                               >
                                 {pick(SECTION_TITLE[id], lang)}
