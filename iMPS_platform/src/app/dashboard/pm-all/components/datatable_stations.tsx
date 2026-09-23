@@ -368,7 +368,7 @@ export function SearchDataTables() {
             if (!res.ok) return;
             const json = await res.json();
 
-            // ✅ กรอง pre ออก
+            // ✅ กรองใบเก่าที่ค้างด่าน pre ออก (ก่อนตัด Pre-PM) — ใบใหม่ไม่มี side=pre แล้ว
             const filtered = (json.reports ?? []).filter(
                 (r: any) => r.side !== "pre"
             );

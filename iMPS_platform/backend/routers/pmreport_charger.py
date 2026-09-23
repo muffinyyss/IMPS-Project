@@ -49,6 +49,7 @@ from routers.pm_helpers import (
     _latest_doc_name_from_pmreport,
     _latest_doc_name_anywhere,
     _next_year_seq,
+    _resolve_issue_and_doc,
 )
 
 from PIL import Image
@@ -316,22 +317,6 @@ async def _job_link(station_id: str, job_id: str | None) -> dict:
     return await job_numbering(station_id, job_id)
 
 
-class PMSubmitIn(BaseModel):
-    side: Literal["pre", "post"]
-    sn: str
-    # ใบนี้เป็นส่วน Charger ของใบ PM สถานี "ใบเดียว 5 ส่วน" (stationPMJob) หรือไม่
-    job_id: Optional[str] = None
-    # ใบงาน Maximo ที่ planner วางแผนไว้ — โยงเอกสารกลับหาใบงานต้นทางได้
-    wonum: Optional[str] = None
-    job: dict
-    measures_pre: dict
-    rows_pre: Optional[dict[str, Any]] = None
-    pm_date: str
-    issue_id: Optional[str] = None
-    doc_name: Optional[str] = None
-    inspector: Optional[str] = None
-    summary_pre: Optional[str] = None
-
 @router.get("/pmreport/preview-issueid")
 async def pmreport_preview_issueid(
     sn: str = Query(...),
@@ -397,139 +382,6 @@ async def preview_docname(
 
     return {"doc_name": next_doc}
 
-@router.post("/pmreport/pre/submit")
-async def pmreport_pre_submit(body: PMSubmitIn, current: UserClaims = Depends(get_current_user)):
-    sn = body.sn.strip()
-    coll = get_pmreport_collection_for(sn)
-    url_coll = get_pmurl_coll_upload(sn)
-    db = coll.database
-
-    pm_type = str(body.job.get("pm_type") or "CG").upper()
-    body.job["pm_type"] = pm_type
-
-    try:
-        d = datetime.strptime(body.pm_date, "%Y-%m-%d").date()
-    except ValueError:
-        raise HTTPException(status_code=400, detail="pm_date must be YYYY-MM-DD")
-
-    charger_task = _get_charger_by_sn(sn)
-
-    client_issue = body.issue_id
-    client_doc = body.doc_name
-
-    tasks = [charger_task]
-
-    prefix = ""
-    if client_issue:
-        yymm = f"{d.year % 100:02d}{d.month:02d}"
-        prefix = f"PM-{pm_type}-{yymm}-"
-        if client_issue.startswith(prefix):
-            tasks.append(coll.find_one({"issue_id": client_issue}, {"_id": 1}))
-            tasks.append(url_coll.find_one({"issue_id": client_issue}, {"_id": 1}))
-        else:
-            tasks.append(asyncio.sleep(0))
-            tasks.append(asyncio.sleep(0))
-    else:
-        tasks.append(asyncio.sleep(0))
-        tasks.append(asyncio.sleep(0))
-
-    if client_doc:
-        tasks.append(coll.find_one({"doc_name": client_doc}, {"_id": 1}))
-        tasks.append(url_coll.find_one({"doc_name": client_doc}, {"_id": 1}))
-    else:
-        tasks.append(asyncio.sleep(0))
-        tasks.append(asyncio.sleep(0))
-
-    results = await asyncio.gather(*tasks)
-
-    charger = results[0]
-    station_id = charger.get("station_id")
-
-    issue_id = None
-    if client_issue and client_issue.startswith(prefix):
-        rep_exists, url_exists = results[1], results[2]
-        if not rep_exists and not url_exists:
-            issue_id = client_issue
-
-    link = await _job_link(str(station_id or ""), body.job_id)
-    if link:
-        # ส่วน Charger ของใบ PM สถานีใบเดียว 5 ส่วน — ใช้เลขที่/ชื่อเอกสารของใบแม่
-        issue_id = link["issue_id"]
-    if not issue_id:
-        issue_id = await _next_issue_id_no_conflict(db, coll, url_coll, sn, pm_type, d)
-
-    doc_name = None
-    if client_doc and client_doc.startswith(f"{sn}_"):
-        rep_exists, url_exists = results[3], results[4]
-        if not rep_exists and not url_exists:
-            doc_name = client_doc
-
-    if link:
-        doc_name = link["doc_name"]
-    if not doc_name:
-        year_seq = await _next_year_seq(db, sn, pm_type, d)
-        doc_name = f"{sn}_{year_seq}/{d.year}"
-
-    # ใบที่ผูกกับใบแม่: ตู้ 1 ตู้มีได้ใบเดียวต่อใบแม่ 1 ใบ หาเจอด้วย job_id ตรง ๆ
-    existing_draft = await coll.find_one(
-        {"sn": sn, "job_id": link["job_id"]}
-        if link else
-        {"sn": sn, "pm_date": body.pm_date, "side": "pre", "status": "draft"},
-        {"_id": 1, "issue_id": 1, "doc_name": 1},
-    )
-
-    if existing_draft:
-        await coll.update_one(
-            {"_id": existing_draft["_id"]},
-            {"$set": {
-                "station_id": station_id,
-                "chargeBoxID": charger.get("chargeBoxID"),
-                "wonum": (body.wonum or "").strip(),
-                "job": body.job,
-                "rows_pre": body.rows_pre or {},
-                "measures_pre": body.measures_pre,
-                "inspector": body.inspector,
-                "summary_pre": body.summary_pre or "",
-                "timestamp": datetime.now(timezone.utc),
-            }},
-        )
-        return {
-            "ok": True,
-            "report_id": str(existing_draft["_id"]),
-            "issue_id": existing_draft.get("issue_id") or issue_id,
-            "doc_name": existing_draft.get("doc_name") or doc_name,
-        }
-
-    doc = {
-        "sn": sn,
-        "station_id": station_id,
-        "chargeBoxID": charger.get("chargeBoxID"),
-        "wonum": (body.wonum or "").strip(),
-        "doc_name": doc_name,
-        "issue_id": issue_id,
-        **({"job_id": link["job_id"]} if link else {}),
-        "job": body.job,
-        "rows_pre": body.rows_pre or {},
-        "measures_pre": body.measures_pre,
-        "pm_date": body.pm_date,
-        "inspector": body.inspector,
-        "summary_pre": body.summary_pre or "",
-        "photos_pre": {},
-        "status": "draft",
-        "side": body.side,
-        "timestamp": datetime.now(timezone.utc),
-    }
-    res = await coll.insert_one(doc)
-
-
-    return {
-        "ok": True,
-        "report_id": str(res.inserted_id),
-        "issue_id": issue_id,
-        "doc_name": doc_name,
-    }
-
-
 class PMPostIn(BaseModel):
     report_id: str | None = None
     sn: str
@@ -550,6 +402,14 @@ class PMPostIn(BaseModel):
     # laborcode ฝั่ง Maximo ที่ช่างเลือกเอง (ใช้ส่งเวลาทำงาน IN09)
     maximo_labor: Optional[List[str]] = None
     maximo_contractor: Optional[str] = None
+    # ── ข้อมูลหัวเอกสาร ────────────────────────────────────────────────
+    # ฟอร์มกรอกรอบเดียวแล้ว (ไม่มีด่าน Pre-PM) /submit จึงเป็นตัวสร้างเอกสาร
+    # เองเมื่อยังไม่มี report_id — ฟิลด์ชุดนี้เคยส่งมาที่ /pre/submit
+    job: Optional[Dict[str, Any]] = None
+    pm_date: Optional[str] = None
+    issue_id: Optional[str] = None
+    doc_name: Optional[str] = None
+    inspector: Optional[str] = None
 
 @router.post("/pmreport/submit")
 async def pmreport_post_submit(
@@ -614,105 +474,57 @@ async def pmreport_post_submit(
         "timestamp_post": datetime.now(timezone.utc),
     }
 
+    # หัวเอกสาร (เดิมบันทึกตอน Pre-PM) — ส่งมาเท่าไรเก็บเท่านั้น
+    header: dict = {}
+    if body.job is not None:
+        header["job"] = {**body.job, "pm_type": str(body.job.get("pm_type") or "CG").upper()}
+    if (body.pm_date or "").strip():
+        header["pm_date"] = body.pm_date.strip()
+    if body.inspector is not None:
+        header["inspector"] = body.inspector
+
     if existing_draft:
-        await coll.update_one({"_id": existing_draft["_id"]}, {"$set": update_fields})
+        await coll.update_one({"_id": existing_draft["_id"]}, {"$set": {**update_fields, **header}})
         return {"ok": True, "report_id": str(existing_draft["_id"])}
+
+    # ── ใบใหม่: จองเลข issue_id / doc_name ให้เลย ─────────────────────────
+    pm_date = header.get("pm_date") or datetime.now(th_tz).strftime("%Y-%m-%d")
+    try:
+        d = datetime.strptime(pm_date, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="pm_date must be YYYY-MM-DD")
+    pm_type = str((header.get("job") or {}).get("pm_type") or "CG").upper()
+
+    link = await _job_link(str(charger.get("station_id") or ""), body.job_id)
+    if link:
+        # ส่วน Charger ของใบ PM สถานีใบเดียว 5 ส่วน — ใช้เลขที่/ชื่อเอกสารของใบแม่
+        issue_id, doc_name = link["issue_id"], link["doc_name"]
+    else:
+        issue_id, doc_name = await _resolve_issue_and_doc(
+            coll, url_coll, db, sn, pm_type, d, body.issue_id, body.doc_name,
+        )
 
     doc = {
         "sn": sn,
         "station_id": charger.get("station_id"),
         "chargeBoxID": charger.get("chargeBoxID"),
+        "doc_name": doc_name,
+        "issue_id": issue_id,
+        "pm_date": pm_date,
         **update_fields,
+        **header,
+        **({"job_id": link["job_id"]} if link else {}),
         "photos": {},
         "status": "draft",
         "timestamp": datetime.now(timezone.utc),
     }
     res = await coll.insert_one(doc)
-    return {"ok": True, "report_id": str(res.inserted_id)}
-
-
-@router.post("/pmreport/{report_id}/pre/photos")
-async def pmreport_upload_pre_photos(
-    report_id: str,
-    sn: str = Form(...),
-    group: str = Form(...),
-    files: list[UploadFile] = File(...),
-    current: UserClaims = Depends(get_current_user),
-):
-    """Upload Pre-PM photos for a charger report"""
-    # ตรวจสิทธิ์สถานีก่อนแตะข้อมูล — เดิมเช็คแค่ว่า field ตรงกับ document
-    # ซึ่งผู้เรียกคุมได้ทั้งคู่ จึงยิงข้ามสถานีได้
-    assert_sn_access(current, sn)
-    if not re.fullmatch(r"g\d+(_\d+)?", group):
-        raise HTTPException(status_code=400, detail="Bad group key")
-
-    coll = get_pmreport_collection_for(sn)
-    try:
-        oid = ObjectId(report_id)
-    except Exception:
-        raise HTTPException(status_code=400, detail="Bad report_id")
-
-    doc = await coll.find_one({"_id": oid}, {"_id": 1, "sn": 1, f"photos_pre.{group}": 1})
-    if not doc:
-        raise HTTPException(status_code=404, detail="Report not found")
-    if doc.get("sn") != sn:
-        raise HTTPException(status_code=400, detail="sn mismatch")
-
-    MAX_PHOTOS_PER_GROUP = 10
-    existing_count = len((doc.get("photos_pre") or {}).get(group, []))
-    remaining = MAX_PHOTOS_PER_GROUP - existing_count
-    if remaining <= 0:
-        return {"ok": True, "count": 0, "group": group, "files": [], "skipped": "group_full"}
-    files = files[:remaining]
-
-    dest_dir = pathlib.Path(UPLOADS_ROOT) / "pm" / sn / report_id / "pre" / group
-    dest_dir.mkdir(parents=True, exist_ok=True)
-
-    saved = []
-    for f in files:
-        ext = _ext(f.filename or "")
-        if ext not in ALLOWED_EXTS:
-            raise HTTPException(status_code=400, detail=f"File type not allowed: {ext}")
-
-        data = await f.read()
-        if len(data) == 0:
-            raise HTTPException(status_code=400, detail=f"Empty file: {f.filename}")
-        if len(data) > MAX_FILE_MB * 1024 * 1024:
-            raise HTTPException(status_code=413, detail=f"File too large (> {MAX_FILE_MB} MB)")
-
-        # บังคับให้เป็น JPEG เสมอ — iPhone ส่ง HEIC มาซึ่ง Chrome/Edge/Firefox เปิดไม่ได้
-        # ของเดิม (resize_image_bytes) เปิด HEIC ไม่ได้แล้วคืนไบต์เดิมเงียบ ๆ จึงได้ไฟล์
-        # "ไบต์ HEIC ในชื่อ .jpg" ที่เปิดไม่ขึ้นทั้งบนเว็บและใน PDF
-        try:
-            data, out_ext = normalize_image_bytes(data, f.filename or "", max_width=1280, quality=75)
-        except ImageConversionError as e:
-            raise HTTPException(status_code=400, detail=str(e))
-
-        out_ext = out_ext or "jpg"
-        fname = _safe_name(f.filename or f"image_{secrets.token_hex(3)}.{out_ext}")
-        fname = pathlib.Path(fname).stem + "." + out_ext
-        path = dest_dir / fname
-        with open(path, "wb") as out:
-            out.write(data)
-
-        url_path = f"/uploads/pm/{sn}/{report_id}/pre/{group}/{fname}"
-        saved.append({
-            "filename": fname,
-            "url": url_path,
-            "uploadedAt": datetime.now(timezone.utc)
-        })
-
-    await coll.update_one(
-        {"_id": oid},
-        {
-            "$push": {f"photos_pre.{group}": {"$each": saved}},
-            "$set": {"has_photos": True},
-        }
-    )
-    if not saved:
-        raise HTTPException(status_code=400, detail="No files were saved")
-
-    return {"ok": True, "count": len(saved), "group": group, "files": saved}
+    return {
+        "ok": True,
+        "report_id": str(res.inserted_id),
+        "issue_id": issue_id,
+        "doc_name": doc_name,
+    }
 
 
 @router.post("/pmreport/{report_id}/post/photos")

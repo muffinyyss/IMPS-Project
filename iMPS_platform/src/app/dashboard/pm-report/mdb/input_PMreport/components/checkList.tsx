@@ -59,7 +59,6 @@ type BgUploadTask = {
     stationId: string;
     group: string;
     file: File;
-    side: "pre" | "post";
 };
 type BgUploadProgress = {
     total: number;
@@ -114,7 +113,7 @@ async function _bgCompressImage(file: File, maxWidth = 1600, quality = 0.8): Pro
     });
 }
 
-async function _bgUploadSingle(reportId: string, stationId: string, group: string, file: File, side: "pre" | "post") {
+async function _bgUploadSingle(reportId: string, stationId: string, group: string, file: File) {
     if (!reportId || reportId === "undefined" || reportId === "null") {
         throw new Error(`Invalid reportId: ${reportId}`);
     }
@@ -131,12 +130,10 @@ async function _bgUploadSingle(reportId: string, stationId: string, group: strin
     const form = new FormData();
     form.append("station_id", stationId);
     form.append("group", normalizedGroup); // ← normalize แล้ว
-    form.append("side", side);
+    form.append("side", "post");
     form.append("files", file, ensureJpgFilename(file.name));
 
-    const url = side === "pre"
-        ? `${API_BASE}/mdbpmreport/${reportId}/pre/photos`
-        : `${API_BASE}/mdbpmreport/${reportId}/post/photos`;
+    const url = `${API_BASE}/mdbpmreport/${reportId}/post/photos`;
 
     const res = await apiFetch(url, {
         method: "POST",
@@ -148,9 +145,9 @@ async function _bgUploadSingle(reportId: string, stationId: string, group: strin
         throw new Error(`[${res.status}] ${normalizedGroup}: ${errText || res.statusText}`);
     }
 }
-async function _bgUploadWithRetry(reportId: string, stationId: string, group: string, file: File, side: "pre" | "post", maxRetries = 3) {
+async function _bgUploadWithRetry(reportId: string, stationId: string, group: string, file: File, maxRetries = 3) {
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
-        try { await _bgUploadSingle(reportId, stationId, group, file, side); return; }
+        try { await _bgUploadSingle(reportId, stationId, group, file); return; }
         catch (err: any) {
             if (attempt === maxRetries) throw err;
             await new Promise(r => setTimeout(r, Math.min(1000 * 2 ** (attempt - 1), 8000)));
@@ -168,7 +165,7 @@ async function _bgProcessQueue() {
         const results = await Promise.allSettled(
             batch.map(async (task) => {
                 const compressed = await _bgCompressImage(task.file);
-                await _bgUploadWithRetry(task.reportId, task.stationId, task.group, compressed, task.side);
+                await _bgUploadWithRetry(task.reportId, task.stationId, task.group, compressed);
             })
         );
         results.forEach((r, idx) => {

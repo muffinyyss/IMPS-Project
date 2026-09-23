@@ -16,11 +16,10 @@ import Image from "next/image";
 import { draftKey, saveDraftLocal, loadDraftLocal, clearDraftLocal } from "../lib/draft";
 import { findMissingCcbMeasurementInputs } from "../lib/validation";
 
-import { useRouter, useSearchParams, usePathname } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import PmApprovalBar from "@/app/dashboard/pm-report/components/PmApprovalBar";
 import PmCompareTable from "@/app/dashboard/pm-report/components/PmCompareTable";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
-import { Tabs, TabsHeader, Tab } from "@material-tailwind/react";
 import { putPhoto, getPhotoByDbKey, delPhoto, type PhotoRef } from "../lib/draftPhotos";
 import { isFileReadable, isImageDecodable, resolveUsableFile, reportMissingDraftPhoto, reportPhotoStorageFailure } from "@/utils/upload-safety";
 import { ensureViewableImage } from "@/utils/heic";
@@ -153,7 +152,7 @@ type BgUploadTask = {
     stationId: string;
     group: string;
     file: File;
-    side: "pre" | "post";
+    side: "post";
 };
 type BgUploadProgress = {
     total: number;
@@ -320,21 +319,19 @@ async function _bgCompressImage(file: File, maxWidth = 1600, quality = 0.8): Pro
     });
 }
 
-async function _bgUploadSingle(reportId: string, stationId: string, group: string, file: File, side: "pre" | "post") {
+async function _bgUploadSingle(reportId: string, stationId: string, group: string, file: File, side: "post") {
     if (!file || file.size === 0) throw new Error(`Empty file: ${file?.name ?? "unknown"}`);
     const form = new FormData();
     form.append("station_id", stationId);
     form.append("group", group);
     form.append("side", side);
     form.append("files", file, ensureJpgFilename(file.name));
-    const url = side === "pre"
-        ? `${API_BASE}/ccbpmreport/${reportId}/pre/photos`
-        : `${API_BASE}/ccbpmreport/${reportId}/post/photos`;
+    const url = `${API_BASE}/ccbpmreport/${reportId}/post/photos`;
     const res = await apiFetch(url, { method: "POST", body: form });
     if (!res.ok) { const errText = await res.text().catch(() => ""); throw new Error(`[${res.status}] ${group}: ${errText || res.statusText}`); }
 }
 
-async function _bgUploadWithRetry(reportId: string, stationId: string, group: string, file: File, side: "pre" | "post", maxRetries = 3) {
+async function _bgUploadWithRetry(reportId: string, stationId: string, group: string, file: File, side: "post", maxRetries = 3) {
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try { await _bgUploadSingle(reportId, stationId, group, file, side); return; }
         catch (err: any) {
@@ -403,10 +400,6 @@ const T = {
     inspector: { th: "ผู้ตรวจสอบ", en: "Inspector" },
     pmDate: { th: "วันที่ PM", en: "PM Date" },
 
-    // Tabs
-    tabPrePm: { th: "Pre-PM", en: "Pre-PM" },
-    tabPostPm: { th: "Post-PM", en: "Post-PM" },
-
     // Buttons
     save: { th: "บันทึก", en: "Save" },
     saving: { th: "กำลังบันทึก...", en: "Saving..." },
@@ -432,16 +425,10 @@ const T = {
     remark: { th: "หมายเหตุ", en: "Remark" },
     remarkLabel: { th: "หมายเหตุ", en: "Remark" },
     testResult: { th: "ผลการทดสอบ", en: "Test Result" },
-    preRemarkLabel: { th: "หมายเหตุ (ก่อน PM)", en: "Remark (Pre-PM)" },
 
     // Section labels
     comment: { th: "Comment", en: "Comment" },
     summaryResult: { th: "สรุปผลการตรวจสอบ", en: "Inspection Summary" },
-    prePM: { th: "ก่อน PM", en: "Pre-PM" },
-    postPM: { th: "หลัง PM", en: "Post-PM" },
-    beforePM: { th: "ก่อน PM", en: "Before PM" },
-    afterPM: { th: "หลัง PM", en: "After PM" },
-    beforePmRef: { th: "ก่อน PM (อ้างอิง)", en: "Before PM (Reference)" },
 
     // Validation sections
     validationPhotoTitle: { th: "1) ตรวจสอบการแนบรูปภาพ (ทุกข้อ)", en: "1) Photo Attachments (all items)" },
@@ -467,12 +454,9 @@ const T = {
     // Alerts
     alertNoStation: { th: "ยังไม่ทราบ station_id", en: "Station ID not found" },
     alertSaveFailed: { th: "บันทึกไม่สำเร็จ:", en: "Save failed:" },
-    alertFillPreFirst: { th: "กรุณากรอกข้อมูลในส่วน Pre-PM ให้ครบก่อน", en: "Please complete all Pre-PM fields first" },
     alertFillPhoto: { th: "กรุณาแนบรูปในทุกข้อก่อนบันทึก", en: "Please attach photos for all items" },
-    alertPhotoNotComplete: { th: "กรุณาแนบรูปในส่วน Pre-PM ให้ครบก่อน", en: "Please attach all photos in Pre-PM section" },
     alertInputNotComplete: { th: "กรุณากรอกค่าข้อ 11 ให้ครบ", en: "Please fill in Item 11" },
     alertCompleteAll: { th: "กรุณากรอกข้อมูลและแนบรูปให้ครบก่อนบันทึก", en: "Please complete all fields and attach photos before saving" },
-    noReportId: { th: "ไม่มี report_id - กรุณาบันทึกข้อมูล Pre-PM ก่อน", en: "No report_id - Please save Pre-PM first" },
 
     // Questions
     q1: { th: "1) ตรวจสอบสภาพทั่วไป", en: "1) General condition inspection" },
@@ -538,10 +522,6 @@ const T = {
 
     // Units
     unit: { th: "ตัว", en: "units" },
-
-    // Suffixes
-    prePmSuffix: { th: "(ก่อน PM)", en: "(Pre-PM)" },
-    postPmSuffix: { th: "(หลัง PM)", en: "(Post-PM)" },
 
     // Misc UI
     loading: { th: "กำลังโหลดข้อมูล...", en: "Loading..." },
@@ -633,30 +613,11 @@ const getPfIdFromKey = (key: string | number): string => {
     return `${ID_PREFIX}-pf-${key}`;
 };
 
-type TabId = "pre" | "post";
-const TABS: { id: TabId; label: string; slug: "pre" | "post" }[] = [
-    { id: "post", label: "Post\u2011PM", slug: "post" },
-];
-
-function slugToTab(slug: string | null): TabId {
-    switch (slug) { case "post": return "post"; case "pre": default: return "pre"; }
-}
-function tabToSlug(tab: TabId): "pre" | "post" { return TABS.find(t => t.id === tab)!.slug; }
-
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 const LOGO_SRC = "/img/logo_egat.png";
 
 type StationPublic = { station_id: string; station_name: string; status?: boolean; };
 type Me = { id: string; username: string; email: string; role: string; company: string; tel: string; };
-
-async function getStationInfoPublic(stationId: string): Promise<StationPublic> {
-    const url = `${API_BASE}/station/info/public?station_id=${encodeURIComponent(stationId)}`;
-    const res = await fetch(url, { cache: "no-store" });
-    if (res.status === 404) throw new Error("Station not found");
-    if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
-    const json = await res.json();
-    return json.station ?? json;
-}
 
 const UNITS = { voltage: ["V"] as const };
 type UnitVoltage = (typeof UNITS.voltage)[number];
@@ -746,7 +707,7 @@ const QUESTIONS: Question[] = [
     { no: 11, key: "r11", labelKey: "q11", kind: "simple", hasPhoto: true, tooltipKey: "q11_tooltip" },
 ];
 
-function getQuestionLabel(q: Question, mode: TabId, lang: Lang): string {
+function getQuestionLabel(q: Question, lang: Lang): string {
     const label = t(q.labelKey, lang);
     return label.replace(/^\d+(?=[.)])/, String(getDisplayedQuestionNo(q.no)));
 }
@@ -875,8 +836,6 @@ interface MissingInputItem {
 
 interface PMValidationCardProps {
     lang: Lang;
-    displayTab: "pre" | "post";
-    isPostMode: boolean;
     allPhotosAttached: boolean;
     missingPhotoItems: string[];
     allRequiredInputsFilled: boolean;
@@ -888,7 +847,7 @@ interface PMValidationCardProps {
 }
 
 function PMValidationCard({
-    lang, displayTab, isPostMode,
+    lang,
     allPhotosAttached, missingPhotoItems,
     allRequiredInputsFilled, missingInputsDetailed,
     allPFAnsweredPost, missingPFItemsPost,
@@ -944,42 +903,40 @@ function PMValidationCard({
             });
         }
 
-        if (isPostMode) {
-            if (!allPFAnsweredPost) {
-                missingPFItemsPost.forEach((item) => {
-                    errors.push({
-                        section: lang === "th" ? "ระดับผลการตรวจ" : "Inspection rating",
-                        sectionIcon: "✅",
-                        itemName: `${t("itemLabel", lang)} ${item}`,
-                        message: lang === "th" ? "ยังไม่ได้เลือกระดับผลการตรวจ" : "Inspection rating not selected",
-                        scrollId: getPfButtonsScrollId(item),
-                    });
+        if (!allPFAnsweredPost) {
+            missingPFItemsPost.forEach((item) => {
+                errors.push({
+                    section: lang === "th" ? "ระดับผลการตรวจ" : "Inspection rating",
+                    sectionIcon: "✅",
+                    itemName: `${t("itemLabel", lang)} ${item}`,
+                    message: lang === "th" ? "ยังไม่ได้เลือกระดับผลการตรวจ" : "Inspection rating not selected",
+                    scrollId: getPfButtonsScrollId(item),
                 });
-            }
+            });
+        }
 
-            if (!isSummaryFilled) {
-                errors.push({
-                    section: lang === "th" ? "สรุปผล" : "Summary",
-                    sectionIcon: "📋",
-                    itemName: "Comment",
-                    message: lang === "th" ? "ยังไม่ได้กรอก Comment" : "Comment not filled",
-                    scrollId: `${ID_PREFIX}-summary-section`,
-                });
-            }
-            if (!isSummaryCheckFilled) {
-                errors.push({
-                    section: lang === "th" ? "สรุปผล" : "Summary",
-                    sectionIcon: "📋",
-                    itemName: lang === "th" ? "สถานะสรุป" : "Summary Status",
-                    message: lang === "th" ? "ยังไม่ได้เลือกระดับผลการตรวจหรือ N/A" : "Inspection rating or N/A not selected",
-                    scrollId: `${ID_PREFIX}-summary-section`,
-                });
-            }
+        if (!isSummaryFilled) {
+            errors.push({
+                section: lang === "th" ? "สรุปผล" : "Summary",
+                sectionIcon: "📋",
+                itemName: "Comment",
+                message: lang === "th" ? "ยังไม่ได้กรอก Comment" : "Comment not filled",
+                scrollId: `${ID_PREFIX}-summary-section`,
+            });
+        }
+        if (!isSummaryCheckFilled) {
+            errors.push({
+                section: lang === "th" ? "สรุปผล" : "Summary",
+                sectionIcon: "📋",
+                itemName: lang === "th" ? "สถานะสรุป" : "Summary Status",
+                message: lang === "th" ? "ยังไม่ได้เลือกระดับผลการตรวจหรือ N/A" : "Inspection rating or N/A not selected",
+                scrollId: `${ID_PREFIX}-summary-section`,
+            });
         }
 
         return errors;
     }, [
-        lang, displayTab, isPostMode,
+        lang,
         allPhotosAttached, missingPhotoItems,
         allRequiredInputsFilled, missingInputsDetailed,
         allPFAnsweredPost, missingPFItemsPost,
@@ -1323,31 +1280,6 @@ function BackgroundUploadBanner({ lang }: { lang: Lang }) {
     );
 }
 
-function SkippedNAItem({ label, remark, lang }: { label: string; remark?: string; lang: Lang }) {
-    return (
-        <div className="tw-p-3 sm:tw-p-3 sm:tw-p-4 tw-rounded-lg tw-border tw-bg-amber-50 tw-border-amber-200">
-            <div className="tw-flex tw-flex-col sm:tw-flex-row sm:tw-items-center sm:tw-justify-between tw-gap-1 sm:tw-gap-2">
-                <Typography className="tw-font-semibold tw-text-xs sm:tw-text-sm tw-text-blue-gray-800">{label}</Typography>
-                {remark && (<Typography variant="small" className="tw-text-blue-gray-600 tw-text-[10px] sm:tw-text-xs">{t("remarkLabel", lang)} - {remark}</Typography>)}
-            </div>
-        </div>
-    );
-}
-
-async function fetchPreviewIssueId(stationId: string, pmDate: string): Promise<string | null> {
-    const u = new URL(`${API_BASE}/ccbpmreport/preview-issueid`); u.searchParams.set("station_id", stationId); u.searchParams.set("pm_date", pmDate);
-    const token = typeof window !== "undefined" ? localStorage.getItem("access_token") ?? "" : "";
-    const r = await fetch(u.toString(), { credentials: "include", headers: token ? { Authorization: `Bearer ${token}` } : undefined });
-    if (!r.ok) return null; const j = await r.json(); return (j && typeof j.issue_id === "string") ? j.issue_id : null;
-}
-
-async function fetchPreviewDocName(stationId: string, pmDate: string): Promise<string | null> {
-    const u = new URL(`${API_BASE}/ccbpmreport/preview-docname`); u.searchParams.set("station_id", stationId); u.searchParams.set("pm_date", pmDate);
-    const token = typeof window !== "undefined" ? localStorage.getItem("access_token") ?? "" : "";
-    const r = await fetch(u.toString(), { credentials: "include", headers: token ? { Authorization: `Bearer ${token}` } : undefined });
-    if (!r.ok) return null; const j = await r.json(); return (j && typeof j.doc_name === "string") ? j.doc_name : null;
-}
-
 async function fetchReport(reportId: string, stationId: string) {
     const token = localStorage.getItem("access_token") ?? "";
     const url = `${API_BASE}/ccbpmreport/get?station_id=${stationId}&report_id=${reportId}`;
@@ -1398,16 +1330,14 @@ export default function CCBPMReport() {
     const router = useRouter();
     const [submitting, setSubmitting] = useState(false);
     const [pageLoading, setPageLoading] = useState(true);
-    const [preUploadState, setPreUploadState] = useState({ show: false, total: 0, completed: 0, failed: 0 });
+    const [uploadState, setUploadState] = useState({ show: false, total: 0, completed: 0, failed: 0 });
     const [docName, setDocName] = useState<string>("");
     const [reportId, setReportId] = useState<string>("");
 
-    const pathname = usePathname();
     const searchParams = useSearchParams();
 
     // ปุ่มย้อนกลับ: เปิดมาจากหน้า PM List ให้กลับไปหน้านั้นตรงๆ
-    // router.back() ใช้ไม่ได้ เพราะสลับ pmtab ในฟอร์มก็ดันประวัติเพิ่มทุกครั้ง
-    // กดกลับเลยแค่ถอยการสลับแท็บ ไม่ได้ออกจากใบงาน
+    // ไม่ได้เปิดมาจาก PM List (ไม่มี route ต้นทาง) ค่อยถอยประวัติด้วย router.back()
     const goBackToList = useCallback(() => {
         const back = pmBackRoute(searchParams);
         if (back) router.push(back);
@@ -1417,7 +1347,6 @@ export default function CCBPMReport() {
     // เปิดจากใบ PM สถานี "ใบเดียว 4 ส่วน" → ผูกใบนี้เป็นส่วนหนึ่งของใบแม่
     const jobId = searchParams.get("job_id") ?? "";
     const action = searchParams.get("action");
-    const isPostMode = true;
 
     const PM_PREFIX = "ccbpmreport";
 
@@ -1463,9 +1392,7 @@ export default function CCBPMReport() {
     const [summary, setSummary] = useState<string>("");
     const [stationId, setStationId] = useState<string | null>(null);
 
-    const key = useMemo(() => draftKey(stationId), [stationId]);
     const postKey = useMemo(() => `${draftKey(stationId)}:${editId}:post`, [stationId, editId]);
-    const currentDraftKey = isPostMode ? postKey : key;
 
     useEffect(() => { void prefetchLocation(); }, []);
     useEffect(() => { if (typeof window === "undefined") return; const params = new URLSearchParams(window.location.search); if (params.has("draft_id")) { params.delete("draft_id"); const url = `${window.location.pathname}?${params.toString()}`; window.history.replaceState({}, "", url); } }, []);
@@ -1526,14 +1453,12 @@ export default function CCBPMReport() {
     const contractorMissing = contractorPicked && !maximoContractor.trim();
     const [inspector, setInspector] = useState<string>("");
     const [postApiLoaded, setPostApiLoaded] = useState(false);
-    const [commentPre, setCommentPre] = useState<string>("");
 
     const [job, setJob] = useState({ issue_id: "", station_name: "", date: getTodayLocalStr() });
-    const [rowsPre, setRowsPre] = useState<Record<string, { pf: PF; remark: string }>>({});
 
-    // รูปทั้งสองฝั่งจากเอกสาร (ใช้ในตารางเทียบตอนตรวจอนุมัติ)
-    // state รูปปกติของฟอร์มมีเฉพาะฝั่งที่กำลังกรอกอยู่ จึงต้องเก็บของ document ไว้ต่างหาก
-    const [cmpPhotos, setCmpPhotos] = useState<{ pre: any; post: any }>({ pre: {}, post: {} });
+    // รูปจากเอกสาร (ใช้ในตารางตอนตรวจอนุมัติ)
+    // state รูปปกติของฟอร์มเป็นรูปที่กำลังกรอกอยู่ในเครื่อง จึงต้องเก็บของ document ไว้ต่างหาก
+    const [cmpPhotos, setCmpPhotos] = useState<any>({});
     const [rows, setRows] = useState<Record<string, { pf: PF; remark: string }>>(() => {
         const initial: Record<string, { pf: PF; remark: string }> = {};
         QUESTIONS.forEach((q) => {
@@ -1553,7 +1478,6 @@ export default function CCBPMReport() {
     });
 
     const mMain = useMeasure<UnitVoltage>(VOLTAGE_FIELDS_CCB, "V");
-    const [mMainPre, setMMainPre] = useState<MeasureState<UnitVoltage>>(() => initMeasureState(VOLTAGE_FIELDS_CCB, "V"));
 
     const [subBreakerCount, setSubBreakerCount] = useState<number>(1);
     const mSub1 = useMeasure<UnitVoltage>(VOLTAGE_FIELDS_CCB, "V");
@@ -1563,15 +1487,6 @@ export default function CCBPMReport() {
     const mSub5 = useMeasure<UnitVoltage>(VOLTAGE_FIELDS_CCB, "V");
     const mSub6 = useMeasure<UnitVoltage>(VOLTAGE_FIELDS_CCB, "V");
     const M_SUB_LIST = [mSub1, mSub2, mSub3, mSub4, mSub5, mSub6];
-
-    const [mSub1Pre, setMSub1Pre] = useState<MeasureState<UnitVoltage>>(() => initMeasureState(VOLTAGE_FIELDS_CCB, "V"));
-    const [mSub2Pre, setMSub2Pre] = useState<MeasureState<UnitVoltage>>(() => initMeasureState(VOLTAGE_FIELDS_CCB, "V"));
-    const [mSub3Pre, setMSub3Pre] = useState<MeasureState<UnitVoltage>>(() => initMeasureState(VOLTAGE_FIELDS_CCB, "V"));
-    const [mSub4Pre, setMSub4Pre] = useState<MeasureState<UnitVoltage>>(() => initMeasureState(VOLTAGE_FIELDS_CCB, "V"));
-    const [mSub5Pre, setMSub5Pre] = useState<MeasureState<UnitVoltage>>(() => initMeasureState(VOLTAGE_FIELDS_CCB, "V"));
-    const [mSub6Pre, setMSub6Pre] = useState<MeasureState<UnitVoltage>>(() => initMeasureState(VOLTAGE_FIELDS_CCB, "V"));
-    const M_SUB_PRE_SETTERS = [setMSub1Pre, setMSub2Pre, setMSub3Pre, setMSub4Pre, setMSub5Pre, setMSub6Pre];
-    const M_SUB_PRE_LIST = [mSub1Pre, mSub2Pre, mSub3Pre, mSub4Pre, mSub5Pre, mSub6Pre];
 
     const addSubBreaker = () => {
         if (subBreakerCount >= 6) return;
@@ -1605,16 +1520,18 @@ export default function CCBPMReport() {
         if (subBreakerCount - 1 < M_SUB_LIST.length) {
             M_SUB_LIST[subBreakerCount - 1].setState(initMeasureState(VOLTAGE_FIELDS_CCB, "V"));
         }
+        // รูปของตัวที่ลบต้องทิ้งจาก IndexedDB ด้วย และช่องท้ายสุดต้องว่าง
+        // ไม่งั้นรูปค้างใน state จะถูกอัปโหลดเข้า g10_N ตอนบันทึกทั้งที่ไม่มีเบรกเกอร์ตัวนั้นแล้ว
+        (photos[100 + idx] || []).forEach((p) => {
+            if (p.preview?.startsWith("blob:")) URL.revokeObjectURL(p.preview);
+            void delPhoto(postKey, p.id);
+        });
         setPhotos(prev => {
             const next = { ...prev };
             for (let i = idx; i < subBreakerCount; i++) {
-                const oldKey = 100 + i + 1;
-                const newKey = 100 + i;
-                if (next[oldKey]) {
-                    next[newKey] = next[oldKey];
-                    delete next[oldKey];
-                }
+                next[100 + i] = prev[100 + i + 1] || [];
             }
+            next[100 + subBreakerCount] = [];
             return next;
         });
         setSubBreakerCount(subBreakerCount - 1);
@@ -1654,10 +1571,10 @@ export default function CCBPMReport() {
         return result;
     };
 
-    useEffect(() => { if (isPostMode && postApiLoaded) setPageLoading(false); }, [isPostMode, postApiLoaded]);
+    useEffect(() => { if (postApiLoaded) setPageLoading(false); }, [postApiLoaded]);
 
     useEffect(() => {
-        if (!isPostMode || !editId || !stationId) return;
+        if (!editId || !stationId) return;
         setPostApiLoaded(false);
         setPhotos(initialPhotos);
         mMain.setState(initMeasureState(VOLTAGE_FIELDS_CCB, "V"));
@@ -1673,43 +1590,15 @@ export default function CCBPMReport() {
                 if (data.job) setJob(prev => ({ ...prev, ...data.job, issue_id: data.issue_id ?? prev.issue_id }));
                 if (data.pm_date) setJob(prev => ({ ...prev, date: data.pm_date }));
 
-                const measuresPre = data?.measures_pre || {};
-                if (measuresPre.m9) {
-                    setMMainPre((prev) => {
-                        const next = { ...prev };
-                        VOLTAGE_FIELDS_CCB.forEach((k) => {
-                            const row = measuresPre.m9[k] ?? {};
-                            next[k] = { value: row.value != null ? String(row.value) : "", unit: (row.unit as UnitVoltage) ?? "V" };
-                        });
-                        return next;
-                    });
-                }
-
-                const subKeys = Object.keys(measuresPre).filter(k => k.startsWith("m10_"));
-                const subCount = subKeys.length;
-                if (subCount > 0) {
-                    setSubBreakerCount(Math.max(1, subCount));
-                    M_SUB_PRE_SETTERS.forEach((setter, idx) => {
-                        const subData = measuresPre[`m10_${idx + 1}`];
-                        if (subData) {
-                            setter((prev) => {
-                                const next = { ...prev };
-                                VOLTAGE_FIELDS_CCB.forEach((k) => {
-                                    const row = subData[k] ?? {};
-                                    next[k] = { value: row.value != null ? String(row.value) : "", unit: (row.unit as UnitVoltage) ?? "V" };
-                                });
-                                return next;
-                            });
-                        }
-                    });
-                }
-
+                // จำนวนเบรกเกอร์ย่อย: ใช้ค่าที่เอกสารบันทึกไว้ ถ้าไม่มีนับจากค่าวัด m10_* แทน
+                // (draft ในเครื่องโหลดทีหลังและทับค่านี้ได้ตามเดิม)
+                const measuredSubCount = Object.keys(data?.measures ?? {}).filter(k => k.startsWith("m10_")).length;
                 if (data.subBreakerCount) setSubBreakerCount(data.subBreakerCount);
+                else if (measuredSubCount > 0) setSubBreakerCount(Math.min(6, measuredSubCount));
                 if (data.doc_name) setDocName(data.doc_name);
                 if (data.inspector) setInspector(data.inspector);
-                if (data.comment_pre) setCommentPre(data.comment_pre);
                 if (data.summary) setSummary(data.summary);
-                setCmpPhotos({ pre: data.photos_pre ?? {}, post: data.photos ?? {} });
+                setCmpPhotos(data.photos ?? {});
                 // สรุปผล/หมายเหตุเดิมอ่านจาก draft ในเครื่องอย่างเดียว คนที่ไม่ได้เป็นคนกรอก
                 // (ผู้อนุมัติ) จึงเปิดมาเจอช่องว่าง ต้องดึงจากตัวเอกสารด้วย
                 if (reviewMode) {
@@ -1722,7 +1611,6 @@ export default function CCBPMReport() {
                     if (typeof data.summary === "string") setSummary(data.summary);
                     if (data.summaryCheck) setSummaryCheck(data.summaryCheck as PF);
                 }
-                if (data.rows_pre) { setRowsPre(data.rows_pre); }
                 if (data.rows) {
                     setRows((prev) => {
                         const next = { ...prev };
@@ -1731,23 +1619,14 @@ export default function CCBPMReport() {
                         });
                         return next;
                     });
-                } else if (data.rows_pre) {
-                    setRows((prev) => {
-                        const next = { ...prev };
-                        Object.entries(data.rows_pre).forEach(([k, v]) => {
-                            const preRow = v as { pf: PF; remark: string };
-                            next[k] = { pf: preRow.pf, remark: "" };
-                        });
-                        return next;
-                    });
                 }
                 setPostApiLoaded(true);
             } catch (err) { console.error("load report failed:", err); setPostApiLoaded(true); }
         })();
-    }, [isPostMode, editId, stationId]);
+    }, [editId, stationId]);
 
     useEffect(() => {
-        if (!isPostMode || !stationId || !editId || !postApiLoaded) return;
+        if (!stationId || !editId || !postApiLoaded) return;
         const postDraft = loadDraftLocal<{
             rows: typeof rows;
             mMain: typeof mMain.state;
@@ -1794,7 +1673,7 @@ export default function CCBPMReport() {
             }
             if (Object.keys(next).some(k => (next[Number(k)]?.length ?? 0) > 0)) setPhotos(prev => ({ ...prev, ...next }));
         })();
-    }, [isPostMode, stationId, editId, postKey, postApiLoaded]);
+    }, [stationId, editId, postKey, postApiLoaded]);
 
     useEffect(() => {
         const token = typeof window !== "undefined" ? localStorage.getItem("access_token") ?? "" : "";
@@ -1810,74 +1689,14 @@ export default function CCBPMReport() {
         })();
     }, []);
 
-    useEffect(() => { if (isPostMode || !stationId || !job.date) return; let canceled = false; (async () => { try { const preview = await fetchPreviewIssueId(stationId, job.date); if (!canceled && preview) setJob(prev => ({ ...prev, issue_id: preview })); } catch (err) { console.error("preview issue_id error:", err); } })(); return () => { canceled = true; }; }, [stationId, job.date, isPostMode]);
-    useEffect(() => { if (isPostMode || !stationId || !job.date) return; let canceled = false; (async () => { try { const preview = await fetchPreviewDocName(stationId, job.date); if (!canceled && preview) setDocName(preview); } catch (err) { console.error("preview docName error:", err); } })(); return () => { canceled = true; }; }, [stationId, job.date, isPostMode]);
-
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
         const sid = params.get("station_id") || localStorage.getItem("selected_station_id");
         if (sid) setStationId(sid);
-        if (!sid || isPostMode) { setPageLoading(false); return; }
-        getStationInfoPublic(sid).then((st) => {
-            setJob((prev) => ({ ...prev, station_name: st.station_name ?? prev.station_name, date: prev.date || getTodayLocalStr() }));
-        }).catch((err) => console.error("load public station info failed:", err)).finally(() => setPageLoading(false));
-    }, [isPostMode]);
-
-    useEffect(() => {
-        if (!stationId || isPostMode) return;
-        const draft = loadDraftLocal<{
-            rows: typeof rows;
-            mMain: typeof mMain.state;
-            mSub1: typeof mSub1.state;
-            mSub2: typeof mSub2.state;
-            mSub3: typeof mSub3.state;
-            mSub4: typeof mSub4.state;
-            mSub5: typeof mSub5.state;
-            mSub6: typeof mSub6.state;
-            subBreakerCount: number;
-            summary: string;
-            summary_pf?: PF;
-            inspector?: string;
-            photoRefs?: Record<number, (PhotoRef | { isNA: true })[]>;
-        }>(key);
-        if (!draft) return;
-        setRows(draft.rows);
-        mMain.setState(draft.mMain ?? initMeasureState(VOLTAGE_FIELDS_CCB, "V"));
-        mSub1.setState(draft.mSub1 ?? initMeasureState(VOLTAGE_FIELDS_CCB, "V"));
-        mSub2.setState(draft.mSub2 ?? initMeasureState(VOLTAGE_FIELDS_CCB, "V"));
-        mSub3.setState(draft.mSub3 ?? initMeasureState(VOLTAGE_FIELDS_CCB, "V"));
-        mSub4.setState(draft.mSub4 ?? initMeasureState(VOLTAGE_FIELDS_CCB, "V"));
-        mSub5.setState(draft.mSub5 ?? initMeasureState(VOLTAGE_FIELDS_CCB, "V"));
-        mSub6.setState(draft.mSub6 ?? initMeasureState(VOLTAGE_FIELDS_CCB, "V"));
-        if (draft.subBreakerCount) setSubBreakerCount(draft.subBreakerCount);
-        setSummary(draft.summary);
-        setSummaryCheck(draft.summary_pf ?? "");
-        setInspector(draft.inspector ?? "");
-        (async () => {
-            if (!draft.photoRefs) return;
-            const next: Record<number, PhotoItem[]> = { ...initialPhotos };
-            for (const [noStr, refs] of Object.entries(draft.photoRefs)) {
-                const no = Number(noStr); const items: PhotoItem[] = [];
-                for (const ref of refs || []) {
-                    if ('isNA' in ref && ref.isNA) { items.push({ id: `${no}-NA-restored`, isNA: true, preview: undefined }); continue; }
-                    if (!('id' in ref) || !ref.id) continue;
-                    const file = await getPhotoByDbKey((ref as PhotoRef).dbKey);
-                    if (!file || file.size === 0) {
-                        console.warn("Photo missing/empty in IndexedDB:", (ref as PhotoRef).dbKey);
-                        reportMissingDraftPhoto(lang);
-                        continue;
-                    }
-                    items.push({ id: ref.id, file, preview: URL.createObjectURL(file), remark: (ref as any).remark ?? "", ref: ref as PhotoRef });
-                }
-                next[no] = items;
-            }
-            setPhotos(next);
-        })();
-    }, [stationId, key, isPostMode]);
+        setPageLoading(false);
+    }, []);
 
     useEffect(() => { const onInfo = (e: Event) => { const detail = (e as CustomEvent).detail as { info?: StationPublic; station?: StationPublic }; const st = detail.info ?? detail.station; if (!st) return; setJob((prev) => ({ ...prev, station_name: st.station_name ?? prev.station_name })); }; window.addEventListener("station:info", onInfo as EventListener); return () => window.removeEventListener("station:info", onInfo as EventListener); }, []);
-
-    const preReportIdRef = useRef<string | null>(null);
 
     const makePhotoSetter = (photoKey: number): React.Dispatch<React.SetStateAction<PhotoItem[]>> => {
         return (action: React.SetStateAction<PhotoItem[]>) => {
@@ -1888,26 +1707,6 @@ export default function CCBPMReport() {
             });
         };
     };
-
-    const REQUIRED_PHOTO_KEYS_PRE = useMemo(() => {
-        const keys: number[] = [];
-        QUESTIONS.filter((q) => q.hasPhoto && q.no !== 11).forEach((q) => {
-            if (q.kind === "simple") {
-                keys.push(getPhotoKeyForQuestion(q));
-            } else if (q.kind === "group") {
-                q.items.forEach((item) => {
-                    keys.push(getPhotoKeyForQuestion(q, item.key));
-                });
-            } else if (q.kind === "mainBreaker") {
-                keys.push(90);
-            } else if (q.kind === "subBreakers") {
-                for (let i = 1; i <= subBreakerCount; i++) {
-                    keys.push(100 + i);
-                }
-            }
-        });
-        return keys;
-    }, [subBreakerCount]);
 
     const REQUIRED_PHOTO_KEYS_POST = useMemo(() => {
         const keys: number[] = [];
@@ -1929,7 +1728,7 @@ export default function CCBPMReport() {
         return keys;
     }, [subBreakerCount]);
 
-    const missingPhotoItemsPre = useMemo(() => REQUIRED_PHOTO_KEYS_PRE.filter((key) => {
+    const missingPhotoItemsPost = useMemo(() => REQUIRED_PHOTO_KEYS_POST.filter((key) => {
         let rowKey: string | null = null;
         if (key === 1001) { rowKey = "pre_r1"; }
         else if (key === 1002) { rowKey = "pre_r2"; }
@@ -1940,25 +1739,9 @@ export default function CCBPMReport() {
         else { rowKey = `r${key}`; }
         if (rowKey && rows[rowKey]?.pf === "NA") return false;
         return (photos[key]?.length ?? 0) < 1;
-    }), [REQUIRED_PHOTO_KEYS_PRE, photos, rows]);
+    }), [REQUIRED_PHOTO_KEYS_POST, photos, rows]);
 
-    const missingPhotoItemsPost = useMemo(() => REQUIRED_PHOTO_KEYS_POST.filter((key) => {
-        let rowKey: string | null = null;
-        if (key === 1001) { rowKey = "pre_r1"; }
-        else if (key === 1002) { rowKey = "pre_r2"; }
-        else if (key === 90) { rowKey = "r9_main"; }
-        else if (key >= 101 && key <= 106) { rowKey = `r10_sub${key - 100}`; }
-        else if (key >= 1031 && key <= 1034) { rowKey = `r103_${key - 1030}`; }
-        else if (key >= 30 && key < 90) { const qNo = Math.floor(key / 10); const subNo = key % 10; rowKey = `r${qNo}_${subNo}`; }
-        else { rowKey = `r${key}`; }
-        if (rowKey && (rowsPre[rowKey]?.pf === "NA" || rows[rowKey]?.pf === "NA")) return false;
-        return (photos[key]?.length ?? 0) < 1;
-    }), [REQUIRED_PHOTO_KEYS_POST, photos, rowsPre, rows]);
-
-    const allPhotosAttachedPre = missingPhotoItemsPre.length === 0;
     const allPhotosAttachedPost = missingPhotoItemsPost.length === 0;
-    const missingPhotoItems = isPostMode ? missingPhotoItemsPost : missingPhotoItemsPre;
-    const allPhotosAttached = isPostMode ? allPhotosAttachedPost : allPhotosAttachedPre;
 
     const PF_REQUIRED_KEYS = useMemo(() => {
         const keys: string[] = [];
@@ -1973,35 +1756,28 @@ export default function CCBPMReport() {
         return keys;
     }, [subBreakerCount]);
 
-    const PF_KEYS_PRE = useMemo(() => QUESTIONS.filter((q) => q.no !== 11).flatMap((q) => getRowKeysForQuestion(q, subBreakerCount)), [subBreakerCount]);
-    const PF_KEYS_POST = useMemo(() => QUESTIONS.filter((q) => !q.key.startsWith("pre_")).filter((q) => {
-        const rowKeys = getRowKeysForQuestion(q, subBreakerCount);
-        return !rowKeys.every(k => rowsPre[k]?.pf === "NA");
-    }).flatMap((q) => getRowKeysForQuestion(q, subBreakerCount)), [rowsPre, subBreakerCount]);
+    // ข้อ 1-2 (pre_r1/pre_r2) ไม่มีปุ่มระดับผล — ไม่ต้องบังคับเลือก
+    const PF_KEYS_POST = useMemo(() => QUESTIONS.filter((q) => !q.key.startsWith("pre_"))
+        .flatMap((q) => getRowKeysForQuestion(q, subBreakerCount)), [subBreakerCount]);
 
-    const allPFAnsweredPre = useMemo(() => true, []);
-    const missingPFItemsPre = useMemo(() => [] as string[], []);
-    const allPFAnsweredPost = useMemo(() => PF_KEYS_POST.every((k) => rowsPre[k]?.pf === "NA" || rows[k]?.pf !== ""), [rows, PF_KEYS_POST, rowsPre]);
-    const missingPFItemsPost = useMemo(() => PF_KEYS_POST.filter((k) => rowsPre[k]?.pf !== "NA" && !rows[k]?.pf).map((k) => {
+    const allPFAnsweredPost = useMemo(() => PF_KEYS_POST.every((k) => rows[k]?.pf !== ""), [rows, PF_KEYS_POST]);
+    const missingPFItemsPost = useMemo(() => PF_KEYS_POST.filter((k) => !rows[k]?.pf).map((k) => {
         return getDisplayedRowNo(k);
-    }), [rows, PF_KEYS_POST, rowsPre]);
+    }), [rows, PF_KEYS_POST]);
 
     const missingInputsDetailed = useMemo(() => {
         return findMissingCcbMeasurementInputs({
-            isPostMode,
-            currentRows: rows,
-            preRows: rowsPre,
+            rows,
             mainMeasurements: mMain.state,
             subMeasurements: [mSub1.state, mSub2.state, mSub3.state, mSub4.state, mSub5.state, mSub6.state],
             subBreakerCount,
         });
-    }, [mMain.state, mSub1.state, mSub2.state, mSub3.state, mSub4.state, mSub5.state, mSub6.state, rows, rowsPre, subBreakerCount, isPostMode]);
+    }, [mMain.state, mSub1.state, mSub2.state, mSub3.state, mSub4.state, mSub5.state, mSub6.state, rows, subBreakerCount]);
 
     const allRequiredInputsFilled = missingInputsDetailed.length === 0;
     const isSummaryFilled = summary.trim().length > 0;
     const isSummaryCheckFilled = summaryCheck !== "";
 
-    const canGoAfter: boolean = isPostMode ? true : (allPhotosAttachedPre && allRequiredInputsFilled);
     const canFinalSave = allPhotosAttachedPost && allPFAnsweredPost && allRequiredInputsFilled && isSummaryFilled && isSummaryCheckFilled;
 
     const photoRefs = useMemo(() => {
@@ -2020,26 +1796,17 @@ export default function CCBPMReport() {
     }, [photos]);
 
     useDebouncedEffect(() => {
-        if (!stationId || isPostMode) return;
-        saveDraftLocal(key, {
-            rows, mMain: mMain.state, mSub1: mSub1.state, mSub2: mSub2.state, mSub3: mSub3.state,
-            mSub4: mSub4.state, mSub5: mSub5.state, mSub6: mSub6.state,
-            subBreakerCount, summary, summary_pf: summaryCheck, photoRefs, inspector,
-        });
-    }, [key, stationId, rows, mMain.state, mSub1.state, mSub2.state, mSub3.state, mSub4.state, mSub5.state, mSub6.state, subBreakerCount, summary, summaryCheck, photoRefs, isPostMode, inspector]);
-
-    useDebouncedEffect(() => {
-        if (!stationId || !isPostMode || !editId || !postApiLoaded) return;
+        if (!stationId || !editId || !postApiLoaded) return;
         saveDraftLocal(postKey, {
             rows, mMain: mMain.state, mSub1: mSub1.state, mSub2: mSub2.state, mSub3: mSub3.state,
             mSub4: mSub4.state, mSub5: mSub5.state, mSub6: mSub6.state,
             subBreakerCount, summary, summaryCheck, photoRefs,
         });
-    }, [postKey, stationId, rows, mMain.state, mSub1.state, mSub2.state, mSub3.state, mSub4.state, mSub5.state, mSub6.state, subBreakerCount, summary, summaryCheck, photoRefs, isPostMode, editId, postApiLoaded]);
+    }, [postKey, stationId, rows, mMain.state, mSub1.state, mSub2.state, mSub3.state, mSub4.state, mSub5.state, mSub6.state, subBreakerCount, summary, summaryCheck, photoRefs, editId, postApiLoaded]);
 
     // รับ PhotoItem แทน File[] เพื่อให้รู้ว่ารูปไหนอัปสำเร็จแล้ว — ตอนกดบันทึกซ้ำหลังอัปหลุด
     // จะได้ข้ามรูปเดิม ไม่อัปซ้ำจนรูปโผล่ซ้ำในรายงาน (และไม่ไปชนเพดาน 10 รูป/ข้อ)
-    /** key ที่ backend ใช้เก็บใน photos_pre / photos — ต้องใช้สูตรเดียวกันทั้งตอน upload และตอน verify */
+    /** key ที่ backend ใช้เก็บใน photos — ต้องใช้สูตรเดียวกันทั้งตอน upload และตอน verify */
     const toGroupKey = (stateKey: string | number) => {
         const no = Number(stateKey);
         if (no === 1001 || no === 1002) return `g${no}`;
@@ -2050,19 +1817,19 @@ export default function CCBPMReport() {
         return `g${no}`;
     };
 
-    async function uploadGroupPhotos(reportId: string, stationId: string, group: string, items: PhotoItem[], side: TabId, stateKey: string, uploadedIds: Set<string>) {
+    async function uploadGroupPhotos(reportId: string, stationId: string, group: string, items: PhotoItem[], stateKey: string, uploadedIds: Set<string>) {
         // uploadedIds จำเป็นเพราะ setPhotos() ยังไม่ flush เข้า photosRef ภายใน tick เดียวกัน
         const pending = (items || []).filter(p => !p.isNA && !p.uploaded && !uploadedIds.has(p.id) && (p.file || p.ref));
         if (pending.length === 0) return;
         const token = localStorage.getItem("access_token");
-        const url = side === "pre" ? `${API_BASE}/${PM_PREFIX}/${reportId}/pre/photos` : `${API_BASE}/${PM_PREFIX}/${reportId}/post/photos`;
+        const url = `${API_BASE}/${PM_PREFIX}/${reportId}/post/photos`;
         // ส่งทีละรูป (1 request/รูป) เพื่อไม่ให้ body รวมเกิน limit ของ nginx (กัน 413 เมื่อข้อหนึ่งมีหลายรูป)
         for (const p of pending) {
             const compressed = await compressImage(await resolveUploadFile(p));
             const form = new FormData();
             form.append("station_id", stationId);
             form.append("group", group);
-            form.append("side", side);
+            form.append("side", "post");
             form.append("files", compressed);
             const res = await fetch(url, { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : undefined, body: form, credentials: "include" });
             if (!res.ok) throw new Error(await res.text());
@@ -2073,7 +1840,7 @@ export default function CCBPMReport() {
 
     /** อัปโหลดหลายรอบ + ยืนยันจำนวนกับ server ก่อนให้ caller ไปลบรูปในเครื่อง
      *  คืน true = ปลอดภัยที่จะลบ, false = ยังไม่ครบ (แจ้ง user แล้ว) ห้ามลบ */
-    async function syncPhotosAndVerify(reportId: string, side: TabId): Promise<boolean> {
+    async function syncPhotosAndVerify(reportId: string): Promise<boolean> {
         const sid = stationId;
         if (!sid) throw new Error(t("alertNoStation", lang));
         const uploadedIds = new Set<string>();
@@ -2083,15 +1850,15 @@ export default function CCBPMReport() {
             }
             const pending = collectPending(photosRef.current as any, uploadedIds);
             if (pending.length === 0) break;
-            setPreUploadState({ show: true, total: pending.length, completed: 0, failed: 0 });
+            setUploadState({ show: true, total: pending.length, completed: 0, failed: 0 });
             try {
                 // อัปไม่ผ่าน → throw ทะลุขึ้นไป catch ของ handler โดยยังไม่ได้ลบอะไร
                 await Promise.all(
                     Object.entries(photosRef.current).map(([noStr, list]) =>
-                        uploadGroupPhotos(reportId, sid, toGroupKey(noStr), list || [], side, noStr, uploadedIds))
+                        uploadGroupPhotos(reportId, sid, toGroupKey(noStr), list || [], noStr, uploadedIds))
                 );
             } finally {
-                setPreUploadState({ show: false, total: 0, completed: 0, failed: 0 });
+                setUploadState({ show: false, total: 0, completed: 0, failed: 0 });
             }
         }
 
@@ -2108,10 +1875,10 @@ export default function CCBPMReport() {
         const res = await fetch(`${API_BASE}/${PM_PREFIX}/get?station_id=${encodeURIComponent(sid)}&report_id=${reportId}`,
             { headers: token ? { Authorization: `Bearer ${token}` } : undefined, credentials: "include" });
         if (!res.ok) throw new Error(await res.text());
-        const doc = await res.json() as { photos_pre?: Record<string, unknown[]>; photos?: Record<string, unknown[]> };
-        const shortfall = findShortfall(expected, side === "pre" ? doc?.photos_pre : doc?.photos);
+        const doc = await res.json() as { photos?: Record<string, unknown[]> };
+        const shortfall = findShortfall(expected, doc?.photos);
         if (shortfall.length > 0) {
-            console.error(`[CCB ${side} verify] shortfall:`, shortfall);
+            console.error("[CCB post verify] shortfall:", shortfall);
             alert(shortfallMessage(shortfall, lang));
             return false;
         }
@@ -2132,92 +1899,10 @@ export default function CCBPMReport() {
         }
     };
 
-    const getFirstMissingPhotoScrollId = (): string | null => {
-        if (missingPhotoItemsPre.length === 0) return null;
-        const first = missingPhotoItemsPre[0];
-        const formatted = formatPhotoKeyNumber(first);
-        const parts = formatted.split('-');
-        if (parts.length === 2) return `${ID_PREFIX}-photo-${parts[0]}-${parts[1]}`;
-        return `${ID_PREFIX}-photo-${parts[0]}`;
-    };
-
     const getFirstMissingInputScrollId = (): string | null => {
         if (missingInputsDetailed.length === 0) return null;
         const { qNo, subNo } = missingInputsDetailed[0];
         return subNo ? `${ID_PREFIX}-input-${qNo}-${subNo}` : `${ID_PREFIX}-question-${qNo}`;
-    };
-
-    const onPreSave = async () => {
-        if (!stationId) { alert(t("alertNoStation", lang)); return; }
-        if (!allPhotosAttachedPre) {
-            alert(t("alertFillPhoto", lang));
-            const scrollId = getFirstMissingPhotoScrollId();
-            if (scrollId) scrollToFirstError(scrollId);
-            return;
-        }
-        if (!allRequiredInputsFilled) {
-            alert(t("alertInputNotComplete", lang));
-            const scrollId = getFirstMissingInputScrollId();
-            if (scrollId) scrollToFirstError(scrollId);
-            return;
-        }
-        if (submitting) return;
-        setSubmitting(true);
-        try {
-            const token = localStorage.getItem("access_token");
-            const pm_date = job.date?.trim() || "";
-            const toNum = (s: string) => { const n = Number(s); return Number.isFinite(n) ? n : null; };
-            const normalizeMeasure = (state: typeof mMain.state) =>
-                Object.fromEntries(Object.entries(state).map(([k, v]) => [k, { value: toNum(v.value), unit: v.unit }]));
-
-            const measuresPre: Record<string, any> = {};
-            measuresPre["m9"] = normalizeMeasure(mMain.state);
-            for (let i = 0; i < subBreakerCount; i++) {
-                measuresPre[`m10_${i + 1}`] = normalizeMeasure(M_SUB_LIST[i].state);
-            }
-
-            const { issue_id: issueIdFromJob, ...jobWithoutIssueId } = job;
-            const flatRows = flattenRows(rows, subBreakerCount);
-
-            const payload = {
-                station_id: stationId, ...(jobId ? { job_id: jobId } : {}), issue_id: issueIdFromJob, job: jobWithoutIssueId,
-                inspector, measures_pre: measuresPre, rows_pre: flatRows,
-                pm_date, doc_name: docName, side: "pre" as TabId, comment_pre: summary, subBreakerCount,
-            };
-
-            // กดบันทึกซ้ำหลังอัปรูปหลุด ต้องใช้รายงานใบเดิม ไม่งั้นจะได้รายงานซ้ำอีกใบ
-            let report_id: string = preReportIdRef.current || loadDraftLocal<any>(key)?.pendingReportId || "";
-            if (!report_id) {
-            const res = await fetch(`${API_BASE}/${PM_PREFIX}/pre/submit`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-                credentials: "include",
-                body: JSON.stringify(payload),
-            });
-            if (!res.ok) throw new Error(await res.text());
-            const { report_id: newReportId, doc_name } = await res.json() as { report_id: string; doc_name?: string };
-            report_id = newReportId;
-            if (doc_name) setDocName(doc_name);
-            saveDraftLocal(key, { ...loadDraftLocal<any>(key), pendingReportId: report_id });
-            }
-            preReportIdRef.current = report_id;
-            setReportId(report_id);
-
-            // ลบรูปในเครื่องได้ต่อเมื่อ server ยืนยันว่ามีครบจำนวนแล้วเท่านั้น
-            if (!(await syncPhotosAndVerify(report_id, "pre"))) return;
-
-            const allPhotos = Object.values(photosRef.current).flat();
-            await Promise.all(allPhotos.map(p => delPhoto(key, p.id)));
-            preReportIdRef.current = null;
-            await clearDraftLocal(key);
-            setPhotos(initialPhotos);
-            const nextParams = new URLSearchParams(searchParams.toString());
-            nextParams.set("station_id", stationId);
-            nextParams.set("action", "post");
-            nextParams.set("edit_id", report_id);
-            nextParams.set("pmtab", "post");
-            router.replace(`${pathname}?${nextParams.toString()}`);
-        } catch (err: any) { alert(`${t("alertSaveFailed", lang)} ${err?.message ?? err}`); } finally { setSubmitting(false); }
     };
 
     const getFirstMissingPhotoPostScrollId = (): string | null => {
@@ -2264,8 +1949,9 @@ export default function CCBPMReport() {
         setSubmitting(true);
         try {
             const token = localStorage.getItem("access_token");
-            const finalReportId = reportId || editId;
-            if (!finalReportId) throw new Error(t("noReportId", lang));
+            // ฟอร์มนี้เหลือแค่ Post-PM แล้ว (ไม่มีด่าน Pre ที่เคยสร้าง report_id ให้)
+            // ใบใหม่ให้ backend สร้างรายงานตอนกดบันทึก — ถ้าเคยกดแล้วอัปรูปหลุด ใช้ id เดิมจาก draft กันได้รายงานซ้ำ
+            let finalReportId: string = reportId || editId || loadDraftLocal<any>(postKey)?.pendingReportId || "";
             const toNum = (s: string) => { const n = Number(s); return Number.isFinite(n) ? n : null; };
             const normalizeMeasure = (state: typeof mMain.state) =>
                 Object.fromEntries(Object.entries(state).map(([k, v]) => [k, { value: toNum(v.value), unit: v.unit }]));
@@ -2278,9 +1964,9 @@ export default function CCBPMReport() {
 
             const flatRows = flattenRows(rows, subBreakerCount);
             const payload = {
-                station_id: stationId, ...(jobId ? { job_id: jobId } : {}), rows: flatRows, measures, summary,
+                station_id: stationId, ...(jobId ? { job_id: jobId } : {}), inspector, job: { station_name: job.station_name, date: job.date }, ...(job.date ? { pm_date: job.date } : {}), rows: flatRows, measures, summary,
                 ...(summaryCheck ? { summaryCheck } : {}),
-                work_start: workStart, work_finish: workFinish, maximo_labor: maximoLabor, maximo_contractor: contractorPicked ? maximoContractor.trim() : "", wonum: searchParams.get("wonum") ?? "", side: "post" as TabId, report_id: finalReportId, subBreakerCount,
+                work_start: workStart, work_finish: workFinish, maximo_labor: maximoLabor, maximo_contractor: contractorPicked ? maximoContractor.trim() : "", wonum: searchParams.get("wonum") ?? "", side: "post", ...(finalReportId ? { report_id: finalReportId } : {}), subBreakerCount,
             };
 
             const res = await fetch(`${API_BASE}/${PM_PREFIX}/submit`, {
@@ -2291,9 +1977,14 @@ export default function CCBPMReport() {
             });
             if (!res.ok) throw new Error(await res.text());
             const { report_id } = await res.json() as { report_id: string };
+            if (!finalReportId) {
+                finalReportId = report_id;
+                setReportId(report_id);
+                saveDraftLocal(postKey, { ...loadDraftLocal<any>(postKey), pendingReportId: report_id });
+            }
 
             // ต้องยืนยันรูปครบก่อน ถึงจะ finalize + ลบรูปในเครื่อง
-            if (!(await syncPhotosAndVerify(finalReportId, "post"))) return;
+            if (!(await syncPhotosAndVerify(finalReportId))) return;
 
             if (!workStart || !workFinish) { alert(t("alertWorkTime", lang)); setSubmitting(false); return; }
             if (contractorMissing) { alert(t("contractorRequired", lang)); setSubmitting(false); return; }
@@ -2319,235 +2010,11 @@ export default function CCBPMReport() {
         } catch (err: any) { alert(`${t("alertSaveFailed", lang)} ${err?.message ?? err}`); } finally { setSubmitting(false); }
     };
 
-    const renderPreRemarkElement = (rowKey: string, mode: TabId) => {
-        const preRemark = rowsPre[rowKey]?.remark;
-        if (mode !== "post" || !preRemark) return null;
-        return (
-            <div className="tw-mb-3 tw-p-3 tw-bg-gray-100 tw-rounded-lg">
-                <div className="tw-flex tw-items-center tw-gap-2 tw-mb-1">
-                    <svg className="tw-w-4 tw-h-4 tw-text-gray-500" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                    </svg>
-                    <Typography variant="small" className="tw-font-semibold tw-text-gray-600">{t("preRemarkLabel", lang)}</Typography>
-                </div>
-                <Typography variant="small" className="tw-text-gray-700 tw-ml-6">{preRemark}</Typography>
-            </div>
-        );
-    };
-
-    const renderQuestionBlock = (q: Question, mode: TabId) => {
+    const renderQuestionBlock = (q: Question) => {
         const qTooltip = q.tooltipKey ? t(q.tooltipKey, lang) : undefined;
 
-        if (mode === "pre") {
-            if (q.kind === "simple") {
-                const isNA = rows[q.key]?.pf === "NA";
-                return (
-                    <SectionCard key={q.key} title={getQuestionLabel(q, mode, lang)} tooltip={qTooltip}>
-                        <div className={`tw-py-2 ${isNA ? "tw-bg-amber-50/50" : ""}`}>
-                            <div className="tw-flex tw-justify-end tw-mb-3">
-                                <Button size="sm" color={isNA ? "amber" : "gray"} variant={isNA ? "filled" : "outlined"}
-                                    onClick={() => setRows(prev => ({ ...prev, [q.key]: { ...prev[q.key], pf: isNA ? "" : "NA" } }))}>
-                                    {isNA ? t("cancelNA", lang) : t("na", lang)}
-                                </Button>
-                            </div>
-                            {q.hasPhoto && (
-                                <div className="tw-mb-3">
-                                    <PhotoMultiInput photos={photos[getPhotoKeyForQuestion(q)] || []} setPhotos={makePhotoSetter(getPhotoKeyForQuestion(q))}
-                                        max={10} draftKey={currentDraftKey} qNo={getPhotoKeyForQuestion(q)} lang={lang} id={getPhotoIdFromKey(getPhotoKeyForQuestion(q))} />
-                                </div>
-                            )}
-                            <div id={getRemarkIdFromKey(q.key)}>
-                                <Textarea label={t("remark", lang)} value={rows[q.key]?.remark || ""}
-                                    onChange={(e) => setRows({ ...rows, [q.key]: { ...rows[q.key], remark: e.target.value } })}
-                                    rows={3} required containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full resize-none" />
-                            </div>
-                        </div>
-                    </SectionCard>
-                );
-            }
-
-            if (q.kind === "group") {
-                // ── shared pool: ทุก sub-item ในกลุ่มนี้รวมกันได้ไม่เกิน 20 รูป ──
-                const totalGroupPhotos = q.items.reduce((sum, it) => {
-                    const pk = getPhotoKeyForQuestion(q, it.key);
-                    return sum + (photos[pk]?.length ?? 0);
-                }, 0);
-                const groupRemaining = Math.max(0, 20 - totalGroupPhotos);   // 20 = PHOTO_MAX_PER_ROW ของ pdf_ccb.py
-
-                return (
-                    <SectionCard key={q.key} title={getQuestionLabel(q, mode, lang)} tooltip={qTooltip}>
-                        <Typography variant="small" className="!tw-text-blue-gray-500">
-                            {lang === "th" ? `รูปในข้อนี้ ${totalGroupPhotos}/20 — ข้อย่อยละไม่เกิน 5 รูป` : `${totalGroupPhotos}/20 photos in this question — max 5 per sub-item`}
-                        </Typography>
-                        <div className="tw-divide-y tw-divide-gray-200">
-                            {q.items.map((item, idx) => {
-                                const photoKey = getPhotoKeyForQuestion(q, item.key);
-                                const isItemNA = rows[item.key]?.pf === "NA";
-                                const subLabel = `${getDisplayedQuestionNo(q.no)}.${idx + 1}) ${t(item.labelKey, lang)}`;
-                                // max = รูปที่แนบไว้แล้วใน slot นี้ + ส่วนที่เหลือในกลุ่ม
-                                const itemMax = Math.min(10, (photos[photoKey]?.length ?? 0) + groupRemaining);
-                                return (
-                                    <div key={item.key} className={`tw-py-4 first:tw-pt-2 ${isItemNA ? "tw-bg-amber-50/50" : ""}`}>
-                                        <div className="tw-flex tw-items-center tw-justify-between tw-mb-3">
-                                            <Typography className="tw-font-semibold tw-text-sm tw-text-gray-800">{subLabel}</Typography>
-                                            <Button size="sm" color={isItemNA ? "amber" : "gray"} variant={isItemNA ? "filled" : "outlined"}
-                                                onClick={() => setRows(prev => ({ ...prev, [item.key]: { ...prev[item.key], pf: isItemNA ? "" : "NA" } }))}
-                                                className="tw-text-xs">
-                                                {isItemNA ? t("cancelNA", lang) : t("na", lang)}
-                                            </Button>
-                                        </div>
-                                        {q.hasPhoto && (
-                                            <div className="tw-mb-3">
-                                                <PhotoMultiInput photos={photos[photoKey] || []} setPhotos={makePhotoSetter(photoKey)}
-                                                    max={itemMax} maxLabel={subItemQuotaLabel(photos[photoKey]?.length ?? 0, totalGroupPhotos, 10, 20, lang)} draftKey={currentDraftKey} qNo={photoKey} lang={lang} id={getPhotoIdFromKey(photoKey)} />
-                                            </div>
-                                        )}
-                                        <div id={getRemarkIdFromKey(item.key)}>
-                                            <Textarea label={t("remark", lang)} value={rows[item.key]?.remark || ""}
-                                                onChange={(e) => setRows({ ...rows, [item.key]: { ...rows[item.key], remark: e.target.value } })}
-                                                rows={3} required containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full resize-none" />
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </SectionCard>
-                );
-            }
-
-            if (q.kind === "mainBreaker") {
-                const rowKey = "r9_main";
-                const isNA = rows[rowKey]?.pf === "NA";
-                return (
-                    <SectionCard key={q.key} title={getQuestionLabel(q, mode, lang)} tooltip={qTooltip}>
-                        <div className={`tw-py-2 ${isNA ? "tw-bg-amber-50/50" : ""}`}>
-                            <div className="tw-flex tw-items-center tw-justify-between tw-mb-3">
-                                <Typography className="tw-font-semibold tw-text-sm tw-text-gray-800">{`9.1) ${t("mainBreaker", lang)}`}</Typography>
-                                <Button size="sm" color={isNA ? "amber" : "gray"} variant={isNA ? "filled" : "outlined"}
-                                    onClick={() => setRows(prev => ({ ...prev, [rowKey]: { ...prev[rowKey], pf: isNA ? "" : "NA" } }))}
-                                    className="tw-text-xs">
-                                    {isNA ? t("cancelNA", lang) : t("na", lang)}
-                                </Button>
-                            </div>
-                            {q.hasPhoto && (
-                                <div className="tw-mb-3">
-                                    <PhotoMultiInput photos={photos[90] || []} setPhotos={makePhotoSetter(90)}
-                                        max={10} draftKey={currentDraftKey} qNo={90} lang={lang} id={getPhotoIdFromKey(90)} />
-                                </div>
-                            )}
-                            <div id={getInputIdFromKey("r9_main")} className={`tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 tw-gap-4 tw-mb-3 ${isNA ? "tw-opacity-50 tw-pointer-events-none" : ""}`}>
-                                {VOLTAGE_FIELDS_CCB.map((k) => (
-                                    <InputWithUnit<UnitVoltage> key={`main-${k}`} label={LABELS[k]}
-                                        value={mMain.state[k]?.value || ""} unit={(mMain.state[k]?.unit as UnitVoltage) || "V"} units={["V"] as const}
-                                        onValueChange={(v) => mMain.patch(k, { value: v })} onUnitChange={(u) => mMain.syncUnits(u)} />
-                                ))}
-                            </div>
-                            <div id={getRemarkIdFromKey("r9_main")}>
-                                <Textarea label={t("remark", lang)} value={rows[rowKey]?.remark || ""}
-                                    onChange={(e) => setRows({ ...rows, [rowKey]: { ...rows[rowKey], remark: e.target.value } })}
-                                    rows={3} required containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full resize-none" />
-                            </div>
-                        </div>
-                    </SectionCard>
-                );
-            }
-
-            if (q.kind === "subBreakers") {
-                // ── shared pool: ทุก sub breaker ในข้อ 10 รวมกันได้ไม่เกิน 20 รูป ──
-                const totalSubPhotos = Array.from({ length: subBreakerCount }, (_, i) =>
-                    photos[101 + i]?.length ?? 0
-                ).reduce((a, b) => a + b, 0);
-                const subRemaining = Math.max(0, 20 - totalSubPhotos);   // 20 = PHOTO_MAX_PER_ROW ของ pdf_ccb.py
-
-                return (
-                    <SectionCard key={q.key} title={getQuestionLabel(q, mode, lang)} tooltip={qTooltip}>
-                        <div className="tw-flex tw-items-center tw-justify-between tw-pb-3 tw-border-b tw-border-gray-200">
-                            <div className="tw-flex tw-items-center tw-gap-2">
-                                <Typography variant="small" className="tw-text-blue-gray-600">{t("subBreakerCount", lang)}</Typography>
-                                <Typography variant="small" className="tw-font-bold tw-text-blue-600">{subBreakerCount} {t("unit", lang)}</Typography>
-                            </div>
-                            {subBreakerCount < 6 && (
-                                <Button size="sm" color="gray" variant="outlined" onClick={addSubBreaker} className="tw-flex tw-items-center tw-gap-1">
-                                    <span className="tw-text-lg tw-leading-none">+</span>
-                                    <span className="tw-text-xs">{t("addSubBreaker", lang)}</span>
-                                </Button>
-                            )}
-                        </div>
-                        <Typography variant="small" className="!tw-text-blue-gray-500">
-                            {lang === "th" ? `รูปในข้อนี้ ${totalSubPhotos}/20 — ข้อย่อยละไม่เกิน 5 รูป` : `${totalSubPhotos}/20 photos in this question — max 5 per sub-item`}
-                        </Typography>
-                        <div className="tw-divide-y tw-divide-gray-200">
-                            {Array.from({ length: subBreakerCount }, (_, idx) => {
-                                const i = idx + 1;
-                                const photoKey = 100 + i;
-                                const rowKey = `r10_sub${i}`;
-                                const isItemNA = rows[rowKey]?.pf === "NA";
-                                const m = M_SUB_LIST[idx];
-                                const itemMax = Math.min(10, (photos[photoKey]?.length ?? 0) + subRemaining);
-                                return (
-                                    <div key={rowKey} className={`tw-py-4 first:tw-pt-2 ${isItemNA ? "tw-bg-amber-50/50" : ""}`}>
-                                        <div className="tw-flex tw-items-center tw-justify-between tw-mb-3">
-                                            <Typography className="tw-font-semibold tw-text-sm tw-text-gray-800">
-                                                {`10.${i}) ${lang === "th" ? "เบรกเกอร์วงจรย่อยตัวที่" : "Sub-circuit Breaker"} ${i}`}
-                                            </Typography>
-                                            <div className="tw-flex tw-items-center tw-gap-2">
-                                                <Button size="sm" color={isItemNA ? "amber" : "gray"} variant={isItemNA ? "filled" : "outlined"}
-                                                    onClick={() => setRows(prev => ({ ...prev, [rowKey]: { ...prev[rowKey], pf: isItemNA ? "" : "NA" } }))}
-                                                    className="tw-text-xs">
-                                                    {isItemNA ? t("cancelNA", lang) : t("na", lang)}
-                                                </Button>
-                                                {subBreakerCount > 1 && (
-                                                    <button type="button" onClick={() => removeSubBreaker(i)}
-                                                        className="tw-h-6 tw-w-6 tw-flex tw-items-center tw-justify-center tw-rounded tw-bg-red-50 tw-text-red-600 hover:tw-bg-red-100 hover:tw-text-red-700 tw-transition-all tw-duration-200"
-                                                        aria-label={t("removeItem", lang)}>
-                                                        <svg className="tw-w-3.5 tw-h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
-                                                        </svg>
-                                                    </button>
-                                                )}
-                                            </div>
-                                        </div>
-                                        {q.hasPhoto && (
-                                            <div className="tw-mb-3">
-                                                <PhotoMultiInput photos={photos[photoKey] || []} setPhotos={makePhotoSetter(photoKey)}
-                                                    max={itemMax} maxLabel={subItemQuotaLabel(photos[photoKey]?.length ?? 0, totalSubPhotos, 10, 20, lang)} draftKey={currentDraftKey} qNo={photoKey} lang={lang} id={getPhotoIdFromKey(photoKey)} />
-                                            </div>
-                                        )}
-                                        <div id={getInputIdFromKey(rowKey)} className={`tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 tw-gap-3 tw-mb-3 ${isItemNA ? "tw-opacity-50 tw-pointer-events-none" : ""}`}>
-                                            {VOLTAGE_FIELDS_CCB.map((k) => (
-                                                <InputWithUnit<UnitVoltage> key={`sub${i}-${k}`} label={LABELS[k]}
-                                                    value={m.state[k]?.value || ""} unit={(m.state[k]?.unit as UnitVoltage) || "V"} units={["V"] as const}
-                                                    onValueChange={(v) => m.patch(k, { value: v })} onUnitChange={(u) => m.syncUnits(u)} />
-                                            ))}
-                                        </div>
-                                        <div id={getRemarkIdFromKey(rowKey)}>
-                                            <Textarea label={t("remark", lang)} value={rows[rowKey]?.remark || ""}
-                                                onChange={(e) => setRows({ ...rows, [rowKey]: { ...rows[rowKey], remark: e.target.value } })}
-                                                rows={3} required containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full resize-none" />
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </SectionCard>
-                );
-            }
-
-            return null;
-        }
-
-        // ── Post mode ──
-        const allItemsNA = getRowKeysForQuestion(q, subBreakerCount).every(k => rowsPre[k]?.pf === "NA");
-        if (allItemsNA) {
-            return (
-                <SectionCard key={q.key} title={getQuestionLabel(q, mode, lang)} tooltip={qTooltip}>
-                    <SkippedNAItem label={t(q.labelKey, lang)} remark={rowsPre[q.key]?.remark} lang={lang} />
-                </SectionCard>
-            );
-        }
-
         return (
-            <SectionCard key={q.key} title={getQuestionLabel(q, mode, lang)} tooltip={qTooltip}>
+            <SectionCard key={q.key} title={getQuestionLabel(q, lang)} tooltip={qTooltip}>
                 {q.kind === "simple" && (
                     <div className="tw-py-2">
                         <PassFailRow label={t("testResult", lang)} value={rows[q.key]?.pf ?? ""}
@@ -2558,17 +2025,16 @@ export default function CCBPMReport() {
                                 q.hasPhoto && (
                                     <div className="tw-pb-4 tw-border-b tw-mb-4 tw-border-gray-100">
                                         <PhotoMultiInput photos={photos[getPhotoKeyForQuestion(q)] || []} setPhotos={makePhotoSetter(getPhotoKeyForQuestion(q))}
-                                            max={10} draftKey={currentDraftKey} qNo={getPhotoKeyForQuestion(q)} lang={lang} id={getPhotoIdFromKey(getPhotoKeyForQuestion(q))} />
+                                            max={10} draftKey={postKey} qNo={getPhotoKeyForQuestion(q)} lang={lang} id={getPhotoIdFromKey(getPhotoKeyForQuestion(q))} />
                                     </div>
                                 )
-                            }
-                            beforeRemark={renderPreRemarkElement(q.key, mode)} />
+                            } />
                     </div>
                 )}
 
                 {q.kind === "group" && (() => {
-                    // ── shared pool post mode ──
-                    const totalGroupPhotos = q.items.filter(it => rowsPre[it.key]?.pf !== "NA").reduce((sum, it) => {
+                    // ── shared pool: ทุก sub-item ในกลุ่มนี้รวมกันได้ไม่เกิน 20 รูป ──
+                    const totalGroupPhotos = q.items.reduce((sum, it) => {
                         const pk = getPhotoKeyForQuestion(q, it.key);
                         return sum + (photos[pk]?.length ?? 0);
                     }, 0);
@@ -2582,21 +2048,6 @@ export default function CCBPMReport() {
                             <div className="tw-divide-y tw-divide-gray-200">
                                 {q.items.map((item, idx) => {
                                     const subLabel = `${getDisplayedQuestionNo(q.no)}.${idx + 1}) ${t(item.labelKey, lang)}`;
-                                    if (rowsPre[item.key]?.pf === "NA") {
-                                        return (
-                                            <div key={item.key} className="tw-py-4 first:tw-pt-2 tw-bg-amber-50/50">
-                                                <div className="tw-flex tw-items-center tw-justify-between">
-                                                    <Typography className="tw-font-semibold tw-text-sm tw-text-gray-800">{subLabel}</Typography>
-                                                    <span className="tw-text-xs tw-text-amber-600 tw-font-medium">N/A</span>
-                                                </div>
-                                                {rowsPre[item.key]?.remark && (
-                                                    <Typography variant="small" className="tw-text-gray-600 tw-mt-1">
-                                                        {t("remarkLabel", lang)}: {rowsPre[item.key]?.remark}
-                                                    </Typography>
-                                                )}
-                                            </div>
-                                        );
-                                    }
                                     const photoKey = getPhotoKeyForQuestion(q, item.key);
                                     const itemMax = Math.min(10, (photos[photoKey]?.length ?? 0) + groupRemaining);
                                     return (
@@ -2609,11 +2060,10 @@ export default function CCBPMReport() {
                                                     q.hasPhoto && (
                                                         <div className="tw-pb-4 tw-border-b tw-border-gray-100">
                                                             <PhotoMultiInput photos={photos[photoKey] || []} setPhotos={makePhotoSetter(photoKey)}
-                                                                max={itemMax} maxLabel={subItemQuotaLabel(photos[photoKey]?.length ?? 0, totalGroupPhotos, 10, 20, lang)} draftKey={currentDraftKey} qNo={photoKey} lang={lang} id={getPhotoIdFromKey(photoKey)} />
+                                                                max={itemMax} maxLabel={subItemQuotaLabel(photos[photoKey]?.length ?? 0, totalGroupPhotos, 10, 20, lang)} draftKey={postKey} qNo={photoKey} lang={lang} id={getPhotoIdFromKey(photoKey)} />
                                                         </div>
                                                     )
-                                                }
-                                                beforeRemark={renderPreRemarkElement(item.key, mode)} />
+                                                } />
                                         </div>
                                     );
                                 })}
@@ -2625,9 +2075,6 @@ export default function CCBPMReport() {
                 {q.kind === "mainBreaker" && (
                     (() => {
                         const rowKey = "r9_main";
-                        if (rowsPre[rowKey]?.pf === "NA") {
-                            return <SkippedNAItem label={`9.1) ${t("mainBreaker", lang)}`} remark={rowsPre[rowKey]?.remark} lang={lang} />;
-                        }
                         return (
                             <div className="tw-py-4 first:tw-pt-2">
                                 <Typography className="tw-font-semibold tw-text-sm tw-text-gray-800 tw-mb-3">{`9.1) ${t("mainBreaker", lang)}`}</Typography>
@@ -2635,38 +2082,25 @@ export default function CCBPMReport() {
                                     onChange={(v) => setRows({ ...rows, [rowKey]: { ...rows[rowKey], pf: v } })}
                                     remark={rows[rowKey]?.remark || ""} onRemarkChange={(v) => setRows({ ...rows, [rowKey]: { ...rows[rowKey], remark: v } })}
                                     lang={lang} id={getPfIdFromKey(rowKey)} remarkId={getRemarkIdFromKey(rowKey)}
-                                    aboveRemark={q.hasPhoto ? <div className="tw-pb-4 tw-border-b tw-border-gray-100"><PhotoMultiInput photos={photos[90] || []} setPhotos={makePhotoSetter(90)} max={10} draftKey={currentDraftKey} qNo={90} lang={lang} id={getPhotoIdFromKey(90)} /></div> : undefined}
-                                    beforeRemark={<>
+                                    aboveRemark={q.hasPhoto ? <div className="tw-pb-4 tw-border-b tw-border-gray-100"><PhotoMultiInput photos={photos[90] || []} setPhotos={makePhotoSetter(90)} max={10} draftKey={postKey} qNo={90} lang={lang} id={getPhotoIdFromKey(90)} /></div> : undefined}
+                                    beforeRemark={
                                         <div id={getInputIdFromKey(rowKey)} className="tw-mb-3 tw-transition-all tw-duration-300">
-                                            <div className="tw-space-y-3">
-                                                <Typography variant="small" className="tw-font-medium tw-text-blue-gray-700">{t("prePM", lang)}</Typography>
-                                                <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 tw-gap-3 tw-opacity-60 tw-pointer-events-none">
-                                                    {VOLTAGE_FIELDS_CCB.map((k) => (
-                                                        <InputWithUnit<UnitVoltage> key={`pre-main-${k}`} label={LABELS[k]}
-                                                            value={mMainPre[k]?.value != null ? String(mMainPre[k]?.value) : "-"}
-                                                            unit={(mMainPre[k]?.unit as UnitVoltage) || "V"} units={["V"] as const}
-                                                            onValueChange={() => { }} onUnitChange={() => { }} readOnly required={false} />
-                                                    ))}
-                                                </div>
-                                                <Typography variant="small" className="tw-font-medium tw-text-blue-gray-700 tw-mt-2">{t("postPM", lang)}</Typography>
-                                                <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 tw-gap-3">
-                                                    {VOLTAGE_FIELDS_CCB.map((k) => (
-                                                        <InputWithUnit<UnitVoltage> key={`post-main-${k}`} label={LABELS[k]}
-                                                            value={mMain.state[k]?.value || ""} unit={(mMain.state[k]?.unit as UnitVoltage) || "V"} units={["V"] as const}
-                                                            onValueChange={(v) => mMain.patch(k, { value: v })} onUnitChange={(u) => mMain.syncUnits(u)} />
-                                                    ))}
-                                                </div>
+                                            <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 tw-gap-3">
+                                                {VOLTAGE_FIELDS_CCB.map((k) => (
+                                                    <InputWithUnit<UnitVoltage> key={`post-main-${k}`} label={LABELS[k]}
+                                                        value={mMain.state[k]?.value || ""} unit={(mMain.state[k]?.unit as UnitVoltage) || "V"} units={["V"] as const}
+                                                        onValueChange={(v) => mMain.patch(k, { value: v })} onUnitChange={(u) => mMain.syncUnits(u)} />
+                                                ))}
                                             </div>
                                         </div>
-                                        {renderPreRemarkElement(rowKey, mode)}
-                                    </>} />
+                                    } />
                             </div>
                         );
                     })()
                 )}
 
                 {q.kind === "subBreakers" && (() => {
-                    // ── shared pool post mode ──
+                    // ── shared pool: ทุก sub breaker ในข้อ 10 รวมกันได้ไม่เกิน 20 รูป ──
                     const totalSubPhotos = Array.from({ length: subBreakerCount }, (_, i) =>
                         photos[101 + i]?.length ?? 0
                     ).reduce((a, b) => a + b, 0);
@@ -2674,9 +2108,17 @@ export default function CCBPMReport() {
 
                     return (
                         <div className="tw-space-y-0">
-                            <div className="tw-flex tw-items-center tw-gap-2 tw-pb-3 tw-border-b tw-border-gray-200">
-                                <Typography variant="small" className="tw-text-blue-gray-600">{t("subBreakerCount", lang)}</Typography>
-                                <Typography variant="small" className="tw-font-bold tw-text-blue-600">{subBreakerCount} {t("unit", lang)}</Typography>
+                            <div className="tw-flex tw-items-center tw-justify-between tw-pb-3 tw-border-b tw-border-gray-200">
+                                <div className="tw-flex tw-items-center tw-gap-2">
+                                    <Typography variant="small" className="tw-text-blue-gray-600">{t("subBreakerCount", lang)}</Typography>
+                                    <Typography variant="small" className="tw-font-bold tw-text-blue-600">{subBreakerCount} {t("unit", lang)}</Typography>
+                                </div>
+                                {subBreakerCount < 6 && (
+                                    <Button type="button" size="sm" color="gray" variant="outlined" onClick={addSubBreaker} className="tw-flex tw-items-center tw-gap-1">
+                                        <span className="tw-text-lg tw-leading-none">+</span>
+                                        <span className="tw-text-xs">{t("addSubBreaker", lang)}</span>
+                                    </Button>
+                                )}
                             </div>
                             <Typography variant="small" className="!tw-text-blue-gray-500">
                                 {lang === "th" ? `รูปในข้อนี้ ${totalSubPhotos}/20 — ข้อย่อยละไม่เกิน 5 รูป` : `${totalSubPhotos}/20 photos in this question — max 5 per sub-item`}
@@ -2686,59 +2128,40 @@ export default function CCBPMReport() {
                                     const i = idx + 1;
                                     const photoKey = 100 + i;
                                     const rowKey = `r10_sub${i}`;
-                                    const mPre = M_SUB_PRE_LIST[idx];
                                     const m = M_SUB_LIST[idx];
                                     const breakerLabel = `10.${i}) ${lang === "th" ? "เบรกเกอร์วงจรย่อยตัวที่" : "Sub-circuit Breaker"} ${i}`;
                                     const itemMax = Math.min(10, (photos[photoKey]?.length ?? 0) + subRemaining);
 
-                                    if (rowsPre[rowKey]?.pf === "NA") {
-                                        return (
-                                            <div key={rowKey} className="tw-py-4 first:tw-pt-2 tw-bg-amber-50/50">
-                                                <div className="tw-flex tw-items-center tw-justify-between">
-                                                    <Typography className="tw-font-semibold tw-text-sm tw-text-gray-800">{breakerLabel}</Typography>
-                                                    <span className="tw-text-xs tw-text-amber-600 tw-font-medium">N/A</span>
-                                                </div>
-                                                {rowsPre[rowKey]?.remark && (
-                                                    <Typography variant="small" className="tw-text-gray-600 tw-mt-1">
-                                                        {t("remarkLabel", lang)}: {rowsPre[rowKey]?.remark}
-                                                    </Typography>
-                                                )}
-                                            </div>
-                                        );
-                                    }
-
                                     return (
                                         <div key={rowKey} className="tw-py-4 first:tw-pt-2">
-                                            <Typography className="tw-font-semibold tw-text-sm tw-text-gray-800 tw-mb-3">{breakerLabel}</Typography>
+                                            <div className="tw-flex tw-items-center tw-justify-between tw-mb-3">
+                                                <Typography className="tw-font-semibold tw-text-sm tw-text-gray-800">{breakerLabel}</Typography>
+                                                {subBreakerCount > 1 && (
+                                                    <button type="button" onClick={() => removeSubBreaker(i)}
+                                                        className="tw-h-6 tw-w-6 tw-flex tw-items-center tw-justify-center tw-rounded tw-bg-red-50 tw-text-red-600 hover:tw-bg-red-100 hover:tw-text-red-700 tw-transition-all tw-duration-200"
+                                                        aria-label={t("removeItem", lang)}>
+                                                        <svg className="tw-w-3.5 tw-h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                                                        </svg>
+                                                    </button>
+                                                )}
+                                            </div>
                                             <PassFailRow label={t("testResult", lang)} value={rows[rowKey]?.pf ?? ""}
                                                 onChange={(v) => setRows({ ...rows, [rowKey]: { ...rows[rowKey], pf: v } })}
                                                 remark={rows[rowKey]?.remark || ""} onRemarkChange={(v) => setRows({ ...rows, [rowKey]: { ...rows[rowKey], remark: v } })}
                                                 lang={lang} id={getPfIdFromKey(rowKey)} remarkId={getRemarkIdFromKey(rowKey)}
-                                                aboveRemark={q.hasPhoto ? <div className="tw-pb-4 tw-border-b tw-border-gray-100"><PhotoMultiInput photos={photos[photoKey] || []} setPhotos={makePhotoSetter(photoKey)} max={itemMax} maxLabel={subItemQuotaLabel(photos[photoKey]?.length ?? 0, totalSubPhotos, 10, 20, lang)} draftKey={currentDraftKey} qNo={photoKey} lang={lang} id={getPhotoIdFromKey(photoKey)} /></div> : undefined}
-                                                beforeRemark={<>
+                                                aboveRemark={q.hasPhoto ? <div className="tw-pb-4 tw-border-b tw-border-gray-100"><PhotoMultiInput photos={photos[photoKey] || []} setPhotos={makePhotoSetter(photoKey)} max={itemMax} maxLabel={subItemQuotaLabel(photos[photoKey]?.length ?? 0, totalSubPhotos, 10, 20, lang)} draftKey={postKey} qNo={photoKey} lang={lang} id={getPhotoIdFromKey(photoKey)} /></div> : undefined}
+                                                beforeRemark={
                                                     <div id={getInputIdFromKey(rowKey)} className="tw-mb-3 tw-transition-all tw-duration-300">
-                                                        <div className="tw-space-y-3">
-                                                            <Typography variant="small" className="tw-font-medium tw-text-blue-gray-700">{t("prePM", lang)}</Typography>
-                                                            <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 tw-gap-3 tw-opacity-60 tw-pointer-events-none">
-                                                                {VOLTAGE_FIELDS_CCB.map((k) => (
-                                                                    <InputWithUnit<UnitVoltage> key={`pre-sub${i}-${k}`} label={LABELS[k]}
-                                                                        value={mPre[k]?.value != null ? String(mPre[k]?.value) : "-"}
-                                                                        unit={(mPre[k]?.unit as UnitVoltage) || "V"} units={["V"] as const}
-                                                                        onValueChange={() => { }} onUnitChange={() => { }} readOnly required={false} />
-                                                                ))}
-                                                            </div>
-                                                            <Typography variant="small" className="tw-font-medium tw-text-blue-gray-700 tw-mt-2">{t("postPM", lang)}</Typography>
-                                                            <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 tw-gap-3">
-                                                                {VOLTAGE_FIELDS_CCB.map((k) => (
-                                                                    <InputWithUnit<UnitVoltage> key={`post-sub${i}-${k}`} label={LABELS[k]}
-                                                                        value={m.state[k]?.value || ""} unit={(m.state[k]?.unit as UnitVoltage) || "V"} units={["V"] as const}
-                                                                        onValueChange={(v) => m.patch(k, { value: v })} onUnitChange={(u) => m.syncUnits(u)} />
-                                                                ))}
-                                                            </div>
+                                                        <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 tw-gap-3">
+                                                            {VOLTAGE_FIELDS_CCB.map((k) => (
+                                                                <InputWithUnit<UnitVoltage> key={`post-sub${i}-${k}`} label={LABELS[k]}
+                                                                    value={m.state[k]?.value || ""} unit={(m.state[k]?.unit as UnitVoltage) || "V"} units={["V"] as const}
+                                                                    onValueChange={(v) => m.patch(k, { value: v })} onUnitChange={(u) => m.syncUnits(u)} />
+                                                            ))}
                                                         </div>
                                                     </div>
-                                                    {renderPreRemarkElement(rowKey, mode)}
-                                                </>} />
+                                                } />
                                         </div>
                                     );
                                 })}
@@ -2750,34 +2173,6 @@ export default function CCBPMReport() {
             </SectionCard>
         );
     };
-
-    const active: TabId = useMemo(() => slugToTab(searchParams.get("pmtab")), [searchParams]);
-
-    useEffect(() => {
-        const tabParam = searchParams.get("pmtab");
-        let desired: "pre" | "post";
-        if (isPostMode) desired = "post";
-        else if (!tabParam) desired = "pre";
-        else if (tabParam === "after" && !canGoAfter) desired = "pre";
-        else desired = tabParam === "post" ? "post" : "pre";
-        if (tabParam !== desired) {
-            const params = new URLSearchParams(searchParams.toString());
-            params.set("pmtab", desired);
-            router.replace(`${pathname}?${params.toString()}`, { scroll: false });
-        }
-    }, [searchParams, canGoAfter, pathname, router, isPostMode]);
-
-    const go = (next: TabId) => {
-        if (isPostMode && next === "pre") return;
-        if (next === "post" && !canGoAfter) { alert(t("alertFillPreFirst", lang)); return; }
-        const params = new URLSearchParams(searchParams.toString());
-        params.set("pmtab", tabToSlug(next));
-        router.push(`${pathname}?${params.toString()}`, { scroll: false });
-    };
-
-    const displayTab: TabId = "post";
-    const allPFAnsweredForUI = displayTab === "pre" ? allPFAnsweredPre : allPFAnsweredPost;
-    const missingPFItemsForUI = displayTab === "pre" ? missingPFItemsPre : missingPFItemsPost;
 
     const formatMissingPhotoItems = (items: number[]): string => {
         return items.map(no => {
@@ -2792,7 +2187,7 @@ export default function CCBPMReport() {
     };
 
     const missingPhotoItemsFormatted = useMemo(() => {
-        return missingPhotoItems.map(no => {
+        return missingPhotoItemsPost.map(no => {
             if (no === 1001) return "1";
             if (no === 1002) return "2";
             if (no === 90) return String(9 + DISPLAY_SHIFT);
@@ -2801,11 +2196,11 @@ export default function CCBPMReport() {
             if (no >= 30 && no < 90) return `${Math.floor(no / 10) + DISPLAY_SHIFT}.${no % 10}`;
             return String(no + DISPLAY_SHIFT);
         });
-    }, [missingPhotoItems]);
+    }, [missingPhotoItemsPost]);
 
 
-    // ── ตารางเทียบก่อน/หลัง PM (โหมดตรวจอนุมัติ) ──
-    // ใช้ state ที่โหลดเอกสารมาแล้ว: rowsPre = คำตอบก่อน PM, rows = หลัง PM
+    // ── ตารางผลตรวจ (โหมดตรวจอนุมัติ) ──
+    // ใช้ state ที่โหลดเอกสารมาแล้ว: rows = คำตอบของช่าง
     // คีย์ที่ไม่ได้อยู่ใน QUESTIONS (ข้อย่อยแบบ r5_1) เอามาต่อท้ายด้วย จะได้ไม่ตกหล่น
     // คีย์รูปของ ccb ผ่าน getPhotoKeyForQuestion → toGroupKey:
     // ข้อย่อย r3_1 → 31 → g3_1 · r10_sub2 → 102 → g10_2 · เมนเบรกเกอร์ r9 → 90 → g9
@@ -2842,15 +2237,13 @@ export default function CCBPMReport() {
         const labelOf = (key: string) => labels.get(key) ?? key;
         // เรียงตามลำดับข้อในฟอร์มกรอก ข้อย่อยที่ช่างเพิ่มเอง (r5_1, r5_2)
         // ต้องต่อท้ายข้อแม่ของมัน ไม่ใช่ไปกองรวมกันท้ายตาราง
-        const answered = Array.from(new Set([...Object.keys(rowsPre ?? {}), ...Object.keys(rows ?? {})]));
+        const answered = Object.keys(rows ?? {});
         const subNo = (k: string) => Number(k.split("_")[1] ?? 0) || 0;
         const mk = (k: string, section: string, label: string, qNo?: number) => ({
             key: k,
             section,
             qNo,
             label,
-            prePf: (rowsPre as any)?.[k]?.pf,
-            preRemark: (rowsPre as any)?.[k]?.remark,
             postPf: (rows as any)?.[k]?.pf,
             postRemark: (rows as any)?.[k]?.remark,
         });
@@ -2875,7 +2268,7 @@ export default function CCBPMReport() {
             out.push(mk(k, "", labelOf(k), rawNo ? getDisplayedQuestionNo(rawNo) : undefined));
         });
         return out;
-    }, [rowsPre, rows, lang]);
+    }, [rows, lang]);
 
 
     // กล่องหมายเหตุ + สรุปผลการตรวจสอบ — ประกาศครั้งเดียว วางได้สองที่
@@ -2883,28 +2276,13 @@ export default function CCBPMReport() {
     const summaryBlock = (
                         <div id={`${ID_PREFIX}-summary-section`} className="tw-mt-6 sm:tw-mt-8 tw-space-y-3 tw-transition-all tw-duration-300">
                             <Typography variant="h6" className="tw-mb-1 tw-text-sm sm:tw-text-base">{t("comment", lang)}</Typography>
-                            {displayTab === "post" && commentPre && (
-                                <div className="tw-mb-2 sm:tw-mb-3 tw-p-2.5 sm:tw-p-3 tw-bg-amber-50 tw-rounded-lg tw-border tw-border-amber-300">
-                                    <div className="tw-flex tw-items-center tw-gap-2 tw-mb-1">
-                                        <svg className="tw-w-3.5 tw-h-3.5 sm:tw-w-4 sm:tw-h-4 tw-text-amber-600 tw-flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                                            <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                                        </svg>
-                                        <Typography variant="small" className="tw-font-semibold tw-text-amber-700 tw-text-[10px] sm:tw-text-xs">
-                                            {lang === "th" ? "Comment (ก่อน PM)" : "Comment (Pre-PM)"}
-                                        </Typography>
-                                    </div>
-                                    <Typography variant="small" className="tw-text-amber-900 tw-ml-5 sm:tw-ml-6 tw-text-xs sm:tw-text-sm">{commentPre}</Typography>
-                                </div>
-                            )}
                             <Textarea label={t("comment", lang)} value={summary} onChange={(e) => setSummary(e.target.value)}
-                                rows={3} required={isPostMode} autoComplete="off"
+                                rows={3} required autoComplete="off"
                                 containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full !tw-text-sm resize-none" />
-                            {displayTab === "post" && (
-                                <div className="tw-pt-3 sm:tw-pt-4 tw-border-t tw-border-gray-200">
-                                    <PassFailRow label={t("summaryResult", lang)} value={summaryCheck} onChange={(v) => setSummaryCheck(v)}
-                                        lang={lang} labels={{ PASS: t("summaryPassLabel", lang), FAIL: t("summaryFailLabel", lang), NA: t("summaryNALabel", lang) }} />
-                                </div>
-                            )}
+                            <div className="tw-pt-3 sm:tw-pt-4 tw-border-t tw-border-gray-200">
+                                <PassFailRow label={t("summaryResult", lang)} value={summaryCheck} onChange={(v) => setSummaryCheck(v)}
+                                    lang={lang} labels={{ PASS: t("summaryPassLabel", lang), FAIL: t("summaryFailLabel", lang), NA: t("summaryNALabel", lang) }} />
+                            </div>
                         </div>
     );
 
@@ -2912,38 +2290,15 @@ export default function CCBPMReport() {
         <section className="tw-pb-24">
             <LoadingOverlay show={pageLoading} text={t("loading", lang)} />
             <LoadingOverlay
-                show={preUploadState.show}
+                show={uploadState.show}
                 text={lang === "th"
-                    ? `กำลังอัปโหลดรูป${isPostMode ? " Post-PM" : " Pre-PM"}... ${preUploadState.completed}/${preUploadState.total} รูป`
-                    : `Uploading ${isPostMode ? "Post-PM" : "Pre-PM"} photos... ${preUploadState.completed}/${preUploadState.total}`}
+                    ? `กำลังอัปโหลดรูป Post-PM... ${uploadState.completed}/${uploadState.total} รูป`
+                    : `Uploading Post-PM photos... ${uploadState.completed}/${uploadState.total}`}
             />
             <div className="tw-mx-auto tw-max-w-6xl tw-flex tw-items-center tw-justify-between tw-mb-4">
                 <Button variant="outlined" size="sm" onClick={goBackToList} title={t("backToList", lang)}>
                     <ArrowLeftIcon className="tw-w-4 tw-h-4 tw-stroke-blue-gray-900 tw-stroke-2" />
                 </Button>
-                {!reviewMode && (
-                    <Tabs value={displayTab} key={displayTab}>
-                        <TabsHeader className="tw-bg-blue-gray-50 tw-rounded-lg">
-                            {TABS.map(tb => {
-                                const isPreDisabled = isPostMode && tb.id === "pre";
-                                const isLockedAfter = tb.id === "post" && !canGoAfter;
-                                return (
-                                    <Tab
-                                        key={tb.id} value={tb.id}
-                                        disabled={isPreDisabled || isLockedAfter}
-                                        onClick={() => {
-                                            if (isPreDisabled) return;
-                                            if (isLockedAfter) { alert(t("alertFillPreFirst", lang)); return; }
-                                            go(tb.id);
-                                        }}
-                                        className={`tw-px-4 tw-py-2 tw-font-medium ${isPreDisabled || isLockedAfter ? "tw-opacity-50 tw-cursor-not-allowed" : ""}`}>
-                                        {tb.label}
-                                    </Tab>
-                                );
-                            })}
-                        </TabsHeader>
-                    </Tabs>
-                )}
             </div>
 
             
@@ -2981,7 +2336,7 @@ export default function CCBPMReport() {
                     <div className="tw-mt-6 sm:tw-mt-8 tw-space-y-4 sm:tw-space-y-6">
                         {/* โหมดตรวจ: ตัดเฉพาะรายการข้อที่ช่างกรอก ดูจากตารางเทียบก่อน/หลังด้านล่างแทน
                             ส่วนหัวเอกสารกับข้อมูลสถานีคงไว้ ผู้อนุมัติต้องรู้ว่ากำลังดูใบไหน */}
-                        {!reviewMode && (QUESTIONS.filter((q) => !(displayTab === "pre" && q.no === 11)).map((q) => renderQuestionBlock(q, displayTab)))}
+                        {!reviewMode && QUESTIONS.map((q) => renderQuestionBlock(q))}
                     </div>
 
                     {/* โหมดตรวจ: ย้ายไปไว้ล่างสุด ให้อ่านหลังดูตารางเทียบเสร็จ */}
@@ -2990,7 +2345,7 @@ export default function CCBPMReport() {
                     <div className="tw-mt-6 sm:tw-mt-8 tw-flex tw-flex-col tw-gap-3">
                     {/* เวลาทำงานจริงของช่าง — ต้องกรอกก่อนส่งปิดใบงาน (ส่งเข้า Maximo IN09) */}
                     {/* Temporarily disabled: Maximo labor input is hidden on all pages. */}
-                    {false && isPostMode && (
+                    {false && (
                         <div className="tw-mt-6 tw-pt-4 tw-border-t tw-border-gray-200">
                             <div className="tw-mb-2">
                                 <Typography variant="h6" className="tw-text-sm sm:tw-text-base">
@@ -3021,69 +2376,60 @@ export default function CCBPMReport() {
 
                     {/* ช่างที่จะลงเวลาเข้า Maximo — laborcode คนละชุดกับ username ใน iMPS
                         จึงต้องให้เลือกเอง ไม่งั้น IN09 จะ unmapped ทั้งใบ (อยู่ล่างสุดของฟอร์ม) */}
-                    {isPostMode && (
-                        <div className="tw-mt-6 tw-pt-4 tw-border-t tw-border-gray-200">
-                            <div className="tw-mb-2">
-                                <Typography variant="h6" className="tw-text-sm sm:tw-text-base">{t("maximoLabor", lang)}</Typography>
-                                <Typography variant="small" className="tw-text-xs tw-font-normal tw-text-blue-gray-400">
-                                    {t("maximoLaborHint", lang)}
-                                </Typography>
-                            </div>
-                            {laborList.length === 0 ? (
-                                <p className="tw-text-xs tw-text-orange-600">
-                                                {reviewMode ? t("maximoLaborNone", lang) : t("maximoLaborEmpty", lang)}
-                                            </p>
-                            ) : (
-                                <div className="tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-divide-y tw-divide-blue-gray-50 tw-max-h-56 tw-overflow-y-auto">
-                                    {laborList.map((o) => (
-                                        <label key={o.laborcode} className="tw-flex tw-items-center tw-gap-2.5 tw-px-3 tw-py-2.5 tw-cursor-pointer hover:tw-bg-blue-gray-50/60 tw-transition-colors">
-                                            {!reviewMode && (<input type="checkbox" checked={maximoLabor.includes(o.laborcode)}
-                                                onChange={() => toggleMaximoLabor(o.laborcode)}
-                                                className="tw-h-4 tw-w-4 tw-shrink-0 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500 tw-cursor-pointer" />)}
-                                            <span className="tw-min-w-0 tw-truncate tw-text-sm tw-text-blue-gray-800">{o.name}</span>
-                                            <span className="tw-ml-auto tw-font-mono tw-text-xs tw-text-blue-gray-400">{o.laborcode}</span>
-                                        </label>
-                                    ))}
-                                </div>
-                            )}
-                            {(contractorPicked || (reviewMode && !!maximoContractor.trim())) && (
-                                <div className="tw-mt-3 tw-space-y-1.5">
-                                    <label className="tw-block tw-text-xs tw-font-semibold tw-text-blue-gray-700">
-                                        {t("contractorName", lang)} <span className="tw-text-red-500">*</span>
-                                    </label>
-                                    <input type="text" value={maximoContractor} onChange={(e) => setMaximoContractor(e.target.value)}
-                                        placeholder={t("contractorPlaceholder", lang)}
-                                        className={`tw-w-full tw-rounded-lg tw-border tw-px-3 tw-py-2.5 tw-text-sm tw-text-blue-gray-800 focus:tw-outline-none ${contractorMissing ? "tw-border-red-400 focus:tw-border-red-500" : "tw-border-blue-gray-200 focus:tw-border-blue-500"}`} />
-                                    {contractorMissing && <p className="tw-text-xs tw-text-red-600">{t("contractorRequired", lang)}</p>}
-                                </div>
-                            )}
+                    <div className="tw-mt-6 tw-pt-4 tw-border-t tw-border-gray-200">
+                        <div className="tw-mb-2">
+                            <Typography variant="h6" className="tw-text-sm sm:tw-text-base">{t("maximoLabor", lang)}</Typography>
+                            <Typography variant="small" className="tw-text-xs tw-font-normal tw-text-blue-gray-400">
+                                {t("maximoLaborHint", lang)}
+                            </Typography>
                         </div>
-                    )}
+                        {laborList.length === 0 ? (
+                            <p className="tw-text-xs tw-text-orange-600">
+                                            {reviewMode ? t("maximoLaborNone", lang) : t("maximoLaborEmpty", lang)}
+                                        </p>
+                        ) : (
+                            <div className="tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-divide-y tw-divide-blue-gray-50 tw-max-h-56 tw-overflow-y-auto">
+                                {laborList.map((o) => (
+                                    <label key={o.laborcode} className="tw-flex tw-items-center tw-gap-2.5 tw-px-3 tw-py-2.5 tw-cursor-pointer hover:tw-bg-blue-gray-50/60 tw-transition-colors">
+                                        {!reviewMode && (<input type="checkbox" checked={maximoLabor.includes(o.laborcode)}
+                                            onChange={() => toggleMaximoLabor(o.laborcode)}
+                                            className="tw-h-4 tw-w-4 tw-shrink-0 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500 tw-cursor-pointer" />)}
+                                        <span className="tw-min-w-0 tw-truncate tw-text-sm tw-text-blue-gray-800">{o.name}</span>
+                                        <span className="tw-ml-auto tw-font-mono tw-text-xs tw-text-blue-gray-400">{o.laborcode}</span>
+                                    </label>
+                                ))}
+                            </div>
+                        )}
+                        {(contractorPicked || (reviewMode && !!maximoContractor.trim())) && (
+                            <div className="tw-mt-3 tw-space-y-1.5">
+                                <label className="tw-block tw-text-xs tw-font-semibold tw-text-blue-gray-700">
+                                    {t("contractorName", lang)} <span className="tw-text-red-500">*</span>
+                                </label>
+                                <input type="text" value={maximoContractor} onChange={(e) => setMaximoContractor(e.target.value)}
+                                    placeholder={t("contractorPlaceholder", lang)}
+                                    className={`tw-w-full tw-rounded-lg tw-border tw-px-3 tw-py-2.5 tw-text-sm tw-text-blue-gray-800 focus:tw-outline-none ${contractorMissing ? "tw-border-red-400 focus:tw-border-red-500" : "tw-border-blue-gray-200 focus:tw-border-blue-500"}`} />
+                                {contractorMissing && <p className="tw-text-xs tw-text-red-600">{t("contractorRequired", lang)}</p>}
+                            </div>
+                        )}
+                    </div>
 
                         {/* โหมดตรวจไม่ต้องมี ฟอร์มฝั่งช่างดักความครบถ้วนไว้ตั้งแต่ตอนกรอกแล้ว */}
                         {!reviewMode && (
                             <PMValidationCard
-                                lang={lang} displayTab={displayTab} isPostMode={isPostMode}
-                                allPhotosAttached={allPhotosAttached} missingPhotoItems={missingPhotoItemsFormatted}
+                                lang={lang}
+                                allPhotosAttached={allPhotosAttachedPost} missingPhotoItems={missingPhotoItemsFormatted}
                                 allRequiredInputsFilled={allRequiredInputsFilled} missingInputsDetailed={missingInputsDetailed}
-                                allPFAnsweredPost={allPFAnsweredForUI} missingPFItemsPost={missingPFItemsForUI}
+                                allPFAnsweredPost={allPFAnsweredPost} missingPFItemsPost={missingPFItemsPost}
                                 isSummaryFilled={isSummaryFilled} isSummaryCheckFilled={isSummaryCheckFilled}
                             />
                         )}
                         {/* ดูอย่างเดียว: ตรวจได้ แต่ไม่มีปุ่มบันทึกให้กด */}
                         {!reviewMode && (
                             <div className="tw-flex tw-flex-col sm:tw-flex-row tw-justify-end tw-gap-2 sm:tw-gap-3">
-                                {displayTab === "pre" ? (
-                                    <Button type="button" onClick={onPreSave} disabled={!canGoAfter || submitting}
-                                        className="tw-text-sm tw-py-2.5 tw-w-full sm:tw-w-auto tw-bg-gray-800 hover:tw-bg-gray-900 disabled:tw-bg-gray-800 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed">
-                                        {submitting ? t("saving", lang) : t("save", lang)}
-                                    </Button>
-                                ) : (
-                                    <Button type="button" onClick={onFinalSave} disabled={!canFinalSave || submitting}
-                                        className="tw-text-sm tw-py-2.5 tw-w-full sm:tw-w-auto tw-bg-gray-800 hover:tw-bg-gray-900 disabled:tw-bg-gray-800 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed">
-                                        {submitting ? t("saving", lang) : t("save", lang)}
-                                    </Button>
-                                )}
+                                <Button type="button" onClick={onFinalSave} disabled={!canFinalSave || submitting}
+                                    className="tw-text-sm tw-py-2.5 tw-w-full sm:tw-w-auto tw-bg-gray-800 hover:tw-bg-gray-900 disabled:tw-bg-gray-800 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed">
+                                    {submitting ? t("saving", lang) : t("save", lang)}
+                                </Button>
                             </div>
                         )}
                     </div>
@@ -3096,8 +2442,7 @@ export default function CCBPMReport() {
                 <PmCompareTable
                     rows={compareRows}
                     lang={lang}
-                    prePhotos={cmpPhotos.pre}
-                    postPhotos={cmpPhotos.post}
+                    postPhotos={cmpPhotos}
                     apiBase={API_BASE}
                     photoKeysOf={photoKeysOf}
                     summaryPost={summary}

@@ -13,7 +13,7 @@ import {
 } from "@material-tailwind/react";
 import { draftKey, saveDraftLocal, loadDraftLocal, clearDraftLocal } from "../lib/draft";
 import Image from "next/image";
-import { useRouter, useSearchParams, usePathname } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import PmApprovalBar from "@/app/dashboard/pm-report/components/PmApprovalBar";
 import PmCompareTable from "@/app/dashboard/pm-report/components/PmCompareTable";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
@@ -284,13 +284,10 @@ const T = {
     remark: { th: "หมายเหตุ", en: "Remark" },
     remarkLabel: { th: "หมายเหตุ", en: "Remark" },
     testResult: { th: "ผลการทดสอบ", en: "Test Result" },
-    preRemarkLabel: { th: "หมายเหตุ (ก่อน PM)", en: "Remark (Pre-PM)" },
     comment: { th: "Comment", en: "Comment" },
 
-    // Pre/Post Labels
-    prePM: { th: "ก่อน PM", en: "Pre-PM" },
+    // Post Labels
     postPM: { th: "หลัง PM", en: "Post-PM" },
-    beforePM: { th: "ก่อน PM", en: "Before PM" },
     afterPM: { th: "หลัง PM", en: "After PM" },
 
     // Summary
@@ -323,11 +320,8 @@ const T = {
     // Alerts
     alertNoStation: { th: "ยังไม่ทราบ station_id", en: "Station ID not found" },
     alertFillPhoto: { th: "กรุณาแนบรูปในทุกข้อก่อนบันทึก", en: "Please attach photos for all items" },
-    alertFillPreFirst: { th: "กรุณากรอกข้อมูลในส่วน Pre-PM ให้ครบก่อน", en: "Please complete all Pre-PM fields first" },
     alertSaveFailed: { th: "บันทึกไม่สำเร็จ:", en: "Save failed:" },
     alertCompleteAll: { th: "กรุณากรอกข้อมูลและแนบรูปให้ครบก่อนบันทึก", en: "Please complete all fields and attach photos before saving" },
-    alertPhotoNotComplete: { th: "กรุณาแนบรูปในส่วน Pre-PM ให้ครบก่อน", en: "Please attach all photos in Pre-PM section" },
-    noReportId: { th: "ไม่มี report_id - กรุณาบันทึกข้อมูล Pre-PM ก่อน", en: "No report_id - Please save Pre-PM first" },
     workTime: { th: "เวลาทำงานจริง", en: "Actual work time" },
     workStart: { th: "เวลาเริ่มงาน", en: "Start time" },
     workFinish: { th: "เวลาเสร็จงาน", en: "Finish time" },
@@ -382,35 +376,11 @@ const getPfIdFromKey = (rowKey: string): string => {
     return `${ID_PREFIX}-pf-${rowKey}`;
 };
 
-type TabId = "pre" | "post";
-const TABS: { id: TabId; label: string; slug: "pre" | "post" }[] = [
-    { id: "post", label: "Post\u2011PM", slug: "post" },
-];
-function slugToTab(slug: string | null): TabId {
-    switch (slug) {
-        case "post": return "post";
-        case "pre":
-        default: return "pre";
-    }
-}
-function tabToSlug(tab: TabId): "pre" | "post" {
-    return TABS.find(t => t.id === tab)!.slug;
-}
-
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 const LOGO_SRC = "/img/logo_egat.png";
 
 type StationPublic = { station_id: string; station_name: string; status?: boolean; };
 type Me = { id: string; username: string; email: string; role: string; company: string; tel: string; };
-
-async function getStationInfoPublic(stationId: string): Promise<StationPublic> {
-    const url = `${API_BASE}/station/info/public?station_id=${encodeURIComponent(stationId)}`;
-    const res = await fetch(url, { cache: "no-store" });
-    if (res.status === 404) throw new Error("Station not found");
-    if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
-    const json = await res.json();
-    return json.station ?? json;
-}
 
 type PhotoItem = { id: string; file?: File; preview?: string; remark?: string; uploading?: boolean; uploaded?: boolean; error?: string; ref?: PhotoRef; isNA?: boolean; createdAt?: string; location?: string; };
 
@@ -423,8 +393,8 @@ type Rating = "VERY_GOOD" | "GOOD" | "FAIR" | "UNUSABLE";
 type PF = Rating | "PASS" | "FAIL" | "NA" | "";
 
 type Question =
-    | { no: number; key: string; label: { th: string; en: string }; labelPre?: { th: string; en: string }; labelPost?: { th: string; en: string }; kind: "simple"; hasPhoto?: boolean; tooltip?: { th: string; en: string } }
-    | { no: number; key: string; label: { th: string; en: string }; labelPre?: { th: string; en: string }; labelPost?: { th: string; en: string }; kind: "group"; items: { key: string; label: { th: string; en: string } }[]; hasPhoto?: boolean; tooltip?: { th: string; en: string } };
+    | { no: number; key: string; label: { th: string; en: string }; kind: "simple"; hasPhoto?: boolean; tooltip?: { th: string; en: string } }
+    | { no: number; key: string; label: { th: string; en: string }; kind: "group"; items: { key: string; label: { th: string; en: string } }[]; hasPhoto?: boolean; tooltip?: { th: string; en: string } };
 
 const QUESTIONS_RAW = [
     { no: 101, key: "pre_r1", label: { th: "1) ตรวจสอบสภาพทั่วไป (ก่อนบำรุงรักษา)", en: "1) General condition (before maintenance)" }, kind: "simple", hasPhoto: true, tooltip: { th: "บันทึกสภาพสถานีก่อนเริ่มบำรุงรักษา", en: "Record the station condition before maintenance" } },
@@ -489,7 +459,7 @@ const QUESTIONS: Question[] = QUESTIONS_RAW.filter(
 // ส่วนข้อเดิม no=1..11 ยังเก็บคีย์ชุดเดิมใน DB จึงเลื่อนเฉพาะเลขที่แสดงผล
 const DISPLAY_SHIFT = 3;
 
-function getQuestionLabel(q: Question, mode: TabId, lang: Lang): string {
+function getQuestionLabel(q: Question, lang: Lang): string {
     if (q.no >= 101 && q.no <= 103) return q.label[lang];
     return q.label[lang].replace(/^(\d+)/, (number) => String(Number(number) + DISPLAY_SHIFT));
 }
@@ -600,8 +570,6 @@ function groupErrorsBySection(errors: ValidationError[]): Map<string, Validation
 
 interface PMValidationCardProps {
     lang: Lang;
-    displayTab: "pre" | "post";
-    isPostMode: boolean;
     allPhotosAttached: boolean;
     missingPhotoItems: string[];
     allPFAnswered: boolean;
@@ -611,7 +579,7 @@ interface PMValidationCardProps {
 }
 
 function PMValidationCard({
-    lang, displayTab, isPostMode,
+    lang,
     allPhotosAttached, missingPhotoItems,
     allPFAnswered, missingPFItems,
     isSummaryFilled, isSummaryCheckFilled,
@@ -650,45 +618,42 @@ function PMValidationCard({
             });
         }
 
-        // 2) Post mode errors
-        if (isPostMode) {
-            // PF status errors
-            if (!allPFAnswered) {
-                missingPFItems.forEach((item) => {
-                    errors.push({
-                        section: lang === "th" ? "ระดับผลการตรวจ" : "Inspection rating",
-                        sectionIcon: "✅",
-                        itemName: `${t("itemLabel", lang)} ${item}`,
-                        message: lang === "th" ? "ยังไม่ได้เลือกระดับผลการตรวจ" : "Inspection rating not selected",
-                        scrollId: getPfScrollId(item),
-                    });
+        // 2) PF status errors
+        if (!allPFAnswered) {
+            missingPFItems.forEach((item) => {
+                errors.push({
+                    section: lang === "th" ? "ระดับผลการตรวจ" : "Inspection rating",
+                    sectionIcon: "✅",
+                    itemName: `${t("itemLabel", lang)} ${item}`,
+                    message: lang === "th" ? "ยังไม่ได้เลือกระดับผลการตรวจ" : "Inspection rating not selected",
+                    scrollId: getPfScrollId(item),
                 });
-            }
+            });
+        }
 
-            // Summary errors
-            if (!isSummaryFilled) {
-                errors.push({
-                    section: lang === "th" ? "สรุปผล" : "Summary",
-                    sectionIcon: "📋",
-                    itemName: "Comment",
-                    message: lang === "th" ? "ยังไม่ได้กรอก Comment" : "Comment not filled",
-                    scrollId: `${ID_PREFIX}-summary-section`,
-                });
-            }
-            if (!isSummaryCheckFilled) {
-                errors.push({
-                    section: lang === "th" ? "สรุปผล" : "Summary",
-                    sectionIcon: "📋",
-                    itemName: lang === "th" ? "สถานะสรุป" : "Summary Status",
-                    message: lang === "th" ? "ยังไม่ได้เลือกระดับผลการตรวจหรือ N/A" : "Inspection rating or N/A not selected",
-                    scrollId: `${ID_PREFIX}-summary-section`,
-                });
-            }
+        // Summary errors
+        if (!isSummaryFilled) {
+            errors.push({
+                section: lang === "th" ? "สรุปผล" : "Summary",
+                sectionIcon: "📋",
+                itemName: "Comment",
+                message: lang === "th" ? "ยังไม่ได้กรอก Comment" : "Comment not filled",
+                scrollId: `${ID_PREFIX}-summary-section`,
+            });
+        }
+        if (!isSummaryCheckFilled) {
+            errors.push({
+                section: lang === "th" ? "สรุปผล" : "Summary",
+                sectionIcon: "📋",
+                itemName: lang === "th" ? "สถานะสรุป" : "Summary Status",
+                message: lang === "th" ? "ยังไม่ได้เลือกระดับผลการตรวจหรือ N/A" : "Inspection rating or N/A not selected",
+                scrollId: `${ID_PREFIX}-summary-section`,
+            });
         }
 
         return errors;
     }, [
-        lang, displayTab, isPostMode,
+        lang,
         allPhotosAttached, missingPhotoItems,
         allPFAnswered, missingPFItems,
         isSummaryFilled, isSummaryCheckFilled
@@ -987,44 +952,6 @@ function PhotoMultiInput({
         </div>
     );
 }
-function SkippedNAItem({ label, remark, lang }: { label: string; remark?: string; lang: Lang }) {
-    return (
-        <div className="tw-py-4 tw-bg-amber-50/50">
-            <div className="tw-flex tw-items-center tw-justify-between">
-                <Typography className="tw-font-semibold tw-text-sm tw-text-gray-800">{label}</Typography>
-                <span className="tw-text-xs tw-text-amber-600 tw-font-medium">N/A</span>
-            </div>
-            {remark && (
-                <Typography variant="small" className="tw-text-gray-600 tw-mt-1">
-                    {t("remarkLabel", lang)}: {remark}
-                </Typography>
-            )}
-        </div>
-    );
-}
-
-async function fetchPreviewIssueId(stationId: string, pmDate: string): Promise<string | null> {
-    const u = new URL(`${API_BASE}/stationpmreport/preview-issueid`);
-    u.searchParams.set("station_id", stationId);
-    u.searchParams.set("pm_date", pmDate);
-    const token = typeof window !== "undefined" ? localStorage.getItem("access_token") ?? "" : "";
-    const r = await fetch(u.toString(), { credentials: "include", headers: token ? { Authorization: `Bearer ${token}` } : undefined });
-    if (!r.ok) return null;
-    const j = await r.json();
-    return (j && typeof j.issue_id === "string") ? j.issue_id : null;
-}
-
-async function fetchPreviewDocName(stationId: string, pmDate: string): Promise<string | null> {
-    const u = new URL(`${API_BASE}/stationpmreport/preview-docname`);
-    u.searchParams.set("station_id", stationId);
-    u.searchParams.set("pm_date", pmDate);
-    const token = typeof window !== "undefined" ? localStorage.getItem("access_token") ?? "" : "";
-    const r = await fetch(u.toString(), { credentials: "include", headers: token ? { Authorization: `Bearer ${token}` } : undefined });
-    if (!r.ok) return null;
-    const j = await r.json();
-    return (j && typeof j.doc_name === "string") ? j.doc_name : null;
-}
-
 async function fetchReport(reportId: string, stationId: string) {
     const token = localStorage.getItem("access_token") ?? "";
     const url = `${API_BASE}/stationpmreport/get?station_id=${stationId}&report_id=${reportId}`;
@@ -1041,12 +968,9 @@ export default function StationPMReport() {
     const [docName, setDocName] = useState<string>("");
     const [reportId, setReportId] = useState<string>("");
 
-    const pathname = usePathname();
     const searchParams = useSearchParams();
 
     // ปุ่มย้อนกลับ: เปิดมาจากหน้า PM List ให้กลับไปหน้านั้นตรงๆ
-    // router.back() ใช้ไม่ได้ เพราะสลับ pmtab ในฟอร์มก็ดันประวัติเพิ่มทุกครั้ง
-    // กดกลับเลยแค่ถอยการสลับแท็บ ไม่ได้ออกจากใบงาน
     const goBackToList = useCallback(() => {
         const back = pmBackRoute(searchParams);
         if (back) router.push(back);
@@ -1056,7 +980,6 @@ export default function StationPMReport() {
     // เปิดจากใบ PM สถานี "ใบเดียว 4 ส่วน" → ผูกใบนี้เป็นส่วนหนึ่งของใบแม่
     const jobId = searchParams.get("job_id") ?? "";
     const action = searchParams.get("action");
-    const isPostMode = true;
 
     // Photos: key-based for simple (q1, q2, ...) and group items (r7_1, r7_2, ...)
     const initialPhotos: Record<string, PhotoItem[]> = Object.fromEntries(
@@ -1082,10 +1005,8 @@ export default function StationPMReport() {
     const [summary, setSummary] = useState<string>("");
     const [stationId, setStationId] = useState<string | null>(null);
 
-    // Separate draft keys for Pre and Post mode
-    const key = useMemo(() => draftKey(stationId), [stationId]);
+    // Draft key (Post-PM)
     const postKey = useMemo(() => `${draftKey(stationId)}:${editId}:post`, [stationId, editId]);
-    const currentDraftKey = isPostMode ? postKey : key;
 
     // Remove draft_id from URL if present
     useEffect(() => {
@@ -1154,7 +1075,6 @@ export default function StationPMReport() {
     const contractorMissing = contractorPicked && !maximoContractor.trim();
     const [inspector, setInspector] = useState<string>("");
     const [postApiLoaded, setPostApiLoaded] = useState(false);
-    const [commentPre, setCommentPre] = useState<string>("");
 
     const [job, setJob] = useState({ issue_id: "", station_name: "", date: "" });
 
@@ -1168,11 +1088,9 @@ export default function StationPMReport() {
         return keys;
     }, []);
 
-    const [rowsPre, setRowsPre] = useState<Record<string, { pf: PF; remark: string }>>({});
-
-    // รูปทั้งสองฝั่งจากเอกสาร (ใช้ในตารางเทียบตอนตรวจอนุมัติ)
-    // state รูปปกติของฟอร์มมีเฉพาะฝั่งที่กำลังกรอกอยู่ จึงต้องเก็บของ document ไว้ต่างหาก
-    const [cmpPhotos, setCmpPhotos] = useState<{ pre: any; post: any }>({ pre: {}, post: {} });
+    // รูปจากเอกสาร (ใช้ในตารางเทียบตอนตรวจอนุมัติ)
+    // state รูปปกติของฟอร์มเป็นรูปในเครื่องที่กำลังกรอกอยู่ จึงต้องเก็บของ document ไว้ต่างหาก
+    const [cmpPhotos, setCmpPhotos] = useState<any>({});
     const [rows, setRows] = useState<Record<string, { pf: PF; remark: string }>>(() => {
         const initial: Record<string, { pf: PF; remark: string }> = {};
         QUESTIONS.forEach((q) => {
@@ -1184,7 +1102,7 @@ export default function StationPMReport() {
 
     // Load API data for Post mode
     useEffect(() => {
-        if (!isPostMode || !editId || !stationId) return;
+        if (!editId || !stationId) return;
         setPostApiLoaded(false);
         (async () => {
             try {
@@ -1193,9 +1111,8 @@ export default function StationPMReport() {
                 if (data.pm_date) setJob(prev => ({ ...prev, date: data.pm_date }));
                 if (data.doc_name) setDocName(data.doc_name);
                 if (data.inspector) setInspector(data.inspector);
-                if (data.comment_pre) setCommentPre(data.comment_pre);
                 if (data.summary) setSummary(data.summary);
-                setCmpPhotos({ pre: data.photos_pre ?? {}, post: data.photos ?? {} });
+                setCmpPhotos(data.photos ?? {});
                 // สรุปผล/หมายเหตุเดิมอ่านจาก draft ในเครื่องอย่างเดียว คนที่ไม่ได้เป็นคนกรอก
                 // (ผู้อนุมัติ) จึงเปิดมาเจอช่องว่าง ต้องดึงจากตัวเอกสารด้วย
                 if (reviewMode) {
@@ -1208,27 +1125,17 @@ export default function StationPMReport() {
                     if (typeof data.summary === "string") setSummary(data.summary);
                     if (data.summaryCheck) setSummaryCheck(data.summaryCheck as PF);
                 }
-                if (data.rows_pre) { setRowsPre(data.rows_pre); }
                 if (data.rows) {
                     setRows((prev) => { const next = { ...prev }; Object.entries(data.rows).forEach(([k, v]) => { next[k] = v as { pf: PF; remark: string }; }); return next; });
-                } else if (data.rows_pre) {
-                    setRows((prev) => {
-                        const next = { ...prev };
-                        Object.entries(data.rows_pre).forEach(([k, v]) => {
-                            const preRow = v as { pf: PF; remark: string };
-                            next[k] = { pf: preRow.pf, remark: "" };
-                        });
-                        return next;
-                    });
                 }
                 setPostApiLoaded(true);
             } catch (err) { console.error("load report failed:", err); setPostApiLoaded(true); }
         })();
-    }, [isPostMode, editId, stationId]);
+    }, [editId, stationId]);
 
     // Load draft for Post mode (AFTER API data loaded)
     useEffect(() => {
-        if (!isPostMode || !stationId || !editId || !postApiLoaded) return;
+        if (!stationId || !editId || !postApiLoaded) return;
         const postDraft = loadDraftLocal<{
             rows: typeof rows; summary: string; summaryCheck?: PF;
             photoRefs?: Record<string, (PhotoRef | { isNA: true })[]>;
@@ -1257,7 +1164,7 @@ export default function StationPMReport() {
             }
             if (Object.keys(next).some(k => (next[k]?.length ?? 0) > 0)) setPhotos(prev => ({ ...prev, ...next }));
         })();
-    }, [isPostMode, stationId, editId, postKey, postApiLoaded]);
+    }, [stationId, editId, postKey, postApiLoaded]);
 
     useEffect(() => {
         const token = typeof window !== "undefined" ? localStorage.getItem("access_token") ?? "" : "";
@@ -1274,72 +1181,10 @@ export default function StationPMReport() {
     }, []);
 
     useEffect(() => {
-        if (isPostMode || !stationId || !job.date) return;
-        let canceled = false;
-        (async () => {
-            try {
-                const preview = await fetchPreviewIssueId(stationId, job.date);
-                if (!canceled && preview) setJob(prev => ({ ...prev, issue_id: preview }));
-            } catch (err) { console.error("preview issue_id error:", err); }
-        })();
-        return () => { canceled = true; };
-    }, [stationId, job.date, isPostMode]);
-
-    useEffect(() => {
-        if (isPostMode || !stationId || !job.date) return;
-        let canceled = false;
-        (async () => {
-            try {
-                const preview = await fetchPreviewDocName(stationId, job.date);
-                if (!canceled && preview) setDocName(preview);
-            } catch (err) { console.error("preview docName error:", err); }
-        })();
-        return () => { canceled = true; };
-    }, [stationId, job.date, isPostMode]);
-
-    useEffect(() => {
         const params = new URLSearchParams(window.location.search);
         const sid = params.get("station_id") || localStorage.getItem("selected_station_id");
         if (sid) setStationId(sid);
-        if (!sid || isPostMode) return;
-        getStationInfoPublic(sid)
-            .then((st) => { setJob((prev) => ({ ...prev, station_name: st.station_name ?? prev.station_name, date: prev.date || new Date().toISOString().slice(0, 10) })); })
-            .catch((err) => console.error("load public station info failed:", err));
-    }, [isPostMode]);
-
-    // Load draft for Pre mode only
-    useEffect(() => {
-        if (!stationId || isPostMode) return;
-        const draft = loadDraftLocal<{
-            rows: typeof rows; summary: string; summary_pf?: PF; inspector?: string;
-            photoRefs?: Record<string, (PhotoRef | { isNA: true })[]>;
-        }>(key);
-        if (!draft) return;
-        setRows(draft.rows);
-        setSummary(draft.summary);
-        setSummaryCheck(draft.summary_pf ?? "");
-        setInspector(draft.inspector ?? "");
-        (async () => {
-            if (!draft.photoRefs) return;
-            const next: Record<string, PhotoItem[]> = { ...initialPhotos };
-            for (const [photoKey, refs] of Object.entries(draft.photoRefs)) {
-                const items: PhotoItem[] = [];
-                for (const ref of refs || []) {
-                    if ('isNA' in ref && ref.isNA) { items.push({ id: `${photoKey}-NA-restored`, isNA: true, preview: undefined }); continue; }
-                    if (!('id' in ref) || !ref.id) continue;
-                    const file = await getPhotoByDbKey((ref as PhotoRef).dbKey);
-                    if (!file || file.size === 0) {
-                        console.warn("Photo missing/empty in IndexedDB:", (ref as PhotoRef).dbKey);
-                        reportMissingDraftPhoto(lang);
-                        continue;
-                    }
-                    items.push({ id: ref.id, file, preview: URL.createObjectURL(file), remark: (ref as any).remark ?? "", ref: ref as PhotoRef });
-                }
-                if (items.length > 0) next[photoKey] = items;
-            }
-            setPhotos(next);
-        })();
-    }, [stationId, key, isPostMode]);
+    }, []);
 
     useEffect(() => {
         const onInfo = (e: Event) => {
@@ -1352,8 +1197,6 @@ export default function StationPMReport() {
         return () => window.removeEventListener("station:info", onInfo as EventListener);
     }, []);
 
-    const preReportIdRef = useRef<string | null>(null);
-
     const makePhotoSetter = (photoKey: string): React.Dispatch<React.SetStateAction<PhotoItem[]>> => {
         return (action: React.SetStateAction<PhotoItem[]>) => {
             setPhotos((prev) => {
@@ -1365,16 +1208,7 @@ export default function StationPMReport() {
     };
 
     // Photo validation
-    const REQUIRED_PHOTO_KEYS_PRE = useMemo(() => {
-        const keys: string[] = [];
-        QUESTIONS.filter((q) => q.hasPhoto && q.no !== 11).forEach((q) => {  // ข้อ 11 = ทำความสะอาด ไม่ต้องแนบรูปใน Pre
-            if (q.kind === "group") { q.items.forEach((item) => { keys.push(item.key); }); }
-            else { keys.push(`q${q.no}`); }
-        });
-        return keys;
-    }, []);
-
-    const REQUIRED_PHOTO_KEYS_POST = useMemo(() => {
+    const REQUIRED_PHOTO_KEYS = useMemo(() => {
         const keys: string[] = [];
         QUESTIONS.filter((q) => q.hasPhoto).forEach((q) => {
             if (q.kind === "group") { q.items.forEach((item) => { keys.push(item.key); }); }
@@ -1383,37 +1217,14 @@ export default function StationPMReport() {
         return keys;
     }, []);
 
-    const missingPhotoItemsPre = useMemo(() => {
-        const missingKeys = REQUIRED_PHOTO_KEYS_PRE.filter((photoKey) => {
-            const qKey = photoKey.startsWith("q") ? `r${photoKey.substring(1)}` : photoKey.replace(/_\d+$/, "");
-            if (rows[qKey]?.pf === "NA") return false;
+    const missingPhotoItems = useMemo(() => {
+        const missingKeys = REQUIRED_PHOTO_KEYS.filter((photoKey) => {
             const match = photoKey.match(/^r(\d+)_/);
             if (match) {
                 if (rows[photoKey]?.pf === "NA") return false;
-            }
-            return (photos[photoKey]?.length ?? 0) < 1;
-        });
-        return missingKeys.map((key) => {
-            if (key.startsWith("q")) return `${getDisplayedQuestionNo(Number(key.substring(1)))}`;
-            const match = key.match(/^r(\d+)_(\d+)$/);
-            if (match) return `${getDisplayedQuestionNo(Number(match[1]))}.${match[2]}`;
-            return key.replace("r", "");
-        }).sort((a, b) => {
-            const aParts = String(a).split(".").map(Number);
-            const bParts = String(b).split(".").map(Number);
-            if (aParts[0] !== bParts[0]) return aParts[0] - bParts[0];
-            return (aParts[1] ?? 0) - (bParts[1] ?? 0);
-        });
-    }, [REQUIRED_PHOTO_KEYS_PRE, photos, rows]);
-
-    const missingPhotoItemsPost = useMemo(() => {
-        const missingKeys = REQUIRED_PHOTO_KEYS_POST.filter((photoKey) => {
-            const match = photoKey.match(/^r(\d+)_/);
-            if (match) {
-                if (rowsPre[photoKey]?.pf === "NA" || rows[photoKey]?.pf === "NA") return false;
             } else {
                 const qKey = photoKey.startsWith("q") ? `r${photoKey.substring(1)}` : photoKey;
-                if (rowsPre[qKey]?.pf === "NA" || rows[qKey]?.pf === "NA") return false;
+                if (rows[qKey]?.pf === "NA") return false;
             }
             return (photos[photoKey]?.length ?? 0) < 1;
         });
@@ -1428,14 +1239,11 @@ export default function StationPMReport() {
             if (aParts[0] !== bParts[0]) return aParts[0] - bParts[0];
             return (aParts[1] ?? 0) - (bParts[1] ?? 0);
         });
-    }, [REQUIRED_PHOTO_KEYS_POST, photos, rowsPre, rows]);
+    }, [REQUIRED_PHOTO_KEYS, photos, rows]);
 
-    const allPhotosAttachedPre = missingPhotoItemsPre.length === 0;
-    const allPhotosAttachedPost = missingPhotoItemsPost.length === 0;
-    const missingPhotoItems = isPostMode ? missingPhotoItemsPost : missingPhotoItemsPre;
-    const allPhotosAttached = isPostMode ? allPhotosAttachedPost : allPhotosAttachedPre;
+    const allPhotosAttached = missingPhotoItems.length === 0;
 
-    // PF validation (for Post mode)
+    // PF validation
     const PF_REQUIRED_KEYS = useMemo(() => {
         const keys: string[] = [];
         QUESTIONS.forEach((q) => {
@@ -1446,14 +1254,9 @@ export default function StationPMReport() {
         return keys;
     }, []);
 
-    const PF_KEYS_POST = useMemo(() => PF_REQUIRED_KEYS.filter((k) => {
-        if (rowsPre[k]?.pf === "NA") return false;
-        return true;
-    }), [PF_REQUIRED_KEYS, rowsPre]);
+    const allPFAnswered = useMemo(() => PF_REQUIRED_KEYS.every((k) => rows[k]?.pf !== ""), [rows, PF_REQUIRED_KEYS]);
 
-    const allPFAnswered = useMemo(() => PF_KEYS_POST.every((k) => rows[k]?.pf !== ""), [rows, PF_KEYS_POST]);
-
-    const missingPFItems = useMemo(() => PF_KEYS_POST.filter((k) => !rows[k]?.pf).map((k) => {
+    const missingPFItems = useMemo(() => PF_REQUIRED_KEYS.filter((k) => !rows[k]?.pf).map((k) => {
         const match = k.match(/^r(\d+)(?:_(\d+))?$/);
         if (!match) return k;
         return getDisplayedRowNo(k);
@@ -1462,13 +1265,12 @@ export default function StationPMReport() {
         const bParts = String(b).split(".").map(Number);
         if (aParts[0] !== bParts[0]) return aParts[0] - bParts[0];
         return (aParts[1] ?? 0) - (bParts[1] ?? 0);
-    }), [rows, PF_KEYS_POST]);
+    }), [rows, PF_REQUIRED_KEYS]);
 
     const isSummaryFilled = summary.trim().length > 0;
     const isSummaryCheckFilled = summaryCheck !== "";
 
-    const canGoAfter: boolean = isPostMode ? true : allPhotosAttachedPre;
-    const canFinalSave = allPhotosAttachedPost && allPFAnswered && isSummaryFilled && isSummaryCheckFilled;
+    const canFinalSave = allPhotosAttached && allPFAnswered && isSummaryFilled && isSummaryCheckFilled;
 
     // Helper functions for scroll IDs
     // รายการที่ค้างเก็บเป็น "เลขที่แสดง" ส่วน id ในหน้าอิงเลขเก็บจริง ต้องแปลงก่อนเสมอ
@@ -1503,21 +1305,15 @@ export default function StationPMReport() {
         return out;
     }, [photos]);
 
-    // Save draft for Pre mode
-    useDebouncedEffect(() => {
-        if (!stationId || isPostMode) return;
-        saveDraftLocal(key, { rows, summary, summary_pf: summaryCheck, photoRefs, });
-    }, [key, stationId, rows, summary, summaryCheck, photoRefs, isPostMode, inspector]);
-
     // Save draft for Post mode
     useDebouncedEffect(() => {
-        if (!stationId || !isPostMode || !editId) return;
+        if (!stationId || !editId) return;
         saveDraftLocal(postKey, { rows, summary, summaryCheck, photoRefs });
-    }, [postKey, stationId, rows, summary, summaryCheck, photoRefs, isPostMode, editId]);
+    }, [postKey, stationId, rows, summary, summaryCheck, photoRefs, editId]);
 
     // รับ PhotoItem แทน File[] เพื่อให้รู้ว่ารูปไหนอัปสำเร็จแล้ว — ตอนกดบันทึกซ้ำหลังอัปหลุด
     // จะได้ข้ามรูปเดิม ไม่อัปซ้ำจนรูปโผล่ซ้ำในรายงาน (และไม่ไปชนเพดาน 10 รูป/ข้อ)
-    /** key ที่ backend ใช้เก็บใน photos_pre / photos — ต้องใช้สูตรเดียวกันทั้งตอน upload และตอน verify
+    /** key ที่ backend ใช้เก็บใน photos — ต้องใช้สูตรเดียวกันทั้งตอน upload และตอน verify
      *  หลาย photoKey (r7_1, r7_2) map ไปข้อเดียวกันได้ ฝั่ง server ก็รวมเป็น group เดียว */
     const toGroupKey = (photoKey: string): string | null => {
         if (photoKey.startsWith("q")) {
@@ -1534,19 +1330,19 @@ export default function StationPMReport() {
         return null;
     };
 
-    async function uploadGroupPhotos(reportId: string, stationId: string, group: string, items: PhotoItem[], side: TabId, stateKey: string, uploadedIds: Set<string>) {
+    async function uploadGroupPhotos(reportId: string, stationId: string, group: string, items: PhotoItem[], stateKey: string, uploadedIds: Set<string>) {
         // uploadedIds จำเป็นเพราะ setPhotos() ยังไม่ flush เข้า photosRef ภายใน tick เดียวกัน
         const pending = (items || []).filter(p => !p.isNA && !p.uploaded && !uploadedIds.has(p.id) && (p.file || p.ref));
         if (pending.length === 0) return;
         const token = localStorage.getItem("access_token");
-        const url = side === "pre" ? `${API_BASE}/stationpmreport/${reportId}/pre/photos` : `${API_BASE}/stationpmreport/${reportId}/post/photos`;
+        const url = `${API_BASE}/stationpmreport/${reportId}/post/photos`;
         // ส่งทีละรูป (1 request/รูป) เพื่อไม่ให้ body รวมเกิน limit ของ nginx (กัน 413 เมื่อข้อหนึ่งมีหลายรูป)
         for (const p of pending) {
             const compressed = await compressImage(await resolveUploadFile(p));
             const form = new FormData();
             form.append("station_id", stationId);
             form.append("group", group);
-            form.append("side", side);
+            form.append("side", "post");
             form.append("files", compressed);
             const res = await fetch(url, { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : undefined, body: form, credentials: "include" });
             if (!res.ok) throw new Error(await res.text());
@@ -1557,7 +1353,7 @@ export default function StationPMReport() {
 
     /** อัปโหลดหลายรอบ + ยืนยันจำนวนกับ server ก่อนให้ caller ไปลบรูปในเครื่อง
      *  คืน true = ปลอดภัยที่จะลบ, false = ยังไม่ครบ (แจ้ง user แล้ว) ห้ามลบ */
-    async function syncPhotosAndVerify(reportId: string, side: TabId): Promise<boolean> {
+    async function syncPhotosAndVerify(reportId: string): Promise<boolean> {
         const sid = stationId;
         if (!sid) throw new Error(t("alertNoStation", lang));
         const uploadedIds = new Set<string>();
@@ -1575,7 +1371,7 @@ export default function StationPMReport() {
                 if (!groupKey) throw new Error(lang === "th"
                     ? `จับคู่รูปข้อ ${photoKey} กับหัวข้อในฟอร์มไม่ได้ กรุณาแจ้งผู้ดูแลระบบ`
                     : `Cannot map photo key ${photoKey} to a checklist item. Please contact the administrator.`);
-                jobs.push(uploadGroupPhotos(reportId, sid, groupKey, list, side, photoKey, uploadedIds));
+                jobs.push(uploadGroupPhotos(reportId, sid, groupKey, list, photoKey, uploadedIds));
             }
             // อัปไม่ผ่าน → throw ทะลุขึ้นไป catch ของ handler โดยยังไม่ได้ลบอะไร
             await Promise.all(jobs);
@@ -1594,10 +1390,10 @@ export default function StationPMReport() {
         const res = await fetch(`${API_BASE}/stationpmreport/get?station_id=${encodeURIComponent(sid)}&report_id=${reportId}`,
             { headers: token ? { Authorization: `Bearer ${token}` } : undefined, credentials: "include" });
         if (!res.ok) throw new Error(await res.text());
-        const doc = await res.json() as { photos_pre?: Record<string, unknown[]>; photos?: Record<string, unknown[]> };
-        const shortfall = findShortfall(expected, side === "pre" ? doc?.photos_pre : doc?.photos);
+        const doc = await res.json() as { photos?: Record<string, unknown[]> };
+        const shortfall = findShortfall(expected, doc?.photos);
         if (shortfall.length > 0) {
-            console.error(`[STATION ${side} verify] shortfall:`, shortfall);
+            console.error("[STATION post verify] shortfall:", shortfall);
             alert(shortfallMessage(shortfall, lang));
             return false;
         }
@@ -1634,65 +1430,11 @@ export default function StationPMReport() {
         return result;
     };
 
-    const onPreSave = async () => {
-        if (!stationId) { alert(t("alertNoStation", lang)); return; }
-
-        // Validation checks with scroll to error
-        if (!allPhotosAttachedPre) {
-            alert(t("alertFillPhoto", lang));
-            const scrollId = getFirstMissingPhotoScrollId();
-            if (scrollId) scrollToFirstError(scrollId);
-            return;
-        }
-
-        if (submitting) return;
-        setSubmitting(true);
-        try {
-            const token = localStorage.getItem("access_token");
-            const pm_date = job.date?.trim() || "";
-            const { issue_id: issueIdFromJob, ...jobWithoutIssueId } = job;
-            const flatRows = flattenRows(rows);
-            const payload = {
-                station_id: stationId, ...(jobId ? { job_id: jobId } : {}), issue_id: issueIdFromJob, job: jobWithoutIssueId, inspector,
-                rows_pre: flatRows, pm_date, doc_name: docName, side: "pre" as TabId,
-                comment_pre: summary,
-            };
-            // กดบันทึกซ้ำหลังอัปรูปหลุด ต้องใช้รายงานใบเดิม ไม่งั้นจะได้รายงานซ้ำอีกใบ
-            let report_id: string = preReportIdRef.current || loadDraftLocal<any>(key)?.pendingReportId || "";
-            if (!report_id) {
-            const res = await fetch(`${API_BASE}/stationpmreport/pre/submit`, {
-                method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-                credentials: "include", body: JSON.stringify(payload),
-            });
-            if (!res.ok) throw new Error(await res.text());
-            const { report_id: newReportId, doc_name } = await res.json() as { report_id: string; doc_name?: string };
-            report_id = newReportId;
-            if (doc_name) setDocName(doc_name);
-            saveDraftLocal(key, { ...loadDraftLocal<any>(key), pendingReportId: report_id });
-            }
-            preReportIdRef.current = report_id;
-            setReportId(report_id);
-
-            // ลบรูปในเครื่องได้ต่อเมื่อ server ยืนยันว่ามีครบจำนวนแล้วเท่านั้น
-            if (!(await syncPhotosAndVerify(report_id, "pre"))) return;
-
-            const allPhotos = Object.values(photosRef.current).flat();
-            await Promise.all(allPhotos.map(p => delPhoto(key, p.id)));
-            preReportIdRef.current = null;
-            await clearDraftLocal(key);
-            router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&tab=station`);
-        } catch (err: any) {
-            alert(`${t("alertSaveFailed", lang)} ${err?.message ?? err}`);
-        } finally {
-            setSubmitting(false);
-        }
-    };
-
     const onFinalSave = async () => {
         if (!stationId) { alert(t("alertNoStation", lang)); return; }
 
         // Validation checks with scroll to error
-        if (!allPhotosAttachedPost) {
+        if (!allPhotosAttached) {
             alert(t("alertFillPhoto", lang));
             const scrollId = getFirstMissingPhotoScrollId();
             if (scrollId) scrollToFirstError(scrollId);
@@ -1719,12 +1461,13 @@ export default function StationPMReport() {
         setSubmitting(true);
         try {
             const token = localStorage.getItem("access_token");
-            const finalReportId = reportId || editId;
-            if (!finalReportId) throw new Error(t("noReportId", lang));
+            // ฟอร์มนี้มีแค่ Post-PM — ไม่มีด่านก่อนหน้าที่สร้าง report_id ให้
+            // ใบใหม่ให้ backend สร้างรายงานตอนกดบันทึก — ถ้าเคยกดแล้วอัปรูปหลุด ใช้ id เดิมจาก draft กันได้รายงานซ้ำ
+            let finalReportId: string = reportId || editId || loadDraftLocal<any>(postKey)?.pendingReportId || "";
             const flatRows = flattenRows(rows);
             const payload = {
-                station_id: stationId, ...(jobId ? { job_id: jobId } : {}), rows: flatRows, summary,
-                ...(summaryCheck ? { summaryCheck } : {}), work_start: workStart, work_finish: workFinish, maximo_labor: maximoLabor, maximo_contractor: contractorPicked ? maximoContractor.trim() : "", wonum: searchParams.get("wonum") ?? "", side: "post" as TabId, report_id: finalReportId,
+                station_id: stationId, ...(jobId ? { job_id: jobId } : {}), inspector, job: { station_name: job.station_name, date: job.date }, ...(job.date ? { pm_date: job.date } : {}), rows: flatRows, summary,
+                ...(summaryCheck ? { summaryCheck } : {}), work_start: workStart, work_finish: workFinish, maximo_labor: maximoLabor, maximo_contractor: contractorPicked ? maximoContractor.trim() : "", wonum: searchParams.get("wonum") ?? "", side: "post", ...(finalReportId ? { report_id: finalReportId } : {}),
             };
             const res = await fetch(`${API_BASE}/stationpmreport/submit`, {
                 method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
@@ -1732,9 +1475,14 @@ export default function StationPMReport() {
             });
             if (!res.ok) throw new Error(await res.text());
             const { report_id } = await res.json() as { report_id: string };
+            if (!finalReportId) {
+                finalReportId = report_id;
+                setReportId(report_id);
+                saveDraftLocal(postKey, { ...loadDraftLocal<any>(postKey), pendingReportId: report_id });
+            }
 
             // ต้องยืนยันรูปครบก่อน ถึงจะ finalize + ลบรูปในเครื่อง
-            if (!(await syncPhotosAndVerify(finalReportId, "post"))) return;
+            if (!(await syncPhotosAndVerify(finalReportId))) return;
 
             if (!workStart || !workFinish) { alert(t("alertWorkTime", lang)); setSubmitting(false); return; }
             if (contractorMissing) { alert(t("contractorRequired", lang)); setSubmitting(false); return; }
@@ -1762,91 +1510,10 @@ export default function StationPMReport() {
         }
     };
 
-    const renderQuestionBlock = (q: Question, mode: TabId) => {
-        const qTooltip = q.tooltip?.[lang];
-
-        if (mode === "pre") {
-            if (q.kind === "simple") {
-                const isNA = rows[q.key]?.pf === "NA";
-                return (
-                    <SectionCard key={q.key} title={getQuestionLabel(q, mode, lang)} tooltip={qTooltip}>
-                        <div className={isNA ? "tw-bg-amber-50/50" : ""}>
-                            <div className="tw-flex tw-items-center tw-justify-end tw-gap-2 tw-mb-3">
-                                <Button size="sm" color={isNA ? "amber" : "gray"} variant={isNA ? "filled" : "outlined"}
-                                    onClick={() => setRows(prev => ({ ...prev, [q.key]: { ...prev[q.key], pf: isNA ? "" : "NA" } }))}>
-                                    {isNA ? t("cancelNA", lang) : t("na", lang)}
-                                </Button>
-                            </div>
-                            {q.hasPhoto && (
-                                <div className="tw-mb-4">
-                                    <PhotoMultiInput photos={photos[`q${q.no}`] || []} setPhotos={makePhotoSetter(`q${q.no}`)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(`q${q.no}`)} />
-                                </div>
-                            )}
-                            <div id={getRemarkIdFromKey(q.key)}>
-                                <Textarea label={t("remark", lang)} value={rows[q.key]?.remark || ""}
-                                    onChange={(e) => setRows({ ...rows, [q.key]: { ...rows[q.key], remark: e.target.value } })}
-                                    rows={3} required containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full resize-none" />
-                            </div>
-                        </div>
-                    </SectionCard>
-                );
-            }
-            // Group type in Pre mode
-            return (
-                <SectionCard key={q.key} title={getQuestionLabel(q, mode, lang)} tooltip={qTooltip}>
-                    {q.items.map((item, idx) => {
-                        const isNA = rows[item.key]?.pf === "NA";
-                        return (
-                            <div key={item.key} className={`tw-py-4 ${idx !== q.items.length - 1 ? "tw-border-b tw-border-gray-200" : ""} ${isNA ? "tw-bg-amber-50/50" : ""}`}>
-                                <div className="tw-flex tw-items-center tw-justify-between tw-mb-3">
-                                    <Typography variant="small" className="tw-font-medium">{getDisplayedItemLabel(item.label[lang], q.no)}</Typography>
-                                    <Button size="sm" color={isNA ? "amber" : "gray"} variant={isNA ? "filled" : "outlined"}
-                                        onClick={() => setRows(prev => ({ ...prev, [item.key]: { ...prev[item.key], pf: isNA ? "" : "NA" } }))}>
-                                        {isNA ? t("cancelNA", lang) : t("na", lang)}
-                                    </Button>
-                                </div>
-                                {q.hasPhoto && (
-                                    <div className="tw-mb-4">
-                                        <PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(item.key)} />
-                                    </div>
-                                )}
-                                <div id={getRemarkIdFromKey(item.key)}>
-                                    <Textarea label={t("remark", lang)} value={rows[item.key]?.remark || ""}
-                                        onChange={(e) => setRows({ ...rows, [item.key]: { ...rows[item.key], remark: e.target.value } })}
-                                        rows={3} required containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full resize-none" />
-                                </div>
-                            </div>
-                        );
-                    })}
-                </SectionCard>
-            );
-        }
-
-        // POST MODE
+    const renderQuestionBlock = (q: Question) => {
         if (q.kind === "simple") {
-            if (rowsPre[q.key]?.pf === "NA") {
-                return (
-                    <SectionCard key={q.key} title={getQuestionLabel(q, mode, lang)}>
-                        <SkippedNAItem label={getQuestionLabel(q, mode, lang)} remark={rowsPre[q.key]?.remark} lang={lang} />
-                    </SectionCard>
-                );
-            }
-
-            const preRemark = rowsPre[q.key]?.remark;
-            const preRemarkElement = preRemark ? (
-                <div className="tw-mb-3 tw-p-3 tw-bg-amber-50 tw-rounded-lg tw-border tw-border-amber-300">
-                    <div className="tw-flex tw-items-center tw-gap-2 tw-mb-1">
-                        <svg className="tw-w-4 tw-h-4 tw-text-amber-600" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                        </svg>
-                        <Typography variant="small" className="tw-font-semibold tw-text-amber-700">{t("preRemarkLabel", lang)}</Typography>
-                    </div>
-                    <Typography variant="small" className="tw-text-amber-900 tw-ml-6">{preRemark}</Typography>
-                </div>
-            ) : null;
-
             return (
-                <SectionCard key={q.key} title={getQuestionLabel(q, mode, lang)}>
+                <SectionCard key={q.key} title={getQuestionLabel(q, lang)}>
                     <PassFailRow label={t("testResult", lang)} value={rows[q.key]?.pf ?? ""} lang={lang} showPfButtons={!q.key.startsWith("pre_")}
                         onChange={(v) => setRows({ ...rows, [q.key]: { ...rows[q.key], pf: v } })}
                         remark={rows[q.key]?.remark || ""}
@@ -1855,40 +1522,18 @@ export default function StationPMReport() {
                         remarkId={getRemarkIdFromKey(q.key)}
                         aboveRemark={q.hasPhoto && (
                             <div className="tw-pb-4 tw-border-b tw-mb-4 tw-border-gray-100">
-                                    <PhotoMultiInput photos={photos[`q${q.no}`] || []} setPhotos={makePhotoSetter(`q${q.no}`)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(`q${q.no}`)} />
+                                    <PhotoMultiInput photos={photos[`q${q.no}`] || []} setPhotos={makePhotoSetter(`q${q.no}`)} max={10} draftKey={postKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(`q${q.no}`)} />
                             </div>
                         )}
-                        beforeRemark={preRemarkElement}
                     />
                 </SectionCard>
             );
         }
 
-        // Group type in Post mode
+        // Group type
         return (
-            <SectionCard key={q.key} title={getQuestionLabel(q, mode, lang)}>
+            <SectionCard key={q.key} title={getQuestionLabel(q, lang)}>
                 {q.items.map((item, idx) => {
-                    if (rowsPre[item.key]?.pf === "NA") {
-                        return (
-                            <div key={item.key} className={`tw-py-4 ${idx !== q.items.length - 1 ? "tw-border-b tw-border-gray-200" : ""}`}>
-                                <SkippedNAItem label={getDisplayedItemLabel(item.label[lang], q.no)} remark={rowsPre[item.key]?.remark} lang={lang} />
-                            </div>
-                        );
-                    }
-
-                    const preRemark = rowsPre[item.key]?.remark;
-                    const preRemarkElement = preRemark ? (
-                        <div className="tw-mb-3 tw-p-3 tw-bg-amber-50 tw-rounded-lg tw-border tw-border-amber-300">
-                            <div className="tw-flex tw-items-center tw-gap-2 tw-mb-1">
-                                <svg className="tw-w-4 tw-h-4 tw-text-amber-600" fill="currentColor" viewBox="0 0 20 20">
-                                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                                </svg>
-                                <Typography variant="small" className="tw-font-semibold tw-text-amber-700">{t("preRemarkLabel", lang)}</Typography>
-                            </div>
-                            <Typography variant="small" className="tw-text-amber-900 tw-ml-6">{preRemark}</Typography>
-                        </div>
-                    ) : null;
-
                     return (
                         <div key={item.key} className={`tw-py-4 ${idx !== q.items.length - 1 ? "tw-border-b tw-border-gray-200" : ""}`}>
                             <PassFailRow label={getDisplayedItemLabel(item.label[lang], q.no)} value={rows[item.key]?.pf ?? ""} lang={lang}
@@ -1899,10 +1544,9 @@ export default function StationPMReport() {
                                 remarkId={getRemarkIdFromKey(item.key)}
                                 aboveRemark={q.hasPhoto && (
                                     <div className="tw-pb-4 tw-border-b tw-mb-4 tw-border-gray-100">
-                                        <PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(item.key)} />
+                                        <PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={10} draftKey={postKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(item.key)} />
                                     </div>
                                 )}
-                                beforeRemark={preRemarkElement}
                             />
                         </div>
                     );
@@ -1911,37 +1555,10 @@ export default function StationPMReport() {
         );
     };
 
-    const active: TabId = useMemo(() => slugToTab(searchParams.get("pmtab")), [searchParams]);
-
-    useEffect(() => {
-        const tabParam = searchParams.get("pmtab");
-        let desired: "pre" | "post";
-        if (isPostMode) desired = "post";
-        else if (!tabParam) desired = "pre";
-        else if (tabParam === "after" && !canGoAfter) desired = "pre";
-        else desired = tabParam === "post" ? "post" : "pre";
-        if (tabParam !== desired) {
-            const params = new URLSearchParams(searchParams.toString());
-            params.set("pmtab", desired);
-            router.replace(`${pathname}?${params.toString()}`, { scroll: false });
-        }
-    }, [searchParams, canGoAfter, pathname, router, isPostMode]);
-
     useEffect(() => { void prefetchLocation(); }, []);
 
-    const go = (next: TabId) => {
-        if (isPostMode && next === "pre") return;
-        if (next === "post" && !canGoAfter) { alert(t("alertFillPreFirst", lang)); return; }
-        const params = new URLSearchParams(searchParams.toString());
-        params.set("pmtab", tabToSlug(next));
-        router.push(`${pathname}?${params.toString()}`, { scroll: false });
-    };
-
-    const displayTab: TabId = "post";
-
-
     // ── ตารางเทียบก่อน/หลัง PM (โหมดตรวจอนุมัติ) ──
-    // ใช้ state ที่โหลดเอกสารมาแล้ว: rowsPre = คำตอบก่อน PM, rows = หลัง PM
+    // ใช้ state ที่โหลดเอกสารมาแล้ว: rows = คำตอบหลัง PM
     // คีย์ที่ไม่ได้อยู่ใน QUESTIONS (ข้อย่อยแบบ r5_1) เอามาต่อท้ายด้วย จะได้ไม่ตกหล่น
     // station รวมรูปของทั้งข้อไว้ที่คีย์เดียว (toGroupKey ส่งทั้ง q{n} และ r{n}_{i}
     // กลับมาเป็น q.key) แยกรายข้อย่อยไม่ได้ ปล่อยให้ตกไปรวมที่แถวรูปของข้อ
@@ -1963,7 +1580,7 @@ export default function StationPMReport() {
         const labelOfItem = (it: any) =>
             it?.label !== undefined ? it.label : it?.labelKey ? (t as any)(it.labelKey, lang) : "";
         (QUESTIONS as any[]).forEach((q: any) => {
-            put(q?.key, getQuestionLabel(q, "post", lang));
+            put(q?.key, getQuestionLabel(q, lang));
             (q?.items ?? []).forEach((it: any) => put(it?.key, getDisplayedItemLabel(textOf(labelOfItem(it)), q.no)));
         });
         ([] as any[]).forEach((arr: any) =>
@@ -1971,15 +1588,13 @@ export default function StationPMReport() {
         const labelOf = (key: string) => labels.get(key) ?? key;
         // เรียงตามลำดับข้อในฟอร์มกรอก ข้อย่อยที่ช่างเพิ่มเอง (r5_1, r5_2)
         // ต้องต่อท้ายข้อแม่ของมัน ไม่ใช่ไปกองรวมกันท้ายตาราง
-        const answered = Array.from(new Set([...Object.keys(rowsPre ?? {}), ...Object.keys(rows ?? {})]));
+        const answered = Object.keys(rows ?? {});
         const subNo = (k: string) => Number(k.split("_")[1] ?? 0) || 0;
         const mk = (k: string, section: string, label: string, qNo?: number) => ({
             key: k,
             section,
             qNo,
             label,
-            prePf: (rowsPre as any)?.[k]?.pf,
-            preRemark: (rowsPre as any)?.[k]?.remark,
             postPf: (rows as any)?.[k]?.pf,
             postRemark: (rows as any)?.[k]?.remark,
         });
@@ -2003,7 +1618,7 @@ export default function StationPMReport() {
             out.push(mk(k, "", labelOf(k), Number(k.replace(/^r/, "").split("_")[0]) || undefined));
         });
         return out;
-    }, [rowsPre, rows, lang]);
+    }, [rows, lang]);
 
 
     // กล่องหมายเหตุ + สรุปผลการตรวจสอบ — ประกาศครั้งเดียว วางได้สองที่
@@ -2011,26 +1626,11 @@ export default function StationPMReport() {
     const summaryBlock = (
                         <div id={`${ID_PREFIX}-summary-section`} className="tw-mt-6 sm:tw-mt-8 tw-space-y-3">
                             <Typography variant="h6" className="tw-mb-1 tw-text-sm sm:tw-text-base">{t("comment", lang)}</Typography>
-                            {displayTab === "post" && commentPre && (
-                                <div className="tw-mb-3 tw-p-3 tw-bg-amber-50 tw-rounded-lg tw-border tw-border-amber-300">
-                                    <div className="tw-flex tw-items-center tw-gap-2 tw-mb-1">
-                                        <svg className="tw-w-4 tw-h-4 tw-text-amber-600" fill="currentColor" viewBox="0 0 20 20">
-                                            <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                                        </svg>
-                                        <Typography variant="small" className="tw-font-semibold tw-text-amber-700">
-                                            {lang === "th" ? "Comment (ก่อน PM)" : "Comment (Pre-PM)"}
-                                        </Typography>
-                                    </div>
-                                    <Typography variant="small" className="tw-text-amber-900 tw-ml-6">{commentPre}</Typography>
-                                </div>
-                            )}
-                            <Textarea label={t("comment", lang)} value={summary} onChange={(e) => setSummary(e.target.value)} rows={3} required={isPostMode} autoComplete="off" containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full !tw-text-sm resize-none" />
-                            {displayTab === "post" && (
-                                <div className="tw-pt-3 sm:tw-pt-4 tw-border-t tw-border-gray-200">
-                                    <PassFailRow label={t("summaryResult", lang)} value={summaryCheck} onChange={(v) => setSummaryCheck(v)} lang={lang}
-                                        labels={{ PASS: t("summaryPassLabel", lang), FAIL: t("summaryFailLabel", lang), NA: t("summaryNALabel", lang) }} />
-                                </div>
-                            )}
+                            <Textarea label={t("comment", lang)} value={summary} onChange={(e) => setSummary(e.target.value)} rows={3} required autoComplete="off" containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full !tw-text-sm resize-none" />
+                            <div className="tw-pt-3 sm:tw-pt-4 tw-border-t tw-border-gray-200">
+                                <PassFailRow label={t("summaryResult", lang)} value={summaryCheck} onChange={(v) => setSummaryCheck(v)} lang={lang}
+                                    labels={{ PASS: t("summaryPassLabel", lang), FAIL: t("summaryFailLabel", lang), NA: t("summaryNALabel", lang) }} />
+                            </div>
                         </div>
     );
 
@@ -2041,26 +1641,9 @@ export default function StationPMReport() {
                     <ArrowLeftIcon className="tw-w-4 tw-h-4 tw-stroke-gray-900 tw-stroke-2" />
                 </Button>
                 {!reviewMode && (
-                    <Tabs value={displayTab} key={displayTab}>
+                    <Tabs value="post">
                         <TabsHeader className="tw-bg-gray-50 tw-rounded-lg">
-                            {TABS.map((tb) => {
-                                const isPreDisabled = isPostMode && tb.id === "pre";
-                                const isLockedAfter = tb.id === "post" && !canGoAfter;
-                                return (
-                                    <Tab
-                                        key={tb.id}
-                                        value={tb.id}
-                                        disabled={isPreDisabled || isLockedAfter}
-                                        onClick={() => {
-                                            if (isPreDisabled) return;
-                                            if (isLockedAfter) { alert(t("alertFillPreFirst", lang)); return; }
-                                            go(tb.id);
-                                        }}
-                                        className={`tw-px-4 tw-py-2 tw-font-medium ${isPreDisabled || isLockedAfter ? "tw-opacity-50 tw-cursor-not-allowed" : ""}`}>
-                                        {tb.label}
-                                    </Tab>
-                                );
-                            })}
+                            <Tab value="post" className="tw-px-4 tw-py-2 tw-font-medium">Post‑PM</Tab>
                         </TabsHeader>
                     </Tabs>
                 )}
@@ -2104,7 +1687,7 @@ export default function StationPMReport() {
                     <div className="tw-mt-6 sm:tw-mt-8 tw-space-y-4 sm:tw-space-y-6">
                         {/* โหมดตรวจ: ตัดเฉพาะรายการข้อที่ช่างกรอก ดูจากตารางเทียบก่อน/หลังด้านล่างแทน
                             ส่วนหัวเอกสารกับข้อมูลสถานีคงไว้ ผู้อนุมัติต้องรู้ว่ากำลังดูใบไหน */}
-                        {!reviewMode && (QUESTIONS.filter((q) => !(displayTab === "pre" && q.no === 11)).map((q) => renderQuestionBlock(q, displayTab)))}
+                        {!reviewMode && QUESTIONS.map((q) => renderQuestionBlock(q))}
                     </div>
 
                     {/* โหมดตรวจ: ย้ายไปไว้ล่างสุด ให้อ่านหลังดูตารางเทียบเสร็จ */}
@@ -2113,7 +1696,7 @@ export default function StationPMReport() {
                     <div className="tw-mt-6 sm:tw-mt-8 tw-flex tw-flex-col tw-gap-3">
                     {/* เวลาทำงานจริงของช่าง — ต้องกรอกก่อนส่งปิดใบงาน (ส่งเข้า Maximo IN09) */}
                     {/* Temporarily disabled: Maximo labor input is hidden on all pages. */}
-                    {false && isPostMode && (
+                    {false && (
                         <div className="tw-mt-6 tw-pt-4 tw-border-t tw-border-gray-200">
                             <div className="tw-mb-2">
                                 <Typography variant="h6" className="tw-text-sm sm:tw-text-base">
@@ -2144,51 +1727,47 @@ export default function StationPMReport() {
 
                     {/* ช่างที่จะลงเวลาเข้า Maximo — laborcode คนละชุดกับ username ใน iMPS
                         จึงต้องให้เลือกเอง ไม่งั้น IN09 จะ unmapped ทั้งใบ (อยู่ล่างสุดของฟอร์ม) */}
-                    {isPostMode && (
-                        <div className="tw-mt-6 tw-pt-4 tw-border-t tw-border-gray-200">
-                            <div className="tw-mb-2">
-                                <Typography variant="h6" className="tw-text-sm sm:tw-text-base">{t("maximoLabor", lang)}</Typography>
-                                <Typography variant="small" className="tw-text-xs tw-font-normal tw-text-blue-gray-400">
-                                    {t("maximoLaborHint", lang)}
-                                </Typography>
-                            </div>
-                            {laborList.length === 0 ? (
-                                <p className="tw-text-xs tw-text-orange-600">
-                                                {reviewMode ? t("maximoLaborNone", lang) : t("maximoLaborEmpty", lang)}
-                                            </p>
-                            ) : (
-                                <div className="tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-divide-y tw-divide-blue-gray-50 tw-max-h-56 tw-overflow-y-auto">
-                                    {laborList.map((o) => (
-                                        <label key={o.laborcode} className="tw-flex tw-items-center tw-gap-2.5 tw-px-3 tw-py-2.5 tw-cursor-pointer hover:tw-bg-blue-gray-50/60 tw-transition-colors">
-                                            {!reviewMode && (<input type="checkbox" checked={maximoLabor.includes(o.laborcode)}
-                                                onChange={() => toggleMaximoLabor(o.laborcode)}
-                                                className="tw-h-4 tw-w-4 tw-shrink-0 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500 tw-cursor-pointer" />)}
-                                            <span className="tw-min-w-0 tw-truncate tw-text-sm tw-text-blue-gray-800">{o.name}</span>
-                                            <span className="tw-ml-auto tw-font-mono tw-text-xs tw-text-blue-gray-400">{o.laborcode}</span>
-                                        </label>
-                                    ))}
-                                </div>
-                            )}
-                            {(contractorPicked || (reviewMode && !!maximoContractor.trim())) && (
-                                <div className="tw-mt-3 tw-space-y-1.5">
-                                    <label className="tw-block tw-text-xs tw-font-semibold tw-text-blue-gray-700">
-                                        {t("contractorName", lang)} <span className="tw-text-red-500">*</span>
-                                    </label>
-                                    <input type="text" value={maximoContractor} onChange={(e) => setMaximoContractor(e.target.value)}
-                                        placeholder={t("contractorPlaceholder", lang)}
-                                        className={`tw-w-full tw-rounded-lg tw-border tw-px-3 tw-py-2.5 tw-text-sm tw-text-blue-gray-800 focus:tw-outline-none ${contractorMissing ? "tw-border-red-400 focus:tw-border-red-500" : "tw-border-blue-gray-200 focus:tw-border-blue-500"}`} />
-                                    {contractorMissing && <p className="tw-text-xs tw-text-red-600">{t("contractorRequired", lang)}</p>}
-                                </div>
-                            )}
+                    <div className="tw-mt-6 tw-pt-4 tw-border-t tw-border-gray-200">
+                        <div className="tw-mb-2">
+                            <Typography variant="h6" className="tw-text-sm sm:tw-text-base">{t("maximoLabor", lang)}</Typography>
+                            <Typography variant="small" className="tw-text-xs tw-font-normal tw-text-blue-gray-400">
+                                {t("maximoLaborHint", lang)}
+                            </Typography>
                         </div>
-                    )}
+                        {laborList.length === 0 ? (
+                            <p className="tw-text-xs tw-text-orange-600">
+                                            {reviewMode ? t("maximoLaborNone", lang) : t("maximoLaborEmpty", lang)}
+                                        </p>
+                        ) : (
+                            <div className="tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-divide-y tw-divide-blue-gray-50 tw-max-h-56 tw-overflow-y-auto">
+                                {laborList.map((o) => (
+                                    <label key={o.laborcode} className="tw-flex tw-items-center tw-gap-2.5 tw-px-3 tw-py-2.5 tw-cursor-pointer hover:tw-bg-blue-gray-50/60 tw-transition-colors">
+                                        {!reviewMode && (<input type="checkbox" checked={maximoLabor.includes(o.laborcode)}
+                                            onChange={() => toggleMaximoLabor(o.laborcode)}
+                                            className="tw-h-4 tw-w-4 tw-shrink-0 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500 tw-cursor-pointer" />)}
+                                        <span className="tw-min-w-0 tw-truncate tw-text-sm tw-text-blue-gray-800">{o.name}</span>
+                                        <span className="tw-ml-auto tw-font-mono tw-text-xs tw-text-blue-gray-400">{o.laborcode}</span>
+                                    </label>
+                                ))}
+                            </div>
+                        )}
+                        {(contractorPicked || (reviewMode && !!maximoContractor.trim())) && (
+                            <div className="tw-mt-3 tw-space-y-1.5">
+                                <label className="tw-block tw-text-xs tw-font-semibold tw-text-blue-gray-700">
+                                    {t("contractorName", lang)} <span className="tw-text-red-500">*</span>
+                                </label>
+                                <input type="text" value={maximoContractor} onChange={(e) => setMaximoContractor(e.target.value)}
+                                    placeholder={t("contractorPlaceholder", lang)}
+                                    className={`tw-w-full tw-rounded-lg tw-border tw-px-3 tw-py-2.5 tw-text-sm tw-text-blue-gray-800 focus:tw-outline-none ${contractorMissing ? "tw-border-red-400 focus:tw-border-red-500" : "tw-border-blue-gray-200 focus:tw-border-blue-500"}`} />
+                                {contractorMissing && <p className="tw-text-xs tw-text-red-600">{t("contractorRequired", lang)}</p>}
+                            </div>
+                        )}
+                    </div>
 
                         {/* โหมดตรวจไม่ต้องมี ฟอร์มฝั่งช่างดักความครบถ้วนไว้ตั้งแต่ตอนกรอกแล้ว */}
                         {!reviewMode && (
                             <PMValidationCard
                                 lang={lang}
-                                displayTab={displayTab}
-                                isPostMode={isPostMode}
                                 allPhotosAttached={allPhotosAttached}
                                 missingPhotoItems={missingPhotoItems}
                                 allPFAnswered={allPFAnswered}
@@ -2200,19 +1779,11 @@ export default function StationPMReport() {
                         {/* ดูอย่างเดียว: ตรวจได้ แต่ไม่มีปุ่มบันทึกให้กด */}
                         {!reviewMode && (
                             <div className="tw-flex tw-flex-col sm:tw-flex-row tw-justify-end tw-gap-2 sm:tw-gap-3">
-                                {displayTab === "pre" ? (
-                                    <Button type="button" onClick={onPreSave} disabled={!canGoAfter || submitting}
-                                        className="tw-text-sm tw-py-2.5 tw-bg-gray-800 hover:tw-bg-gray-900"
-                                        title={!allPhotosAttachedPre ? t("alertPhotoNotComplete", lang) : undefined}>
-                                        {submitting ? t("saving", lang) : t("save", lang)}
-                                    </Button>
-                                ) : (
                                     <Button type="button" onClick={onFinalSave} disabled={!canFinalSave || submitting}
                                         className="tw-text-sm tw-py-2.5 tw-bg-gray-800 hover:tw-bg-gray-900"
                                         title={!canFinalSave ? t("alertCompleteAll", lang) : undefined}>
                                         {submitting ? t("saving", lang) : t("save", lang)}
                                     </Button>
-                                )}
                             </div>
                         )}
                     </div>
@@ -2224,8 +1795,7 @@ export default function StationPMReport() {
                 <PmCompareTable
                     rows={compareRows}
                     lang={lang}
-                    prePhotos={cmpPhotos.pre}
-                    postPhotos={cmpPhotos.post}
+                    postPhotos={cmpPhotos}
                     apiBase={API_BASE}
                     photoKeysOf={photoKeysOf}
                     summaryPost={summary}

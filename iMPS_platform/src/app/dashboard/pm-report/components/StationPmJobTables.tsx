@@ -377,9 +377,8 @@ export default function StationPmJobTables() {
       sn: s.section === CHARGER_SECTION ? (s.sn || null) : null,
       edit_id: s.report_id || null,
       // ใบที่ปิดแล้ว/รออนุมัติ เปิดเป็นโหมดตรวจอ่านอย่างเดียว เหมือนที่ตารางเดิมทำ
-      ...(closed || waiting
-        ? { review: "1", action: "post", pmtab: "post" }
-        : { review: null, action: null, pmtab: null }),
+      review: closed || waiting ? "1" : null,
+      action: null, pmtab: null,
     });
   };
 

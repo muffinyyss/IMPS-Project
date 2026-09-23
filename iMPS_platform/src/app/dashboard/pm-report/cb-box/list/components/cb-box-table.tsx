@@ -283,7 +283,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
 
   const setView = (view: "list" | "form", { replace = false } = {}) => {
     const params = new URLSearchParams(searchParams.toString());
-    if (view === "form") { params.set("view", "form"); params.set("pmtab", "pre"); }
+    if (view === "form") { params.set("view", "form"); params.delete("pmtab"); }
     else { params.delete("view"); params.delete("edit_id"); params.delete("pmtab"); }
     router[replace ? "replace" : "push"](`${pathname}?${params.toString()}`, { scroll: false });
   };
@@ -406,13 +406,13 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
   // หน้าข้อมูลใบงานก่อนเริ่มกรอก (?wo_info=1)
   const woInfoWonum = searchParams.get("wo_info") === "1" ? (searchParams.get("wonum") ?? "") : "";
 
-  // กด "เริ่ม PM" → เปิดฟอร์ม Pre-PM (started=1 กันไม่ให้ถามซ้ำในฟอร์ม)
+  // กด "เริ่ม PM" → เปิดฟอร์มกรอก (started=1 กันไม่ให้ถามซ้ำในฟอร์ม)
   const startPmFromInfo = (snFromWo?: string) => {
     const params = new URLSearchParams(searchParams.toString());
     params.delete("wo_info");
 
     params.set("started", "1");
-    params.set("pmtab", "pre");
+    params.delete("pmtab");
     router.push(`${pathname}?${params.toString()}`, { scroll: false });
   };
 
@@ -451,13 +451,11 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     if (!row.id) return;
     const params = new URLSearchParams(searchParams.toString());
     params.set("view", "form"); params.set("edit_id", row.id);
-    // ฟอร์มดู action=post เป็นตัวตัดสินโหมด ไม่ใช่ pmtab — ขาดตัวนี้จะเปิดเป็น Pre-PM
-    // แล้วไม่เห็นสิ่งที่ช่างกรอกฝั่ง Post เลย
     // โหมดอนุมัติ (มีปุ่ม Reject/Approve) เฉพาะผู้มีสิทธิ์ + ใบที่ยังรออนุมัติอยู่
     // ใบที่ปิดไปแล้วไม่มีอะไรให้ตัดสินใจ เปิดดูอย่างเดียวเหมือนกันทุก role
     const canDecide = canApprove && toPmFlow(row) === "wait_approve";
     params.set(canDecide ? "approve" : "review", "1");
-    params.set("action", "post"); params.set("pmtab", "post");
+    params.delete("action"); params.delete("pmtab");
     params.delete("planning"); params.delete("wo_info"); params.delete("wonum");
     router.push(`${pathname}?${params.toString()}`, { scroll: false });
   };
@@ -632,6 +630,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
         if (!hasUrl) return <span className="tw-text-blue-gray-300" title={t("noFile", lang)}>—</span>;
         const { previewHref } = buildHtmlLinks(url);
         const rowSide = info.row.original.side;
+        // ใบเก่าที่ค้างอยู่ด่าน Pre (ก่อนตัด Pre-PM ออก) — เปิดฟอร์มเดิมกรอกต่อให้จบ
         if (rowSide === "pre") {
           return (
             <div className="tw-flex tw-items-center tw-justify-center">
@@ -639,7 +638,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
                 className="tw-shrink-0 tw-text-[10px] sm:tw-text-xs lg:tw-text-sm tw-px-2 sm:tw-px-3 lg:tw-px-4 tw-py-1 sm:tw-py-1.5 tw-min-h-0 tw-h-auto tw-font-medium tw-rounded-md"
                 onClick={() => {
                   const params = new URLSearchParams(searchParams.toString());
-                  params.set("view", "form"); params.set("action", "post"); params.set("edit_id", info.row.original.id || ""); params.set("pmtab", "post");
+                  params.set("view", "form"); params.set("edit_id", info.row.original.id || ""); params.delete("action"); params.delete("pmtab");
                   router.push(`${pathname}?${params.toString()}`, { scroll: false });
                 }}>{t("postPm", lang)}</Button>
             </div>
@@ -704,8 +703,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
 
   function sameUser(a?: string, b?: string) { return String(a ?? "").trim().toLowerCase() === String(b ?? "").trim().toLowerCase(); }
 
-  // ใบที่ยังเป็น pre = งานที่ยังทำไม่เสร็จของผู้ตรวจคนนั้น คนอื่นไม่ควรเห็นและไม่ควรกด Post-PM ต่อ
-  // (หน้า ccb/mdb/station/charger ทำแบบนี้อยู่แล้ว cb-box ตกไป)
+  // ใบเก่าที่ยังเป็น pre (ค้างจากก่อนตัด Pre-PM) = งานที่ยังทำไม่เสร็จของผู้ตรวจคนนั้น คนอื่นไม่ควรเห็นและไม่ควรกดกรอกต่อ
   const visibleData = useMemo(() => {
     const username = me?.username;
     return data.filter((row) => {

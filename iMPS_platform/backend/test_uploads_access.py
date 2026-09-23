@@ -107,15 +107,15 @@ def main_test() -> int:
         print("--- endpoint อัปโหลด: ต้องกันข้ามสถานี ---")
         files = {"files": ("x.jpg", b"\xff\xd8\xff\xe0test", "image/jpeg")}
         r = client.post(
-            "/pmreport/000000000000000000000000/pre/photos",
-            data={"sn": SN, "group": "g1", "side": "pre"},
+            "/pmreport/000000000000000000000000/post/photos",
+            data={"sn": SN, "group": "g1"},
             files=files, cookies=cookies("technician", [OTHER]),
         )
         check("technician ไม่ถูกปฏิเสธเพราะเป็นตู้ข้ามสถานี", r.status_code != 403, True)
 
         r = client.post(
-            "/stationpmreport/000000000000000000000000/pre/photos",
-            data={"station_id": STATION, "group": "g1", "side": "pre"},
+            "/stationpmreport/000000000000000000000000/post/photos",
+            data={"station_id": STATION, "group": "r1"},
             files=files, cookies=cookies("technician", [OTHER]),
         )
         check("technician ไม่ถูกปฏิเสธเพราะเป็น station report ข้ามสถานี", r.status_code != 403, True)
