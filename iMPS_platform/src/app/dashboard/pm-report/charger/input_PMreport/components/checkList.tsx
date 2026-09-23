@@ -1856,7 +1856,23 @@ export default function ChargerPMForm() {
     const contractorPicked = laborOptions.some((o) => o.needs_name && maximoLabor.includes(o.laborcode));
     const contractorMissing = contractorPicked && !maximoContractor.trim();
 
-    const postKey = useMemo(() => `${draftKey(sn)}:${editId}:post`, [sn, editId]);
+    // ใบที่มี edit_id ใช้ key เดิม (ไม่ให้ draft เก่าหาย)
+    // ใบใหม่แยกตาม job_id กัน draft ของคนละงานบนตู้เดียวกันปนกัน
+    const postKey = useMemo(
+        () => editId
+            ? `${draftKey(sn)}:${editId}:post`
+            : `${draftKey(sn)}:${jobId ? `job-${jobId}` : "new"}:post`,
+        [sn, editId, jobId],
+    );
+    // key ของ draft ที่กู้คืนเสร็จแล้ว — autosave ทำได้เฉพาะเมื่อ === postKey
+    // ไม่งั้น state ว่างตอนเปิดหน้าจะเขียนทับ draft ที่เก็บไว้ก่อนได้กู้
+    const [restoredKey, setRestoredKey] = useState<string | null>(null);
+    const restoredKeyRef = useRef<string | null>(null);
+    useEffect(() => { restoredKeyRef.current = restoredKey; }, [restoredKey]);
+    const draftRestored = restoredKey === postKey;
+    // ตั้งเป็น true หลังบันทึกสำเร็จและล้าง draft แล้ว
+    const draftClearedRef = useRef(false);
+    useEffect(() => { draftClearedRef.current = false; }, [postKey]);
 
     useEffect(() => {
         postReportIdRef.current = null;
@@ -2162,15 +2178,56 @@ export default function ChargerPMForm() {
 
     // === LOAD DRAFT ===
     useEffect(() => {
-        if (!sn || !editId || !postApiLoaded) return;
-        const draft = loadDraftLocal(postKey);
-        if (!draft) return;
+        // โหมดตรวจ/อนุมัติ = อ่านอย่างเดียว แสดงตามตัวเอกสาร ไม่ใช้/ไม่เขียน draft
+        if (reviewMode) return;
+        if (!sn) return;
+        // ใบเดิม: รอข้อมูลจาก API ก่อน แล้วค่อยทับด้วย draft
+        if (editId && !postApiLoaded) return;
+        const key = postKey;
+        const markRestored = () => { restoredKeyRef.current = key; setRestoredKey(key); };
+
+        // ใบใหม่ที่สลับตู้ (เปลี่ยน query ไม่ remount) → ล้างค่าของตู้ก่อนหน้า
+        // ไม่งั้นค่าที่ค้างจะถูก autosave ไปเป็น draft ของตู้ใหม่
+        if (!editId && restoredKeyRef.current && restoredKeyRef.current !== key) {
+            Object.values(photosRef.current).flat().forEach(p => {
+                if (p.preview && p.preview.startsWith("blob:")) URL.revokeObjectURL(p.preview);
+            });
+            setPhotos({});
+            setRows(() => {
+                const initial: Record<string, { pf: PF; remark: string }> = {};
+                QUESTIONS.forEach((q) => {
+                    initial[q.key] = { pf: "", remark: "" };
+                    q.items?.forEach((item) => { initial[item.key] = { pf: "", remark: "" }; });
+                });
+                getFixedItemsQ8("th").forEach((item) => { initial[item.key] = { pf: "", remark: "" }; });
+                getFixedItemsQ11("th").forEach((item) => { initial[item.key] = { pf: "", remark: "" }; });
+                getFixedItemsQ18("th").forEach((item) => { initial[item.key] = { pf: "", remark: "" }; });
+                return initial;
+            });
+            setCp({});
+            m16.setState(initMeasureState(VOLTAGE1_FIELDS, "V"));
+            setSummary("");
+            setSummaryCheck("");
+            setWorkStart("");
+            setWorkFinish("");
+            setDustFilterChanged({});
+            setMaximoLabor([]);
+            setMaximoContractor("");
+            initQ5Items(1);
+            initQ7Items(1);
+            postReportIdRef.current = null;
+        }
+
+        const draft = loadDraftLocal<any>(key);
+        if (!draft) { markRestored(); return; }
 
         // โหลดข้อมูล rows (merge กับ data จาก API)
         if (draft.rows) {
-            // จำนวนข้อ 5/7 ช่างเพิ่ม/ลบเองได้ → นับจาก draft แล้วตัดข้อย่อยที่ถูกลบไปแล้ว (ที่อาจค้างจาก API) ทิ้ง
-            const q5Count = Object.keys(draft.rows).filter(k => /^r5_\d+$/.test(k)).length;
-            const q7Count = Object.keys(draft.rows).filter(k => /^r7_\d+$/.test(k)).length;
+            // จำนวนข้อ 5/7 ช่างเพิ่ม/ลบเองได้ → ใช้จำนวนที่บันทึกไว้ (ถ้ามี) ไม่งั้นนับจาก draft
+            // แล้วตัดข้อย่อยที่ถูกลบไปแล้ว (ที่อาจค้างจาก API) ทิ้ง
+            const countKeys = (re: RegExp) => Object.keys(draft.rows).filter(k => re.test(k)).length;
+            const q5Count = typeof draft.q5Count === "number" && draft.q5Count > 0 ? draft.q5Count : countKeys(/^r5_\d+$/);
+            const q7Count = typeof draft.q7Count === "number" && draft.q7Count > 0 ? draft.q7Count : countKeys(/^r7_\d+$/);
             if (q5Count > 0) initQ5Items(q5Count);
             if (q7Count > 0) initQ7Items(q7Count);
             setRows(prev => {
@@ -2212,8 +2269,13 @@ export default function ChargerPMForm() {
             setDustFilterChanged(draft.dustFilterChanged);
         }
 
+        // ช่างที่ลงเวลากับ Maximo
+        if (Array.isArray(draft.maximoLabor)) setMaximoLabor(draft.maximoLabor);
+        if (typeof draft.maximoContractor === "string") setMaximoContractor(draft.maximoContractor);
+
         // โหลด photos จาก IndexedDB ด้วย photoRefs
-        if (draft.photoRefs) {
+        // ต้องรอรูปโหลดเสร็จก่อนค่อยเปิด autosave ไม่งั้น photoRefs ว่างจะทับของเดิม
+        if (draft.photoRefs && Object.keys(draft.photoRefs).length > 0) {
             let canceled = false;
             const cleanup = () => { canceled = true; };
             (async () => {
@@ -2249,11 +2311,18 @@ export default function ChargerPMForm() {
                         loadedPhotos[photoKey] = items;
                     }
                 }
-                if (!canceled) setPhotos(prev => ({ ...prev, ...loadedPhotos }));
-            })();
+                if (!canceled) {
+                    setPhotos(prev => ({ ...prev, ...loadedPhotos }));
+                    markRestored();
+                }
+            })().catch((err) => {
+                console.error("restore draft photos failed:", err);
+                if (!canceled) markRestored();
+            });
             return cleanup;
         }
-    }, [sn, postKey, editId, postApiLoaded]);
+        markRestored();
+    }, [sn, postKey, editId, postApiLoaded, reviewMode]);
 
     // Validations
     const validPhotoKeysPost = useMemo(() => {
@@ -2493,10 +2562,16 @@ export default function ChargerPMForm() {
         return out;
     }, [photos]);
 
+    // autosave draft ทั้งใบใหม่และใบเดิม — ห้ามเซฟก่อนกู้ draft เสร็จ (draftRestored)
+    // merge กับ draft เดิมเพื่อไม่ให้ pendingReportId ที่ได้ตอนบันทึกหาย
     useDebouncedEffect(() => {
-        if (!sn || !editId) return;
-        saveDraftLocal(postKey, { rows, cp, m16: m16.state, summary, summaryCheck, workStart, workFinish, dustFilterChanged, photoRefs });
-    }, [postKey, sn, rows, cp, m16.state, summary, summaryCheck, workStart, workFinish, dustFilterChanged, photoRefs, editId]);
+        if (!sn || reviewMode || !draftRestored || draftClearedRef.current) return;
+        saveDraftLocal(postKey, {
+            ...loadDraftLocal(postKey),
+            rows, cp, m16: m16.state, summary, summaryCheck, workStart, workFinish, dustFilterChanged, photoRefs,
+            maximoLabor, maximoContractor, q5Count: q5Items.length, q7Count: q7Items.length,
+        } as any);
+    }, [postKey, sn, reviewMode, draftRestored, rows, cp, m16.state, summary, summaryCheck, workStart, workFinish, dustFilterChanged, photoRefs, maximoLabor, maximoContractor, q5Items.length, q7Items.length]);
 
 
 
@@ -2699,6 +2774,7 @@ export default function ChargerPMForm() {
             postReportIdRef.current = null; // ⚡ สำเร็จแล้ว → reset
             const allPhotos = Object.values(photosRef.current).flat();
             Promise.all(allPhotos.map(p => delPhoto(postKey, p.id))).catch(() => { });
+            draftClearedRef.current = true; // กัน autosave ที่ค้างอยู่เขียน draft กลับมาหลังล้าง
             clearDraftLocal(postKey);
             if (jobId) {
                 // ส่วนที่ 5 ของใบ PM สถานี — กลับไปหน้ารวมของใบนั้น ช่างมักกรอกตู้ถัดไปต่อ

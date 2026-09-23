@@ -10,7 +10,7 @@ import Image from "next/image";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 import { Tabs, TabsHeader, Tab } from "@material-tailwind/react";
 import { putPhoto, getPhotoByDbKey, delPhoto, type PhotoRef } from "../lib/draftPhotos";
-import { isFileReadable, isImageDecodable, resolveUsableFile, reportPhotoStorageFailure } from "@/utils/upload-safety";
+import { isFileReadable, isImageDecodable, resolveUsableFile, reportMissingDraftPhoto, reportPhotoStorageFailure } from "@/utils/upload-safety";
 import { ensureViewableImage } from "@/utils/heic";
 import { collectPending, unrecoverablePhotos, expectedCountByGroup, findShortfall, shortfallMessage, pendingMessage, unrecoverableMessage } from "@/utils/pm-photo-sync";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
@@ -1055,7 +1055,15 @@ export default function CBBOXPMForm() {
 
     const m5 = useMeasure(VOLTAGE_FIELDS);
 
-    const postKey = useMemo(() => `${draftKey(stationId)}:${editId}:post`, [stationId, editId]);
+    // ใบใหม่ (เปิดจาก job_id ยังไม่มี edit_id) ก็ต้องมี key ของตัวเอง ไม่งั้นรีโหลดแล้วข้อมูลหาย
+    const postKey = useMemo(
+        () => `${draftKey(stationId)}:${editId ? editId : (jobId ? `job-${jobId}` : "new")}:post`,
+        [stationId, editId, jobId],
+    );
+    // key ที่กู้ draft เสร็จแล้ว — autosave ต้องรอให้ตรงกับ postKey ก่อน
+    // ไม่งั้น state ว่างตอนเปิดหน้าจะเขียนทับ draft ก่อนได้กู้
+    const [restoredKey, setRestoredKey] = useState<string | null>(null);
+    const restoringKeyRef = useRef<string | null>(null);
 
     // Load station id
     useEffect(() => {
@@ -1182,10 +1190,73 @@ export default function CBBOXPMForm() {
         return out;
     }, [photos]);
 
+    // Restore draft — ใบเดิมรอข้อมูลจาก API ก่อนแล้วค่อยทับด้วย draft, ใบใหม่กู้ได้ทันทีที่รู้ stationId
+    useEffect(() => {
+        if (reviewMode || !stationId) return;
+        if (editId && !postApiLoaded) return;
+        if (restoredKey === postKey || restoringKeyRef.current === postKey) return;
+        restoringKeyRef.current = postKey;
+        const key = postKey;
+        const draft = loadDraftLocal<{
+            rows?: typeof rows; m5?: MeasureState; summary?: string; summaryCheck?: PF;
+            dropdownQ1?: string; dropdownQ2?: string; workStart?: string; workFinish?: string;
+            maximoLabor?: string[]; maximoContractor?: string;
+            photoRefs?: Record<string, ((PhotoRef & { uploaded?: boolean }) | { isNA: true })[]>;
+        }>(key);
+        if (!draft) { setRestoredKey(key); return; }
+        if (draft.rows) setRows(prev => ({ ...prev, ...draft.rows }));
+        if (draft.m5) m5.setState(prev => ({ ...prev, ...draft.m5 }));
+        if (typeof draft.summary === "string" && draft.summary) setSummary(draft.summary);
+        if (draft.summaryCheck) setSummaryCheck(draft.summaryCheck);
+        if (draft.dropdownQ1) setDropdownQ1(draft.dropdownQ1);
+        if (draft.dropdownQ2) setDropdownQ2(draft.dropdownQ2);
+        if (draft.workStart) setWorkStart(draft.workStart);
+        if (draft.workFinish) setWorkFinish(draft.workFinish);
+        if (Array.isArray(draft.maximoLabor)) setMaximoLabor(draft.maximoLabor);
+        if (typeof draft.maximoContractor === "string") setMaximoContractor(draft.maximoContractor);
+        (async () => {
+            try {
+                if (!draft.photoRefs) return;
+                const next: Record<string, PhotoItem[]> = {};
+                let missing = 0;
+                for (const [photoKey, refs] of Object.entries(draft.photoRefs)) {
+                    const items: PhotoItem[] = [];
+                    for (const ref of refs || []) {
+                        if ("isNA" in ref && ref.isNA) { items.push({ id: `${photoKey}-NA-restored`, isNA: true }); continue; }
+                        const r = ref as PhotoRef & { uploaded?: boolean };
+                        if (!r.id || !r.dbKey) continue;
+                        const file = await getPhotoByDbKey(r.dbKey);
+                        if (!file || file.size === 0) {
+                            console.warn("Photo missing/empty in IndexedDB:", r.dbKey);
+                            missing++;
+                            continue;
+                        }
+                        items.push({ id: r.id, file, preview: URL.createObjectURL(file), remark: (r as any).remark ?? "", ref: r, uploaded: r.uploaded === true });
+                    }
+                    if (items.length > 0) next[photoKey] = items;
+                }
+                if (restoringKeyRef.current !== key) {
+                    Object.values(next).flat().forEach(p => { if (p.preview) URL.revokeObjectURL(p.preview); });
+                    return;
+                }
+                for (let i = 0; i < missing; i++) reportMissingDraftPhoto(lang);
+                if (Object.keys(next).length > 0) setPhotos(prev => ({ ...prev, ...(next as any) }));
+            } catch (err) {
+                console.error("restore draft photos failed:", err);
+            } finally {
+                if (restoringKeyRef.current === key) setRestoredKey(key);
+            }
+        })();
+    }, [stationId, editId, postKey, postApiLoaded, reviewMode, restoredKey]);
+
     useDebouncedEffect(() => {
-        if (!stationId || !editId) return;
-        saveDraftLocal(postKey, { rows, m5: m5.state, summary, summaryCheck, photoRefs });
-    }, [postKey, stationId, rows, m5.state, summary, summaryCheck, photoRefs, editId]);
+        if (reviewMode || !stationId || restoredKey !== postKey) return;
+        saveDraftLocal(postKey, {
+            ...loadDraftLocal<any>(postKey),
+            rows, m5: m5.state, summary, summaryCheck, dropdownQ1, dropdownQ2,
+            workStart, workFinish, maximoLabor, maximoContractor, photoRefs,
+        });
+    }, [postKey, stationId, restoredKey, reviewMode, rows, m5.state, summary, summaryCheck, dropdownQ1, dropdownQ2, workStart, workFinish, maximoLabor, maximoContractor, photoRefs]);
 
 
     // Render measure grid
