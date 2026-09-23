@@ -1392,7 +1392,20 @@ export default function CCBPMReport() {
     const [summary, setSummary] = useState<string>("");
     const [stationId, setStationId] = useState<string | null>(null);
 
-    const postKey = useMemo(() => `${draftKey(stationId)}:${editId}:post`, [stationId, editId]);
+    // ใบใหม่ (เปิดจาก job_id ไม่มี edit_id) ก็ต้องมี draft ของตัวเอง ไม่งั้นรีโหลดแล้วข้อมูล+รูปหายหมด
+    const postKey = useMemo(
+        () => `${draftKey(stationId)}:${editId ? editId : (jobId ? `job-${jobId}` : "new")}:post`,
+        [stationId, editId, jobId],
+    );
+    // draft ของ key ไหนถูกกู้คืนเสร็จแล้ว — autosave ต้องรอให้กู้เสร็จก่อน ไม่งั้น state ว่างจะเขียนทับ draft
+    const [restoredKey, setRestoredKey] = useState<string | null>(null);
+    const draftRestored = restoredKey === postKey;
+    // กดบันทึกสำเร็จแล้ว ห้าม autosave ที่ค้างอยู่เขียน draft กลับมา
+    const draftClearedRef = useRef(false);
+    const postKeyRef = useRef(postKey);
+    postKeyRef.current = postKey;
+    // กันกู้ draft ซ้อนกันระหว่างที่รูปยังโหลดจาก IndexedDB ไม่เสร็จ
+    const restoringKeyRef = useRef<string | null>(null);
 
     useEffect(() => { void prefetchLocation(); }, []);
     useEffect(() => { if (typeof window === "undefined") return; const params = new URLSearchParams(window.location.search); if (params.has("draft_id")) { params.delete("draft_id"); const url = `${window.location.pathname}?${params.toString()}`; window.history.replaceState({}, "", url); } }, []);
@@ -1626,7 +1639,14 @@ export default function CCBPMReport() {
     }, [editId, stationId]);
 
     useEffect(() => {
-        if (!stationId || !editId || !postApiLoaded) return;
+        if (!stationId) return;
+        // ใบเดิมต้องรอข้อมูลจาก API ก่อนแล้วค่อยทับด้วย draft / ใบใหม่กู้คืนได้ทันที
+        if (editId && !postApiLoaded) return;
+        // โหมดตรวจ/อนุมัติเป็นอ่านอย่างเดียว ใช้ข้อมูลจากเอกสาร ไม่กู้ draft และไม่ autosave
+        if (reviewMode) return;
+        if (restoredKey === postKey || restoringKeyRef.current === postKey) return;
+        const keyAtStart = postKey;
+        restoringKeyRef.current = keyAtStart;
         const postDraft = loadDraftLocal<{
             rows: typeof rows;
             mMain: typeof mMain.state;
@@ -1639,9 +1659,13 @@ export default function CCBPMReport() {
             subBreakerCount: number;
             summary: string;
             summaryCheck?: PF;
+            workStart?: string;
+            workFinish?: string;
+            maximoLabor?: string[];
+            maximoContractor?: string;
             photoRefs?: Record<number, (PhotoRef | { isNA: true })[]>;
         }>(postKey);
-        if (!postDraft) return;
+        if (!postDraft) { setRestoredKey(keyAtStart); return; }
         if (postDraft.rows) setRows(prev => ({ ...prev, ...postDraft.rows }));
         if (postDraft.mMain) mMain.setState(postDraft.mMain);
         if (postDraft.mSub1) mSub1.setState(postDraft.mSub1);
@@ -1653,9 +1677,14 @@ export default function CCBPMReport() {
         if (postDraft.subBreakerCount) setSubBreakerCount(postDraft.subBreakerCount);
         if (postDraft.summary) setSummary(postDraft.summary);
         if (postDraft.summaryCheck) setSummaryCheck(postDraft.summaryCheck);
+        if (typeof postDraft.workStart === "string") setWorkStart(postDraft.workStart);
+        if (typeof postDraft.workFinish === "string") setWorkFinish(postDraft.workFinish);
+        if (Array.isArray(postDraft.maximoLabor)) setMaximoLabor(postDraft.maximoLabor);
+        if (typeof postDraft.maximoContractor === "string") setMaximoContractor(postDraft.maximoContractor);
         (async () => {
-            if (!postDraft.photoRefs) return;
-            const next: Record<number, PhotoItem[]> = { ...initialPhotos };
+            try {
+                if (!postDraft.photoRefs) return;
+                const next: Record<number, PhotoItem[]> = { ...initialPhotos };
             for (const [noStr, refs] of Object.entries(postDraft.photoRefs)) {
                 const no = Number(noStr); const items: PhotoItem[] = [];
                 for (const ref of refs || []) {
@@ -1672,8 +1701,17 @@ export default function CCBPMReport() {
                 if (items.length > 0) next[no] = items;
             }
             if (Object.keys(next).some(k => (next[Number(k)]?.length ?? 0) > 0)) setPhotos(prev => ({ ...prev, ...next }));
+            } catch (err) {
+                console.error("restore draft photos failed:", err);
+            } finally {
+                // เปิด autosave หลังรูปกู้เสร็จ ไม่งั้น photoRefs ว่างจะเขียนทับ refs ใน draft
+                // (ถ้าระหว่างนั้น key เปลี่ยน ก็ไม่ปักธงให้ key เก่า)
+                if (restoringKeyRef.current === keyAtStart) restoringKeyRef.current = null;
+                if (postKeyRef.current === keyAtStart) setRestoredKey(keyAtStart);
+            }
         })();
-    }, [stationId, editId, postKey, postApiLoaded]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [stationId, editId, postKey, postApiLoaded, reviewMode]);
 
     useEffect(() => {
         const token = typeof window !== "undefined" ? localStorage.getItem("access_token") ?? "" : "";
@@ -1796,13 +1834,19 @@ export default function CCBPMReport() {
     }, [photos]);
 
     useDebouncedEffect(() => {
-        if (!stationId || !editId || !postApiLoaded) return;
+        // ใบใหม่/ใบเดิม autosave เหมือนกัน แต่ต้องรอกู้ draft เสร็จก่อน (draftRestored)
+        // ซึ่งใบเดิมจะเกิดหลัง postApiLoaded อยู่แล้ว / โหมดตรวจ-อนุมัติไม่บันทึก
+        if (!stationId || reviewMode || !draftRestored || draftClearedRef.current) return;
+        if (postKeyRef.current !== postKey) return;
         saveDraftLocal(postKey, {
+            // merge ของเดิม เพื่อไม่ให้ pendingReportId หาย
+            ...(loadDraftLocal<any>(postKey) ?? {}),
             rows, mMain: mMain.state, mSub1: mSub1.state, mSub2: mSub2.state, mSub3: mSub3.state,
             mSub4: mSub4.state, mSub5: mSub5.state, mSub6: mSub6.state,
             subBreakerCount, summary, summaryCheck, photoRefs,
+            workStart, workFinish, maximoLabor, maximoContractor,
         });
-    }, [postKey, stationId, rows, mMain.state, mSub1.state, mSub2.state, mSub3.state, mSub4.state, mSub5.state, mSub6.state, subBreakerCount, summary, summaryCheck, photoRefs, editId, postApiLoaded]);
+    }, [postKey, stationId, rows, mMain.state, mSub1.state, mSub2.state, mSub3.state, mSub4.state, mSub5.state, mSub6.state, subBreakerCount, summary, summaryCheck, photoRefs, workStart, workFinish, maximoLabor, maximoContractor, reviewMode, draftRestored]);
 
     // รับ PhotoItem แทน File[] เพื่อให้รู้ว่ารูปไหนอัปสำเร็จแล้ว — ตอนกดบันทึกซ้ำหลังอัปหลุด
     // จะได้ข้ามรูปเดิม ไม่อัปซ้ำจนรูปโผล่ซ้ำในรายงาน (และไม่ไปชนเพดาน 10 รูป/ข้อ)
@@ -2004,6 +2048,7 @@ export default function CCBPMReport() {
             if (!finalizeRes.ok) throw new Error(await finalizeRes.text());
 
             const allPhotos = Object.values(photosRef.current).flat();
+            draftClearedRef.current = true;
             await Promise.all(allPhotos.map(p => delPhoto(postKey, p.id)));
             await clearDraftLocal(postKey);
             router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&tab=ccb`);

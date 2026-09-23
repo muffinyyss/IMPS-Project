@@ -1006,7 +1006,15 @@ export default function StationPMReport() {
     const [stationId, setStationId] = useState<string | null>(null);
 
     // Draft key (Post-PM)
-    const postKey = useMemo(() => `${draftKey(stationId)}:${editId}:post`, [stationId, editId]);
+    // ใบใหม่ (ยังไม่มี edit_id) ก็ต้องมี draft — ผูกกับ job_id ถ้ามี ไม่งั้นใช้ "new"
+    const postKey = useMemo(
+        () => `${draftKey(stationId)}:${editId ? editId : (jobId ? `job-${jobId}` : "new")}:post`,
+        [stationId, editId, jobId],
+    );
+    // key ที่ restore draft เสร็จแล้ว — autosave ห้ามทำงานก่อน restore เสร็จ
+    // ไม่งั้น state ว่างตอนเปิดหน้าจะเขียนทับ draft เดิม (เปลี่ยน key = reset อัตโนมัติ)
+    const [restoredKey, setRestoredKey] = useState<string | null>(null);
+    const draftRestored = restoredKey === postKey;
 
     // Remove draft_id from URL if present
     useEffect(() => {
@@ -1133,21 +1141,43 @@ export default function StationPMReport() {
         })();
     }, [editId, stationId]);
 
-    // Load draft for Post mode (AFTER API data loaded)
+    // Load draft for Post mode — ใบที่มี edit_id รอ API โหลดเสร็จก่อนแล้วค่อยทับ,
+    // ใบใหม่ restore ได้ทันทีที่รู้ stationId
     useEffect(() => {
-        if (!stationId || !editId || !postApiLoaded) return;
+        if (!stationId) return;
+        if (editId && !postApiLoaded) return;
+        // โหมดตรวจ/อนุมัติเป็น read-only อ่านจากตัวเอกสารอย่างเดียว ไม่เอา draft ในเครื่องมาทับ
+        if (reviewMode) { setRestoredKey(postKey); return; }
         const postDraft = loadDraftLocal<{
-            rows: typeof rows; summary: string; summaryCheck?: PF;
+            rows?: typeof rows; summary?: string; summaryCheck?: PF;
+            workStart?: string; workFinish?: string;
+            maximoLabor?: string[]; maximoContractor?: string;
             photoRefs?: Record<string, (PhotoRef | { isNA: true })[]>;
         }>(postKey);
-        if (!postDraft) return;
+        if (!postDraft) { setRestoredKey(postKey); return; }
         if (postDraft.rows) setRows(prev => ({ ...prev, ...postDraft.rows }));
         if (postDraft.summary) setSummary(postDraft.summary);
         if (postDraft.summaryCheck) setSummaryCheck(postDraft.summaryCheck);
+        if (typeof postDraft.workStart === "string" && postDraft.workStart) setWorkStart(postDraft.workStart);
+        if (typeof postDraft.workFinish === "string" && postDraft.workFinish) setWorkFinish(postDraft.workFinish);
+        if (Array.isArray(postDraft.maximoLabor)) setMaximoLabor(postDraft.maximoLabor);
+        if (typeof postDraft.maximoContractor === "string") setMaximoContractor(postDraft.maximoContractor);
+        let alive = true;
         (async () => {
-            if (!postDraft.photoRefs) return;
+            try {
+                await restorePhotos();
+            } finally {
+                // เปิด autosave หลังรูปโหลดเสร็จ ไม่งั้น photoRefs ว่างจะไปทับ refs ใน draft
+                if (alive) setRestoredKey(postKey);
+            }
+        })();
+        return () => { alive = false; };
+
+        async function restorePhotos() {
+            const refMap = postDraft?.photoRefs;
+            if (!refMap) return;
             const next: Record<string, PhotoItem[]> = { ...initialPhotos };
-            for (const [photoKey, refs] of Object.entries(postDraft.photoRefs)) {
+            for (const [photoKey, refs] of Object.entries(refMap)) {
                 const items: PhotoItem[] = [];
                 for (const ref of refs || []) {
                     if ('isNA' in ref && ref.isNA) { items.push({ id: `${photoKey}-NA-restored`, isNA: true, preview: undefined }); continue; }
@@ -1162,9 +1192,10 @@ export default function StationPMReport() {
                 }
                 if (items.length > 0) next[photoKey] = items;
             }
+            if (!alive) return;
             if (Object.keys(next).some(k => (next[k]?.length ?? 0) > 0)) setPhotos(prev => ({ ...prev, ...next }));
-        })();
-    }, [stationId, editId, postKey, postApiLoaded]);
+        }
+    }, [stationId, editId, postKey, postApiLoaded, reviewMode]);
 
     useEffect(() => {
         const token = typeof window !== "undefined" ? localStorage.getItem("access_token") ?? "" : "";
@@ -1307,9 +1338,14 @@ export default function StationPMReport() {
 
     // Save draft for Post mode
     useDebouncedEffect(() => {
-        if (!stationId || !editId) return;
-        saveDraftLocal(postKey, { rows, summary, summaryCheck, photoRefs });
-    }, [postKey, stationId, rows, summary, summaryCheck, photoRefs, editId]);
+        // ใบใหม่ก็บันทึก draft ด้วย; ห้ามบันทึกก่อน restore เสร็จ และไม่บันทึกในโหมดตรวจ/อนุมัติ
+        if (!stationId || reviewMode || !draftRestored) return;
+        // merge กับ draft เดิม ให้ pendingReportId (กันรายงานซ้ำ) ไม่หาย
+        saveDraftLocal(postKey, {
+            ...(loadDraftLocal<any>(postKey) ?? {}),
+            rows, summary, summaryCheck, workStart, workFinish, maximoLabor, maximoContractor, photoRefs,
+        });
+    }, [postKey, stationId, rows, summary, summaryCheck, workStart, workFinish, maximoLabor, maximoContractor, photoRefs, reviewMode, draftRestored]);
 
     // รับ PhotoItem แทน File[] เพื่อให้รู้ว่ารูปไหนอัปสำเร็จแล้ว — ตอนกดบันทึกซ้ำหลังอัปหลุด
     // จะได้ข้ามรูปเดิม ไม่อัปซ้ำจนรูปโผล่ซ้ำในรายงาน (และไม่ไปชนเพดาน 10 รูป/ข้อ)
