@@ -11,7 +11,7 @@ import Image from "next/image";
 import { draftKey, saveDraftLocal, loadDraftLocal, clearDraftLocal } from "../lib/draft";
 import { useRouter, useSearchParams } from "next/navigation";
 import { pmFormReturnRoute } from "@/app/dashboard/pm-report/lib/origin";
-import { serverPhotosToForm, formKeyFromForward, measureAsText } from "@/app/dashboard/pm-report/lib/reviewData";
+import { serverPhotosToForm, formKeyFromForward, measureAsText, mergeDraftPhotos, deleteRemovedServerPhotos, isServerPhoto, type ViewPhoto } from "@/app/dashboard/pm-report/lib/reviewData";
 import { useDebouncedEffect } from "@/app/dashboard/pm-report/lib/useDebouncedEffect";
 import PmApprovalBar from "@/app/dashboard/pm-report/components/PmApprovalBar";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
@@ -1796,6 +1796,9 @@ export default function ChargerPMForm() {
     const jobId = searchParams.get("job_id") ?? "";
 
     const [photos, setPhotos] = useState<Record<string | number, PhotoItem[]>>({});
+    // รูปเดิมของเอกสารที่โหลดมาใส่ฟอร์ม (หน้าดู / แก้ส่วนที่ส่งแล้ว) — ตอนบันทึกเทียบกับ photos
+    // เพื่อรู้ว่าผู้ใช้กดลบรูปเดิมรูปไหนออก แล้วลบออกจากเอกสารจริง
+    const serverPhotosRef = useRef<Record<string, ViewPhoto[]>>({});
 
     // ⚡ Fix: เก็บ report_id ที่ submit JSON สำเร็จแล้ว เพื่อไม่ให้ submit ซ้ำตอน retry upload
     const postReportIdRef = useRef<string | null>(null);
@@ -2105,7 +2108,8 @@ export default function ChargerPMForm() {
                 if (data.inspector) setInspector(data.inspector);
                 // สรุปผล/หมายเหตุเดิมอ่านจาก draft ในเครื่องอย่างเดียว คนที่ไม่ได้เป็นคนกรอก
                 // (ผู้อนุมัติ) จึงเปิดมาเจอช่องว่าง ต้องดึงจากตัวเอกสารด้วย
-                if (reviewMode) {
+                // ส่วนหนึ่งของใบ PM สถานี: เปิดแก้ส่วนที่ส่งแล้ว (เครื่องนี้ไม่มี draft) ก็ต้องได้ค่าเดิมจากเอกสาร
+                if (reviewMode || jobId) {
                     // เวลาทำงาน/laborcode ก็เก็บอยู่ใน draft ของเครื่องช่างเหมือนกัน
                     // ผู้อนุมัติต้องอ่านจากตัวเอกสาร ไม่งั้นเห็นเป็นช่องว่าง
                     if (typeof data.work_start === "string") setWorkStart(data.work_start);
@@ -2116,8 +2120,10 @@ export default function ChargerPMForm() {
                     if (data.summaryCheck) setSummaryCheck(data.summaryCheck as PF);
                     // หน้าดูใช้ฟอร์มเดียวกับตอนกรอก — รูป/ค่าที่วัดมาจากเอกสาร ไม่ใช่ draft ในเครื่อง
                     // กลุ่มรูปคือ "g" + photo key (ดูตอนอัปโหลด)
-                    setPhotos(prev => ({ ...prev, ...serverPhotosToForm(data.photos,
-                        g => (g.startsWith("g") ? g.slice(1) : null), API_BASE) }) as typeof prev);
+                    const fromServer = serverPhotosToForm(data.photos,
+                        g => (g.startsWith("g") ? g.slice(1) : null), API_BASE);
+                    serverPhotosRef.current = fromServer;
+                    setPhotos(prev => ({ ...prev, ...fromServer }) as typeof prev);
                     if (data.measures?.m16) m16.setState(measureAsText(data.measures.m16));
                     if (data.measures?.cp) setCp(measureAsText(data.measures.cp));
                 }
@@ -2309,7 +2315,7 @@ export default function ChargerPMForm() {
                     }
                 }
                 if (!canceled) {
-                    setPhotos(prev => ({ ...prev, ...loadedPhotos }));
+                    setPhotos(prev => mergeDraftPhotos(prev, loadedPhotos) as typeof prev);
                     markRestored();
                 }
             })().catch((err) => {
@@ -2645,6 +2651,14 @@ export default function ChargerPMForm() {
                 saveDraftLocal(postKey, { ...loadDraftLocal(postKey), pendingReportId: report_id, rows, cp, m16: m16.state, summary, summaryCheck, workStart, workFinish, dustFilterChanged, photoRefs: latestPhotoRefs });
             };
 
+            // แก้ส่วนที่ส่งแล้ว: รูปเดิมที่กดลบออก ลบออกจากเอกสารจริงก่อน แล้วค่อยอัปรูปใหม่
+            if (jobId) {
+                await deleteRemovedServerPhotos(apiFetch, {
+                    jobId, stationId: searchParams.get("station_id") ?? "", section: "charger", sn, reportId: report_id,
+                    original: serverPhotosRef.current, current: photosRef.current as any,
+                });
+                serverPhotosRef.current = {};
+            }
             // ⚡ อัปโหลดหลายรอบ — รูปที่มาถึงหลังกดบันทึกต้องถูกจับเข้ารอบถัดไป ไม่ใช่ถูกข้ามแล้วโดนลบ
             const MAX_UPLOAD_PASSES = 3;
             for (let pass = 1; pass <= MAX_UPLOAD_PASSES; pass++) {

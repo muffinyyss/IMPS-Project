@@ -23,7 +23,8 @@ import { ensureViewableImage } from "@/utils/heic";
 import { collectPending, unrecoverablePhotos, expectedCountByGroup, findShortfall, shortfallMessage, pendingMessage, unrecoverableMessage } from "@/utils/pm-photo-sync";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
 import { pmFormReturnRoute } from "@/app/dashboard/pm-report/lib/origin";
-import { serverPhotosToForm, formKeyFromForward, measureAsText } from "@/app/dashboard/pm-report/lib/reviewData";
+import { apiFetch } from "@/utils/api";
+import { serverPhotosToForm, formKeyFromForward, measureAsText, mergeDraftPhotos, deleteRemovedServerPhotos, isServerPhoto, type ViewPhoto } from "@/app/dashboard/pm-report/lib/reviewData";
 import { useDebouncedEffect } from "@/app/dashboard/pm-report/lib/useDebouncedEffect";
 
 // ==================== GPS + IMAGE UTILS ====================
@@ -992,6 +993,9 @@ export default function StationPMReport() {
         })
     ) as Record<string, PhotoItem[]>;
     const [photos, setPhotos] = useState<Record<string, PhotoItem[]>>(initialPhotos);
+    // รูปเดิมของเอกสารที่โหลดมาใส่ฟอร์ม (หน้าดู / แก้ส่วนที่ส่งแล้ว) — ตอนบันทึกเทียบกับ photos
+    // เพื่อรู้ว่าผู้ใช้กดลบรูปเดิมรูปไหนออก แล้วลบออกจากเอกสารจริง
+    const serverPhotosRef = useRef<Record<string, ViewPhoto[]>>({});
 
     const photosRef = useRef(photos);
     useEffect(() => { photosRef.current = photos; }, [photos]);
@@ -1121,7 +1125,8 @@ export default function StationPMReport() {
                 if (data.summary) setSummary(data.summary);
                 // สรุปผล/หมายเหตุเดิมอ่านจาก draft ในเครื่องอย่างเดียว คนที่ไม่ได้เป็นคนกรอก
                 // (ผู้อนุมัติ) จึงเปิดมาเจอช่องว่าง ต้องดึงจากตัวเอกสารด้วย
-                if (reviewMode) {
+                // ส่วนหนึ่งของใบ PM สถานี: เปิดแก้ส่วนที่ส่งแล้ว (เครื่องนี้ไม่มี draft) ก็ต้องได้ค่าเดิมจากเอกสาร
+                if (reviewMode || jobId) {
                     // เวลาทำงาน/laborcode ก็เก็บอยู่ใน draft ของเครื่องช่างเหมือนกัน
                     // ผู้อนุมัติต้องอ่านจากตัวเอกสาร ไม่งั้นเห็นเป็นช่องว่าง
                     if (typeof data.work_start === "string") setWorkStart(data.work_start);
@@ -1131,8 +1136,10 @@ export default function StationPMReport() {
                     if (typeof data.summary === "string") setSummary(data.summary);
                     if (data.summaryCheck) setSummaryCheck(data.summaryCheck as PF);
                     // หน้าดูใช้ฟอร์มเดียวกับตอนกรอก — รูปมาจากเอกสาร ไม่ใช่ draft ในเครื่อง
-                    setPhotos(prev => ({ ...prev, ...serverPhotosToForm(data.photos,
-                        formKeyFromForward(Object.keys(initialPhotos), k => toGroupKey(String(k))), API_BASE) }) as typeof prev);
+                    const fromServer = serverPhotosToForm(data.photos,
+                        formKeyFromForward(Object.keys(initialPhotos), k => toGroupKey(String(k))), API_BASE);
+                    serverPhotosRef.current = fromServer;
+                    setPhotos(prev => ({ ...prev, ...fromServer }) as typeof prev);
                 }
                 if (data.rows) {
                     setRows((prev) => { const next = { ...prev }; Object.entries(data.rows).forEach(([k, v]) => { next[k] = v as { pf: PF; remark: string }; }); return next; });
@@ -1194,7 +1201,7 @@ export default function StationPMReport() {
                 if (items.length > 0) next[photoKey] = items;
             }
             if (!alive) return;
-            if (Object.keys(next).some(k => (next[k]?.length ?? 0) > 0)) setPhotos(prev => ({ ...prev, ...next }));
+            if (Object.keys(next).some(k => (next[k]?.length ?? 0) > 0)) setPhotos(prev => mergeDraftPhotos(prev, next) as typeof prev);
         }
     }, [stationId, editId, postKey, postApiLoaded, reviewMode]);
 
@@ -1258,7 +1265,12 @@ export default function StationPMReport() {
                 const qKey = photoKey.startsWith("q") ? `r${photoKey.substring(1)}` : photoKey;
                 if (rows[qKey]?.pf === "NA") return false;
             }
-            return (photos[photoKey]?.length ?? 0) < 1;
+            if ((photos[photoKey]?.length ?? 0) > 0) return false;
+            // server เก็บรูปของข้อที่มีข้อย่อยรวมกันก้อนเดียว (ไม่รู้ว่ารูปไหนของข้อย่อยไหน)
+            // ตอนเปิดแก้จึงวางรูปเดิมไว้ที่ข้อย่อยแรก — ข้อนี้มีรูปเดิมอยู่แล้ว ข้อย่อยอื่นไม่ต้องแนบซ้ำ
+            if (match && Object.entries(photos).some(([k, list]) =>
+                k.startsWith(`r${match[1]}_`) && (list ?? []).some(isServerPhoto))) return false;
+            return true;
         });
         return missingKeys.map((key) => {
             if (key.startsWith("q")) return `${getDisplayedQuestionNo(Number(key.substring(1)))}`;
@@ -1519,6 +1531,14 @@ export default function StationPMReport() {
             }
 
             // ต้องยืนยันรูปครบก่อน ถึงจะ finalize + ลบรูปในเครื่อง
+            // แก้ส่วนที่ส่งแล้ว: รูปเดิมที่กดลบออก ลบออกจากเอกสารจริงก่อน แล้วค่อยอัปรูปใหม่
+            if (jobId) {
+                await deleteRemovedServerPhotos(apiFetch, {
+                    jobId, stationId: stationId ?? "", section: "station", reportId: finalReportId,
+                    original: serverPhotosRef.current, current: photosRef.current as any,
+                });
+                serverPhotosRef.current = {};
+            }
             if (!(await syncPhotosAndVerify(finalReportId))) return;
 
             if (!jobId && (!workStart || !workFinish)) { alert(t("alertWorkTime", lang)); setSubmitting(false); return; }

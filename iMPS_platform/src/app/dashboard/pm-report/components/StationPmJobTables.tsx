@@ -52,6 +52,9 @@ const SECTION_ORDER: SectionId[] = ["station", "mdb", "ccb", "cbbox", "charger"]
 /** ส่วนที่ผูกกับตู้ (มีใบย่อยได้หลายใบ) ไม่ใช่กับสถานี */
 const CHARGER_SECTION: SectionId = "charger";
 
+/** role ที่กด "แก้ไข" ส่วนที่ส่งแล้วได้ — ต้องตรงกับ backend (pmreport_station_job.EDIT_SENT_ROLES) */
+const PM_EDIT_SENT_ROLES = ["technician", "planner", "admin", "super_admin"];
+
 const SECTION_FORMS: Record<SectionId, React.ComponentType> = {
   station: StationPMForm,
   mdb: MDBPMForm,
@@ -672,15 +675,33 @@ export default function StationPmJobTables() {
     const backLabel = openedSection && section === CHARGER_SECTION
       ? `${pick(SECTION_TITLE[section], lang)} · ${pick(openedSection.label, lang)}`
       : pick(SECTION_TITLE[section], lang);
+    // เปิดดูส่วนที่ส่งแล้ว → แก้ไขได้จนกว่าจะกด "ปิดใบงาน" (ใบยังเป็น In Progress)
+    // เฉพาะ technician / planner / admin (super admin ได้ role admin) — ส่วนที่ปิดแล้ว / ใบที่ส่งอนุมัติแล้ว / หน้าอนุมัติ ดูได้อย่างเดียว
+    const viewing = searchParams.get("review") === "1";
+    const sectionStatus = String(openedSection?.status ?? "").trim().toLowerCase();
+    const canEditSent = viewing && PM_EDIT_SENT_ROLES.includes(me?.role ?? "") && !!openedSection?.report_id
+      && !["closed", "submitted"].includes(sectionStatus)
+      && currentJob?.status === "draft";
+    // ตัด review ออก = ฟอร์มเดิมในโหมดแก้ไข (key ใหม่ให้โหลดเอกสารใหม่ทั้งหมด พร้อมรูปเดิม)
+    const startEdit = () => goto({ review: null, approve: null });
+    const editButton = canEditSent && (
+      <Button size="sm" onClick={startEdit} className="tw-flex tw-items-center tw-gap-1.5 tw-bg-gray-900">
+        <PencilSquareIcon className="tw-h-4 tw-w-4" /> {t("edit", lang)}
+      </Button>
+    );
     return (
       <div className="tw-mt-4 sm:tw-mt-6 lg:tw-mt-8">
-        <div className="tw-mb-3 tw-flex tw-items-center tw-gap-2">
+        <div className="tw-mb-3 tw-flex tw-items-center tw-justify-between tw-gap-2">
           <Button variant="outlined" size="sm" onClick={backToHub} className="tw-flex tw-items-center tw-gap-2">
             <ArrowLeftIcon className="tw-h-4 tw-w-4" />
             {backLabel} · {t("back", lang)}
           </Button>
+          {editButton}
         </div>
-        <SectionForm />
+        <SectionForm key={viewing ? "view" : "edit"} />
+        {editButton && (
+          <div className="tw-mx-auto tw-mt-4 tw-flex tw-max-w-6xl tw-justify-end">{editButton}</div>
+        )}
       </div>
     );
   }
