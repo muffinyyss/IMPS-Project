@@ -22,6 +22,7 @@ import { useLanguage, type Lang } from "@/utils/useLanguage";
 import { apiFetch } from "@/utils/api";
 import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
 import { pmBackRoute } from "@/app/dashboard/pm-report/lib/origin";
+import { useDebouncedEffect } from "@/app/dashboard/pm-report/lib/useDebouncedEffect";
 
 // ==================== GPS + ADDRESS CACHE ====================
 let _cachedLocation: { text: string; timestamp: number } | null = null;
@@ -401,9 +402,6 @@ function useMeasure<U extends string>(keys: readonly string[], defaultUnit: U) {
     return { state, setState, patch, syncUnits };
 }
 
-function useDebouncedEffect(effect: () => void, deps: any[], delay = 800) {
-    useEffect(() => { const h = setTimeout(effect, delay); return () => clearTimeout(h); }, deps);
-}
 
 /** เวลาปัจจุบันในรูปแบบที่ input[type=datetime-local] รับ — เวลาเครื่อง ไม่ใช่ UTC */
 function nowLocalDatetime(): string {
@@ -1012,10 +1010,20 @@ export default function MDBPMForm() {
     const [summary, setSummary] = useState<string>("");
     const [stationId, setStationId] = useState<string | null>(null);
 
-    // draft ในเครื่อง: ใบใหม่ผูกกับสถานี ใบที่เปิดจาก List ผูกกับ id ของใบนั้น
-    const newDraftKey = useMemo(() => draftKey(stationId), [stationId]);
-    const editDraftKey = useMemo(() => `${draftKey(stationId)}:${editId}:post`, [stationId, editId]);
-    const currentDraftKey = editId ? editDraftKey : newDraftKey;
+    // draft ในเครื่อง — สูตรเดียวกับฟอร์มอื่น: ใบเดิมผูกกับ id, ใบใหม่ผูกกับใบ PM สถานี (job_id)
+    // เดิมใบใหม่ใช้ key ของสถานีร่วมกันทุกใบ draft ของอีกใบเลยโผล่มาปนได้
+    const currentDraftKey = useMemo(
+        () => `${draftKey(stationId)}:${editId ? editId : (jobId ? `job-${jobId}` : "new")}:post`,
+        [stationId, editId, jobId],
+    );
+    // key เก่าของใบใหม่ — draft ที่ค้างอยู่ก่อนเปลี่ยนสูตรจะได้ไม่หาย
+    const legacyNewDraftKey = useMemo(() => draftKey(stationId), [stationId]);
+    // key ที่ restore draft เสร็จแล้ว — autosave ห้ามทำงานก่อน ไม่งั้น state ว่างตอนเปิดหน้า
+    // (ยังไม่มีรูป) จะเขียนทับ draft เดิม รูปที่แนบไว้เลยหายตอนกลับเข้าฟอร์ม
+    const [restoredKey, setRestoredKey] = useState<string | null>(null);
+    // ส่งเสร็จแล้วล้าง draft — autosave ที่ค้างอยู่ (รวมตอนออกจากหน้า) ห้ามเขียนกลับ
+    const draftClearedRef = useRef(false);
+    useEffect(() => { draftClearedRef.current = false; }, [currentDraftKey]);
 
     const reportIdRef = useRef<string | null>(null);
 
@@ -1256,8 +1264,19 @@ export default function MDBPMForm() {
     useEffect(() => {
         if (!stationId) return;
         if (editId && !docApiLoaded) return;
-        const draft = loadDraftLocal<any>(currentDraftKey);
-        if (!draft) return;
+        // โหมดตรวจ/อนุมัติอ่านจากตัวเอกสารอย่างเดียว ไม่เอา draft ในเครื่องมาทับ และไม่ autosave
+        if (reviewMode) { setRestoredKey(currentDraftKey); return; }
+        let draft = loadDraftLocal<any>(currentDraftKey);
+        if (!draft && !editId) {
+            draft = loadDraftLocal<any>(legacyNewDraftKey);
+            // ย้ายมาอยู่ key ใหม่แล้ว (autosave รอบแรกจะเขียนให้) — ลบแค่ตัว draft ไม่ลบรูปใน IndexedDB
+            if (draft) { try { localStorage.removeItem(legacyNewDraftKey); } catch { } }
+        }
+        if (!draft) { setRestoredKey(currentDraftKey); return; }
+        if (typeof draft.workStart === "string" && draft.workStart) setWorkStart(draft.workStart);
+        if (typeof draft.workFinish === "string" && draft.workFinish) setWorkFinish(draft.workFinish);
+        if (Array.isArray(draft.maximoLabor)) setMaximoLabor(draft.maximoLabor);
+        if (typeof draft.maximoContractor === "string") setMaximoContractor(draft.maximoContractor);
         if (draft.rows) setRows(prev => ({ ...prev, ...draft.rows }));
         if (draft.m4) setM4State(prev => ({ ...prev, ...draft.m4 }));
         if (draft.m5) setM5State(prev => ({ ...prev, ...draft.m5 }));
@@ -1301,10 +1320,14 @@ export default function MDBPMForm() {
                     if (items.length > 0) loadedPhotos[photoKey] = items;
                 }
                 if (!canceled) setPhotos(prev => ({ ...prev, ...loadedPhotos }));
-            })();
+            })().finally(() => {
+                // เปิด autosave หลังรูปโหลดเสร็จ ไม่งั้น photoRefs ว่างจะไปทับ refs ใน draft
+                if (!canceled) setRestoredKey(currentDraftKey);
+            });
             return cleanup;
         }
-    }, [stationId, currentDraftKey, editId, docApiLoaded, lang]);
+        setRestoredKey(currentDraftKey);
+    }, [stationId, currentDraftKey, legacyNewDraftKey, editId, docApiLoaded, reviewMode, lang]);
 
     // ==================== VALIDATIONS ====================
     // ตอบ N/A แล้วไม่ต้องแนบรูป — เดิมดูจากคำตอบด่าน Pre ตอนนี้ดูจากคำตอบในใบเดียวกัน
@@ -1406,17 +1429,20 @@ export default function MDBPMForm() {
     }, [photos]);
 
     useDebouncedEffect(() => {
-        if (!stationId) return;
+        // ห้ามบันทึกก่อน restore เสร็จ (จะเขียนทับ draft เดิมด้วยฟอร์มว่าง) และไม่บันทึกในโหมดตรวจ
+        if (!stationId || reviewMode || restoredKey !== currentDraftKey || draftClearedRef.current) return;
         saveDraftLocal(currentDraftKey, {
+            ...(loadDraftLocal<any>(currentDraftKey) ?? {}),
             // เอกสารถูกสร้างไปแล้วแต่ยังอัปรูปไม่จบ — id ต้องอยู่ใน draft ตลอด
             // ไม่งั้น debounce ตัวนี้เขียนทับแล้วกดบันทึกใหม่จะได้ใบใหม่แทนที่จะลงใบเดิม
             ...(reportIdRef.current ? { pendingReportId: reportIdRef.current } : {}),
             rows, m4: m4State, m5: m5State, m6: m6State, m7: m7State,
             summary, summaryCheck, dustFilterChanged, photoRefs,
-            q4_items: q6Items, q6_items: q8Items, charger_count: chargerCount
+            q4_items: q6Items, q6_items: q8Items, charger_count: chargerCount,
+            workStart, workFinish, maximoLabor, maximoContractor,
         });
-    }, [currentDraftKey, stationId, rows, m4State, m5State, m6State, m7State, summary, summaryCheck,
-        dustFilterChanged, photoRefs, q6Items, q8Items, chargerCount]);
+    }, [currentDraftKey, stationId, reviewMode, restoredKey, rows, m4State, m5State, m6State, m7State, summary, summaryCheck,
+        dustFilterChanged, photoRefs, q6Items, q8Items, chargerCount, workStart, workFinish, maximoLabor, maximoContractor]);
 
     // ==================== UPLOAD HELPERS ====================
     // key ที่ backend ใช้เก็บใน photos — ต้องใช้สูตรเดียวกันทั้งตอน upload และตอน verify
@@ -1652,6 +1678,7 @@ export default function MDBPMForm() {
             // ทำให้รูปที่เพิ่ม/อัปเดตหลัง render ล่าสุด ไม่ถูกลบ กลายเป็นขยะค้างใน IndexedDB
             const allPhotos = Object.values(photosRef.current).flat();
             Promise.all(allPhotos.map(p => delPhoto(currentDraftKey, p.id))).catch(() => { });
+            draftClearedRef.current = true; // กัน autosave ที่ค้างอยู่เขียน draft กลับมาหลังล้าง
             clearDraftLocal(currentDraftKey);
             const listParams = new URLSearchParams();
             listParams.set("station_id", stationId);

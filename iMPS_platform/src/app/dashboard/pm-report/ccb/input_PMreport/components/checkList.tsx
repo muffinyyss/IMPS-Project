@@ -28,6 +28,7 @@ import { useLanguage, type Lang } from "@/utils/useLanguage";
 import { apiFetch } from "@/utils/api";
 import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
 import { pmBackRoute } from "@/app/dashboard/pm-report/lib/origin";
+import { useDebouncedEffect } from "@/app/dashboard/pm-report/lib/useDebouncedEffect";
 
 // ==================== GPS + ADDRESS CACHE ====================
 let _cachedLocation: { text: string; timestamp: number } | null = null;
@@ -747,9 +748,6 @@ function useMeasure<U extends string>(keys: readonly string[], defaultUnit: U) {
     return { state, setState, patch, syncUnits };
 }
 
-function useDebouncedEffect(effect: () => void, deps: any[], delay = 800) {
-    useEffect(() => { const h = setTimeout(effect, delay); return () => clearTimeout(h); }, deps);
-}
 
 function SectionCard({ title, subtitle, children, tooltip }: { title?: string; subtitle?: string; children: React.ReactNode; tooltip?: string }) {
     const qNumber = title?.match(/^(\d+)\)/)?.[1];

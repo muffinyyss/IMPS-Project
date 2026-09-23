@@ -24,6 +24,7 @@ import { ensureViewableImage } from "@/utils/heic";
 import { collectPending, unrecoverablePhotos, expectedCountByGroup, findShortfall, shortfallMessage, pendingMessage, unrecoverableMessage } from "@/utils/pm-photo-sync";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
 import { pmBackRoute } from "@/app/dashboard/pm-report/lib/origin";
+import { useDebouncedEffect } from "@/app/dashboard/pm-report/lib/useDebouncedEffect";
 
 // ==================== GPS + IMAGE UTILS ====================
 let _cachedLocation: { text: string; timestamp: number } | null = null;
@@ -487,9 +488,6 @@ function getDisplayedRowNo(key: string): string {
     return match[2] ? `${mainNo}.${match[2]}` : `${mainNo}`;
 }
 
-function useDebouncedEffect(effect: () => void, deps: any[], delay = 800) {
-    useEffect(() => { const h = setTimeout(effect, delay); return () => clearTimeout(h); }, deps);
-}
 
 // ==================== SectionCard ====================
 function SectionCard({ title, subtitle, children, tooltip }: { title?: string; subtitle?: string; children: React.ReactNode; tooltip?: string }) {
@@ -1015,6 +1013,9 @@ export default function StationPMReport() {
     // ไม่งั้น state ว่างตอนเปิดหน้าจะเขียนทับ draft เดิม (เปลี่ยน key = reset อัตโนมัติ)
     const [restoredKey, setRestoredKey] = useState<string | null>(null);
     const draftRestored = restoredKey === postKey;
+    // ส่งเสร็จแล้วล้าง draft — autosave ที่ค้างอยู่ (รวมตอนออกจากหน้า) ห้ามเขียนกลับ
+    const draftClearedRef = useRef(false);
+    useEffect(() => { draftClearedRef.current = false; }, [postKey]);
 
     // Remove draft_id from URL if present
     useEffect(() => {
@@ -1339,7 +1340,7 @@ export default function StationPMReport() {
     // Save draft for Post mode
     useDebouncedEffect(() => {
         // ใบใหม่ก็บันทึก draft ด้วย; ห้ามบันทึกก่อน restore เสร็จ และไม่บันทึกในโหมดตรวจ/อนุมัติ
-        if (!stationId || reviewMode || !draftRestored) return;
+        if (!stationId || reviewMode || !draftRestored || draftClearedRef.current) return;
         // merge กับ draft เดิม ให้ pendingReportId (กันรายงานซ้ำ) ไม่หาย
         saveDraftLocal(postKey, {
             ...(loadDraftLocal<any>(postKey) ?? {}),
@@ -1537,6 +1538,7 @@ export default function StationPMReport() {
 
             const allPhotos = Object.values(photosRef.current).flat();
             await Promise.all(allPhotos.map(p => delPhoto(postKey, p.id)));
+            draftClearedRef.current = true; // กัน autosave ที่ค้างอยู่เขียน draft กลับมาหลังล้าง
             await clearDraftLocal(postKey);
             router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&tab=station`);
         } catch (err: any) {

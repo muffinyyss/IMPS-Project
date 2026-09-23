@@ -15,6 +15,7 @@ import { ensureViewableImage } from "@/utils/heic";
 import { collectPending, unrecoverablePhotos, expectedCountByGroup, findShortfall, shortfallMessage, pendingMessage, unrecoverableMessage } from "@/utils/pm-photo-sync";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
 import { pmBackRoute } from "@/app/dashboard/pm-report/lib/origin";
+import { useDebouncedEffect } from "@/app/dashboard/pm-report/lib/useDebouncedEffect";
 
 const T = {
     pageTitle: { th: "Preventive Maintenance Checklist - Safety Switch / Circuit Breaker - Box", en: "Preventive Maintenance Checklist - Safety Switch / Circuit Breaker - Box" },
@@ -481,9 +482,6 @@ function useMeasure(keys: readonly string[]) {
     return { state, setState, patch };
 }
 
-function useDebouncedEffect(effect: () => void, deps: any[], delay = 800) {
-    useEffect(() => { const h = setTimeout(effect, delay); return () => clearTimeout(h); }, deps);
-}
 
 async function fetchReport(reportId: string, stationId: string) {
     const token = localStorage.getItem("access_token") ?? "";
@@ -1063,6 +1061,9 @@ export default function CBBOXPMForm() {
     // key ที่กู้ draft เสร็จแล้ว — autosave ต้องรอให้ตรงกับ postKey ก่อน
     // ไม่งั้น state ว่างตอนเปิดหน้าจะเขียนทับ draft ก่อนได้กู้
     const [restoredKey, setRestoredKey] = useState<string | null>(null);
+    // ส่งเสร็จแล้วล้าง draft — autosave ที่ค้างอยู่ (รวมตอนออกจากหน้า) ห้ามเขียนกลับ
+    const draftClearedRef = useRef(false);
+    useEffect(() => { draftClearedRef.current = false; }, [postKey]);
     const restoringKeyRef = useRef<string | null>(null);
 
     // Load station id
@@ -1250,7 +1251,7 @@ export default function CBBOXPMForm() {
     }, [stationId, editId, postKey, postApiLoaded, reviewMode, restoredKey]);
 
     useDebouncedEffect(() => {
-        if (reviewMode || !stationId || restoredKey !== postKey) return;
+        if (reviewMode || !stationId || restoredKey !== postKey || draftClearedRef.current) return;
         saveDraftLocal(postKey, {
             ...loadDraftLocal<any>(postKey),
             rows, m5: m5.state, summary, summaryCheck, dropdownQ1, dropdownQ2,
@@ -1454,6 +1455,7 @@ export default function CBBOXPMForm() {
             if (!finalizeRes.ok) throw new Error(await finalizeRes.text());
             const allPhotos = Object.values(photosRef.current).flat();
             await Promise.all(allPhotos.map(p => delPhoto(postKey, p.id)));
+            draftClearedRef.current = true; // กัน autosave ที่ค้างอยู่เขียน draft กลับมาหลังล้าง
             await clearDraftLocal(postKey);
             router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&tab=cb-box`);
         } catch (err: any) { alert(`${t("alertSaveFailed", lang)} ${err?.message ?? err}`); } finally { setSubmitting(false); }
