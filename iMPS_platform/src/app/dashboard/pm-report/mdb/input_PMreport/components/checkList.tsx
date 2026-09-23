@@ -22,6 +22,7 @@ import { useLanguage, type Lang } from "@/utils/useLanguage";
 import { apiFetch } from "@/utils/api";
 import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
 import { pmFormReturnRoute } from "@/app/dashboard/pm-report/lib/origin";
+import { serverPhotosToForm } from "@/app/dashboard/pm-report/lib/reviewData";
 import { useDebouncedEffect } from "@/app/dashboard/pm-report/lib/useDebouncedEffect";
 
 // ==================== GPS + ADDRESS CACHE ====================
@@ -895,12 +896,12 @@ async function compressImage(
             )}
             <div className="tw-flex tw-flex-wrap tw-items-center tw-gap-2">
                 {isMobile ? (
-                    <Button size="sm" color="blue" variant="outlined" onClick={() => cameraRef.current?.click()} className="tw-shrink-0 tw-flex tw-items-center tw-gap-1">
+                    <Button data-photo-add size="sm" color="blue" variant="outlined" onClick={() => cameraRef.current?.click()} className="tw-shrink-0 tw-flex tw-items-center tw-gap-1">
                         <svg className="tw-w-4 tw-h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
                         {t("takePhoto", lang)}
                     </Button>
                 ) : (
-                    <Button size="sm" color="blue" variant="outlined" onClick={() => fileRef.current?.click()} className="tw-shrink-0 tw-flex tw-items-center tw-gap-1">
+                    <Button data-photo-add size="sm" color="blue" variant="outlined" onClick={() => fileRef.current?.click()} className="tw-shrink-0 tw-flex tw-items-center tw-gap-1">
                         <svg className="tw-w-4 tw-h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
                         {t("attachPhoto", lang)}
                     </Button>
@@ -1187,6 +1188,12 @@ export default function MDBPMForm() {
                 if (data.doc_name) setDocName(data.doc_name);
                 if (data.inspector) setInspector(data.inspector);
                 setCmpPhotos(data.photos ?? {});
+                // หน้าดูใช้ฟอร์มเดียวกับตอนกรอก — รูปมาจากเอกสาร ไม่ใช่ draft ในเครื่อง
+                // กลุ่ม g{n} คือข้อ n, ข้อย่อย r6_1 ใช้ชื่อเดียวกับ photo key (normalizePhotoGroup)
+                if (reviewMode) {
+                    setPhotos(prev => ({ ...prev, ...serverPhotosToForm(data.photos,
+                        g => (/^g\d+$/.test(g) ? g.slice(1) : g), API_BASE) }) as typeof prev);
+                }
                 // ค่าที่ช่างกรอกไว้เก็บอยู่ใน draft ของเครื่องช่างด้วย แต่คนอื่นที่เปิดใบเดียวกัน
                 // (ผู้อนุมัติ / ช่างที่มาแก้ใบโดนตีกลับจากอีกเครื่อง) ไม่มี draft นั้น
                 // ต้องอ่านจากตัวเอกสารเสมอ ไม่งั้นเปิดมาเจอช่องว่าง

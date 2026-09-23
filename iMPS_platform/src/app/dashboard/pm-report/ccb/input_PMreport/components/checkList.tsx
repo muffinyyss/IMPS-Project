@@ -17,7 +17,6 @@ import { draftKey, saveDraftLocal, loadDraftLocal, clearDraftLocal } from "../li
 
 import { useRouter, useSearchParams } from "next/navigation";
 import PmApprovalBar from "@/app/dashboard/pm-report/components/PmApprovalBar";
-import PmResultTable from "@/app/dashboard/pm-report/components/PmResultTable";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 import { putPhoto, getPhotoByDbKey, delPhoto, type PhotoRef } from "../lib/draftPhotos";
 import { isFileReadable, isImageDecodable, resolveUsableFile, reportMissingDraftPhoto, reportPhotoStorageFailure } from "@/utils/upload-safety";
@@ -27,6 +26,7 @@ import { useLanguage, type Lang } from "@/utils/useLanguage";
 import { apiFetch } from "@/utils/api";
 import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
 import { pmFormReturnRoute } from "@/app/dashboard/pm-report/lib/origin";
+import { serverPhotosToForm, formKeyFromForward, measureAsText } from "@/app/dashboard/pm-report/lib/reviewData";
 import { useDebouncedEffect } from "@/app/dashboard/pm-report/lib/useDebouncedEffect";
 
 // ==================== GPS + ADDRESS CACHE ====================
@@ -1225,12 +1225,12 @@ function PhotoMultiInput({ photos, setPhotos, max = 10, draftKey, qNo, lang, id,
             )}
             <div className="tw-flex tw-flex-wrap tw-items-center tw-gap-2">
                 {isMobile ? (
-                    <Button size="sm" color="blue" variant="outlined" onClick={() => cameraRef.current?.click()} className="tw-shrink-0 tw-flex tw-items-center tw-gap-1 tw-text-[10px] sm:tw-text-xs lg:tw-text-sm tw-px-2 sm:tw-px-3 tw-py-1.5 sm:tw-py-2">
+                    <Button data-photo-add size="sm" color="blue" variant="outlined" onClick={() => cameraRef.current?.click()} className="tw-shrink-0 tw-flex tw-items-center tw-gap-1 tw-text-[10px] sm:tw-text-xs lg:tw-text-sm tw-px-2 sm:tw-px-3 tw-py-1.5 sm:tw-py-2">
                         <svg className="tw-w-4 tw-h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
                         {t("takePhoto", lang)}
                     </Button>
                 ) : (
-                    <Button size="sm" color="blue" variant="outlined" onClick={() => fileRef.current?.click()} className="tw-shrink-0 tw-flex tw-items-center tw-gap-1 tw-text-[10px] sm:tw-text-xs lg:tw-text-sm tw-px-2 sm:tw-px-3 tw-py-1.5 sm:tw-py-2">
+                    <Button data-photo-add size="sm" color="blue" variant="outlined" onClick={() => fileRef.current?.click()} className="tw-shrink-0 tw-flex tw-items-center tw-gap-1 tw-text-[10px] sm:tw-text-xs lg:tw-text-sm tw-px-2 sm:tw-px-3 tw-py-1.5 sm:tw-py-2">
                         <svg className="tw-w-4 tw-h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
                         {t("attachPhoto", lang)}
                     </Button>
@@ -1467,9 +1467,6 @@ export default function CCBPMReport() {
 
     const [job, setJob] = useState({ issue_id: "", station_name: "", date: getTodayLocalStr() });
 
-    // รูปจากเอกสาร (ใช้ในตารางตอนตรวจอนุมัติ)
-    // state รูปปกติของฟอร์มเป็นรูปที่กำลังกรอกอยู่ในเครื่อง จึงต้องเก็บของ document ไว้ต่างหาก
-    const [cmpPhotos, setCmpPhotos] = useState<any>({});
     const [rows, setRows] = useState<Record<string, { pf: PF; remark: string }>>(() => {
         const initial: Record<string, { pf: PF; remark: string }> = {};
         QUESTIONS.forEach((q) => {
@@ -1609,7 +1606,6 @@ export default function CCBPMReport() {
                 if (data.doc_name) setDocName(data.doc_name);
                 if (data.inspector) setInspector(data.inspector);
                 if (data.summary) setSummary(data.summary);
-                setCmpPhotos(data.photos ?? {});
                 // สรุปผล/หมายเหตุเดิมอ่านจาก draft ในเครื่องอย่างเดียว คนที่ไม่ได้เป็นคนกรอก
                 // (ผู้อนุมัติ) จึงเปิดมาเจอช่องว่าง ต้องดึงจากตัวเอกสารด้วย
                 if (reviewMode) {
@@ -1621,6 +1617,14 @@ export default function CCBPMReport() {
                     if (typeof data.maximo_contractor === "string") setMaximoContractor(data.maximo_contractor);
                     if (typeof data.summary === "string") setSummary(data.summary);
                     if (data.summaryCheck) setSummaryCheck(data.summaryCheck as PF);
+                    // หน้าดูใช้ฟอร์มเดียวกับตอนกรอก — รูป/ค่าที่วัดมาจากเอกสาร ไม่ใช่ draft ในเครื่อง
+                    setPhotos(prev => ({ ...prev, ...serverPhotosToForm(data.photos,
+                        formKeyFromForward(Object.keys(initialPhotos).map(Number), k => toGroupKey(k)), API_BASE) }) as typeof prev);
+                    if (data.measures?.m9) mMain.setState(measureAsText(data.measures.m9));
+                    M_SUB_LIST.forEach((m, i) => {
+                        const saved = data.measures?.[`m10_${i + 1}`];
+                        if (saved) m.setState(measureAsText(saved));
+                    });
                 }
                 if (data.rows) {
                     setRows((prev) => {
@@ -2237,76 +2241,6 @@ export default function CCBPMReport() {
     }, [missingPhotoItemsPost]);
 
 
-    // ── ตารางผลตรวจ (โหมดตรวจอนุมัติ) ──
-    // ใช้ state ที่โหลดเอกสารมาแล้ว: rows = คำตอบของช่าง
-    // คีย์ที่ไม่ได้อยู่ใน QUESTIONS (ข้อย่อยแบบ r5_1) เอามาต่อท้ายด้วย จะได้ไม่ตกหล่น
-    // คีย์รูปของ ccb ผ่าน getPhotoKeyForQuestion → toGroupKey:
-    // ข้อย่อย r3_1 → 31 → g3_1 · r10_sub2 → 102 → g10_2 · เมนเบรกเกอร์ r9 → 90 → g9
-    const photoKeysOf = useCallback((row: { key: string }) => {
-        const sub = row.key.match(/^r(\d+)_sub(\d+)$/);
-        if (sub) return [`g${sub[1]}_${sub[2]}`];
-        const m = row.key.match(/^r(\d+)_(\d+)$/);
-        if (m) return [`g${m[1]}_${m[2]}`];
-        return [`g${row.key.replace(/^r/, "")}`];
-    }, []);
-
-    const compareRows = useMemo(() => {
-        // ป้ายหัวข้อต้องตรงกับที่ช่างเห็นตอนกรอก — ข้อย่อยอย่าง r3_1 ฟอร์มสร้างขึ้นมาเอง
-        // ตอนรันไทม์ (ตามจำนวนหัวชาร์จ/ช่องของสถานีนั้น) ไม่ได้อยู่ใน QUESTIONS
-        // ถ้าไม่ไล่เก็บจากแหล่งเดียวกับที่ฟอร์มใช้ ตารางจะโชว์เป็นคีย์ดิบ
-        const textOf = (l: any): string =>
-            typeof l === "string" ? l
-                : l && typeof l === "object" ? (l[lang] ?? l.th ?? l.en ?? "") : "";
-        const labels = new Map<string, string>();
-        const put = (k: any, v: any) => {
-            const text = textOf(v);
-            if (typeof k === "string" && text.trim() && !labels.has(k)) labels.set(k, text.trim());
-        };
-        const labelOfItem = (it: any) => {
-            const label = it?.label !== undefined ? it.label : it?.labelKey ? (t as any)(it.labelKey, lang) : "";
-            return typeof label === "string" ? getDisplayedItemLabel(label) : label;
-        };
-        (QUESTIONS as any[]).forEach((q: any) => {
-            put(q?.key, labelOfItem(q));
-            (q?.items ?? []).forEach((it: any) => put(it?.key, labelOfItem(it)));
-        });
-        ([] as any[]).forEach((arr: any) =>
-            (arr ?? []).forEach((it: any) => put(it?.key, labelOfItem(it))));
-        const labelOf = (key: string) => labels.get(key) ?? key;
-        // เรียงตามลำดับข้อในฟอร์มกรอก ข้อย่อยที่ช่างเพิ่มเอง (r5_1, r5_2)
-        // ต้องต่อท้ายข้อแม่ของมัน ไม่ใช่ไปกองรวมกันท้ายตาราง
-        const answered = Object.keys(rows ?? {});
-        const subNo = (k: string) => Number(k.split("_")[1] ?? 0) || 0;
-        const mk = (k: string, section: string, label: string, qNo?: number) => ({
-            key: k,
-            section,
-            qNo,
-            label,
-            pf: (rows as any)?.[k]?.pf,
-            remark: (rows as any)?.[k]?.remark,
-        });
-        // วางโครงเดียวกับฟอร์มกรอก: หัวข้อใหญ่เป็นแถบคั่น แล้วข้อย่อยเรียงอยู่ใต้มัน
-        // ข้อธรรมดาที่ไม่มีข้อย่อย ตัวมันเองคือเนื้อในของแถบ ช่องหัวข้อจึงเว้นว่าง
-        const out: ReturnType<typeof mk>[] = [];
-        (QUESTIONS as any[]).forEach((q: any) => {
-            if (!q?.key) return;
-            const section = labelOf(q.key);
-            // เลขข้อ — ใช้รวมรูปของทั้งข้อในตารางผลการตรวจ แบบเดียวกับที่ PDF ทำ
-            const qNo: number | undefined = typeof q?.no === "number" ? getDisplayedQuestionNo(q.no)
-                : Number(String(q?.key ?? "").replace(/^r/, "")) || undefined;
-            out.push(mk(q.key, section, "", qNo));
-            answered
-                .filter((k) => k !== q.key && k.split("_")[0] === q.key)
-                .sort((a, b) => subNo(a) - subNo(b))
-                .forEach((k) => out.push(mk(k, section, labelOf(k), qNo)));
-        });
-        answered.forEach((k) => {
-            if (out.some((r) => r.key === k)) return;
-            const rawNo = Number(k.replace(/^r/, "").split("_")[0]) || undefined;
-            out.push(mk(k, "", labelOf(k), rawNo ? getDisplayedQuestionNo(rawNo) : undefined));
-        });
-        return out;
-    }, [rows, lang]);
 
 
     // กล่องหมายเหตุ + สรุปผลการตรวจสอบ — ประกาศครั้งเดียว วางได้สองที่
@@ -2374,7 +2308,7 @@ export default function CCBPMReport() {
                     <div className="tw-mt-6 sm:tw-mt-8 tw-space-y-4 sm:tw-space-y-6">
                         {/* โหมดตรวจ: ตัดเฉพาะรายการข้อที่ช่างกรอก ดูจากตารางผลการตรวจก่อน/หลังด้านล่างแทน
                             ส่วนหัวเอกสารกับข้อมูลสถานีคงไว้ ผู้อนุมัติต้องรู้ว่ากำลังดูใบไหน */}
-                        {!reviewMode && QUESTIONS.map((q) => renderQuestionBlock(q))}
+                        <fieldset disabled={reviewMode} className="pm-readonly tw-m-0 tw-min-w-0 tw-border-0 tw-p-0 tw-space-y-4 sm:tw-space-y-6">{QUESTIONS.map((q) => renderQuestionBlock(q))}</fieldset>
                     </div>
 
                     {/* โหมดตรวจ: ย้ายไปไว้ล่างสุด ให้อ่านหลังดูตารางผลการตรวจเสร็จ */}
@@ -2478,16 +2412,6 @@ export default function CCBPMReport() {
                 </fieldset>
             </form>
             <BackgroundUploadBanner lang={lang} />
-            {/* ผลการตรวจของทุกหัวข้อในตารางเดียว */}
-            {reviewMode && editId && (
-                <PmResultTable
-                    rows={compareRows}
-                    lang={lang}
-                    photos={cmpPhotos}
-                    apiBase={API_BASE}
-                    photoKeysOf={photoKeysOf}
-                />
-            )}
             {reviewMode && editId && (
                 <div className="tw-mx-auto tw-max-w-6xl tw-mt-6 tw-rounded-xl tw-border tw-border-blue-gray-100 tw-bg-white tw-p-5 tw-shadow-sm sm:tw-p-6">
                     <fieldset disabled className="pm-readonly tw-m-0 tw-min-w-0 tw-border-0 tw-p-0">
