@@ -619,7 +619,6 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
                   {canPlan && alreadyPlanned && !editMode && (
                     <Button
                       variant="outlined"
-                      size="sm"
                       onClick={() => setEditMode(true)}
                       className="tw-border-blue-gray-200 tw-text-blue-gray-700 hover:tw-border-blue-gray-300"
                     >
@@ -629,7 +628,6 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
                   {canPlan && alreadyPlanned && editMode && (
                     <Button
                       variant="text"
-                      size="sm"
                       onClick={() => { setEditMode(false); load(); }}
                       disabled={saving}
                     >

@@ -820,19 +820,37 @@ function PassFailRow({ label, value, onChange, remark, onRemarkChange, labels, a
         UNUSABLE: labels?.UNUSABLE ?? (lang === "th" ? "ใช้งานไม่ได้" : "Unusable"),
         NA: labels?.NA ?? t("na", lang),
     };
+    // layout เดียวกับทุกฟอร์ม PM: หัวข้อ → รูป → ปุ่มระดับผลชิดขวา → หมายเหตุ
+    const buttonGroup = (
+        <div id={id} className="tw-flex tw-flex-wrap tw-gap-2 tw-ml-auto tw-transition-all tw-duration-300">
+            <Button size="sm" color="green" variant={value === "VERY_GOOD" || value === "PASS" ? "filled" : "outlined"} className="sm:tw-min-w-[84px]" onClick={() => onChange("VERY_GOOD")}>{text.VERY_GOOD}</Button>
+            <Button size="sm" color="light-green" variant={value === "GOOD" ? "filled" : "outlined"} className="sm:tw-min-w-[84px]" onClick={() => onChange("GOOD")}>{text.GOOD}</Button>
+            <Button size="sm" color="amber" variant={value === "FAIR" ? "filled" : "outlined"} className="sm:tw-min-w-[84px]" onClick={() => onChange("FAIR")}>{text.FAIR}</Button>
+            <Button size="sm" color="red" variant={value === "UNUSABLE" || value === "FAIL" ? "filled" : "outlined"} className="sm:tw-min-w-[112px]" onClick={() => onChange("UNUSABLE")}>{text.UNUSABLE}</Button>
+            <Button size="sm" color="blue-gray" variant={value === "NA" ? "filled" : "outlined"} className="sm:tw-min-w-[84px]" onClick={() => onChange("NA")}>{text.NA}</Button>
+        </div>
+    );
+    const buttonsRow = (
+        <div className="tw-flex tw-items-center tw-gap-3 tw-w-full">
+            {buttonGroup}
+        </div>
+    );
     return (
         <div className="tw-space-y-3 tw-py-3">
-            <div className="tw-flex tw-flex-col sm:tw-flex-row tw-items-start sm:tw-items-center tw-justify-between tw-gap-2">
-                <Typography className="tw-font-medium">{label}</Typography>
-                {showPfButtons && <div id={id} className="tw-flex tw-flex-wrap tw-gap-2">
-                    <Button size="sm" color="green" variant={value === "VERY_GOOD" || value === "PASS" ? "filled" : "outlined"} className="tw-min-w-[72px]" onClick={() => onChange("VERY_GOOD")}>{text.VERY_GOOD}</Button>
-                    <Button size="sm" color="light-green" variant={value === "GOOD" ? "filled" : "outlined"} className="tw-min-w-[72px]" onClick={() => onChange("GOOD")}>{text.GOOD}</Button>
-                    <Button size="sm" color="amber" variant={value === "FAIR" ? "filled" : "outlined"} className="tw-min-w-[72px]" onClick={() => onChange("FAIR")}>{text.FAIR}</Button>
-                    <Button size="sm" color="red" variant={value === "UNUSABLE" || value === "FAIL" ? "filled" : "outlined"} className="tw-min-w-[96px]" onClick={() => onChange("UNUSABLE")}>{text.UNUSABLE}</Button>
-                    <Button size="sm" color="blue-gray" variant={value === "NA" ? "filled" : "outlined"} className="tw-min-w-[72px]" onClick={() => onChange("NA")}>{text.NA}</Button>
-                </div>}
-            </div>
-            {onRemarkChange && <div className="tw-space-y-3">{aboveRemark}{beforeRemark}<div id={remarkId}><Textarea label={t("remark", lang)} value={remark || ""} onChange={(e) => onRemarkChange(e.target.value)} containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full" /></div></div>}
+            <Typography className="tw-font-medium">{label}</Typography>
+            {onRemarkChange ? (
+                <div className="tw-w-full tw-min-w-0 tw-space-y-2">
+                    {aboveRemark}
+                    {showPfButtons && buttonsRow}
+                    {beforeRemark}
+                    <div id={remarkId} className="tw-transition-all tw-duration-300">
+                        <Textarea label={t("remark", lang)} value={remark || ""} onChange={(e) => onRemarkChange(e.target.value)}
+                            containerProps={{ className: "!tw-w-full !tw-min-w-0" }} className="!tw-w-full" />
+                    </div>
+                </div>
+            ) : (
+                showPfButtons && <div className="tw-flex tw-flex-col sm:tw-flex-row tw-gap-2 sm:tw-items-center sm:tw-justify-between">{buttonsRow}</div>
+            )}
         </div>
     );
 }
