@@ -1,14 +1,20 @@
 // CM
 "use client";
 
+import dynamic from "next/dynamic";
 import React, { useEffect, useState } from "react";
 
-import OpenTables from "@/app/dashboard/cm-report/open/list/open-table";
-import InProgressTables from "@/app/dashboard/cm-report/inprogress/list/inprogress-table";
-import ClosedTables from "@/app/dashboard/cm-report/closed/list/closed-table";
 import { Tabs, TabsHeader, TabsBody, Tab, TabPanel } from "@material-tailwind/react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { apiFetch } from "@/utils/api";
+
+// Les tableaux ci-dessous vivent dans des onglets et un seul est rendu a la fois,
+// mais un import statique les embarque tous dans le bundle de la page. next/dynamic
+// les decoupe : seul l'onglet ouvert est telecharge. Pas de `ssr: false` — le rendu
+// serveur est conserve, donc le squelette du tableau reste dans le HTML servi.
+const OpenTables = dynamic(() => import("@/app/dashboard/cm-report/open/list/open-table"));
+const InProgressTables = dynamic(() => import("@/app/dashboard/cm-report/inprogress/list/inprogress-table"));
+const ClosedTables = dynamic(() => import("@/app/dashboard/cm-report/closed/list/closed-table"));
 
 type TabId = "Open" | "In Progress" | "Closed" | "Cancelled";
 type TabSlug = "open" | "in-progress" | "closed" | "cancelled";

@@ -1,21 +1,27 @@
 // PM
 "use client";
 
+import dynamic from "next/dynamic";
 import React, { useState, useMemo, useEffect } from "react";
 
 // components
-import ChargerTables from "@/app/dashboard/pm-report/charger/list/components/charger-table";
 import FirmwareCards from "@/app/dashboard/pm-report/charger/list/components/firmware-cards";
-import MDBTables from "@/app/dashboard/pm-report/mdb/list/components/mdb-table";
-import CCBTables from "@/app/dashboard/pm-report/ccb/list/components/ccb-table";
-import StationTables from "@/app/dashboard/pm-report/station/list/components/station-table";
-import CBBoxTables from "@/app/dashboard/pm-report/cb-box/list/components/cb-box-table";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import useLanguage from "@/utils/useLanguage";
 
 
 import { Tabs, TabsHeader, TabsBody, Tab, TabPanel } from "@material-tailwind/react";
 import { ChevronDoubleUpIcon, ChevronDoubleDownIcon } from "@heroicons/react/24/solid";
+
+// Les tableaux ci-dessous vivent dans des onglets et un seul est rendu a la fois,
+// mais un import statique les embarque tous dans le bundle de la page. next/dynamic
+// les decoupe : seul l'onglet ouvert est telecharge. Pas de `ssr: false` — le rendu
+// serveur est conserve, donc le squelette du tableau reste dans le HTML servi.
+const ChargerTables = dynamic(() => import("@/app/dashboard/pm-report/charger/list/components/charger-table"));
+const MDBTables = dynamic(() => import("@/app/dashboard/pm-report/mdb/list/components/mdb-table"));
+const CCBTables = dynamic(() => import("@/app/dashboard/pm-report/ccb/list/components/ccb-table"));
+const StationTables = dynamic(() => import("@/app/dashboard/pm-report/station/list/components/station-table"));
+const CBBoxTables = dynamic(() => import("@/app/dashboard/pm-report/cb-box/list/components/cb-box-table"));
 
 type TabId = "charger" | "mdb" | "ccb" | "cb-box" | "station";
 

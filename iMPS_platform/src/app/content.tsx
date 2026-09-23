@@ -5,29 +5,34 @@ import { getRoutes }  from "@/routes";
 import { DashboardNavbar } from "@/widgets/layout";
 import Sidenav from "@/widgets/layout/sidenav";
 import { usePathname } from "next/navigation";
-import { useMaterialTailwindController } from "@/context";
 import { installDomSafetyPatch } from "@/utils/dom-safety";
 import { installUploadSafetyPatch } from "@/utils/upload-safety";
 
 
 export default function InnerContent({ children }: { children: React.ReactNode }) {
-  const [isMounted, setIsMounted] = useState(false);
+  // Ce composant enveloppe TOUTES les pages. Il attendait le montage client avant
+  // de rendre quoi que ce soit (`if (!isMounted) return null`), donc le HTML servi
+  // était vide et rien ne s'affichait avant que React ait téléchargé, hydraté puis
+  // relancé un rendu — c'était le coût dominant du délai d'affichage.
+  //
+  // Un seul enfant impose réellement cette attente : Sidenav lit matchMedia et
+  // navigator.userAgent dès son premier rendu (usehooks-ts), et monte un portail
+  // sur document.body — le serveur ne peut pas produire le même balisage. La barre
+  // du haut et les pages, elles, partent d'un état déterministe (leurs lectures de
+  // localStorage sont toutes dans des effets). Le garde-fou ne porte donc plus que
+  // sur le Sidenav : le reste est rendu côté serveur.
+  const [sidenavReady, setSidenavReady] = useState(false);
   const [routes, setRoutes] = useState<any[]>([]);
 
-  const [controller] = useMaterialTailwindController();
   const pathname = usePathname();
 
   useEffect(() => {
     installDomSafetyPatch();
     installUploadSafetyPatch();
-    setIsMounted(true);
+    setSidenavReady(true);
     setRoutes(getRoutes());
   }, []);
 
-  // ยังไม่ mount → return null
-  if (!isMounted) return null;
-
-  const { openSidenav } = controller;
   const HIDE_SIDENAV = ["/pages/*", "/mainpages/*", "/auth/*"];
   const SIMPLE_PAGES = ["/pages/*", "/mainpages/*", "/auth/*"];
 
@@ -39,13 +44,12 @@ export default function InnerContent({ children }: { children: React.ReactNode }
   const showSidenav = !HIDE_SIDENAV.some((p) => match(pathname, p));
   const isSimpleLayout = SIMPLE_PAGES.some((p) => match(pathname, p));
 
-  const mainClassName = showSidenav
-    ? `tw-p-4 ${openSidenav ? "xl:tw-ml-80" : "xl:tw-ml-80"}`
-    : "m-0";
-
   return (
     <div className="!tw-min-h-screen tw-bg-blue-gray-50/50">
-      {showSidenav && <Sidenav routes={routes} />}
+      {/* --content-ml a une valeur par défaut dans globals.css identique à celle que
+          Sidenav calcule sur grand écran : le contenu est donc déjà à sa place dans
+          le HTML, et son arrivée ne décale rien. */}
+      {showSidenav && sidenavReady && <Sidenav routes={routes} />}
 
       <div className={showSidenav ? "tw-p-4 xl:tw-ml-[var(--content-ml)]" : "m-0"}>
         {/* Configurator (แผงตั้งค่าของเทมเพลต) ถูกถอดออก — ไม่มีปุ่มไหนเปิดมันแล้ว

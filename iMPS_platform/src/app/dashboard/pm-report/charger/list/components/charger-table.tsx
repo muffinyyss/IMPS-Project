@@ -374,7 +374,9 @@ type Me = {
 
 export default function SearchDataTables({ token, apiBase = BASE }: Props) {
   const { lang } = useLanguage();
-  const [loading, setLoading] = useState(false);
+  // true au depart : le squelette doit occuper la hauteur finale des le premier
+  // rendu, sinon le tableau grandit de 0 a N lignes quand les donnees arrivent.
+  const [loading, setLoading] = useState(true);
   const [pageLoading, setPageLoading] = useState(true);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [data, setData] = useState<TData[]>([]);
@@ -561,6 +563,8 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
   const fetchRows = async (signal?: AbortSignal) => {
     if (!sn) {
       setData([]);
+      setLoading(false);
+      setPageLoading(false);
       return;
     }
     setLoading(true);

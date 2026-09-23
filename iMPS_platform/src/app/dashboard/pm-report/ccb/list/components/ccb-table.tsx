@@ -232,7 +232,9 @@ type Me = { id: string; username: string; email: string; role: string; company: 
 
 export default function SearchDataTables({ token, apiBase = BASE }: Props) {
   const { lang } = useLanguage();
-  const [loading, setLoading] = useState(false);
+  // true au depart : le squelette doit occuper la hauteur finale des le premier
+  // rendu, sinon le tableau grandit de 0 a N lignes quand les donnees arrivent.
+  const [loading, setLoading] = useState(true);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [data, setData] = useState<TData[]>([]);
   const [filtering, setFiltering] = useState("");
@@ -467,7 +469,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
   };
 
   const fetchRows = async (signal?: AbortSignal) => {
-    if (!stationId) { setData([]); return; }
+    if (!stationId) { setData([]); setLoading(false); setPageLoading(false); return; }
     setLoading(true);
     try {
       const makeURL = (path: string) => {

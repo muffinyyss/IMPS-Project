@@ -1,7 +1,29 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
-from config import errorDB, client
+from config import errorDB, client, client1
+import logging as _logging
+
+
+def _named_logger(name: str) -> "_logging.Logger":
+    """Logger visible dans la sortie du serveur.
+
+    Sans handler propre, un logging.getLogger(...).info() n'apparait nulle part
+    sous uvicorn : les lignes de demarrage (index, bascule) etaient ecrites mais
+    invisibles. Meme montage que routers/auto_cm_watcher.py, qui lui s'affiche.
+    """
+    log = _logging.getLogger(name)
+    if not log.handlers:
+        handler = _logging.StreamHandler()
+        handler.setFormatter(_logging.Formatter("%(asctime)s [%(name)s] %(message)s", "%H:%M:%S"))
+        log.addHandler(handler)
+        log.setLevel(_logging.INFO)
+    return log
+
+
+_named_logger("startup")
+_named_logger("unified")
+_named_logger("unified_migration")
 
 # ===== Auto CM Watcher =====
 from routers.auto_cm_watcher import start_watcher, stop_watcher
@@ -80,6 +102,38 @@ async def _refresh_maximo_master_data() -> None:
                 log.warning(f"  ⚠️ refresh Maximo {name} failed: {e}")
 
 
+async def _keep_unified_fresh(interval_s: int = 120) -> None:
+    """Garde la collection unifiee a jour si le pipeline ne l'alimente pas (encore).
+
+    Cas normal, pipeline deploye : une commande par base et par cycle pour
+    constater que tout arrive, puis rien. Cas degrade — pipeline pas encore
+    deploye, arrete, ou en panne — on resynchronise depuis les collections par
+    SN, ce qui evite d'afficher des statuts geles. L'ordre de deploiement du
+    backend et du pipeline n'a donc pas a etre maitrise.
+    """
+    import asyncio as _asyncio
+    import logging as _logging
+    from services import unified_migration
+
+    log = _logging.getLogger("unified")
+    if not unified_migration.enabled():
+        return
+    while True:
+        try:
+            await _asyncio.sleep(interval_s)
+            res = await _asyncio.to_thread(
+                unified_migration.sync_all, client1, unified_migration.DEFAULT_LIMIT_PER_SN, True
+            )
+            for db_name, st in res.items():
+                if st.get("ecrits"):
+                    log.info("%s : %d document(s) rattrape(s) — le pipeline n'alimente "
+                             "pas la collection unifiee", db_name, st["ecrits"])
+        except _asyncio.CancelledError:
+            raise
+        except Exception as e:
+            log.warning("cycle de fraicheur echoue : %s", e)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     import asyncio
@@ -87,6 +141,7 @@ async def lifespan(app: FastAPI):
 
     from routers.cmreport import ensure_cm_indexes
     from routers.stations import ensure_status_indexes
+    from services import unified_migration
 
     app.state.errorDB = errorDB
     app.state.mongo_client = client
@@ -105,12 +160,34 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logging.getLogger("startup").warning(f"  ⚠️ ensure status indexes failed: {e}")
 
+    # Bascule « 1 collection par SN » -> « 1 collection + champ sn ».
+    # Automatique : rien a lancer a la main apres un merge, ni sur dev ni en prod.
+    # Voir services/unified_migration.py pour le detail et le garde-fou de fraicheur.
+    log = logging.getLogger("startup")
+    if unified_migration.enabled():
+        try:
+            version = (await asyncio.to_thread(client1.server_info))["version"]
+            log.info(f"  · MongoDB {version}")
+        except Exception as e:
+            log.warning(f"  ⚠️ version MongoDB illisible : {e}")
+        try:
+            res = await asyncio.to_thread(unified_migration.sync_all, client1)
+            for db_name, st in res.items():
+                log.info(f"  ✓ {db_name} unifiee : {st['ecrits']} copie(s), "
+                         f"{st['ignores']} deja presente(s), {st['series']} serie(s)")
+        except Exception as e:
+            log.warning(f"  ⚠️ bascule unifiee echouee : {e}")
+    else:
+        log.info("  · bascule unifiee desactivee (UNIFIED_MIGRATION=off)")
+
     start_watcher()
     await _warm_maximo_master_data()
     refresher = asyncio.create_task(_refresh_maximo_master_data())
+    unified_task = asyncio.create_task(_keep_unified_fresh())
 
     yield
 
+    unified_task.cancel()
     refresher.cancel()
     await stop_watcher()
 

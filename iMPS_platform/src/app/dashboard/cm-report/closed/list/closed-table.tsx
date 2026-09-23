@@ -25,7 +25,7 @@ import { useLanguage, type Lang } from "@/utils/useLanguage";
 import { apiFetch } from "@/utils/api";
 import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
 import { failureCodeLabel } from "@/app/dashboard/cm-report/lib/failureCode";
-import TableSkeletonRows from "@/components/TableSkeletonRows";
+import TableSkeletonRows, { TableBodySpacer } from "@/components/TableSkeletonRows";
 
 // ==================== TRANSLATIONS ====================
 const T = {
@@ -147,7 +147,9 @@ const BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
 export default function CMReportPage({ token, apiBase = BASE }: Props) {
   const { lang } = useLanguage();
-  const [loading, setLoading] = useState(false);
+  // true au depart : le squelette doit occuper la hauteur finale des le premier
+  // rendu, sinon le tableau grandit de 0 a N lignes quand les donnees arrivent.
+  const [loading, setLoading] = useState(true);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [data, setData] = useState<TData[]>([]);
   const [filtering, setFiltering] = useState("");
@@ -327,7 +329,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
   }
 
   const fetchRows = async () => {
-    if (!stationId) { setData([]); return; }
+    if (!stationId) { setData([]); setLoading(false); setPageLoading(false); return; }
     setLoading(true);
 
     try {
@@ -1111,7 +1113,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
               <tbody className="tw-divide-y tw-divide-blue-gray-50">
                 {loading ? (
                       /* โครงร่างสูงเท่าหน้าจริง — กัน layout shift ตอนข้อมูลมาถึง */
-                      <TableSkeletonRows rows={table.getState().pagination.pageSize} cols={columns.length} />
+                      <TableSkeletonRows rows={table.getState().pagination.pageSize} cols={columns.length} rowHeight="var(--table-row-h)" />
                 ) : table.getRowModel().rows.length ? (
                   table.getRowModel().rows.map((row, index) => (
                     <tr
@@ -1155,6 +1157,11 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
                 )}
               </tbody>
             </table>
+            {/* complète la page jusqu'à pageSize lignes : le pied de tableau ne bouge plus */}
+            <TableBodySpacer
+              pageSize={table.getState().pagination.pageSize}
+              shown={loading ? table.getState().pagination.pageSize : table.getRowModel().rows.length}
+            />
           </div>
         </CardFooter>
 

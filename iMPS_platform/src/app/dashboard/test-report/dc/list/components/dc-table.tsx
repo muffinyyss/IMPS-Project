@@ -190,7 +190,9 @@ const resolveFileHref = (v: any, apiBase: string): string => {
 
 // ===== Main Component =====
 export default function DCReportPage({ token, apiBase = BASE }: Props) {
-  const [loading, setLoading] = useState(false);
+  // true au depart : le squelette doit occuper la hauteur finale des le premier
+  // rendu, sinon le tableau grandit de 0 a N lignes quand les donnees arrivent.
+  const [loading, setLoading] = useState(true);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [data, setData] = useState<TData[]>([]);
   const [filtering, setFiltering] = useState("");
@@ -279,7 +281,7 @@ export default function DCReportPage({ token, apiBase = BASE }: Props) {
 
   // ===== Fetch data =====
   const fetchRows = useCallback(async () => {
-    if (!sn) { setData([]); return; }
+    if (!sn) { setData([]); setLoading(false); return; }
     setLoading(true);
     
     try {

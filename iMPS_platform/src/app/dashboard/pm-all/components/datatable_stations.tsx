@@ -801,7 +801,7 @@ export function SearchDataTables() {
         };
     };
 
-    const refetchStations = async () => { try { const statusesPromise = fetchChargerStatusesBulk(); const availabilityPromise = fetchAvailability(); const res = await apiFetch(`/all-stations/`); if (!res.ok) return; const json = await res.json(); const list = Array.isArray(json?.stations) ? json.stations : []; const rows = list.map(mapStation); const statuses = await statusesPromise; setData(statuses ? applyChargerStatuses(rows, statuses) : rows); await availabilityPromise; } catch (e) { console.error("Failed to refetch stations:", e); } };
+    const refetchStations = async () => { try { const statusesPromise = fetchChargerStatusesBulk(); const availabilityPromise = fetchAvailability(); const res = await apiFetch(`/all-stations/?view=list`); if (!res.ok) return; const json = await res.json(); const list = Array.isArray(json?.stations) ? json.stations : []; const rows = list.map(mapStation); const statuses = await statusesPromise; setData(statuses ? applyChargerStatuses(rows, statuses) : rows); await availabilityPromise; } catch (e) { console.error("Failed to refetch stations:", e); } };
 
     useEffect(() => {
         (async () => {
@@ -812,7 +812,7 @@ export function SearchDataTables() {
                 // ยิง 3 คำขอพร้อมกัน — statuses/availability ไม่ต้องรอ all-stations
                 const statusesPromise = fetchChargerStatusesBulk();
                 const availabilityPromise = fetchAvailability();
-                const res = await apiFetch(`/all-stations/`);
+                const res = await apiFetch(`/all-stations/?view=list`);
                 if (!res.ok) { setErr(`${t.fetchFailed}: ${res.status}`); setData([]); return; }
                 const json = await res.json();
                 const list = Array.isArray(json?.stations) ? json.stations : [];
