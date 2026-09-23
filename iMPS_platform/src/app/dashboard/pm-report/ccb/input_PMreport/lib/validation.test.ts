@@ -8,16 +8,9 @@ const blankMeasurements = {
 };
 
 describe("findMissingCcbMeasurementInputs", () => {
-  it("skips question 9 and 10 inputs in post-PM when pre-PM marked them N/A", () => {
+  it("skips question 9 and 10 inputs when the form marks them N/A", () => {
     const missing = findMissingCcbMeasurementInputs({
-      isPostMode: true,
-      currentRows: {},
-      preRows: {
-        r8_1: { pf: "NA" },
-        r8_2: { pf: "NA" },
-        r9_main: { pf: "NA" },
-        r10_sub1: { pf: "NA" },
-      },
+      rows: { r9_main: { pf: "NA" }, r10_sub1: { pf: "NA" } },
       mainMeasurements: blankMeasurements,
       subMeasurements: [blankMeasurements],
       subBreakerCount: 1,
@@ -26,27 +19,24 @@ describe("findMissingCcbMeasurementInputs", () => {
     expect(missing).toEqual([]);
   });
 
-  it("keeps current-form N/A behavior in both pre-PM and post-PM", () => {
-    const base = {
-      currentRows: { r9_main: { pf: "NA" }, r10_sub1: { pf: "NA" } },
-      preRows: {},
+  it("requires every blank measurement when nothing is N/A", () => {
+    const missing = findMissingCcbMeasurementInputs({
+      rows: {},
       mainMeasurements: blankMeasurements,
       subMeasurements: [blankMeasurements],
       subBreakerCount: 1,
-    };
+    });
 
-    expect(findMissingCcbMeasurementInputs({ ...base, isPostMode: false })).toEqual([]);
-    expect(findMissingCcbMeasurementInputs({ ...base, isPostMode: true })).toEqual([]);
+    expect(missing).toHaveLength(6);
+    expect(missing.map(({ qNo }) => qNo)).toEqual([9, 9, 9, 10, 10, 10]);
   });
 
   it("reports only applicable rows and accepts zero as a filled value", () => {
     const missing = findMissingCcbMeasurementInputs({
-      isPostMode: true,
-      currentRows: { r10_sub2: { pf: "PASS" } },
-      preRows: {
+      rows: {
         r9_main: { pf: "NA" },
         r10_sub1: { pf: "NA" },
-        r10_sub2: { pf: "PASS" },
+        r10_sub2: { pf: "GOOD" },
       },
       mainMeasurements: blankMeasurements,
       subMeasurements: [blankMeasurements, {
@@ -62,17 +52,17 @@ describe("findMissingCcbMeasurementInputs", () => {
     ]);
   });
 
-  it("does not use pre-PM N/A state while validating the pre-PM form", () => {
+  it("ignores sub-breakers beyond the current count", () => {
     const missing = findMissingCcbMeasurementInputs({
-      isPostMode: false,
-      currentRows: {},
-      preRows: { r9_main: { pf: "NA" }, r10_sub1: { pf: "NA" } },
+      rows: { r9_main: { pf: "NA" } },
       mainMeasurements: blankMeasurements,
-      subMeasurements: [blankMeasurements],
+      subMeasurements: [
+        { "L-N": { value: "230" }, "L-G": { value: "230" }, "N-G": { value: "1" } },
+        blankMeasurements,
+      ],
       subBreakerCount: 1,
     });
 
-    expect(missing).toHaveLength(6);
-    expect(missing.map(({ qNo }) => qNo)).toEqual([9, 9, 9, 10, 10, 10]);
+    expect(missing).toEqual([]);
   });
 });

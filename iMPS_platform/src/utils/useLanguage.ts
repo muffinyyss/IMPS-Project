@@ -71,7 +71,6 @@ export const mdbFormTranslations = {
   noPhotos: { th: "ยังไม่มีรูปแนบ", en: "No photos attached" },
   
   // Measure labels
-  prePM: { th: "ก่อน PM", en: "Pre-PM" },
   postPM: { th: "หลัง PM", en: "Post-PM" },
   
   // Dynamic items
@@ -106,14 +105,13 @@ export const mdbFormTranslations = {
   alertNoStation: { th: "ยังไม่ทราบ station_id", en: "Station ID not found" },
   alertFillVoltage: { th: "กรุณากรอกค่าแรงดันไฟฟ้าให้ครบก่อนบันทึก", en: "Please fill all voltage values" },
   alertFillRemark: { th: "กรุณากรอกหมายเหตุข้อ:", en: "Please fill remarks:" },
-  alertFillPreFirst: { th: "กรุณากรอกข้อมูลในส่วน Pre ให้ครบก่อน", en: "Please complete Pre-PM first" },
   alertSaveFailed: { th: "บันทึกไม่สำเร็จ:", en: "Save failed:" },
   
   // Checkbox
   dustFilterChanged: { th: "เปลี่ยนแผ่นกรองระบายอากาศ", en: "Ventilation filter replaced" },
   
   // Tooltips
-  photoNotComplete: { th: "กรุณาแนบรูปในส่วน Pre ให้ครบก่อนบันทึก", en: "Please attach all Pre-PM photos" },
+  photoNotComplete: { th: "กรุณาแนบรูปให้ครบก่อนบันทึก", en: "Please attach all photos" },
   inputNotComplete: { th: "กรุณากรอกค่าข้อ 4-8 ให้ครบก่อนบันทึก", en: "Please fill items 4-8" },
   allNotComplete: { th: "กรุณากรอกข้อมูล / แนบรูป และสรุปผลให้ครบก่อนบันทึก", en: "Please complete all data" },
 };

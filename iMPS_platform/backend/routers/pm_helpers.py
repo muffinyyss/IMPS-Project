@@ -241,6 +241,49 @@ async def _next_year_seq(db, sn: str, pm_type: str, d: date) -> int:
     return int(seq["n"])
 
 
+async def _resolve_issue_and_doc(
+    coll, url_coll, db, key: str, pm_type: str, d: date,
+    client_issue: str | None, client_doc: str | None,
+) -> tuple[str, str]:
+    """
+    จองเลข issue_id / doc_name ให้ใบ PM ใหม่ (key = SN ของตู้ หรือ station_id)
+
+    เดิมโค้ดนี้อยู่ใน /…/pre/submit ของแต่ละชนิด ตอนนี้ตัดด่าน Pre-PM ทิ้งแล้ว
+    /…/submit (Post) จึงเป็นตัวสร้างใบและจองเลขแทน
+
+    ฟอร์มพรีวิวเลขไว้ล่วงหน้า (preview-issueid / preview-docname) ถ้าเลขนั้นยังว่าง
+    อยู่จริงตอนกดบันทึกก็ใช้ตามนั้น ไม่งั้นออกเลขถัดไปให้ใหม่
+    """
+    import asyncio
+
+    issue_id = None
+    if client_issue:
+        yymm = f"{d.year % 100:02d}{d.month:02d}"
+        if client_issue.startswith(f"PM-{pm_type}-{yymm}-"):
+            rep_exists, url_exists = await asyncio.gather(
+                coll.find_one({"issue_id": client_issue}, {"_id": 1}),
+                url_coll.find_one({"issue_id": client_issue}, {"_id": 1}),
+            )
+            if not rep_exists and not url_exists:
+                issue_id = client_issue
+    if not issue_id:
+        issue_id = await _next_issue_id_no_conflict(db, coll, url_coll, key, pm_type, d)
+
+    doc_name = None
+    if client_doc and client_doc.startswith(f"{key}_"):
+        rep_exists, url_exists = await asyncio.gather(
+            coll.find_one({"doc_name": client_doc}, {"_id": 1}),
+            url_coll.find_one({"doc_name": client_doc}, {"_id": 1}),
+        )
+        if not rep_exists and not url_exists:
+            doc_name = client_doc
+    if not doc_name:
+        year_seq = await _next_year_seq(db, key, pm_type, d)
+        doc_name = f"{key}_{year_seq}/{d.year}"
+
+    return issue_id, doc_name
+
+
 # ─── File Name Helpers ─────────────────────────────────────────
 def _safe_name(name: str) -> str:
     """Sanitize filename: remove unsafe chars, add unique suffix."""

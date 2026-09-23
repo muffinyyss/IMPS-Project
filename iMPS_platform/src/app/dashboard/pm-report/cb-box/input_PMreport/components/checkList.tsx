@@ -3,14 +3,14 @@
 import React, { useMemo, useCallback, useRef, useState, useEffect } from "react";
 import { Button, Input, Typography, Textarea, Tooltip } from "@material-tailwind/react";
 import { draftKey, saveDraftLocal, loadDraftLocal, clearDraftLocal } from "@/app/dashboard/pm-report/cb-box/input_PMreport/lib/draft";
-import { useRouter, useSearchParams, usePathname } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import PmApprovalBar from "@/app/dashboard/pm-report/components/PmApprovalBar";
 import PmCompareTable from "@/app/dashboard/pm-report/components/PmCompareTable";
 import Image from "next/image";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 import { Tabs, TabsHeader, Tab } from "@material-tailwind/react";
 import { putPhoto, getPhotoByDbKey, delPhoto, type PhotoRef } from "../lib/draftPhotos";
-import { isFileReadable, isImageDecodable, resolveUsableFile, reportMissingDraftPhoto, reportPhotoStorageFailure } from "@/utils/upload-safety";
+import { isFileReadable, isImageDecodable, resolveUsableFile, reportPhotoStorageFailure } from "@/utils/upload-safety";
 import { ensureViewableImage } from "@/utils/heic";
 import { collectPending, unrecoverablePhotos, expectedCountByGroup, findShortfall, shortfallMessage, pendingMessage, unrecoverableMessage } from "@/utils/pm-photo-sync";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
@@ -31,7 +31,6 @@ const T = {
     saving: { th: "กำลังบันทึก...", en: "Saving..." },
     attachPhoto: { th: "แนบรูป / ถ่ายรูป", en: "Attach / Take Photo" },
     na: { th: "N/A", en: "N/A" },
-    cancelNA: { th: "ยกเลิก N/A", en: "Cancel N/A" },
     pass: { th: "PASS", en: "PASS" },
     fail: { th: "FAIL", en: "FAIL" },
     backToList: { th: "กลับไปหน้า List", en: "Back to List" },
@@ -40,12 +39,8 @@ const T = {
     cameraSupported: { th: "รองรับการถ่ายจากกล้องบนมือถือ", en: "Camera supported on mobile" },
     noPhotos: { th: "ยังไม่มีรูปแนบ", en: "No photos attached" },
     remark: { th: "หมายเหตุ", en: "Remark" },
-    remarkLabel: { th: "หมายเหตุ", en: "Remark" },
     testResult: { th: "ผลการทดสอบ", en: "Test Result" },
-    preRemarkLabel: { th: "หมายเหตุ (ก่อน PM)", en: "Remark (Pre-PM)" },
     comment: { th: "Comment", en: "Comment" },
-    beforePM: { th: "ก่อน PM", en: "Before PM" },
-    afterPM: { th: "หลัง PM", en: "After PM" },
     summaryResult: { th: "สรุปผลการตรวจสอบ", en: "Inspection Summary" },
     summaryPassLabel: { th: "Pass", en: "Pass" },
     summaryFailLabel: { th: "Fail", en: "Fail" },
@@ -68,12 +63,9 @@ const T = {
     missingSummaryStatus: { th: "ยังไม่ได้เลือกสถานะสรุปผล", en: "Summary status not selected" },
     alertNoStation: { th: "ยังไม่ทราบ station_id", en: "Station ID not found" },
     alertFillPhoto: { th: "กรุณาแนบรูปในทุกข้อก่อนบันทึก", en: "Please attach photos for all items" },
-    alertFillPreFirst: { th: "กรุณากรอกข้อมูลในส่วน Pre-PM ให้ครบก่อน", en: "Please complete all Pre-PM fields first" },
     alertSaveFailed: { th: "บันทึกไม่สำเร็จ:", en: "Save failed:" },
     alertCompleteAll: { th: "กรุณากรอกข้อมูลและแนบรูปให้ครบก่อนบันทึก", en: "Please complete all fields" },
-    alertPhotoNotComplete: { th: "กรุณาแนบรูปในส่วน Pre-PM ให้ครบก่อน", en: "Please attach all photos" },
     alertInputNotComplete: { th: "กรุณากรอกค่าข้อ 7 ให้ครบ", en: "Please fill in Item 7" },
-    noReportId: { th: "ไม่มี report_id", en: "No report_id" },
     // PMValidationCard translations
     itemLabel: { th: "ข้อ", en: "Item" },
     formStatus: { th: "สถานะการกรอกข้อมูล", en: "Form Completion Status" },
@@ -393,13 +385,12 @@ const DROPDOWN_Q2_OPTIONS = [
     { value: "N/A", th: "N/A", en: "N/A" },
 ] as const;
 
-type TabId = "pre" | "post";
+type TabId = "post";
 const TABS: { id: TabId; label: string }[] = [{ id: "post", label: "Post\u2011PM" }];
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 const LOGO_SRC = "/img/logo_egat.png";
 
-type StationPublic = { station_id: string; station_name: string; status?: boolean };
 type Me = { id: string; username: string; email: string; role: string; company: string; tel: string };
 type PhotoItem = { id: string; file?: File; preview?: string; remark?: string; uploaded?: boolean; ref?: PhotoRef; isNA?: boolean; createdAt?: string; location?: string };
 
@@ -422,7 +413,7 @@ const QUESTIONS = QUESTIONS_DATA as unknown as Question[];
 // ข้อเดิม no=1..9 ยังใช้คีย์ชุดเดิมใน DB จึงเลื่อนเฉพาะเลขที่แสดงผล
 const DISPLAY_SHIFT = 3;
 
-function getQuestionLabel(q: Question, mode: TabId, lang: Lang): string {
+function getQuestionLabel(q: Question, lang: Lang): string {
     if (q.no >= 101 && q.no <= 103) return q.label[lang];
     return q.label[lang].replace(/^(\d+)/, (number) => String(Number(number) + DISPLAY_SHIFT));
 }
@@ -494,27 +485,6 @@ function useDebouncedEffect(effect: () => void, deps: any[], delay = 800) {
     useEffect(() => { const h = setTimeout(effect, delay); return () => clearTimeout(h); }, deps);
 }
 
-async function getStationInfoPublic(stationId: string): Promise<StationPublic> {
-    const res = await fetch(`${API_BASE}/station/info/public?station_id=${encodeURIComponent(stationId)}`, { cache: "no-store" });
-    if (!res.ok) throw new Error("Station not found");
-    const json = await res.json();
-    return json.station ?? json;
-}
-
-async function fetchPreviewIssueId(stationId: string, pmDate: string): Promise<string | null> {
-    const u = new URL(`${API_BASE}/cbboxpmreport/preview-issueid`); u.searchParams.set("station_id", stationId); u.searchParams.set("pm_date", pmDate);
-    const token = localStorage.getItem("access_token") ?? "";
-    const r = await fetch(u.toString(), { credentials: "include", headers: token ? { Authorization: `Bearer ${token}` } : undefined });
-    if (!r.ok) return null; return (await r.json())?.issue_id ?? null;
-}
-
-async function fetchPreviewDocName(stationId: string, pmDate: string): Promise<string | null> {
-    const u = new URL(`${API_BASE}/cbboxpmreport/preview-docname`); u.searchParams.set("station_id", stationId); u.searchParams.set("pm_date", pmDate);
-    const token = localStorage.getItem("access_token") ?? "";
-    const r = await fetch(u.toString(), { credentials: "include", headers: token ? { Authorization: `Bearer ${token}` } : undefined });
-    if (!r.ok) return null; return (await r.json())?.doc_name ?? null;
-}
-
 async function fetchReport(reportId: string, stationId: string) {
     const token = localStorage.getItem("access_token") ?? "";
     const res = await fetch(`${API_BASE}/cbboxpmreport/get?station_id=${stationId}&report_id=${reportId}`, { headers: token ? { Authorization: `Bearer ${token}` } : undefined, credentials: "include" });
@@ -584,8 +554,6 @@ interface MissingInputItem {
 
 interface PMValidationCardProps {
     lang: Lang;
-    displayTab: "pre" | "post";
-    isPostMode: boolean;
     allPhotosAttached: boolean;
     missingPhotoItems: string[];
     allRequiredInputsFilled: boolean;
@@ -597,7 +565,7 @@ interface PMValidationCardProps {
 }
 
 function PMValidationCard({
-    lang, displayTab, isPostMode,
+    lang,
     allPhotosAttached, missingPhotoItems,
     allRequiredInputsFilled, missingInputsDetailed,
     allPFAnsweredPost, missingPFItemsPost,
@@ -648,45 +616,42 @@ function PMValidationCard({
             });
         }
 
-        // 3) Post mode errors
-        if (isPostMode) {
-            // PF status errors
-            if (!allPFAnsweredPost) {
-                missingPFItemsPost.forEach((item) => {
-                    errors.push({
-                        section: lang === "th" ? "ระดับผลการตรวจ" : "Inspection rating",
-                        sectionIcon: "✅",
-                        itemName: `${t("itemLabel", lang)} ${item}`,
-                        message: lang === "th" ? "ยังไม่ได้เลือกระดับผลการตรวจ" : "Inspection rating not selected",
-                        scrollId: getPfButtonsScrollId(item),
-                    });
+        // 3) PF status errors
+        if (!allPFAnsweredPost) {
+            missingPFItemsPost.forEach((item) => {
+                errors.push({
+                    section: lang === "th" ? "ระดับผลการตรวจ" : "Inspection rating",
+                    sectionIcon: "✅",
+                    itemName: `${t("itemLabel", lang)} ${item}`,
+                    message: lang === "th" ? "ยังไม่ได้เลือกระดับผลการตรวจ" : "Inspection rating not selected",
+                    scrollId: getPfButtonsScrollId(item),
                 });
-            }
+            });
+        }
 
-            // Summary errors
-            if (!isSummaryFilled) {
-                errors.push({
-                    section: lang === "th" ? "สรุปผล" : "Summary",
-                    sectionIcon: "📋",
-                    itemName: "Comment",
-                    message: lang === "th" ? "ยังไม่ได้กรอก Comment" : "Comment not filled",
-                    scrollId: `${ID_PREFIX}-summary-section`,
-                });
-            }
-            if (!isSummaryCheckFilled) {
-                errors.push({
-                    section: lang === "th" ? "สรุปผล" : "Summary",
-                    sectionIcon: "📋",
-                    itemName: lang === "th" ? "สถานะสรุป" : "Summary Status",
-                    message: lang === "th" ? "ยังไม่ได้เลือกระดับผลการตรวจหรือ N/A" : "Inspection rating or N/A not selected",
-                    scrollId: `${ID_PREFIX}-summary-section`,
-                });
-            }
+        // 4) Summary errors
+        if (!isSummaryFilled) {
+            errors.push({
+                section: lang === "th" ? "สรุปผล" : "Summary",
+                sectionIcon: "📋",
+                itemName: "Comment",
+                message: lang === "th" ? "ยังไม่ได้กรอก Comment" : "Comment not filled",
+                scrollId: `${ID_PREFIX}-summary-section`,
+            });
+        }
+        if (!isSummaryCheckFilled) {
+            errors.push({
+                section: lang === "th" ? "สรุปผล" : "Summary",
+                sectionIcon: "📋",
+                itemName: lang === "th" ? "สถานะสรุป" : "Summary Status",
+                message: lang === "th" ? "ยังไม่ได้เลือกระดับผลการตรวจหรือ N/A" : "Inspection rating or N/A not selected",
+                scrollId: `${ID_PREFIX}-summary-section`,
+            });
         }
 
         return errors;
     }, [
-        lang, displayTab, isPostMode,
+        lang,
         allPhotosAttached, missingPhotoItems,
         allRequiredInputsFilled, missingInputsDetailed,
         allPFAnsweredPost, missingPFItemsPost,
@@ -986,29 +951,14 @@ function PhotoMultiInput({ photos, setPhotos, max = 10, draftKey, qNo, lang, id 
     );
 }
 
-function SkippedNAItem({ label, remark, lang }: { label: string; remark?: string; lang: Lang }) {
-    return (
-        <div className="tw-py-4 tw-bg-amber-50/50">
-            <div className="tw-flex tw-items-center tw-justify-between">
-                <Typography className="tw-font-semibold tw-text-sm tw-text-gray-800">{label}</Typography>
-                <span className="tw-text-xs tw-text-amber-600 tw-font-medium">N/A</span>
-            </div>
-            {remark && <Typography variant="small" className="tw-text-gray-600 tw-mt-1">{t("remarkLabel", lang)}: {remark}</Typography>}
-        </div>
-    );
-}
-
 // ==================== MAIN COMPONENT ====================
 
 export default function CBBOXPMForm() {
     const { lang } = useLanguage();
     const router = useRouter();
-    const pathname = usePathname();
     const searchParams = useSearchParams();
 
     // ปุ่มย้อนกลับ: เปิดมาจากหน้า PM List ให้กลับไปหน้านั้นตรงๆ
-    // router.back() ใช้ไม่ได้ เพราะสลับ pmtab ในฟอร์มก็ดันประวัติเพิ่มทุกครั้ง
-    // กดกลับเลยแค่ถอยการสลับแท็บ ไม่ได้ออกจากใบงาน
     const goBackToList = useCallback(() => {
         const back = pmBackRoute(searchParams);
         if (back) router.push(back);
@@ -1018,7 +968,6 @@ export default function CBBOXPMForm() {
     // เปิดจากใบ PM สถานี "ใบเดียว 4 ส่วน" → ผูกใบนี้เป็นส่วนหนึ่งของใบแม่
     const jobId = searchParams.get("job_id") ?? "";
     const action = searchParams.get("action");
-    const isPostMode = true;
 
     const [submitting, setSubmitting] = useState(false);
     const [docName, setDocName] = useState("");
@@ -1074,11 +1023,9 @@ export default function CBBOXPMForm() {
     const contractorMissing = contractorPicked && !maximoContractor.trim();
     const [inspector, setInspector] = useState("");
     const [postApiLoaded, setPostApiLoaded] = useState(false);
-    const [commentPre, setCommentPre] = useState("");
     const [job, setJob] = useState({ issue_id: "", station_name: "", date: "" });
     const [dropdownQ1, setDropdownQ1] = useState("");
     const [dropdownQ2, setDropdownQ2] = useState("");
-    const [q2WasNA, setQ2WasNA] = useState(false);
 
     const initialPhotos: Record<number, PhotoItem[]> = Object.fromEntries(
         QUESTIONS.filter(q => q.hasPhoto).flatMap(q => q.items
@@ -1094,11 +1041,9 @@ export default function CBBOXPMForm() {
         });
     }, []);
 
-    const [rowsPre, setRowsPre] = useState<Record<string, { pf: PF; remark: string }>>({});
-
-    // รูปทั้งสองฝั่งจากเอกสาร (ใช้ในตารางเทียบตอนตรวจอนุมัติ)
-    // state รูปปกติของฟอร์มมีเฉพาะฝั่งที่กำลังกรอกอยู่ จึงต้องเก็บของ document ไว้ต่างหาก
-    const [cmpPhotos, setCmpPhotos] = useState<{ pre: any; post: any }>({ pre: {}, post: {} });
+    // รูปจากเอกสาร (ใช้ในตารางเทียบตอนตรวจอนุมัติ)
+    // state รูปปกติของฟอร์มเก็บเฉพาะรูปที่กำลังกรอกในเครื่อง จึงต้องเก็บของ document ไว้ต่างหาก
+    const [cmpPhotos, setCmpPhotos] = useState<{ post: any }>({ post: {} });
     const [rows, setRows] = useState<Record<string, { pf: PF; remark: string }>>(() => {
         const initial: Record<string, { pf: PF; remark: string }> = {};
         QUESTIONS.forEach(q => {
@@ -1108,37 +1053,16 @@ export default function CBBOXPMForm() {
         return initial;
     });
 
-    const [m5Pre, setM5Pre] = useState<MeasureState>(() => initMeasureState(VOLTAGE_FIELDS));
     const m5 = useMeasure(VOLTAGE_FIELDS);
 
-    const key = useMemo(() => draftKey(stationId), [stationId]);
     const postKey = useMemo(() => `${draftKey(stationId)}:${editId}:post`, [stationId, editId]);
-    const currentDraftKey = isPostMode ? postKey : key;
 
-    // Q2 NA dependency
-    useEffect(() => {
-        if (isPostMode) return;
-        const isQ2NA = rows["r2"]?.pf === "NA";
-        const dependentKeys = ["r5", "r6", "r7"];
-        if (isQ2NA && !q2WasNA) {
-            setRows(prev => { const next = { ...prev }; dependentKeys.forEach(k => { next[k] = { ...next[k], pf: "NA" }; }); return next; });
-            setQ2WasNA(true);
-        } else if (!isQ2NA && q2WasNA) {
-            setRows(prev => { const next = { ...prev }; dependentKeys.forEach(k => { if (next[k]?.pf === "NA") next[k] = { ...next[k], pf: "" }; }); return next; });
-            setQ2WasNA(false);
-        }
-    }, [rows["r2"]?.pf, isPostMode, q2WasNA]);
-
-    // Load station info
+    // Load station id
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
         const sid = params.get("station_id") || localStorage.getItem("selected_station_id");
         if (sid) setStationId(sid);
-        if (!sid || isPostMode) return;
-        getStationInfoPublic(sid).then(st => {
-            setJob(prev => ({ ...prev, station_name: st.station_name ?? prev.station_name, date: prev.date || new Date().toISOString().slice(0, 10) }));
-        }).catch(console.error);
-    }, [isPostMode]);
+    }, []);
 
     // Load me
     useEffect(() => {
@@ -1150,84 +1074,19 @@ export default function CBBOXPMForm() {
             .catch(console.error);
     }, []);
 
-    // Preview issue_id and doc_name
-    useEffect(() => {
-        if (isPostMode || !stationId || !job.date) return;
-        fetchPreviewIssueId(stationId, job.date).then(id => { if (id) setJob(prev => ({ ...prev, issue_id: id })); }).catch(() => { });
-        fetchPreviewDocName(stationId, job.date).then(name => { if (name) setDocName(name); }).catch(() => { });
-    }, [stationId, job.date, isPostMode]);
-
-    // Load draft Pre
-    useEffect(() => {
-        if (!stationId || isPostMode) return;
-        const draft = loadDraftLocal<any>(key);
-        if (!draft) return;
-        if (draft.rows) setRows(draft.rows);
-        if (draft.m5) m5.setState(draft.m5);
-        if (draft.summary) setSummary(draft.summary);
-        if (draft.summary_pf) setSummaryCheck(draft.summary_pf);
-        if (draft.inspector) setInspector(draft.inspector);
-        if (draft.dropdownQ1) setDropdownQ1(draft.dropdownQ1);
-        if (draft.dropdownQ2) setDropdownQ2(draft.dropdownQ2);
-        if (draft.photoRefs) {
-            let canceled = false;
-            const cleanup = () => { canceled = true; };
-            (async () => {
-                const loadedPhotos: Record<number, PhotoItem[]> = {};
-                for (const [noStr, refs] of Object.entries(draft.photoRefs as Record<string, (PhotoRef | { isNA: true })[]>)) {
-                    if (canceled) return;
-                    const no = Number(noStr);
-                    if (!refs || refs.length === 0) continue;
-                    const items: PhotoItem[] = [];
-                    for (const ref of refs) {
-                        if (canceled) return;
-                        if ('isNA' in ref && ref.isNA) { items.push({ id: `na-${no}`, isNA: true }); continue; }
-                        if (!('dbKey' in ref)) continue;
-                        const file = await getPhotoByDbKey((ref as PhotoRef).dbKey);
-                        if (!file || file.size === 0) {
-                            console.warn("Photo missing/empty in IndexedDB:", (ref as PhotoRef).dbKey);
-                            reportMissingDraftPhoto(lang);
-                            continue;
-                        }
-                        if (file && !canceled) items.push({
-                            id: (ref as PhotoRef).id,
-                            file,
-                            preview: URL.createObjectURL(file),
-                            remark: (ref as PhotoRef).remark,
-                            ref: ref as PhotoRef,
-                            uploaded: (ref as any).uploaded === true,
-                        });
-                    }
-                    if (items.length > 0) loadedPhotos[no] = items;
-                }
-                if (!canceled) setPhotos(prev => ({ ...prev, ...loadedPhotos }));
-            })();
-            return cleanup;
-        }
-    }, [stationId, key, isPostMode]);
-
-
     // Load API data for Post mode
     useEffect(() => {
-        if (!isPostMode || !editId || !stationId) return;
+        if (!editId || !stationId) return;
         setPostApiLoaded(false);
         fetchReport(editId, stationId).then(data => {
             if (data.job) setJob(prev => ({ ...prev, ...data.job, issue_id: data.issue_id ?? prev.issue_id }));
             if (data.pm_date) setJob(prev => ({ ...prev, date: data.pm_date }));
-            if (data?.measures_pre?.m5) {
-                setM5Pre(prev => {
-                    const next = { ...prev };
-                    VOLTAGE_FIELDS.forEach(k => { const row = data.measures_pre.m5[k] ?? {}; next[k] = { value: row.value ?? "", unit: "V" }; });
-                    return next;
-                });
-            }
             if (data.doc_name) setDocName(data.doc_name);
             if (data.inspector) setInspector(data.inspector);
             if (data.dropdownQ1) setDropdownQ1(data.dropdownQ1);
             if (data.dropdownQ2) setDropdownQ2(data.dropdownQ2);
-            if (data.comment_pre) setCommentPre(data.comment_pre);
             if (data.summary) setSummary(data.summary);
-            setCmpPhotos({ pre: data.photos_pre ?? {}, post: data.photos ?? {} });
+            setCmpPhotos({ post: data.photos ?? {} });
                 // สรุปผล/หมายเหตุเดิมอ่านจาก draft ในเครื่องอย่างเดียว คนที่ไม่ได้เป็นคนกรอก
                 // (ผู้อนุมัติ) จึงเปิดมาเจอช่องว่าง ต้องดึงจากตัวเอกสารด้วย
                 if (reviewMode) {
@@ -1240,14 +1099,10 @@ export default function CBBOXPMForm() {
                     if (typeof data.summary === "string") setSummary(data.summary);
                     if (data.summaryCheck) setSummaryCheck(data.summaryCheck as PF);
                 }
-            if (data.rows_pre) setRowsPre(data.rows_pre);
             if (data.rows) setRows(prev => ({ ...prev, ...data.rows }));
-            else if (data.rows_pre) setRows(prev => { const next = { ...prev }; Object.entries(data.rows_pre).forEach(([k, v]) => { next[k] = { pf: (v as any).pf, remark: "" }; }); return next; });
             setPostApiLoaded(true);
         }).catch(err => { console.error(err); setPostApiLoaded(true); });
-    }, [isPostMode, editId, stationId]);
-
-    const preReportIdRef = useRef<string | null>(null);
+    }, [editId, stationId]);
 
     const makePhotoSetter = (no: number): React.Dispatch<React.SetStateAction<PhotoItem[]>> => {
         return action => setPhotos(prev => ({ ...prev, [no]: typeof action === "function" ? action(prev[no] ?? []) : action }));
@@ -1255,32 +1110,26 @@ export default function CBBOXPMForm() {
 
     // Validation
     const photoKeysOfQuestion = (q: Question): number[] => q.items ? q.items.map((_, idx) => getSubPhotoKey(q.no, idx)) : [q.no];
-    const REQUIRED_PHOTO_ITEMS_PRE = useMemo(() => QUESTIONS.filter(q => q.hasPhoto && q.no !== 9).flatMap(photoKeysOfQuestion), []);
     const REQUIRED_PHOTO_ITEMS_POST = useMemo(() => QUESTIONS.filter(q => q.hasPhoto).flatMap(photoKeysOfQuestion), []);
 
-    const missingPhotoItemsPre = useMemo(() => REQUIRED_PHOTO_ITEMS_PRE.filter(no => { if (rows[rowKeyOfPhotoKey(no)]?.pf === "NA") return false; return (photos[no]?.length ?? 0) < 1; }), [photos, rows]);
-    const missingPhotoItemsPost = useMemo(() => REQUIRED_PHOTO_ITEMS_POST.filter(no => { const rk = rowKeyOfPhotoKey(no); if (rowsPre[rk]?.pf === "NA" || rows[rk]?.pf === "NA") return false; return (photos[no]?.length ?? 0) < 1; }), [photos, rowsPre, rows]);
+    // ข้อที่ตอบ N/A ไม่ต้องแนบรูป
+    const missingPhotoItemsPost = useMemo(() => REQUIRED_PHOTO_ITEMS_POST.filter(no => { if (rows[rowKeyOfPhotoKey(no)]?.pf === "NA") return false; return (photos[no]?.length ?? 0) < 1; }), [photos, rows]);
 
-    const allPhotosAttachedPre = missingPhotoItemsPre.length === 0;
     const allPhotosAttachedPost = missingPhotoItemsPost.length === 0;
-    const missingPhotoItems = isPostMode ? missingPhotoItemsPost : missingPhotoItemsPre;
-    const allPhotosAttached = isPostMode ? allPhotosAttachedPost : allPhotosAttachedPre;
 
     // Format missingPhotoItems as string[] for PMValidationCard
     const missingPhotoItemsFormatted = useMemo(() => {
-        return missingPhotoItems.map(displayedNoOfPhotoKey);
-    }, [missingPhotoItems]);
+        return missingPhotoItemsPost.map(displayedNoOfPhotoKey);
+    }, [missingPhotoItemsPost]);
 
     const rowKeysOfQuestion = (q: Question): string[] => q.items ? q.items.map(it => it.key) : [q.key];
-    const PF_KEYS_PRE = useMemo(() => QUESTIONS.filter(q => q.no !== 9).flatMap(rowKeysOfQuestion), []);
+    // ข้อ 1-2 (pre_r1/pre_r2 = สภาพก่อนบำรุงรักษา) และข้อ 4-5 (dropdown) ไม่มีปุ่มระดับผล
     const PF_KEYS_POST = useMemo(() => QUESTIONS.filter(q => {
         if (q.key.startsWith("pre_")) return false;
         if (q.no === 1 || q.no === 2) return false;
         return true;
-    }).flatMap(rowKeysOfQuestion).filter(k => rowsPre[k]?.pf !== "NA"), [rowsPre]);
+    }).flatMap(rowKeysOfQuestion), []);
 
-    const allPFAnsweredPre = useMemo(() => true, []); // Pre mode doesn't require PF
-    const missingPFItemsPre = useMemo(() => [] as string[], []);
     const allPFAnsweredPost = useMemo(() => PF_KEYS_POST.every(k => rows[k]?.pf !== ""), [rows, PF_KEYS_POST]);
     const missingPFItemsPost = useMemo(() => PF_KEYS_POST.filter(k => !rows[k]?.pf).map(k => {
         const sub = k.match(/^r(\d+)_(\d+)$/);
@@ -1292,34 +1141,30 @@ export default function CBBOXPMForm() {
         return aM !== bM ? aM - bM : (aS || 0) - (bS || 0);
     }), [rows, PF_KEYS_POST]);
 
-    // For UI display
-    const allPFAnsweredForUI = isPostMode ? allPFAnsweredPost : allPFAnsweredPre;
-    const missingPFItemsForUI = isPostMode ? missingPFItemsPost : missingPFItemsPre;
-
+    // ข้อ 5 ตอบ N/A ไม่ต้องกรอกค่าแรงดัน
     const missingInputs = useMemo(() => {
         const r: string[] = [];
-        if (rows["r5"]?.pf === "NA" || rowsPre["r5"]?.pf === "NA") return r;
+        if (rows["r5"]?.pf === "NA") return r;
         const missingKeys = FIELD_GROUPS[5]?.keys.filter(k => !m5.state[k]?.value?.trim()) || [];
         if (missingKeys.length > 0) r.push(`${getDisplayedQuestionNo(5)}: ${missingKeys.join(", ")}`);
         return r;
-    }, [m5.state, rowsPre, rows]);
+    }, [m5.state, rows]);
 
     // Detailed missing inputs for PMValidationCard
     const missingInputsDetailed = useMemo(() => {
         const r: MissingInputItem[] = [];
-        if (rows["r5"]?.pf === "NA" || rowsPre["r5"]?.pf === "NA") return r;
+        if (rows["r5"]?.pf === "NA") return r;
         FIELD_GROUPS[5]?.keys.forEach((k) => {
             const v = m5.state[k]?.value ?? "";
             if (!String(v).trim()) r.push({ qNo: 5, label: LABELS[k], fieldKey: k });
         });
         return r;
-    }, [m5.state, rowsPre, rows]);
+    }, [m5.state, rows]);
 
     const allRequiredInputsFilled = missingInputs.length === 0;
     const isSummaryFilled = summary.trim().length > 0;
     const isSummaryCheckFilled = summaryCheck !== "";
 
-    const canGoAfter = isPostMode ? true : (allPhotosAttachedPre && allRequiredInputsFilled);
     const canFinalSave = allPhotosAttachedPost && allPFAnsweredPost && allRequiredInputsFilled && isSummaryFilled && isSummaryCheckFilled;
 
     // Auto-save draft
@@ -1338,32 +1183,24 @@ export default function CBBOXPMForm() {
     }, [photos]);
 
     useDebouncedEffect(() => {
-        if (!stationId || isPostMode) return;
-        saveDraftLocal(key, { rows, m5: m5.state, summary, summary_pf: summaryCheck, photoRefs, dropdownQ1, dropdownQ2, inspector });
-    }, [key, stationId, rows, m5.state, summary, summaryCheck, dropdownQ1, dropdownQ2, photoRefs, isPostMode, inspector]);
-
-    useDebouncedEffect(() => {
-        if (!stationId || !isPostMode || !editId) return;
+        if (!stationId || !editId) return;
         saveDraftLocal(postKey, { rows, m5: m5.state, summary, summaryCheck, photoRefs });
-    }, [postKey, stationId, rows, m5.state, summary, summaryCheck, photoRefs, isPostMode, editId]);
+    }, [postKey, stationId, rows, m5.state, summary, summaryCheck, photoRefs, editId]);
 
 
     // Render measure grid
-    const renderMeasureGrid = (no: number, isPreView = false) => {
+    const renderMeasureGrid = (no: number) => {
         const cfg = FIELD_GROUPS[no]; if (!cfg) return null;
-        const state = isPreView ? m5Pre : m5.state;
         return (
             <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 md:tw-grid-cols-5 tw-gap-3">
                 {cfg.keys.map(k => (
-                    <div key={k} className={isPreView ? "tw-pointer-events-none tw-opacity-60" : ""}>
+                    <div key={k}>
                         <InputWithUnit
                             label={LABELS[k] ?? k}
-                            value={state[k]?.value || ""}
+                            value={m5.state[k]?.value || ""}
                             unit="V"
-                            onValueChange={v => !isPreView && m5.patch(k, { value: v })}
-                            readOnly={isPreView}
-                            required={!isPreView}
-                            id={!isPreView ? getInputIdFromKey(no, k) : undefined}
+                            onValueChange={v => m5.patch(k, { value: v })}
+                            id={getInputIdFromKey(no, k)}
                         />
                     </div>
                 ))}
@@ -1371,38 +1208,16 @@ export default function CBBOXPMForm() {
         );
     };
 
-    const renderMeasureGridWithPre = (no: number) => {
-        const cfg = FIELD_GROUPS[no]; if (!cfg) return null;
-        return (
-            <div className="tw-space-y-3">
-                <Typography variant="small" className="tw-font-medium tw-text-gray-700">{t("beforePM", lang)}</Typography>
-                {renderMeasureGrid(no, true)}
-                <Typography variant="small" className="tw-font-medium tw-text-gray-700 tw-mt-2">{t("afterPM", lang)}</Typography>
-                {renderMeasureGrid(no, false)}
-            </div>
-        );
-    };
-
     // Render question block
-    const renderQuestionBlock = (q: Question, mode: TabId) => {
+    const renderQuestionBlock = (q: Question) => {
         const hasMeasure = q.kind === "measure" && !!FIELD_GROUPS[q.no];
         const qTooltip = q.tooltip?.[lang];
-        const preRemark = rowsPre[q.key]?.remark;
-        const preRemarkElement = mode === "post" && preRemark ? (
-            <div className="tw-mb-3 tw-p-3 tw-bg-amber-50 tw-rounded-lg tw-border tw-border-amber-300">
-                <div className="tw-flex tw-items-center tw-gap-2 tw-mb-1">
-                    <svg className="tw-w-4 tw-h-4 tw-text-amber-600" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" /></svg>
-                    <Typography variant="small" className="tw-font-semibold tw-text-amber-700">{t("preRemarkLabel", lang)}</Typography>
-                </div>
-                <Typography variant="small" className="tw-text-amber-900 tw-ml-6">{preRemark}</Typography>
-            </div>
-        ) : null;
 
         // ข้อที่มีข้อย่อย (ข้อ 3 แหล่งจ่ายไฟ MDB) — แต่ละข้อย่อยมีรูป/สถานะ/หมายเหตุของตัวเอง
         if (q.items) {
             const items = q.items;
             return (
-                <SectionCard key={q.key} title={getQuestionLabel(q, mode, lang)} tooltip={qTooltip}>
+                <SectionCard key={q.key} title={getQuestionLabel(q, lang)} tooltip={qTooltip}>
                     <div className="tw-divide-y tw-divide-gray-200">
                         {items.map((item, idx) => {
                             const photoKey = getSubPhotoKey(q.no, idx);
@@ -1410,39 +1225,9 @@ export default function CBBOXPMForm() {
                             const itemLabel = item.label[lang];
                             const photoInput = (
                                 <PhotoMultiInput photos={photos[photoKey] || []} setPhotos={makePhotoSetter(photoKey)} max={10}
-                                    draftKey={currentDraftKey} qNo={photoKey} lang={lang} id={`${ID_PREFIX}-photo-${idSuffix}`} />
+                                    draftKey={postKey} qNo={photoKey} lang={lang} id={`${ID_PREFIX}-photo-${idSuffix}`} />
                             );
 
-                            if (mode === "pre") {
-                                const isItemNA = rows[item.key]?.pf === "NA";
-                                return (
-                                    <div key={item.key} className={`tw-py-4 first:tw-pt-2 ${isItemNA ? "tw-bg-amber-50/50" : ""}`}>
-                                        <div className="tw-flex tw-items-center tw-justify-between tw-gap-2 tw-mb-3">
-                                            <Typography className="tw-font-semibold tw-text-sm tw-text-gray-800">{itemLabel}</Typography>
-                                            <Button size="sm" color={isItemNA ? "amber" : "gray"} variant={isItemNA ? "filled" : "outlined"}
-                                                onClick={() => setRows(prev => ({ ...prev, [item.key]: { ...prev[item.key], pf: isItemNA ? "" : "NA" } }))}>
-                                                {isItemNA ? t("cancelNA", lang) : t("na", lang)}
-                                            </Button>
-                                        </div>
-                                        <div className="tw-mb-3">{photoInput}</div>
-                                        <div id={`${ID_PREFIX}-remark-${idSuffix}`}>
-                                            <Textarea label={t("remark", lang)} value={rows[item.key]?.remark || ""}
-                                                onChange={e => setRows(prev => ({ ...prev, [item.key]: { ...prev[item.key], remark: e.target.value } }))}
-                                                rows={2} containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full" />
-                                        </div>
-                                    </div>
-                                );
-                            }
-
-                            if (rowsPre[item.key]?.pf === "NA") {
-                                return (
-                                    <div key={item.key} className="tw-py-4 first:tw-pt-2">
-                                        <SkippedNAItem label={itemLabel} remark={rowsPre[item.key]?.remark} lang={lang} />
-                                    </div>
-                                );
-                            }
-
-                            const itemPreRemark = rowsPre[item.key]?.remark;
                             return (
                                 <div key={item.key} className="tw-py-4 first:tw-pt-2">
                                     <PassFailRow
@@ -1455,12 +1240,6 @@ export default function CBBOXPMForm() {
                                         id={`${ID_PREFIX}-pf-${idSuffix}`}
                                         remarkId={`${ID_PREFIX}-remark-${idSuffix}`}
                                         aboveRemark={<div className="tw-pb-4 tw-border-b tw-mb-4 tw-border-gray-100">{photoInput}</div>}
-                                        beforeRemark={itemPreRemark ? (
-                                            <div className="tw-mb-3 tw-p-3 tw-bg-amber-50 tw-rounded-lg tw-border tw-border-amber-300">
-                                                <Typography variant="small" className="tw-font-semibold tw-text-amber-700">{t("preRemarkLabel", lang)}</Typography>
-                                                <Typography variant="small" className="tw-text-amber-900">{itemPreRemark}</Typography>
-                                            </div>
-                                        ) : null}
                                     />
                                 </div>
                             );
@@ -1470,42 +1249,18 @@ export default function CBBOXPMForm() {
             );
         }
 
-        if (mode === "pre") {
-            const isNA = rows[q.key]?.pf === "NA";
-            const isQ2NA = rows["r2"]?.pf === "NA";
-            const isDependentOnQ2 = [5, 6, 7].includes(q.no);
-            const isLockedByQ2 = isDependentOnQ2 && isQ2NA;
+        if (q.no === 1 || q.no === 2) {
             return (
-                <SectionCard key={q.key} title={getQuestionLabel(q, mode, lang)} tooltip={qTooltip}>
-                    <div className={isNA ? "tw-bg-amber-50/50" : ""}>
-                        <div className="tw-flex tw-items-center tw-justify-end tw-gap-2 tw-mb-3">
-                            {isLockedByQ2 && <Typography variant="small" className="tw-text-amber-700 tw-italic">{lang === "th" ? "(N/A ตามข้อ 4)" : "(N/A from Q4)"}</Typography>}
-                            <Button size="sm" color={isNA ? "amber" : "gray"} variant={isNA ? "filled" : "outlined"} disabled={isLockedByQ2} onClick={() => setRows(prev => ({ ...prev, [q.key]: { ...prev[q.key], pf: isNA ? "" : "NA" } }))}>{isNA ? t("cancelNA", lang) : t("na", lang)}</Button>
-                        </div>
-                        {q.hasPhoto && <div className="tw-mb-3"><PhotoMultiInput photos={photos[q.no] || []} setPhotos={makePhotoSetter(q.no)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(q.no)} /></div>}
-                        {hasMeasure && <div className={`tw-mb-3 ${isNA ? "tw-opacity-50 tw-pointer-events-none" : ""}`}>{renderMeasureGrid(q.no)}</div>}
-                        {q.no === 1 && <div className={`tw-mb-4 ${isNA ? "tw-opacity-50 tw-pointer-events-none" : ""}`}><select value={dropdownQ1} onChange={e => setDropdownQ1(e.target.value)} className="tw-w-full tw-max-w-sm tw-px-3 tw-py-2 tw-rounded-lg tw-border tw-border-gray-300 tw-bg-white tw-text-sm focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-blue-500/30"><option value="">{t("selectPowerSource", lang)}</option>{DROPDOWN_Q1_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt[lang]}</option>)}</select></div>}
-                        {q.no === 2 && <div className={`tw-mb-4 ${isNA ? "tw-opacity-50 tw-pointer-events-none" : ""}`}><select value={dropdownQ2} onChange={e => setDropdownQ2(e.target.value)} className="tw-w-full tw-max-w-sm tw-px-3 tw-py-2 tw-rounded-lg tw-border tw-border-gray-300 tw-bg-white tw-text-sm focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-blue-500/30"><option value="">{t("selectDevice", lang)}</option>{DROPDOWN_Q2_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt[lang]}</option>)}</select>{isNA && <Typography variant="small" className="tw-text-amber-700 tw-mt-2">{lang === "th" ? "* ข้อ 7, 8, 9 จะเป็น N/A ตามข้อนี้" : "* Q7, 8, 9 will be N/A accordingly"}</Typography>}</div>}
-                        <div id={getRemarkIdFromKey(q.no)}><Textarea label={t("remark", lang)} value={rows[q.key]?.remark || ""} onChange={e => setRows(prev => ({ ...prev, [q.key]: { ...prev[q.key], remark: e.target.value } }))} rows={3} containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full" /></div>
-                    </div>
-                </SectionCard>
-            );
-        }
-
-        if (rowsPre[q.key]?.pf === "NA") return <SectionCard key={q.key} title={getQuestionLabel(q, mode, lang)} tooltip={qTooltip}><SkippedNAItem label={getQuestionLabel(q, mode, lang)} remark={rowsPre[q.key]?.remark} lang={lang} /></SectionCard>;
-
-        if (mode === "post" && (q.no === 1 || q.no === 2)) {
-            return (
-                <SectionCard key={q.key} title={getQuestionLabel(q, mode, lang)} tooltip={qTooltip}>
-                        {q.hasPhoto && <div className="tw-mb-3"><PhotoMultiInput photos={photos[q.no] || []} setPhotos={makePhotoSetter(q.no)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(q.no)} /></div>}
-                    {q.no === 1 && <div className="tw-mb-4"><Typography variant="small" className="tw-font-medium tw-text-gray-700 tw-mb-2">{t("powerSource", lang)}</Typography><div className="tw-p-3 tw-bg-gray-100 tw-rounded tw-border tw-border-gray-200"><Typography variant="small">{dropdownQ1 || "-"}</Typography></div>{preRemarkElement}<div id={getRemarkIdFromKey(q.no)}><Textarea label={t("remark", lang)} value={rows[q.key]?.remark || ""} onChange={e => setRows(prev => ({ ...prev, [q.key]: { ...prev[q.key], remark: e.target.value } }))} rows={2} containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full tw-mt-3" /></div></div>}
-                    {q.no === 2 && <div className="tw-mb-4"><Typography variant="small" className="tw-font-medium tw-text-gray-700 tw-mb-2">{t("circuitDevice", lang)}</Typography><div className="tw-p-3 tw-bg-gray-100 tw-rounded tw-border tw-border-gray-200"><Typography variant="small">{dropdownQ2 || "-"}</Typography></div>{preRemarkElement}<div id={getRemarkIdFromKey(q.no)}><Textarea label={t("remark", lang)} value={rows[q.key]?.remark || ""} onChange={e => setRows(prev => ({ ...prev, [q.key]: { ...prev[q.key], remark: e.target.value } }))} rows={2} containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full tw-mt-3" /></div></div>}
+                <SectionCard key={q.key} title={getQuestionLabel(q, lang)} tooltip={qTooltip}>
+                    {q.hasPhoto && <div className="tw-mb-3"><PhotoMultiInput photos={photos[q.no] || []} setPhotos={makePhotoSetter(q.no)} max={10} draftKey={postKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(q.no)} /></div>}
+                    {q.no === 1 && <div className="tw-mb-4"><Typography variant="small" className="tw-font-medium tw-text-gray-700 tw-mb-2">{t("powerSource", lang)}</Typography><select value={dropdownQ1} onChange={e => setDropdownQ1(e.target.value)} className="tw-w-full tw-max-w-sm tw-px-3 tw-py-2 tw-rounded-lg tw-border tw-border-gray-300 tw-bg-white tw-text-sm focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-blue-500/30"><option value="">{t("selectPowerSource", lang)}</option>{DROPDOWN_Q1_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt[lang]}</option>)}</select><div id={getRemarkIdFromKey(q.no)}><Textarea label={t("remark", lang)} value={rows[q.key]?.remark || ""} onChange={e => setRows(prev => ({ ...prev, [q.key]: { ...prev[q.key], remark: e.target.value } }))} rows={2} containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full tw-mt-3" /></div></div>}
+                    {q.no === 2 && <div className="tw-mb-4"><Typography variant="small" className="tw-font-medium tw-text-gray-700 tw-mb-2">{t("circuitDevice", lang)}</Typography><select value={dropdownQ2} onChange={e => setDropdownQ2(e.target.value)} className="tw-w-full tw-max-w-sm tw-px-3 tw-py-2 tw-rounded-lg tw-border tw-border-gray-300 tw-bg-white tw-text-sm focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-blue-500/30"><option value="">{t("selectDevice", lang)}</option>{DROPDOWN_Q2_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt[lang]}</option>)}</select><div id={getRemarkIdFromKey(q.no)}><Textarea label={t("remark", lang)} value={rows[q.key]?.remark || ""} onChange={e => setRows(prev => ({ ...prev, [q.key]: { ...prev[q.key], remark: e.target.value } }))} rows={2} containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full tw-mt-3" /></div></div>}
                 </SectionCard>
             );
         }
 
         return (
-            <SectionCard key={q.key} title={getQuestionLabel(q, mode, lang)} tooltip={qTooltip}>
+            <SectionCard key={q.key} title={getQuestionLabel(q, lang)} tooltip={qTooltip}>
                 <PassFailRow
                     label={t("testResult", lang)}
                     showPfButtons={!q.key.startsWith("pre_")}
@@ -1516,8 +1271,8 @@ export default function CBBOXPMForm() {
                     onRemarkChange={v => setRows(prev => ({ ...prev, [q.key]: { ...prev[q.key], remark: v } }))}
                     id={getPfIdFromKey(q.no)}
                     remarkId={getRemarkIdFromKey(q.no)}
-                    aboveRemark={q.hasPhoto && <div className="tw-pb-4 tw-border-b tw-mb-4 tw-border-gray-100"><PhotoMultiInput photos={photos[q.no] || []} setPhotos={makePhotoSetter(q.no)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(q.no)} /></div>}
-                    beforeRemark={<>{hasMeasure && (q.no === 5 ? renderMeasureGridWithPre(q.no) : renderMeasureGrid(q.no))}{preRemarkElement}</>}
+                    aboveRemark={q.hasPhoto && <div className="tw-pb-4 tw-border-b tw-mb-4 tw-border-gray-100"><PhotoMultiInput photos={photos[q.no] || []} setPhotos={makePhotoSetter(q.no)} max={10} draftKey={postKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(q.no)} /></div>}
+                    beforeRemark={hasMeasure && renderMeasureGrid(q.no)}
                 />
             </SectionCard>
         );
@@ -1525,20 +1280,20 @@ export default function CBBOXPMForm() {
 
     // รับ PhotoItem แทน File[] เพื่อให้รู้ว่ารูปไหนอัปสำเร็จแล้ว — ตอนกดบันทึกซ้ำหลังอัปหลุด
     // จะได้ข้ามรูปเดิม ไม่อัปซ้ำจนรูปโผล่ซ้ำในรายงาน (และไม่ไปชนเพดาน 10 รูป/ข้อ)
-    async function uploadGroupPhotos(reportId: string, stationId: string, group: string, items: PhotoItem[], side: TabId, stateKey: string, uploadedIds: Set<string>) {
+    async function uploadGroupPhotos(reportId: string, stationId: string, group: string, items: PhotoItem[], stateKey: string, uploadedIds: Set<string>) {
         // uploadedIds จำเป็นเพราะ setPhotos() ยังไม่ flush เข้า photosRef ภายใน tick เดียวกัน
         // ถ้าไม่มี รอบอัปโหลดรอบสองจะส่งรูปเดิมซ้ำ
         const pending = (items || []).filter(p => !p.isNA && !p.uploaded && !uploadedIds.has(p.id) && (p.file || p.ref));
         if (pending.length === 0) return;
         const token = localStorage.getItem("access_token");
-        const url = side === "pre" ? `${API_BASE}/cbboxpmreport/${reportId}/pre/photos` : `${API_BASE}/cbboxpmreport/${reportId}/post/photos`;
+        const url = `${API_BASE}/cbboxpmreport/${reportId}/post/photos`;
         // ส่งทีละรูป (1 request/รูป) เพื่อไม่ให้ body รวมเกิน limit ของ nginx (กัน 413 เมื่อข้อหนึ่งมีหลายรูป)
         for (const p of pending) {
             const compressed = await compressImage(await resolveUploadFile(p));
             const form = new FormData();
             form.append("station_id", stationId);
             form.append("group", group);
-            form.append("side", side);
+            form.append("side", "post");
             form.append("files", compressed);
             const res = await fetch(url, { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : undefined, body: form, credentials: "include" });
             if (!res.ok) throw new Error(await res.text());
@@ -1549,7 +1304,7 @@ export default function CBBOXPMForm() {
 
     /** อัปโหลดหลายรอบ + ยืนยันจำนวนกับ server ก่อนให้ caller ไปลบรูปในเครื่อง
      *  คืน true = ปลอดภัยที่จะลบ, false = ยังไม่ครบ (แจ้ง user แล้ว) ห้ามลบ */
-    async function syncPhotosAndVerify(reportId: string, side: TabId): Promise<boolean> {
+    async function syncPhotosAndVerify(reportId: string): Promise<boolean> {
         const sid = stationId;
         if (!sid) throw new Error(t("alertNoStation", lang));
         const uploadedIds = new Set<string>();
@@ -1561,7 +1316,7 @@ export default function CBBOXPMForm() {
             // อัปไม่ผ่าน → throw ทะลุขึ้นไป catch ของ handler โดยยังไม่ได้ลบอะไร
             await Promise.all(
                 Object.entries(photosRef.current).map(([no, list]) =>
-                    uploadGroupPhotos(reportId, sid, photoGroupKey(no), list || [], side, no, uploadedIds))
+                    uploadGroupPhotos(reportId, sid, photoGroupKey(no), list || [], no, uploadedIds))
             );
         }
 
@@ -1578,51 +1333,15 @@ export default function CBBOXPMForm() {
         const res = await fetch(`${API_BASE}/cbboxpmreport/get?station_id=${encodeURIComponent(sid)}&report_id=${reportId}`,
             { headers: token ? { Authorization: `Bearer ${token}` } : undefined, credentials: "include" });
         if (!res.ok) throw new Error(await res.text());
-        const doc = await res.json() as { photos_pre?: Record<string, unknown[]>; photos?: Record<string, unknown[]> };
-        const shortfall = findShortfall(expected, side === "pre" ? doc?.photos_pre : doc?.photos);
+        const doc = await res.json() as { photos?: Record<string, unknown[]> };
+        const shortfall = findShortfall(expected, doc?.photos);
         if (shortfall.length > 0) {
-            console.error(`[CB-BOX ${side} verify] shortfall:`, shortfall);
+            console.error(`[CB-BOX post verify] shortfall:`, shortfall);
             alert(shortfallMessage(shortfall, lang));
             return false;
         }
         return true;
     }
-
-    const onPreSave = async () => {
-        if (!stationId) { alert(t("alertNoStation", lang)); return; }
-
-        // Validation checks with scroll to error
-        if (!allPhotosAttachedPre) { alert(t("alertFillPhoto", lang)); return; }
-        if (!allRequiredInputsFilled) { alert(t("alertInputNotComplete", lang)); return; }
-
-        if (submitting) return;
-        setSubmitting(true);
-        try {
-            const token = localStorage.getItem("access_token");
-            const rowsPreData: Record<string, { pf: string; remark: string }> = {};
-            QUESTIONS.forEach(q => { rowsPreData[q.key] = { pf: rows[q.key]?.pf || "", remark: rows[q.key]?.remark || "" }; });
-            const payload = { station_id: stationId, ...(jobId ? { job_id: jobId } : {}), issue_id: job.issue_id, job: { station_name: job.station_name, date: job.date }, inspector, measures_pre: { m5: m5.state }, rows_pre: rowsPreData, pm_date: job.date, doc_name: docName, dropdownQ1, dropdownQ2, side: "pre", comment_pre: summary };
-            // กดบันทึกซ้ำหลังอัปรูปหลุด ต้องใช้รายงานใบเดิม ไม่งั้นจะได้รายงานซ้ำอีกใบ
-            let report_id: string = preReportIdRef.current || loadDraftLocal<any>(key)?.pendingReportId || "";
-            if (!report_id) {
-                const res = await fetch(`${API_BASE}/cbboxpmreport/pre/submit`, { method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, credentials: "include", body: JSON.stringify(payload) });
-                if (!res.ok) throw new Error(await res.text());
-                const json = await res.json() as { report_id: string; doc_name?: string };
-                report_id = json.report_id;
-                if (json.doc_name) setDocName(json.doc_name);
-                saveDraftLocal(key, { ...loadDraftLocal<any>(key), pendingReportId: report_id });
-            }
-            preReportIdRef.current = report_id;
-            setReportId(report_id);
-            // ลบรูปในเครื่องได้ต่อเมื่อ server ยืนยันว่ามีครบจำนวนแล้วเท่านั้น
-            if (!(await syncPhotosAndVerify(report_id, "pre"))) return;
-            const allPhotos = Object.values(photosRef.current).flat();
-            await Promise.all(allPhotos.map(p => delPhoto(key, p.id)));
-            preReportIdRef.current = null;
-            await clearDraftLocal(key);
-            router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&tab=cb-box`);
-        } catch (err: any) { alert(`${t("alertSaveFailed", lang)} ${err?.message ?? err}`); } finally { setSubmitting(false); }
-    };
 
     const onFinalSave = async () => {
         if (!stationId) { alert(t("alertNoStation", lang)); return; }
@@ -1637,13 +1356,20 @@ export default function CBBOXPMForm() {
         setSubmitting(true);
         try {
             const token = localStorage.getItem("access_token");
-            const finalReportId = reportId || editId;
-            if (!finalReportId) throw new Error(t("noReportId", lang));
-            const payload = { station_id: stationId, ...(jobId ? { job_id: jobId } : {}), rows, measures: { m5: m5.state }, summary, dropdownQ1, dropdownQ2, ...(summaryCheck ? { summaryCheck } : {}), work_start: workStart, work_finish: workFinish, maximo_labor: maximoLabor, maximo_contractor: contractorPicked ? maximoContractor.trim() : "", wonum: searchParams.get("wonum") ?? "", side: "post", report_id: finalReportId };
+            // ฟอร์มนี้เหลือแค่ Post-PM แล้ว (ไม่มีด่าน Pre ที่เคยสร้าง report_id ให้)
+            // ใบใหม่ให้ backend สร้างรายงานตอนกดบันทึก — ถ้าเคยกดแล้วอัปรูปหลุด ใช้ id เดิมจาก draft กันได้รายงานซ้ำ
+            let finalReportId: string = reportId || editId || loadDraftLocal<any>(postKey)?.pendingReportId || "";
+            const payload = { station_id: stationId, ...(jobId ? { job_id: jobId } : {}), inspector, job: { station_name: job.station_name, date: job.date }, ...(job.date ? { pm_date: job.date } : {}), rows, measures: { m5: m5.state }, summary, dropdownQ1, dropdownQ2, ...(summaryCheck ? { summaryCheck } : {}), work_start: workStart, work_finish: workFinish, maximo_labor: maximoLabor, maximo_contractor: contractorPicked ? maximoContractor.trim() : "", wonum: searchParams.get("wonum") ?? "", side: "post", ...(finalReportId ? { report_id: finalReportId } : {}) };
             const res = await fetch(`${API_BASE}/cbboxpmreport/submit`, { method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, credentials: "include", body: JSON.stringify(payload) });
             if (!res.ok) throw new Error(await res.text());
+            const { report_id } = await res.json() as { report_id: string };
+            if (!finalReportId) {
+                finalReportId = report_id;
+                setReportId(report_id);
+                saveDraftLocal(postKey, { ...loadDraftLocal<any>(postKey), pendingReportId: report_id });
+            }
             // ต้องยืนยันรูปครบก่อน ถึงจะ finalize + ลบรูปในเครื่อง
-            if (!(await syncPhotosAndVerify(finalReportId, "post"))) return;
+            if (!(await syncPhotosAndVerify(finalReportId))) return;
             if (!workStart || !workFinish) { alert(t("alertWorkTime", lang)); setSubmitting(false); return; }
             if (contractorMissing) { alert(t("contractorRequired", lang)); setSubmitting(false); return; }
             if (workFinish < workStart) { alert(t("alertWorkTimeOrder", lang)); setSubmitting(false); return; }
@@ -1662,36 +1388,12 @@ export default function CBBOXPMForm() {
         } catch (err: any) { alert(`${t("alertSaveFailed", lang)} ${err?.message ?? err}`); } finally { setSubmitting(false); }
     };
 
-    // Tab navigation
-    const active: TabId = useMemo(() => searchParams.get("pmtab") === "post" ? "post" : "pre", [searchParams]);
     const displayTab: TabId = "post";
-
-    useEffect(() => {
-        const tabParam = searchParams.get("pmtab");
-        let desired: TabId = isPostMode ? "post" : (tabParam === "post" ? "post" : "pre");
-        if (desired === "post" && !canGoAfter && !isPostMode) desired = "pre";
-        if (tabParam !== desired) {
-            const params = new URLSearchParams(searchParams.toString());
-            params.set("pmtab", desired);
-            router.replace(`${pathname}?${params.toString()}`, { scroll: false });
-        }
-    }, [searchParams, canGoAfter, pathname, router, isPostMode]);
 
     useEffect(() => { void prefetchLocation(); }, []);
 
-
-
-    const go = (next: TabId) => {
-        if (isPostMode && next === "pre") return;
-        if (next === "post" && !canGoAfter) { alert(t("alertFillPreFirst", lang)); return; }
-        const params = new URLSearchParams(searchParams.toString());
-        params.set("pmtab", next);
-        router.push(`${pathname}?${params.toString()}`, { scroll: false });
-    };
-
-
-    // ── ตารางเทียบก่อน/หลัง PM (โหมดตรวจอนุมัติ) ──
-    // ใช้ state ที่โหลดเอกสารมาแล้ว: rowsPre = คำตอบก่อน PM, rows = หลัง PM
+    // ── ตารางเทียบผล PM (โหมดตรวจอนุมัติ) ──
+    // ใช้ state ที่โหลดเอกสารมาแล้ว: rows = คำตอบ PM
     // คีย์ที่ไม่ได้อยู่ใน QUESTIONS (ข้อย่อยแบบ r5_1) เอามาต่อท้ายด้วย จะได้ไม่ตกหล่น
     // cb-box ไม่มีข้อย่อย รูปผูกกับข้อหลักตรงๆ
     const photoKeysOf = useCallback((row: { key: string }) => {
@@ -1714,7 +1416,7 @@ export default function CBBOXPMForm() {
         const labelOfItem = (it: any) =>
             it?.label !== undefined ? it.label : it?.labelKey ? (t as any)(it.labelKey, lang) : "";
         (QUESTIONS as any[]).forEach((q: any) => {
-            put(q?.key, getQuestionLabel(q, "post", lang));
+            put(q?.key, getQuestionLabel(q, lang));
             (q?.items ?? []).forEach((it: any) => put(it?.key, labelOfItem(it)));
         });
         ([] as any[]).forEach((arr: any) =>
@@ -1722,15 +1424,13 @@ export default function CBBOXPMForm() {
         const labelOf = (key: string) => labels.get(key) ?? key;
         // เรียงตามลำดับข้อในฟอร์มกรอก ข้อย่อยที่ช่างเพิ่มเอง (r5_1, r5_2)
         // ต้องต่อท้ายข้อแม่ของมัน ไม่ใช่ไปกองรวมกันท้ายตาราง
-        const answered = Array.from(new Set([...Object.keys(rowsPre ?? {}), ...Object.keys(rows ?? {})]));
+        const answered = Object.keys(rows ?? {});
         const subNo = (k: string) => Number(k.split("_")[1] ?? 0) || 0;
         const mk = (k: string, section: string, label: string, qNo?: number) => ({
             key: k,
             section,
             qNo,
             label,
-            prePf: (rowsPre as any)?.[k]?.pf,
-            preRemark: (rowsPre as any)?.[k]?.remark,
             postPf: (rows as any)?.[k]?.pf,
             postRemark: (rows as any)?.[k]?.remark,
         });
@@ -1754,7 +1454,7 @@ export default function CBBOXPMForm() {
             out.push(mk(k, "", labelOf(k), Number(k.replace(/^r/, "").split("_")[0]) || undefined));
         });
         return out;
-    }, [rowsPre, rows, lang]);
+    }, [rows, lang]);
 
 
     // กล่องหมายเหตุ + สรุปผลการตรวจสอบ — ประกาศครั้งเดียว วางได้สองที่
@@ -1762,14 +1462,8 @@ export default function CBBOXPMForm() {
     const summaryBlock = (
                         <div id={`${ID_PREFIX}-summary-section`} className="tw-space-y-3 tw-mt-6">
                             <Typography variant="h6">{t("comment", lang)}</Typography>
-                            {displayTab === "post" && commentPre && (
-                                <div className="tw-mb-3 tw-p-3 tw-bg-amber-50 tw-rounded-lg tw-border tw-border-amber-300">
-                                    <div className="tw-flex tw-items-center tw-gap-2 tw-mb-1"><svg className="tw-w-4 tw-h-4 tw-text-amber-600" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" /></svg><Typography variant="small" className="tw-font-semibold tw-text-amber-700">{lang === "th" ? "Comment (ก่อน PM)" : "Comment (Pre-PM)"}</Typography></div>
-                                    <Typography variant="small" className="tw-text-amber-900 tw-ml-6">{commentPre}</Typography>
-                                </div>
-                            )}
-                            <Textarea label={t("comment", lang)} value={summary} onChange={e => setSummary(e.target.value)} rows={4} required={isPostMode} containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full" />
-                            {displayTab === "post" && <div className="tw-pt-4 tw-border-t tw-border-gray-100"><PassFailRow label={t("summaryResult", lang)} value={summaryCheck} onChange={v => setSummaryCheck(v)} lang={lang} labels={{ PASS: t("summaryPassLabel", lang), FAIL: t("summaryFailLabel", lang), NA: t("summaryNALabel", lang) }} /></div>}
+                            <Textarea label={t("comment", lang)} value={summary} onChange={e => setSummary(e.target.value)} rows={4} required containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full" />
+                            <div className="tw-pt-4 tw-border-t tw-border-gray-100"><PassFailRow label={t("summaryResult", lang)} value={summaryCheck} onChange={v => setSummaryCheck(v)} lang={lang} labels={{ PASS: t("summaryPassLabel", lang), FAIL: t("summaryFailLabel", lang), NA: t("summaryNALabel", lang) }} /></div>
                         </div>
     );
 
@@ -1780,24 +1474,11 @@ export default function CBBOXPMForm() {
                 {!reviewMode && (
                     <Tabs value={displayTab} key={displayTab}>
                         <TabsHeader className="tw-bg-gray-100 tw-rounded-lg">
-                            {TABS.map(tb => {
-                                const isPreDisabled = isPostMode && tb.id === "pre";
-                                const isLockedAfter = tb.id === "post" && !canGoAfter;
-                                return (
-                                    <Tab
-                                        key={tb.id}
-                                        value={tb.id}
-                                        disabled={isPreDisabled || isLockedAfter}
-                                        onClick={() => {
-                                            if (isPreDisabled) return;
-                                            if (isLockedAfter) { alert(t("alertFillPreFirst", lang)); return; }
-                                            go(tb.id);
-                                        }}
-                                        className={`tw-px-4 tw-py-2 tw-font-medium ${isPreDisabled || isLockedAfter ? "tw-opacity-50 tw-cursor-not-allowed" : ""}`}>
-                                        {tb.label}
-                                    </Tab>
-                                );
-                            })}
+                            {TABS.map(tb => (
+                                <Tab key={tb.id} value={tb.id} className="tw-px-4 tw-py-2 tw-font-medium">
+                                    {tb.label}
+                                </Tab>
+                            ))}
                         </TabsHeader>
                     </Tabs>
                 )}
@@ -1823,13 +1504,13 @@ export default function CBBOXPMForm() {
                     </div>
                     <div className="tw-space-y-4 tw-mt-6">{/* โหมดตรวจ: ตัดเฉพาะรายการข้อที่ช่างกรอก ดูจากตารางเทียบก่อน/หลังด้านล่างแทน
                             ส่วนหัวเอกสารกับข้อมูลสถานีคงไว้ ผู้อนุมัติต้องรู้ว่ากำลังดูใบไหน */}
-                        {!reviewMode && (QUESTIONS.filter(q => !(displayTab === "pre" && q.no === 9)).map(q => renderQuestionBlock(q, displayTab)))}</div>
+                        {!reviewMode && QUESTIONS.map(q => renderQuestionBlock(q))}</div>
                     {/* โหมดตรวจ: ย้ายไปไว้ล่างสุด ให้อ่านหลังดูตารางเทียบเสร็จ */}
                     {!reviewMode && summaryBlock}
                     <div className="tw-flex tw-flex-col tw-gap-3 tw-mt-8">
                     {/* เวลาทำงานจริงของช่าง — ต้องกรอกก่อนส่งปิดใบงาน (ส่งเข้า Maximo IN09) */}
                     {/* Temporarily disabled: Maximo labor input is hidden on all pages. */}
-                    {false && isPostMode && (
+                    {false && (
                         <div className="tw-mt-6 tw-pt-4 tw-border-t tw-border-gray-200">
                             <div className="tw-mb-2">
                                 <Typography variant="h6" className="tw-text-sm sm:tw-text-base">
@@ -1860,57 +1541,53 @@ export default function CBBOXPMForm() {
 
                     {/* ช่างที่จะลงเวลาเข้า Maximo — laborcode คนละชุดกับ username ใน iMPS
                         จึงต้องให้เลือกเอง ไม่งั้น IN09 จะ unmapped ทั้งใบ (อยู่ล่างสุดของฟอร์ม) */}
-                    {isPostMode && (
-                        <div className="tw-mt-6 tw-pt-4 tw-border-t tw-border-gray-200">
-                            <div className="tw-mb-2">
-                                <Typography variant="h6" className="tw-text-sm sm:tw-text-base">{t("maximoLabor", lang)}</Typography>
-                                <Typography variant="small" className="tw-text-xs tw-font-normal tw-text-blue-gray-400">
-                                    {t("maximoLaborHint", lang)}
-                                </Typography>
-                            </div>
-                            {laborList.length === 0 ? (
-                                <p className="tw-text-xs tw-text-orange-600">
-                                                {reviewMode ? t("maximoLaborNone", lang) : t("maximoLaborEmpty", lang)}
-                                            </p>
-                            ) : (
-                                <div className="tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-divide-y tw-divide-blue-gray-50 tw-max-h-56 tw-overflow-y-auto">
-                                    {laborList.map((o) => (
-                                        <label key={o.laborcode} className="tw-flex tw-items-center tw-gap-2.5 tw-px-3 tw-py-2.5 tw-cursor-pointer hover:tw-bg-blue-gray-50/60 tw-transition-colors">
-                                            {!reviewMode && (<input type="checkbox" checked={maximoLabor.includes(o.laborcode)}
-                                                onChange={() => toggleMaximoLabor(o.laborcode)}
-                                                className="tw-h-4 tw-w-4 tw-shrink-0 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500 tw-cursor-pointer" />)}
-                                            <span className="tw-min-w-0 tw-truncate tw-text-sm tw-text-blue-gray-800">{o.name}</span>
-                                            <span className="tw-ml-auto tw-font-mono tw-text-xs tw-text-blue-gray-400">{o.laborcode}</span>
-                                        </label>
-                                    ))}
-                                </div>
-                            )}
-                            {(contractorPicked || (reviewMode && !!maximoContractor.trim())) && (
-                                <div className="tw-mt-3 tw-space-y-1.5">
-                                    <label className="tw-block tw-text-xs tw-font-semibold tw-text-blue-gray-700">
-                                        {t("contractorName", lang)} <span className="tw-text-red-500">*</span>
-                                    </label>
-                                    <input type="text" value={maximoContractor} onChange={(e) => setMaximoContractor(e.target.value)}
-                                        placeholder={t("contractorPlaceholder", lang)}
-                                        className={`tw-w-full tw-rounded-lg tw-border tw-px-3 tw-py-2.5 tw-text-sm tw-text-blue-gray-800 focus:tw-outline-none ${contractorMissing ? "tw-border-red-400 focus:tw-border-red-500" : "tw-border-blue-gray-200 focus:tw-border-blue-500"}`} />
-                                    {contractorMissing && <p className="tw-text-xs tw-text-red-600">{t("contractorRequired", lang)}</p>}
-                                </div>
-                            )}
+                    <div className="tw-mt-6 tw-pt-4 tw-border-t tw-border-gray-200">
+                        <div className="tw-mb-2">
+                            <Typography variant="h6" className="tw-text-sm sm:tw-text-base">{t("maximoLabor", lang)}</Typography>
+                            <Typography variant="small" className="tw-text-xs tw-font-normal tw-text-blue-gray-400">
+                                {t("maximoLaborHint", lang)}
+                            </Typography>
                         </div>
-                    )}
+                        {laborList.length === 0 ? (
+                            <p className="tw-text-xs tw-text-orange-600">
+                                            {reviewMode ? t("maximoLaborNone", lang) : t("maximoLaborEmpty", lang)}
+                                        </p>
+                        ) : (
+                            <div className="tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-divide-y tw-divide-blue-gray-50 tw-max-h-56 tw-overflow-y-auto">
+                                {laborList.map((o) => (
+                                    <label key={o.laborcode} className="tw-flex tw-items-center tw-gap-2.5 tw-px-3 tw-py-2.5 tw-cursor-pointer hover:tw-bg-blue-gray-50/60 tw-transition-colors">
+                                        {!reviewMode && (<input type="checkbox" checked={maximoLabor.includes(o.laborcode)}
+                                            onChange={() => toggleMaximoLabor(o.laborcode)}
+                                            className="tw-h-4 tw-w-4 tw-shrink-0 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500 tw-cursor-pointer" />)}
+                                        <span className="tw-min-w-0 tw-truncate tw-text-sm tw-text-blue-gray-800">{o.name}</span>
+                                        <span className="tw-ml-auto tw-font-mono tw-text-xs tw-text-blue-gray-400">{o.laborcode}</span>
+                                    </label>
+                                ))}
+                            </div>
+                        )}
+                        {(contractorPicked || (reviewMode && !!maximoContractor.trim())) && (
+                            <div className="tw-mt-3 tw-space-y-1.5">
+                                <label className="tw-block tw-text-xs tw-font-semibold tw-text-blue-gray-700">
+                                    {t("contractorName", lang)} <span className="tw-text-red-500">*</span>
+                                </label>
+                                <input type="text" value={maximoContractor} onChange={(e) => setMaximoContractor(e.target.value)}
+                                    placeholder={t("contractorPlaceholder", lang)}
+                                    className={`tw-w-full tw-rounded-lg tw-border tw-px-3 tw-py-2.5 tw-text-sm tw-text-blue-gray-800 focus:tw-outline-none ${contractorMissing ? "tw-border-red-400 focus:tw-border-red-500" : "tw-border-blue-gray-200 focus:tw-border-blue-500"}`} />
+                                {contractorMissing && <p className="tw-text-xs tw-text-red-600">{t("contractorRequired", lang)}</p>}
+                            </div>
+                        )}
+                    </div>
 
                         {/* โหมดตรวจไม่ต้องมี ฟอร์มฝั่งช่างดักความครบถ้วนไว้ตั้งแต่ตอนกรอกแล้ว */}
                         {!reviewMode && (
                             <PMValidationCard
                                 lang={lang}
-                                displayTab={displayTab}
-                                isPostMode={isPostMode}
-                                allPhotosAttached={allPhotosAttached}
+                                allPhotosAttached={allPhotosAttachedPost}
                                 missingPhotoItems={missingPhotoItemsFormatted}
                                 allRequiredInputsFilled={allRequiredInputsFilled}
                                 missingInputsDetailed={missingInputsDetailed}
-                                allPFAnsweredPost={allPFAnsweredForUI}
-                                missingPFItemsPost={missingPFItemsForUI}
+                                allPFAnsweredPost={allPFAnsweredPost}
+                                missingPFItemsPost={missingPFItemsPost}
                                 isSummaryFilled={isSummaryFilled}
                                 isSummaryCheckFilled={isSummaryCheckFilled}
                             />
@@ -1918,11 +1595,7 @@ export default function CBBOXPMForm() {
                         {/* ดูอย่างเดียว: ตรวจได้ แต่ไม่มีปุ่มบันทึกให้กด */}
                         {!reviewMode && (
                             <div className="tw-flex tw-flex-col sm:tw-flex-row tw-justify-end tw-gap-2 sm:tw-gap-3">
-                                {displayTab === "pre" ? (
-                                    <Button className="tw-text-sm tw-py-2.5 tw-bg-gray-800 hover:tw-bg-gray-900 tw-w-full sm:tw-w-auto" type="button" onClick={onPreSave} disabled={!canGoAfter || submitting}>{submitting ? t("saving", lang) : t("save", lang)}</Button>
-                                ) : (
-                                    <Button className="tw-text-sm tw-py-2.5 tw-bg-gray-800 hover:tw-bg-gray-900 tw-w-full sm:tw-w-auto" type="button" onClick={onFinalSave} disabled={!canFinalSave || submitting}>{submitting ? t("saving", lang) : t("save", lang)}</Button>
-                                )}
+                                <Button className="tw-text-sm tw-py-2.5 tw-bg-gray-800 hover:tw-bg-gray-900 tw-w-full sm:tw-w-auto" type="button" onClick={onFinalSave} disabled={!canFinalSave || submitting}>{submitting ? t("saving", lang) : t("save", lang)}</Button>
                             </div>
                         )}
                     </div>
@@ -1934,7 +1607,6 @@ export default function CBBOXPMForm() {
                 <PmCompareTable
                     rows={compareRows}
                     lang={lang}
-                    prePhotos={cmpPhotos.pre}
                     postPhotos={cmpPhotos.post}
                     apiBase={API_BASE}
                     photoKeysOf={photoKeysOf}

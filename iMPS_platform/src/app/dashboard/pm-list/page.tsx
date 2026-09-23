@@ -368,10 +368,7 @@ export default function PMListPage() {
       : new URLSearchParams({
           tab, view: "form", edit_id: r.id, from: PM_ORIGIN_LIST,
           ...(["wait_approve", "closed"].includes(stageOf(r))
-            ? {
-                [canApprove && stageOf(r) === "wait_approve" ? "approve" : "review"]: "1",
-                action: "post", pmtab: "post",
-              }
+            ? { [canApprove && stageOf(r) === "wait_approve" ? "approve" : "review"]: "1" }
             : {}),
         });
     if (tab === "charger" && r.sn && r.sn !== "-") params.set("sn", r.sn);

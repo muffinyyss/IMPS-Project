@@ -36,6 +36,7 @@ from routers.pm_helpers import (
     _latest_doc_name_from_pmreport,
     _latest_doc_name_anywhere,
     _next_year_seq,
+    _resolve_issue_and_doc,
 )
 
 from PIL import Image
@@ -181,20 +182,6 @@ def parse_report_date_to_utc(s: str) -> datetime:
 # Pydantic Models
 # ============================================
 
-class stationPMSubmitIn(BaseModel):
-    side: Literal["pre", "post"]
-    station_id: str
-    # ใบนี้เป็นส่วนหนึ่งของใบ PM สถานี "ใบเดียว 4 ส่วน" (stationPMJob) หรือไม่
-    job_id: Optional[str] = None
-    job: Dict[str, Any]
-    rows_pre: Dict[str, Dict[str, Any]]
-    pm_date: str
-    issue_id: Optional[str] = None
-    doc_name: Optional[str] = None
-    comment_pre: Optional[str] = None
-    inspector: Optional[str] = None
-
-
 class stationPMPostIn(BaseModel):
     report_id: str | None = None
     station_id: str
@@ -211,6 +198,14 @@ class stationPMPostIn(BaseModel):
     # laborcode ฝั่ง Maximo ที่ช่างเลือกเอง (ใช้ส่งเวลาทำงาน IN09)
     maximo_labor: Optional[List[str]] = None
     maximo_contractor: Optional[str] = None
+    # ── ข้อมูลหัวเอกสาร ────────────────────────────────────────────────
+    # ฟอร์มกรอกรอบเดียวแล้ว (ไม่มีด่าน Pre-PM) /submit จึงเป็นตัวสร้างเอกสาร
+    # เองเมื่อยังไม่มี report_id — ฟิลด์ชุดนี้เคยส่งมาที่ /pre/submit
+    job: Optional[Dict[str, Any]] = None
+    pm_date: Optional[str] = None
+    issue_id: Optional[str] = None
+    doc_name: Optional[str] = None
+    inspector: Optional[str] = None
 
 
 # ============================================
@@ -383,140 +378,6 @@ async def stationpmreport_latest_by_path(
 
 
 # ============================================
-# Pre-PM Submit
-# ============================================
-
-@router.post("/stationpmreport/pre/submit")
-async def stationpmreport_pre_submit(
-    body: stationPMSubmitIn,
-    current: UserClaims = Depends(get_current_user),
-):
-    station_id = body.station_id.strip()
-    coll = get_stationpmreport_collection_for(station_id)
-    url_coll = get_stationpmurl_coll_upload(station_id)
-    db = coll.database
-
-    pm_type = str(body.job.get("pm_type") or "ST").upper()
-    body.job["pm_type"] = pm_type
-
-    try:
-        d = datetime.strptime(body.pm_date, "%Y-%m-%d").date()
-    except ValueError:
-        raise HTTPException(status_code=400, detail="pm_date must be YYYY-MM-DD")
-
-    client_issue = body.issue_id
-    client_doc = body.doc_name
-
-    # parallel existence checks (issue_id / doc_name)
-    tasks: list = []
-    issue_prefix = ""
-
-    if client_issue:
-        yymm = f"{d.year % 100:02d}{d.month:02d}"
-        issue_prefix = f"PM-{pm_type}-{yymm}-"
-        if client_issue.startswith(issue_prefix):
-            tasks.append(coll.find_one({"issue_id": client_issue}, {"_id": 1}))
-            tasks.append(url_coll.find_one({"issue_id": client_issue}, {"_id": 1}))
-        else:
-            tasks.append(asyncio.sleep(0))
-            tasks.append(asyncio.sleep(0))
-    else:
-        tasks.append(asyncio.sleep(0))
-        tasks.append(asyncio.sleep(0))
-
-    if client_doc:
-        tasks.append(coll.find_one({"doc_name": client_doc}, {"_id": 1}))
-        tasks.append(url_coll.find_one({"doc_name": client_doc}, {"_id": 1}))
-    else:
-        tasks.append(asyncio.sleep(0))
-        tasks.append(asyncio.sleep(0))
-
-    results = await asyncio.gather(*tasks)
-
-    # Resolve issue_id
-    issue_id: str | None = None
-    if client_issue and client_issue.startswith(issue_prefix):
-        rep_exists, url_exists = results[0], results[1]
-        if not rep_exists and not url_exists:
-            issue_id = client_issue
-
-    link = await _job_link(station_id, body.job_id)
-    if link:
-        # ส่วนหนึ่งของใบ PM สถานีใบเดียว 4 ส่วน — ใช้เลขที่/ชื่อเอกสารของใบแม่
-        issue_id = link["issue_id"]
-    if not issue_id:
-        issue_id = await _next_issue_id_no_conflict(db, coll, url_coll, station_id, pm_type, d)
-
-    # Resolve doc_name
-    doc_name: str | None = None
-    if client_doc and client_doc.startswith(f"{station_id}_"):
-        rep_exists, url_exists = results[2], results[3]
-        if not rep_exists and not url_exists:
-            doc_name = client_doc
-
-    if link:
-        doc_name = link["doc_name"]
-    if not doc_name:
-        year_seq = await _next_year_seq(db, station_id, pm_type, d)
-        doc_name = f"{station_id}_{year_seq}/{d.year}"
-
-    # Reuse existing draft (same station/date/pre) if exists
-    draft_filter = (
-        {"station_id": station_id, "job_id": link["job_id"]}
-        if link else
-        {"station_id": station_id, "pm_date": body.pm_date, "side": "pre", "status": "draft"}
-    )
-    existing_draft = await coll.find_one(
-        draft_filter,
-        {"_id": 1, "issue_id": 1, "doc_name": 1},
-    )
-
-    if existing_draft:
-        await coll.update_one(
-            {"_id": existing_draft["_id"]},
-            {"$set": {
-                "job": body.job,
-                "rows_pre": body.rows_pre,
-                "comment_pre": body.comment_pre,
-                "inspector": body.inspector,
-                "updatedAt": datetime.now(timezone.utc),
-            }},
-        )
-        return {
-            "ok": True,
-            "report_id": str(existing_draft["_id"]),
-            "issue_id": existing_draft.get("issue_id") or issue_id,
-            "doc_name": existing_draft.get("doc_name") or doc_name,
-        }
-
-    doc = {
-        "station_id": station_id,
-        "issue_id": issue_id,
-        "doc_name": doc_name,
-        "job": body.job,
-        "rows_pre": body.rows_pre,
-        "comment_pre": body.comment_pre,
-        "pm_date": body.pm_date,
-        "inspector": body.inspector,
-        "photos_pre": {},
-        **({"job_id": link["job_id"]} if link else {}),
-        "status": "draft",
-        "side": body.side,
-        "createdAt": datetime.now(timezone.utc),
-    }
-
-    res = await coll.insert_one(doc)
-
-
-    return {
-        "ok": True,
-        "report_id": str(res.inserted_id),
-        "issue_id": issue_id,
-        "doc_name": doc_name,
-    }
-
-
-# ============================================
 # Post-PM Submit
 # ============================================
 
@@ -553,7 +414,10 @@ async def stationpmreport_post_submit(
         return {"ok": True, "report_id": body.report_id}
 
     # Auto-discover latest draft
+    # ผูกกับใบแม่แล้วต้องไม่ไปเขียนทับ draft ของใบอื่นในสถานีเดียวกัน
     existing_draft = await coll.find_one(
+        {"station_id": station_id, "job_id": body.job_id, "status": "draft"}
+        if body.job_id else
         {"station_id": station_id, "side": "post", "status": "draft"},
         {"_id": 1},
         sort=[("createdAt", -1)],
@@ -569,114 +433,64 @@ async def stationpmreport_post_submit(
         "updatedAt": datetime.now(timezone.utc),
     }
 
+    # หัวเอกสาร (เดิมบันทึกตอน Pre-PM) — ส่งมาเท่าไรเก็บเท่านั้น
+    header: dict = {}
+    if body.job is not None:
+        header["job"] = {**body.job, "pm_type": str(body.job.get("pm_type") or "ST").upper()}
+    if (body.pm_date or "").strip():
+        header["pm_date"] = body.pm_date.strip()
+    if body.inspector is not None:
+        header["inspector"] = body.inspector
+
     if existing_draft:
-        await coll.update_one({"_id": existing_draft["_id"]}, {"$set": update_fields})
+        await coll.update_one({"_id": existing_draft["_id"]}, {"$set": {**update_fields, **header}})
         return {"ok": True, "report_id": str(existing_draft["_id"])}
+
+    # ── ใบใหม่: จองเลข issue_id / doc_name ให้เลย ─────────────────────────
+    pm_date = header.get("pm_date") or datetime.now(th_tz).strftime("%Y-%m-%d")
+    try:
+        d = datetime.strptime(pm_date, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="pm_date must be YYYY-MM-DD")
+    pm_type = str((header.get("job") or {}).get("pm_type") or "ST").upper()
+
+    link = await _job_link(station_id, body.job_id)
+    if link:
+        # ส่วนหนึ่งของใบ PM สถานีใบเดียว — ใช้เลขที่/ชื่อเอกสารของใบแม่
+        issue_id, doc_name = link["issue_id"], link["doc_name"]
+    else:
+        issue_id, doc_name = await _resolve_issue_and_doc(
+            coll, get_stationpmurl_coll_upload(station_id), coll.database, station_id, pm_type, d,
+            body.issue_id, body.doc_name,
+        )
 
     doc = {
         "station_id": station_id,
+        "doc_name": doc_name,
+        "issue_id": issue_id,
+        "pm_date": pm_date,
         **update_fields,
+        **header,
+        **({"job_id": link["job_id"]} if link else {}),
         "photos": {},
         "status": "draft",
         "createdAt": datetime.now(timezone.utc),
     }
     res = await coll.insert_one(doc)
-    return {"ok": True, "report_id": str(res.inserted_id)}
+    return {
+        "ok": True,
+        "report_id": str(res.inserted_id),
+        "issue_id": issue_id,
+        "doc_name": doc_name,
+    }
 
 
 # ============================================
-# Photo Upload (Pre / Post)
+# Photo Upload (Post)
 # ============================================
 
 # Station group pattern: r1, r2, r3, ...
 PHOTO_GROUP_PATTERN = re.compile(r"^r\d+$")
-
-
-@router.post("/stationpmreport/{report_id}/pre/photos")
-async def stationpmreport_upload_pre_photos(
-    report_id: str,
-    station_id: str = Form(...),
-    group: str = Form(...),
-    files: List[UploadFile] = File(...),
-    current: UserClaims = Depends(get_current_user),
-):
-    """Upload Pre-PM photos for a Station report"""
-    # ตรวจสิทธิ์สถานีก่อนแตะข้อมูล — เดิมเช็คแค่ว่า field ตรงกับ document
-    # ซึ่งผู้เรียกคุมได้ทั้งคู่ จึงยิงข้ามสถานีได้
-    assert_station_access(current, station_id)
-    if not PHOTO_GROUP_PATTERN.match(group):
-        raise HTTPException(status_code=400, detail="Bad group key")
-
-    coll = get_stationpmreport_collection_for(station_id)
-    try:
-        oid = ObjectId(report_id)
-    except Exception:
-        raise HTTPException(status_code=400, detail="Bad report_id")
-
-    doc = await coll.find_one(
-        {"_id": oid},
-        {"_id": 1, "station_id": 1, f"photos_pre.{group}": 1},
-    )
-    if not doc:
-        raise HTTPException(status_code=404, detail="Report not found")
-    if doc.get("station_id") != station_id:
-        raise HTTPException(status_code=400, detail="station_id mismatch")
-
-    MAX_PHOTOS_PER_GROUP = 10
-    existing_count = len((doc.get("photos_pre") or {}).get(group, []))
-    remaining = MAX_PHOTOS_PER_GROUP - existing_count
-    if remaining <= 0:
-        return {"ok": True, "count": 0, "group": group, "files": [], "skipped": "group_full"}
-    files = files[:remaining]
-
-    dest_dir = pathlib.Path(UPLOADS_ROOT) / "stationpm" / station_id / report_id / "pre" / group
-    dest_dir.mkdir(parents=True, exist_ok=True)
-
-    saved = []
-    for f in files:
-        ext = _ext(f.filename or "")
-        if ext not in ALLOWED_EXTS:
-            raise HTTPException(status_code=400, detail=f"File type not allowed: {ext}")
-
-        data = await f.read()
-        if len(data) == 0:
-            raise HTTPException(status_code=400, detail=f"Empty file: {f.filename}")
-        if len(data) > MAX_FILE_MB * 1024 * 1024:
-            raise HTTPException(status_code=413, detail=f"File too large (> {MAX_FILE_MB} MB)")
-
-        # บังคับให้เป็น JPEG เสมอ — iPhone ส่ง HEIC มาซึ่ง Chrome/Edge/Firefox เปิดไม่ได้
-        # ของเดิม (resize_image_bytes) เปิด HEIC ไม่ได้แล้วคืนไบต์เดิมเงียบ ๆ จึงได้ไฟล์
-        # "ไบต์ HEIC ในชื่อ .jpg" ที่เปิดไม่ขึ้นทั้งบนเว็บและใน PDF
-        try:
-            data, out_ext = normalize_image_bytes(data, f.filename or "", max_width=1280, quality=75)
-        except ImageConversionError as e:
-            raise HTTPException(status_code=400, detail=str(e))
-
-        out_ext = out_ext or "jpg"
-        fname = _safe_name(f.filename or f"image_{secrets.token_hex(3)}.{out_ext}")
-        fname = pathlib.Path(fname).stem + "." + out_ext
-        path = dest_dir / fname
-        with open(path, "wb") as out:
-            out.write(data)
-
-        url_path = f"/uploads/stationpm/{station_id}/{report_id}/pre/{group}/{fname}"
-        saved.append({
-            "filename": fname,
-            "url": url_path,
-            "uploadedAt": datetime.now(timezone.utc),
-        })
-
-    await coll.update_one(
-        {"_id": oid},
-        {
-            "$push": {f"photos_pre.{group}": {"$each": saved}},
-            "$set": {"has_photos": True, "updatedAt": datetime.now(timezone.utc)},
-        },
-    )
-    if not saved:
-        raise HTTPException(status_code=400, detail="No files were saved")
-
-    return {"ok": True, "count": len(saved), "group": group, "files": saved}
 
 
 @router.post("/stationpmreport/{report_id}/post/photos")

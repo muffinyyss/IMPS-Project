@@ -11,35 +11,26 @@ export interface MissingCcbMeasurementInput {
 }
 
 interface FindMissingMeasurementInputsArgs {
-  isPostMode: boolean;
-  currentRows: StatusRows;
-  preRows: StatusRows;
+  rows: StatusRows;
   mainMeasurements: MeasurementState;
   subMeasurements: readonly MeasurementState[];
   subBreakerCount: number;
 }
 
-function isMeasurementNotApplicable(
-  rowKey: string,
-  isPostMode: boolean,
-  currentRows: StatusRows,
-  preRows: StatusRows,
-): boolean {
-  return currentRows[rowKey]?.pf === "NA"
-    || (isPostMode && preRows[rowKey]?.pf === "NA");
+/** ข้อที่เลือก N/A ในฟอร์ม (Post-PM) ไม่ต้องกรอกค่าวัด */
+function isMeasurementNotApplicable(rowKey: string, rows: StatusRows): boolean {
+  return rows[rowKey]?.pf === "NA";
 }
 
 export function findMissingCcbMeasurementInputs({
-  isPostMode,
-  currentRows,
-  preRows,
+  rows,
   mainMeasurements,
   subMeasurements,
   subBreakerCount,
 }: FindMissingMeasurementInputsArgs): MissingCcbMeasurementInput[] {
   const missing: MissingCcbMeasurementInput[] = [];
 
-  if (!isMeasurementNotApplicable("r9_main", isPostMode, currentRows, preRows)) {
+  if (!isMeasurementNotApplicable("r9_main", rows)) {
     VOLTAGE_FIELDS.forEach((fieldKey) => {
       if (!String(mainMeasurements[fieldKey]?.value ?? "").trim()) {
         missing.push({ qNo: 9, label: fieldKey, fieldKey });
@@ -49,7 +40,7 @@ export function findMissingCcbMeasurementInputs({
 
   for (let index = 0; index < subBreakerCount; index += 1) {
     const rowKey = `r10_sub${index + 1}`;
-    if (isMeasurementNotApplicable(rowKey, isPostMode, currentRows, preRows)) continue;
+    if (isMeasurementNotApplicable(rowKey, rows)) continue;
 
     const measurements = subMeasurements[index] ?? {};
     VOLTAGE_FIELDS.forEach((fieldKey) => {
