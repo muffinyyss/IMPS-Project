@@ -31,7 +31,18 @@ import pathlib
 import sys
 
 # ให้ import image_convert จาก backend/ ได้ตอนรันสคริปต์จากที่ไหนก็ได้
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+BACKEND_DIR = pathlib.Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(BACKEND_DIR))
+
+# โหลด backend/.env ให้เหมือนที่ config.py ทำ — ไม่งั้นสคริปต์จะไปใช้ค่า default
+# (uploads ที่ ./uploads ของ cwd และ mongo ที่ localhost) ซึ่ง "ไม่ error แต่ผิดที่"
+# แล้วรายงานว่าไม่เจอไฟล์/ไม่เจอเอกสาร ทั้งที่จริงยังไม่ได้ซ่อมอะไรเลย
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv(BACKEND_DIR / ".env")
+except Exception:
+    pass
 
 from image_convert import HEIF_SUPPORTED, normalize_image_bytes, sniff_image_kind  # noqa: E402
 
@@ -72,8 +83,12 @@ def _rewrite(node, old: str, new: str):
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="แปลงไฟล์ HEIC ที่ค้างอยู่ใน uploads/ ให้เป็น JPEG")
+    # เทียบ path จาก backend/ ไม่ใช่ cwd — ค่า UPLOADS_ROOT ใน .env เป็น "./uploads"
+    # ซึ่งแอปตีความจาก backend/ ตอนรัน uvicorn ถ้าสคริปต์ตีจาก cwd จะไปคนละที่
     ap.add_argument("--uploads-root", default=os.getenv("UPLOADS_ROOT", "./uploads"))
-    ap.add_argument("--mongo-uri", default=os.getenv("MONGO_URI", "mongodb://localhost:27017/"))
+    # ไม่ใส่ default localhost — ถ้าไม่มี MONGO_URI ต้องฟ้อง ไม่ใช่ไปต่อ DB ว่าง
+    # แล้วรายงานว่า "ไม่พบเอกสารที่อ้าง url นี้" ซึ่งอ่านแล้วเข้าใจผิดว่าข้อมูลหาย
+    ap.add_argument("--mongo-uri", default=os.getenv("MONGO_URI"))
     ap.add_argument("--dry-run", action="store_true", help="แสดงรายการที่จะแก้ แต่ยังไม่เขียนจริง")
     ap.add_argument("--no-db", action="store_true", help="ไม่ต้องอัปเดต URL ใน MongoDB")
     ap.add_argument("--keep-backup", action="store_true", help="เก็บไฟล์ HEIC เดิมไว้")
@@ -83,16 +98,32 @@ def main() -> int:
         print("ERROR: ไม่มี pillow-heif — ติดตั้งก่อนด้วย  pip install pillow-heif", file=sys.stderr)
         return 2
 
-    root = pathlib.Path(args.uploads_root).resolve()
+    root = pathlib.Path(args.uploads_root)
+    if not root.is_absolute():
+        root = (BACKEND_DIR / root).resolve()
+    root = root.resolve()
     if not root.is_dir():
         print(f"ERROR: ไม่พบโฟลเดอร์ {root}", file=sys.stderr)
+        print("       ระบุเองด้วย --uploads-root /path/to/uploads", file=sys.stderr)
         return 2
+    print(f"uploads: {root}")
 
     db_client = None
     if not args.no_db and not args.dry_run:
+        if not args.mongo_uri:
+            print("ERROR: ไม่มี MONGO_URI (ทั้งใน backend/.env และ environment)", file=sys.stderr)
+            print("       ใส่เองด้วย --mongo-uri ... หรือถ้าจะแปลงไฟล์อย่างเดียวใช้ --no-db",
+                  file=sys.stderr)
+            return 2
         from pymongo import MongoClient
 
-        db_client = MongoClient(args.mongo_uri)
+        db_client = MongoClient(args.mongo_uri, serverSelectionTimeoutMS=10000)
+        try:
+            db_client.admin.command("ping")
+        except Exception as e:
+            print(f"ERROR: ต่อ MongoDB ไม่ได้: {e}", file=sys.stderr)
+            return 2
+        print(f"mongo:   {args.mongo_uri.split('@')[-1]}")
 
     scanned = converted = renamed = failed = 0
 
