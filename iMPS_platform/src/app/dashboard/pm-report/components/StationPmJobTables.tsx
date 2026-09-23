@@ -617,18 +617,19 @@ export default function StationPmJobTables() {
               </div>
             </div>
 
-            {/* เลขที่/ชื่อเอกสาร/เลขใบงานเป็นสตริงยาวไม่มีช่องว่าง — คอลัมน์ grid กว้างคงที่
-                ถ้าไม่ให้ตัดบรรทัดกลางคำ ข้อความจะล้นไปทับคอลัมน์ข้าง ๆ */}
-            <div className="tw-mt-4 tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 lg:tw-grid-cols-4 tw-gap-x-6 tw-gap-y-3 tw-text-sm">
+            {/* ช่องกว้างตามข้อความ ไม่ตัดบรรทัด — ที่ไม่พอทั้งช่องย้ายลงแถวใหม่แทน
+                (เดิมเป็น grid กว้างคงที่ เลขที่/ชื่อเอกสารยาว ๆ เลยล้นไปทับช่องข้าง ๆ)
+                จอแคบกว่าข้อความจริง ๆ ค่อยตัดท้ายเป็น … ชี้ค้างดูค่าเต็มได้ */}
+            <div className="tw-mt-4 tw-flex tw-flex-wrap tw-gap-x-10 tw-gap-y-3 tw-text-sm">
               {[
                 { label: t("docNo", lang), value: job.issue_id || "-" },
                 { label: t("docName", lang), value: job.doc_name || "-" },
                 { label: t("pmDate", lang), value: fmtDate(job.pm_date, lang) },
                 { label: t("wonum", lang), value: job.wonum || "-" },
               ].map((f) => (
-                <div key={f.label} className="tw-min-w-0">
+                <div key={f.label} className="tw-max-w-full tw-whitespace-nowrap">
                   <div className="tw-text-gray-500">{f.label}</div>
-                  <div className="tw-font-semibold tw-text-gray-800 [overflow-wrap:anywhere]">{f.value}</div>
+                  <div className="tw-truncate tw-font-semibold tw-text-gray-800" title={f.value}>{f.value}</div>
                 </div>
               ))}
             </div>
