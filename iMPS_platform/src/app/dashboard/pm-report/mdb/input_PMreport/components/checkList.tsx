@@ -22,7 +22,7 @@ import { useLanguage, type Lang } from "@/utils/useLanguage";
 import { apiFetch } from "@/utils/api";
 import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
 import { pmFormReturnRoute } from "@/app/dashboard/pm-report/lib/origin";
-import { serverPhotosToForm } from "@/app/dashboard/pm-report/lib/reviewData";
+import { serverPhotosToForm, mergeDraftPhotos, deleteRemovedServerPhotos, isServerPhoto, type ViewPhoto } from "@/app/dashboard/pm-report/lib/reviewData";
 import { useDebouncedEffect } from "@/app/dashboard/pm-report/lib/useDebouncedEffect";
 
 // ==================== GPS + ADDRESS CACHE ====================
@@ -1009,6 +1009,9 @@ export default function MDBPMForm() {
 
     const [docApiLoaded, setDocApiLoaded] = useState(false);
     const [photos, setPhotos] = useState<Record<string | number, PhotoItem[]>>({});
+    // รูปเดิมของเอกสารที่โหลดมาใส่ฟอร์ม (หน้าดู / แก้ส่วนที่ส่งแล้ว) — ตอนบันทึกเทียบกับ photos
+    // เพื่อรู้ว่าผู้ใช้กดลบรูปเดิมรูปไหนออก แล้วลบออกจากเอกสารจริง
+    const serverPhotosRef = useRef<Record<string, ViewPhoto[]>>({});
     const [summary, setSummary] = useState<string>("");
     const [stationId, setStationId] = useState<string | null>(null);
 
@@ -1190,9 +1193,12 @@ export default function MDBPMForm() {
                 setCmpPhotos(data.photos ?? {});
                 // หน้าดูใช้ฟอร์มเดียวกับตอนกรอก — รูปมาจากเอกสาร ไม่ใช่ draft ในเครื่อง
                 // กลุ่ม g{n} คือข้อ n, ข้อย่อย r6_1 ใช้ชื่อเดียวกับ photo key (normalizePhotoGroup)
-                if (reviewMode) {
-                    setPhotos(prev => ({ ...prev, ...serverPhotosToForm(data.photos,
-                        g => (/^g\d+$/.test(g) ? g.slice(1) : g), API_BASE) }) as typeof prev);
+                // ส่วนหนึ่งของใบ PM สถานี: เปิดแก้ส่วนที่ส่งแล้วก็ต้องเห็นรูปเดิม (ลบ/เพิ่มได้)
+                if (reviewMode || jobId) {
+                    const fromServer = serverPhotosToForm(data.photos,
+                        g => (/^g\d+$/.test(g) ? g.slice(1) : g), API_BASE);
+                    serverPhotosRef.current = fromServer;
+                    setPhotos(prev => ({ ...prev, ...fromServer }) as typeof prev);
                 }
                 // ค่าที่ช่างกรอกไว้เก็บอยู่ใน draft ของเครื่องช่างด้วย แต่คนอื่นที่เปิดใบเดียวกัน
                 // (ผู้อนุมัติ / ช่างที่มาแก้ใบโดนตีกลับจากอีกเครื่อง) ไม่มี draft นั้น
@@ -1321,7 +1327,7 @@ export default function MDBPMForm() {
                     }
                     if (items.length > 0) loadedPhotos[photoKey] = items;
                 }
-                if (!canceled) setPhotos(prev => ({ ...prev, ...loadedPhotos }));
+                if (!canceled) setPhotos(prev => mergeDraftPhotos(prev, loadedPhotos) as typeof prev);
             })().finally(() => {
                 // เปิด autosave หลังรูปโหลดเสร็จ ไม่งั้น photoRefs ว่างจะไปทับ refs ใน draft
                 if (!canceled) setRestoredKey(currentDraftKey);
@@ -1548,6 +1554,14 @@ export default function MDBPMForm() {
                 });
             };
 
+            // แก้ส่วนที่ส่งแล้ว: รูปเดิมที่กดลบออก ลบออกจากเอกสารจริงก่อน แล้วค่อยอัปรูปใหม่
+            if (jobId) {
+                await deleteRemovedServerPhotos(apiFetch, {
+                    jobId, stationId: stationId ?? "", section: "mdb", reportId: report_id,
+                    original: serverPhotosRef.current, current: photosRef.current as any,
+                });
+                serverPhotosRef.current = {};
+            }
             // ⚡ อัปโหลดหลายรอบ — รูปที่มาถึงหลังกดบันทึกต้องถูกจับเข้ารอบถัดไป ไม่ใช่ถูกข้ามแล้วโดนลบ
             const MAX_UPLOAD_PASSES = 3;
             for (let pass = 1; pass <= MAX_UPLOAD_PASSES; pass++) {

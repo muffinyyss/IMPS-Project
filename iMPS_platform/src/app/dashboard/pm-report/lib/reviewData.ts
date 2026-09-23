@@ -12,8 +12,17 @@
 
 export type ServerPhoto = { url?: string; remark?: string };
 
-/** รูปที่แสดงในโหมดดู — ไม่มีไฟล์ในเครื่อง มีแค่ลิงก์ และถือว่าอยู่บน server แล้ว */
-export type ViewPhoto = { id: string; preview: string; remark: string; uploaded: true };
+/**
+ * รูปที่อยู่บน server แล้ว — ไม่มีไฟล์ในเครื่อง มีแค่ลิงก์ (uploaded = ไม่ต้องอัปซ้ำ)
+ * group/url ใช้อ้างตอนลบรูปเดิมออกจากเอกสาร (โหมดแก้ไขส่วนที่ส่งแล้ว)
+ */
+export type ViewPhoto = { id: string; preview: string; remark: string; uploaded: true; group: string; url: string };
+
+const SERVER_ID = "server-";
+
+export function isServerPhoto(p: { id?: string } | null | undefined): boolean {
+  return !!p?.id && p.id.startsWith(SERVER_ID);
+}
 
 export function serverPhotosToForm(
   server: Record<string, ServerPhoto[] | undefined> | undefined | null,
@@ -27,7 +36,9 @@ export function serverPhotosToForm(
     (list ?? []).forEach((p, i) => {
       if (!p?.url) return;
       const url = p.url.startsWith("http") ? p.url : `${apiBase}${p.url}`;
-      (out[String(key)] ??= []).push({ id: `server-${group}-${i}`, preview: url, remark: p.remark ?? "", uploaded: true });
+      (out[String(key)] ??= []).push({
+        id: `${SERVER_ID}${group}-${i}`, preview: url, remark: p.remark ?? "", uploaded: true, group, url: p.url,
+      });
     });
   }
   return out;
@@ -61,4 +72,61 @@ export function measureAsText<T>(saved: Record<string, { value?: unknown; unit?:
       { ...(v ?? {}), value: v?.value === null || v?.value === undefined ? "" : String(v.value) },
     ]),
   ) as T;
+}
+
+/**
+ * รวมรูปจาก draft ในเครื่องเข้ากับรูปเดิมบน server ที่โหลดไว้แล้ว
+ * draft เก็บแค่รูปที่แนบในเครื่อง (รูปบน server ไม่มี ref จึงไม่ลง draft) ถ้าเอามาทับตรง ๆ
+ * รูปเดิมของข้อนั้นจะหายจากหน้าจอ
+ */
+export function mergeDraftPhotos<T extends { id: string }>(
+  prev: Record<string | number, T[] | undefined>,
+  next: Record<string | number, T[] | undefined>,
+): Record<string, T[]> {
+  const out: Record<string, T[]> = { ...(prev as Record<string, T[]>) };
+  for (const [k, list] of Object.entries(next)) {
+    const server = (prev[k] ?? []).filter(isServerPhoto);
+    out[k] = [...server, ...(list ?? []).filter((p) => !isServerPhoto(p))];
+  }
+  return out;
+}
+
+/** รูปเดิมบน server ที่ผู้ใช้กดลบออกจากฟอร์มไประหว่างแก้ไข */
+export function removedServerPhotos(
+  original: Record<string, ViewPhoto[]>,
+  current: Record<string | number, { id: string }[] | undefined>,
+): ViewPhoto[] {
+  const still = new Set(Object.values(current).flat().filter(Boolean).map((p) => p!.id));
+  return Object.values(original).flat().filter((p) => !still.has(p.id));
+}
+
+/**
+ * ลบรูปเดิมที่ผู้ใช้เอาออกจากเอกสารจริง — เรียกตอนกดบันทึก ก่อนอัปรูปใหม่
+ * (ต้องเป็นส่วนหนึ่งของใบ PM สถานี: backend ตรวจว่าใบยังไม่ได้กดปิดใบงาน)
+ */
+export async function deleteRemovedServerPhotos(
+  apiFetch: (url: string, init?: RequestInit) => Promise<Response>,
+  opts: {
+    jobId: string; stationId: string; section: string; sn?: string; reportId: string;
+    original: Record<string, ViewPhoto[]>;
+    current: Record<string | number, { id: string }[] | undefined>;
+  },
+): Promise<void> {
+  const removed = removedServerPhotos(opts.original, opts.current);
+  for (const p of removed) {
+    const res = await apiFetch(
+      `/stationpmjob/${encodeURIComponent(opts.jobId)}/section-photo/delete?station_id=${encodeURIComponent(opts.stationId)}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          section: opts.section, sn: opts.sn ?? "", report_id: opts.reportId, group: p.group, url: p.url,
+        }),
+      },
+    );
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({} as { detail?: string }));
+      throw new Error(j?.detail || `ลบรูปเดิมไม่สำเร็จ (${res.status})`);
+    }
+  }
 }

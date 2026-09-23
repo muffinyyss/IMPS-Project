@@ -619,6 +619,76 @@ async def submit_station_pm_job(
 
 
 # ══════════════════════════════════════════════════════════════════
+# แก้ส่วนที่ส่งแล้ว — ลบรูปเดิมของส่วนนั้น (ก่อนกด "ปิดใบงาน" เท่านั้น)
+# ══════════════════════════════════════════════════════════════════
+
+# role ที่แก้ส่วนที่ส่งแล้วได้ — ต้องตรงกับหน้าเว็บ (StationPmJobTables PM_EDIT_SENT_ROLES)
+EDIT_SENT_ROLES = {"technician", "planner", "admin", "super_admin"}
+
+
+class DeleteSectionPhotoIn(BaseModel):
+    section: str
+    sn: str = ""                          # ส่วน charger เท่านั้น
+    report_id: str
+    group: str                            # คีย์กลุ่มรูปใน photos ของใบลูก (g16, r7, g10_1 …)
+    url: str                              # url ของรูปที่จะลบ (ตามที่เก็บใน photos)
+
+
+@router.post("/stationpmjob/{job_id}/section-photo/delete")
+async def delete_section_photo(
+    job_id: str,
+    body: DeleteSectionPhotoIn,
+    station_id: str = Query(...),
+    current: UserClaims = Depends(get_current_user),
+):
+    """
+    ลบรูปที่อัปโหลดไปแล้วของส่วนหนึ่งในใบ — ใช้ตอนช่างกด "แก้ไข" ส่วนที่ส่งแล้วแล้วเอารูปเดิมออก
+
+    แก้ได้เฉพาะตอนใบยังไม่ได้กด "ปิดใบงาน" (และส่วนนั้นยังไม่ปิด) — หลังจากนั้นเอกสาร
+    อยู่ในมือผู้อนุมัติแล้ว ห้ามเปลี่ยน
+    """
+    from uploads_access import assert_station_access, resolve_upload_path
+
+    if (current.role or "").strip().lower() not in EDIT_SENT_ROLES:
+        raise HTTPException(status_code=403, detail="เฉพาะ technician / planner / admin ที่แก้ไขส่วนที่ส่งแล้วได้")
+    station_id = station_id.strip()
+    assert_station_access(current, station_id)
+    job = await get_stationpmjob_collection_for(station_id).find_one({"_id": pm_flow.to_oid(job_id)})
+    if not job:
+        raise HTTPException(status_code=404, detail=f"ไม่พบใบ PM สถานี id={job_id}")
+    if _job_submitted(job):
+        raise HTTPException(status_code=409, detail="ใบนี้กดปิดใบงานแล้ว แก้ไขไม่ได้")
+
+    group = (body.group or "").strip()
+    url = (body.url or "").strip()
+    if not group or "." in group or "$" in group or not url:
+        raise HTTPException(status_code=400, detail="Bad photo reference")
+
+    coll = section_collection(body.section, station_id, body.sn)
+    oid = pm_flow.to_oid(body.report_id)
+    doc = await coll.find_one({"_id": oid, "job_id": job_id}, {"_id": 1, "status": 1})
+    if not doc:
+        raise HTTPException(status_code=404, detail="ไม่พบเอกสารของส่วนนี้ในใบ")
+    if _is_closed(_norm_status(doc.get("status"))):
+        raise HTTPException(status_code=409, detail="ส่วนนี้ปิดแล้ว แก้ไขไม่ได้")
+
+    res = await coll.update_one(
+        {"_id": oid},
+        {"$pull": {f"photos.{group}": {"url": url}}, "$set": {"updatedAt": datetime.now(timezone.utc)}},
+    )
+
+    # ไฟล์ไม่ได้ใช้แล้ว — ลบทิ้งเท่าที่ทำได้ (resolve_upload_path กัน path traversal ให้)
+    # ลบไม่ได้ก็ไม่เป็นไร เอกสารไม่อ้างถึงแล้ว
+    if res.modified_count and url.startswith("/uploads/"):
+        try:
+            resolve_upload_path(url[len("/uploads/"):]).unlink()
+        except Exception:
+            pass
+
+    return {"ok": True, "removed": res.modified_count}
+
+
+# ══════════════════════════════════════════════════════════════════
 # อนุมัติ / ตีกลับ ทั้งใบ (ทุกส่วนพร้อมกัน)
 # ══════════════════════════════════════════════════════════════════
 
