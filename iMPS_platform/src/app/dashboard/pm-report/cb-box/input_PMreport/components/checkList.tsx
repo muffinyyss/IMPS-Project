@@ -14,7 +14,7 @@ import { isFileReadable, isImageDecodable, resolveUsableFile, reportMissingDraft
 import { ensureViewableImage } from "@/utils/heic";
 import { collectPending, unrecoverablePhotos, expectedCountByGroup, findShortfall, shortfallMessage, pendingMessage, unrecoverableMessage } from "@/utils/pm-photo-sync";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
-import { pmBackRoute } from "@/app/dashboard/pm-report/lib/origin";
+import { pmFormReturnRoute } from "@/app/dashboard/pm-report/lib/origin";
 import { useDebouncedEffect } from "@/app/dashboard/pm-report/lib/useDebouncedEffect";
 
 const T = {
@@ -958,7 +958,8 @@ export default function CBBOXPMForm() {
 
     // ปุ่มย้อนกลับ: เปิดมาจากหน้า PM List ให้กลับไปหน้านั้นตรงๆ
     const goBackToList = useCallback(() => {
-        const back = pmBackRoute(searchParams);
+        // กลับหน้าที่เปิดเข้ามา: หน้ารวมของใบ PM สถานี / PM List — นอกนั้นถอยประวัติ
+        const back = pmFormReturnRoute(searchParams);
         if (back) router.push(back);
         else router.back();
     }, [router, searchParams]);
@@ -1431,7 +1432,7 @@ export default function CBBOXPMForm() {
             // ฟอร์มนี้เหลือแค่ Post-PM แล้ว (ไม่มีด่าน Pre ที่เคยสร้าง report_id ให้)
             // ใบใหม่ให้ backend สร้างรายงานตอนกดบันทึก — ถ้าเคยกดแล้วอัปรูปหลุด ใช้ id เดิมจาก draft กันได้รายงานซ้ำ
             let finalReportId: string = reportId || editId || loadDraftLocal<any>(postKey)?.pendingReportId || "";
-            const payload = { station_id: stationId, ...(jobId ? { job_id: jobId } : {}), inspector, job: { station_name: job.station_name, date: job.date }, ...(job.date ? { pm_date: job.date } : {}), rows, measures: { m5: m5.state }, summary, dropdownQ1, dropdownQ2, ...(summaryCheck ? { summaryCheck } : {}), work_start: workStart, work_finish: workFinish, maximo_labor: maximoLabor, maximo_contractor: contractorPicked ? maximoContractor.trim() : "", wonum: searchParams.get("wonum") ?? "", side: "post", ...(finalReportId ? { report_id: finalReportId } : {}) };
+            const payload = { station_id: stationId, ...(jobId ? { job_id: jobId } : {}), inspector, job: { station_name: job.station_name, date: job.date }, ...(job.date ? { pm_date: job.date } : {}), rows, measures: { m5: m5.state }, summary, dropdownQ1, dropdownQ2, ...(summaryCheck ? { summaryCheck } : {}), ...(jobId ? {} : { work_start: workStart, work_finish: workFinish, maximo_labor: maximoLabor, maximo_contractor: contractorPicked ? maximoContractor.trim() : "" }), wonum: searchParams.get("wonum") ?? "", side: "post", ...(finalReportId ? { report_id: finalReportId } : {}) };
             const res = await fetch(`${API_BASE}/cbboxpmreport/submit`, { method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, credentials: "include", body: JSON.stringify(payload) });
             if (!res.ok) throw new Error(await res.text());
             const { report_id } = await res.json() as { report_id: string };
@@ -1442,14 +1443,14 @@ export default function CBBOXPMForm() {
             }
             // ต้องยืนยันรูปครบก่อน ถึงจะ finalize + ลบรูปในเครื่อง
             if (!(await syncPhotosAndVerify(finalReportId))) return;
-            if (!workStart || !workFinish) { alert(t("alertWorkTime", lang)); setSubmitting(false); return; }
-            if (contractorMissing) { alert(t("contractorRequired", lang)); setSubmitting(false); return; }
-            if (workFinish < workStart) { alert(t("alertWorkTimeOrder", lang)); setSubmitting(false); return; }
+            if (!jobId && (!workStart || !workFinish)) { alert(t("alertWorkTime", lang)); setSubmitting(false); return; }
+            if (!jobId && contractorMissing) { alert(t("contractorRequired", lang)); setSubmitting(false); return; }
+            if (!jobId && workFinish < workStart) { alert(t("alertWorkTimeOrder", lang)); setSubmitting(false); return; }
             // Maximo ตีกลับ IN09 ด้วย BMXAA2641E ถ้าเวลาทำงานยังมาไม่ถึง
             // ปล่อยผ่านตรงนี้ = ปิดใบงานได้แต่ปิด WO ในระบบเขาไม่ได้ ต้องมาแก้ย้อนหลัง
             const nowLocal = new Date(Date.now() - new Date().getTimezoneOffset() * 60000)
                 .toISOString().slice(0, 16);
-            if (workStart > nowLocal || workFinish > nowLocal) { alert(t("alertWorkTimeFuture", lang)); setSubmitting(false); return; }
+            if (!jobId && (workStart > nowLocal || workFinish > nowLocal)) { alert(t("alertWorkTimeFuture", lang)); setSubmitting(false); return; }
 
             const finalizeRes = await fetch(`${API_BASE}/cbboxpmreport/${finalReportId}/finalize`, { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : undefined, credentials: "include", body: new URLSearchParams({ station_id: stationId }) });
             if (!finalizeRes.ok) throw new Error(await finalizeRes.text());
@@ -1457,7 +1458,8 @@ export default function CBBOXPMForm() {
             await Promise.all(allPhotos.map(p => delPhoto(postKey, p.id)));
             draftClearedRef.current = true; // กัน autosave ที่ค้างอยู่เขียน draft กลับมาหลังล้าง
             await clearDraftLocal(postKey);
-            router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&tab=cb-box`);
+            // กลับหน้าที่เปิดเข้ามา (หน้ารวมของใบ PM สถานี / PM List) — ไม่มีก็ไปตารางใบ PM ของสถานี
+            router.replace(pmFormReturnRoute(searchParams) ?? `/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&tab=cb-box`);
         } catch (err: any) { alert(`${t("alertSaveFailed", lang)} ${err?.message ?? err}`); } finally { setSubmitting(false); }
     };
 
@@ -1581,6 +1583,9 @@ export default function CBBOXPMForm() {
                     {/* โหมดตรวจ: ย้ายไปไว้ล่างสุด ให้อ่านหลังดูตารางเทียบเสร็จ */}
                     {!reviewMode && summaryBlock}
                     <div className="tw-flex tw-flex-col tw-gap-3 tw-mt-8">
+                    {/* ใบที่เป็นส่วนหนึ่งของใบ PM สถานี: เวลาทำงาน/ช่างที่ลงเวลา Maximo กรอกครั้งเดียวตอนกด
+                        "ปิดใบงาน" ที่หน้ารวมของใบ — ไม่ต้องกรอกซ้ำทุกส่วน (ใบเดี่ยวรุ่นเก่ายังกรอกที่นี่) */}
+                    {!jobId && (<>
                     {/* เวลาทำงานจริงของช่าง — ต้องกรอกก่อนส่งปิดใบงาน (ส่งเข้า Maximo IN09) */}
                     {(
                         <div className="tw-mt-6 tw-pt-4 tw-border-t tw-border-gray-200">
@@ -1649,6 +1654,7 @@ export default function CBBOXPMForm() {
                             </div>
                         )}
                     </div>
+                    </>)}
 
                         {/* โหมดตรวจไม่ต้องมี ฟอร์มฝั่งช่างดักความครบถ้วนไว้ตั้งแต่ตอนกรอกแล้ว */}
                         {!reviewMode && (

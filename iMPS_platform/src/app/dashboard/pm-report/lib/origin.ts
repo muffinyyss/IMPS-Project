@@ -26,3 +26,25 @@ export function cameFromPmList(searchParams: ReadonlyParams): boolean {
 export function pmBackRoute(searchParams: ReadonlyParams): string | null {
   return cameFromPmList(searchParams) ? PM_LIST_ROUTE : null;
 }
+
+/**
+ * ฟอร์มกรอก PM (ทั้ง 5 ชนิด) ออกจากฟอร์มแล้วต้องกลับไปหน้าที่เปิดเข้ามา
+ * ใช้ทั้งปุ่มย้อนกลับ, หลังกดส่ง และหลังอนุมัติ/ตีกลับ
+ *
+ *   เปิดจากหน้ารวมของใบ PM สถานี (มี job_id) → กลับหน้ารวมใบนั้น
+ *     คง from= ไว้ด้วย ปุ่มย้อนกลับของหน้ารวมจะพากลับ PM List ต่อได้ถูก
+ *   เปิดจาก PM List                         → PM List
+ *   นอกนั้น                                  → null (ผู้เรียกใช้ทางเดิมของตัวเอง)
+ */
+export function pmFormReturnRoute(searchParams: ReadonlyParams): string | null {
+  const jobId = (searchParams.get("job_id") ?? "").trim();
+  if (jobId) {
+    const p = new URLSearchParams({ view: "form", job_id: jobId });
+    const stationId = searchParams.get("station_id");
+    if (stationId) p.set("station_id", stationId);
+    const from = searchParams.get("from");
+    if (from) p.set("from", from);
+    return `/dashboard/pm-report?${p.toString()}`;
+  }
+  return pmBackRoute(searchParams);
+}
