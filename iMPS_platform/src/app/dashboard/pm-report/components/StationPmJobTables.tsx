@@ -605,53 +605,53 @@ export default function StationPmJobTables() {
         {/* หัวเอกสาร */}
         <Card className="tw-mb-5 tw-border tw-border-gray-200 tw-shadow-sm">
           <CardBody className="tw-p-5">
-            <div className="tw-flex tw-flex-wrap tw-items-start tw-justify-between tw-gap-3">
-              <div>
+            <div className="tw-flex tw-items-start tw-justify-between tw-gap-3">
+              <div className="tw-min-w-0 tw-flex-1">
                 <Typography variant="h5" className="tw-text-gray-900">{t("jobTitle", lang)}</Typography>
-                <Typography className="tw-mt-1 tw-text-sm tw-text-gray-500">
+                <Typography className="tw-mt-1 tw-text-sm tw-text-gray-500 tw-break-words">
                   {job.station_name || job.station_id}
                 </Typography>
               </div>
-              <PmStatusBadge flow={toPmFlow({ status: job.status, reject_remark: job.reject_remark })} />
+              <div className="tw-shrink-0">
+                <PmStatusBadge flow={toPmFlow({ status: job.status, reject_remark: job.reject_remark })} />
+              </div>
             </div>
 
-            <div className="tw-mt-4 tw-grid tw-grid-cols-2 md:tw-grid-cols-4 tw-gap-4 tw-text-sm">
-              <div>
-                <div className="tw-text-gray-500">{t("docNo", lang)}</div>
-                <div className="tw-font-semibold tw-text-gray-800">{job.issue_id || "-"}</div>
-              </div>
-              <div>
-                <div className="tw-text-gray-500">{t("docName", lang)}</div>
-                <div className="tw-font-semibold tw-text-gray-800">{job.doc_name || "-"}</div>
-              </div>
-              <div>
-                <div className="tw-text-gray-500">{t("pmDate", lang)}</div>
-                <div className="tw-font-semibold tw-text-gray-800">{fmtDate(job.pm_date, lang)}</div>
-              </div>
-              <div>
-                <div className="tw-text-gray-500">{t("wonum", lang)}</div>
-                <div className="tw-font-semibold tw-text-gray-800">{job.wonum || "-"}</div>
-              </div>
+            {/* เลขที่/ชื่อเอกสาร/เลขใบงานเป็นสตริงยาวไม่มีช่องว่าง — คอลัมน์ grid กว้างคงที่
+                ถ้าไม่ให้ตัดบรรทัดกลางคำ ข้อความจะล้นไปทับคอลัมน์ข้าง ๆ */}
+            <div className="tw-mt-4 tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 lg:tw-grid-cols-4 tw-gap-x-6 tw-gap-y-3 tw-text-sm">
+              {[
+                { label: t("docNo", lang), value: job.issue_id || "-" },
+                { label: t("docName", lang), value: job.doc_name || "-" },
+                { label: t("pmDate", lang), value: fmtDate(job.pm_date, lang) },
+                { label: t("wonum", lang), value: job.wonum || "-" },
+              ].map((f) => (
+                <div key={f.label} className="tw-min-w-0">
+                  <div className="tw-text-gray-500">{f.label}</div>
+                  <div className="tw-font-semibold tw-text-gray-800 [overflow-wrap:anywhere]">{f.value}</div>
+                </div>
+              ))}
             </div>
 
             {job.reject_remark && (
-              <div className="tw-mt-4 tw-rounded-lg tw-border tw-border-amber-200 tw-bg-amber-50 tw-px-4 tw-py-3 tw-text-sm tw-text-amber-800">
+              <div className="tw-mt-4 tw-rounded-lg tw-border tw-border-amber-200 tw-bg-amber-50 tw-px-4 tw-py-3 tw-text-sm tw-text-amber-800 [overflow-wrap:anywhere]">
                 {t("rejected", lang)} {job.reject_remark}
               </div>
             )}
             {job.status === "Closed" && job.approved_by && (
-              <div className="tw-mt-4 tw-flex tw-items-center tw-gap-2 tw-text-sm tw-text-green-700">
-                <CheckCircleIcon className="tw-h-5 tw-w-5" /> {t("approved", lang)} {job.approved_by}
+              <div className="tw-mt-4 tw-flex tw-items-start tw-gap-2 tw-text-sm tw-text-green-700">
+                <CheckCircleIcon className="tw-h-5 tw-w-5 tw-shrink-0" />
+                <span className="tw-min-w-0 [overflow-wrap:anywhere]">{t("approved", lang)} {job.approved_by}</span>
               </div>
             )}
           </CardBody>
         </Card>
 
         {/* 5 ส่วนของเอกสาร — ส่วนที่ 5 (ตู้ชาร์จ) แตกเป็นใบย่อยรายตู้ */}
-        <div className="tw-mb-2 tw-flex tw-items-baseline tw-gap-3">
+        <div className="tw-mb-2 tw-flex tw-flex-wrap tw-items-baseline tw-gap-x-3 tw-gap-y-1">
           <Typography variant="h6" className="tw-text-gray-800">{t("sectionsTitle", lang)}</Typography>
-          <span className="tw-text-xs tw-text-gray-500">{t("sectionsHint", lang)}</span>
-          <span className="tw-ml-auto tw-text-xs tw-font-semibold tw-text-gray-500">
+          <span className="tw-min-w-0 tw-text-xs tw-text-gray-500">{t("sectionsHint", lang)}</span>
+          <span className="tw-ml-auto tw-shrink-0 tw-text-xs tw-font-semibold tw-text-gray-500">
             {job.sections_done}/{job.sections_total}
           </span>
         </div>
@@ -677,7 +677,7 @@ export default function StationPmJobTables() {
                         <span className="tw-font-semibold tw-text-gray-900">
                           {pick(SECTION_TITLE[id], lang)}
                         </span>
-                        <span className={`tw-rounded-full tw-border tw-px-2 tw-py-0.5 tw-text-[11px] tw-font-semibold ${sectionChipClass(groupStatus)}`}>
+                        <span className={`tw-whitespace-nowrap tw-rounded-full tw-border tw-px-2 tw-py-0.5 tw-text-[11px] tw-font-semibold ${sectionChipClass(groupStatus)}`}>
                           {sectionStatusLabel(groupStatus, lang)}
                         </span>
                         {isCharger && rows.length > 0 && (
@@ -704,13 +704,14 @@ export default function StationPmJobTables() {
                                 key={c.sn}
                                 className="tw-flex tw-flex-wrap tw-items-center tw-gap-2 tw-rounded-lg tw-border tw-border-gray-200 tw-px-3 tw-py-2"
                               >
-                                <div className="tw-min-w-0 tw-flex-1">
+                                {/* ชื่อตู้กว้างขั้นต่ำไว้ — ที่ไม่พอให้ป้ายสถานะ/ปุ่มขึ้นบรรทัดใหม่ แทนการบีบชื่อจนหาย */}
+                                <div className="tw-min-w-[8rem] tw-flex-1">
                                   <div className="tw-truncate tw-text-sm tw-font-semibold tw-text-gray-800">
                                     {pick(c.label, lang)}
                                   </div>
                                   <div className="tw-truncate tw-text-[11px] tw-text-gray-400">{c.sn}</div>
                                 </div>
-                                <span className={`tw-rounded-full tw-border tw-px-2 tw-py-0.5 tw-text-[11px] tw-font-semibold ${sectionChipClass(c.status)}`}>
+                                <span className={`tw-shrink-0 tw-whitespace-nowrap tw-rounded-full tw-border tw-px-2 tw-py-0.5 tw-text-[11px] tw-font-semibold ${sectionChipClass(c.status)}`}>
                                   {sectionStatusLabel(c.status, lang)}
                                 </span>
                                 <SectionFillButton job={job} state={c} lang={lang} onOpen={openSection} compact />
