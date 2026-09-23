@@ -619,8 +619,9 @@ export default function StationPmJobTables() {
 
             {/* ช่องกว้างตามข้อความ ไม่ตัดบรรทัด — ที่ไม่พอทั้งช่องย้ายลงแถวใหม่แทน
                 (เดิมเป็น grid กว้างคงที่ เลขที่/ชื่อเอกสารยาว ๆ เลยล้นไปทับช่องข้าง ๆ)
-                จอแคบกว่าข้อความจริง ๆ ค่อยตัดท้ายเป็น … ชี้ค้างดูค่าเต็มได้ */}
-            <div className="tw-mt-4 tw-flex tw-flex-wrap tw-gap-x-10 tw-gap-y-3 tw-text-sm">
+                จอแคบกว่าข้อความจริง ๆ ค่อยตัดท้ายเป็น … ชี้ค้างดูค่าเต็มได้
+                ที่ว่างที่เหลือกระจายเท่า ๆ กันรอบทุกช่อง (space-evenly) — gap-x คือระยะห่างขั้นต่ำ */}
+            <div className="tw-mt-4 tw-flex tw-flex-wrap tw-justify-evenly tw-gap-x-10 tw-gap-y-3 tw-text-sm">
               {[
                 { label: t("docNo", lang), value: job.issue_id || "-" },
                 { label: t("docName", lang), value: job.doc_name || "-" },
