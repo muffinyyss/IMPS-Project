@@ -190,3 +190,6 @@ fieldset.pm-readonly:disabled button:disabled {
 
 /* ปุ่มลบรูปกดไม่ได้อยู่แล้วในโหมดนี้ โชว์ไว้มีแต่หลอกตา */
 fieldset.pm-readonly:disabled [data-photo-remove] { display: none; }
+
+/* ปุ่มถ่าย/แนบรูปก็เหมือนกัน — หน้าดูอย่างเดียวเหลือแค่รูปที่มีอยู่ */
+fieldset.pm-readonly:disabled [data-photo-add] { display: none; }
