@@ -1,5 +1,6 @@
 "use client";
 import LoadingOverlay from "../../components/Loadingoverlay";
+import { ensureViewableImages, looksLikeImageFile } from "@/utils/heic";
 import React, { useEffect, useState, useMemo, useRef, Fragment } from "react";
 import {
     getCoreRowModel, getPaginationRowModel, getFilteredRowModel, getSortedRowModel, getExpandedRowModel,
@@ -620,21 +621,25 @@ export function SearchDataTables() {
     // ===== Image handlers =====
     const MAX_IMAGE_BYTES = 3 * 1024 * 1024;
 
-    const pickChargerImage: React.ChangeEventHandler<HTMLInputElement> = (e) => {
+    const pickChargerImage: React.ChangeEventHandler<HTMLInputElement> = async (e) => {
         const files = Array.from(e.target.files || []);
-        const valid = files.filter(f => { if (!f.type.startsWith("image/")) { alert(t.imageOnly); return false; } if (f.size > MAX_IMAGE_BYTES) { alert(`${f.name} ${t.fileTooLarge}`); return false; } return true; });
+        const valid = files.filter(f => { if (!looksLikeImageFile(f)) { alert(t.imageOnly); return false; } if (f.size > MAX_IMAGE_BYTES) { alert(`${f.name} ${t.fileTooLarge}`); return false; } return true; });
         if (!valid.length) return;
-        setEditChargerImages(prev => [...prev, ...valid]);
-        setEditChargerPreviews(prev => [...prev, ...valid.map(f => URL.createObjectURL(f))]);
+        // HEIC จาก iPhone เบราว์เซอร์เปิดไม่ได้ → preview ขึ้นกรอบว่าง แปลงเป็น JPEG ก่อน
+        const shown = await ensureViewableImages(valid);
+        setEditChargerImages(prev => [...prev, ...shown]);
+        setEditChargerPreviews(prev => [...prev, ...shown.map(f => URL.createObjectURL(f))]);
         e.target.value = "";
     };
 
-    const pickDeviceImage: React.ChangeEventHandler<HTMLInputElement> = (e) => {
+    const pickDeviceImage: React.ChangeEventHandler<HTMLInputElement> = async (e) => {
         const files = Array.from(e.target.files || []);
-        const valid = files.filter(f => { if (!f.type.startsWith("image/")) { alert(t.imageOnly); return false; } if (f.size > MAX_IMAGE_BYTES) { alert(`${f.name} ${t.fileTooLarge}`); return false; } return true; });
+        const valid = files.filter(f => { if (!looksLikeImageFile(f)) { alert(t.imageOnly); return false; } if (f.size > MAX_IMAGE_BYTES) { alert(`${f.name} ${t.fileTooLarge}`); return false; } return true; });
         if (!valid.length) return;
-        setEditDeviceImages(prev => [...prev, ...valid]);
-        setEditDevicePreviews(prev => [...prev, ...valid.map(f => URL.createObjectURL(f))]);
+        // HEIC จาก iPhone เบราว์เซอร์เปิดไม่ได้ → preview ขึ้นกรอบว่าง แปลงเป็น JPEG ก่อน
+        const shown = await ensureViewableImages(valid);
+        setEditDeviceImages(prev => [...prev, ...shown]);
+        setEditDevicePreviews(prev => [...prev, ...shown.map(f => URL.createObjectURL(f))]);
         e.target.value = "";
     };
 
@@ -642,22 +647,26 @@ export function SearchDataTables() {
     const removeEditDeviceImage = (idx: number) => { URL.revokeObjectURL(editDevicePreviews[idx]); setEditDeviceImages(prev => prev.filter((_, i) => i !== idx)); setEditDevicePreviews(prev => prev.filter((_, i) => i !== idx)); };
     const resetEditChargerImages = () => { editChargerPreviews.forEach(u => URL.revokeObjectURL(u)); editDevicePreviews.forEach(u => URL.revokeObjectURL(u)); setEditChargerImages([]); setEditDeviceImages([]); setEditChargerPreviews([]); setEditDevicePreviews([]); setDeleteChargerImage(false); setDeleteDeviceImage(false); setDeletedExistingChargerIdxs(new Set()); setDeletedExistingDeviceIdxs(new Set()); };
 
-    const pickStationImage: React.ChangeEventHandler<HTMLInputElement> = (e) => {
+    const pickStationImage: React.ChangeEventHandler<HTMLInputElement> = async (e) => {
         const files = Array.from(e.target.files || []);
-        const valid = files.filter(f => { if (!f.type.startsWith("image/")) { alert(t.imageOnly); return false; } if (f.size > MAX_IMAGE_BYTES) { alert(`${f.name} ${t.fileTooLarge}`); return false; } return true; });
+        const valid = files.filter(f => { if (!looksLikeImageFile(f)) { alert(t.imageOnly); return false; } if (f.size > MAX_IMAGE_BYTES) { alert(`${f.name} ${t.fileTooLarge}`); return false; } return true; });
         if (!valid.length) return;
-        setEditStationImages(prev => [...prev, ...valid]);
-        setEditStationPreviews(prev => [...prev, ...valid.map(f => URL.createObjectURL(f))]);
+        // HEIC จาก iPhone เบราว์เซอร์เปิดไม่ได้ → preview ขึ้นกรอบว่าง แปลงเป็น JPEG ก่อน
+        const shown = await ensureViewableImages(valid);
+        setEditStationImages(prev => [...prev, ...shown]);
+        setEditStationPreviews(prev => [...prev, ...shown.map(f => URL.createObjectURL(f))]);
         e.target.value = "";
     };
 
     // ✅ MDB image handler
-    const pickMdbImage: React.ChangeEventHandler<HTMLInputElement> = (e) => {
+    const pickMdbImage: React.ChangeEventHandler<HTMLInputElement> = async (e) => {
         const files = Array.from(e.target.files || []);
-        const valid = files.filter(f => { if (!f.type.startsWith("image/")) { alert(t.imageOnly); return false; } if (f.size > MAX_IMAGE_BYTES) { alert(`${f.name} ${t.fileTooLarge}`); return false; } return true; });
+        const valid = files.filter(f => { if (!looksLikeImageFile(f)) { alert(t.imageOnly); return false; } if (f.size > MAX_IMAGE_BYTES) { alert(`${f.name} ${t.fileTooLarge}`); return false; } return true; });
         if (!valid.length) return;
-        setEditMdbImages(prev => [...prev, ...valid]);
-        setEditMdbPreviews(prev => [...prev, ...valid.map(f => URL.createObjectURL(f))]);
+        // HEIC จาก iPhone เบราว์เซอร์เปิดไม่ได้ → preview ขึ้นกรอบว่าง แปลงเป็น JPEG ก่อน
+        const shown = await ensureViewableImages(valid);
+        setEditMdbImages(prev => [...prev, ...shown]);
+        setEditMdbPreviews(prev => [...prev, ...shown.map(f => URL.createObjectURL(f))]);
         e.target.value = "";
     };
 
@@ -674,21 +683,25 @@ export function SearchDataTables() {
         setDeleteCurrentImage(false);
     };
 
-    const pickAddChargerImage: React.ChangeEventHandler<HTMLInputElement> = (e) => {
+    const pickAddChargerImage: React.ChangeEventHandler<HTMLInputElement> = async (e) => {
         const files = Array.from(e.target.files || []);
-        const valid = files.filter(f => { if (!f.type.startsWith("image/")) { alert(t.imageOnly); return false; } if (f.size > MAX_IMAGE_BYTES) { alert(`${f.name} ${t.fileTooLarge}`); return false; } return true; });
+        const valid = files.filter(f => { if (!looksLikeImageFile(f)) { alert(t.imageOnly); return false; } if (f.size > MAX_IMAGE_BYTES) { alert(`${f.name} ${t.fileTooLarge}`); return false; } return true; });
         if (!valid.length) return;
-        setAddChargerImages(prev => [...prev, ...valid]);
-        setAddChargerPreviews(prev => [...prev, ...valid.map(f => URL.createObjectURL(f))]);
+        // HEIC จาก iPhone เบราว์เซอร์เปิดไม่ได้ → preview ขึ้นกรอบว่าง แปลงเป็น JPEG ก่อน
+        const shown = await ensureViewableImages(valid);
+        setAddChargerImages(prev => [...prev, ...shown]);
+        setAddChargerPreviews(prev => [...prev, ...shown.map(f => URL.createObjectURL(f))]);
         e.target.value = "";
     };
 
-    const pickAddDeviceImage: React.ChangeEventHandler<HTMLInputElement> = (e) => {
+    const pickAddDeviceImage: React.ChangeEventHandler<HTMLInputElement> = async (e) => {
         const files = Array.from(e.target.files || []);
-        const valid = files.filter(f => { if (!f.type.startsWith("image/")) { alert(t.imageOnly); return false; } if (f.size > MAX_IMAGE_BYTES) { alert(`${f.name} ${t.fileTooLarge}`); return false; } return true; });
+        const valid = files.filter(f => { if (!looksLikeImageFile(f)) { alert(t.imageOnly); return false; } if (f.size > MAX_IMAGE_BYTES) { alert(`${f.name} ${t.fileTooLarge}`); return false; } return true; });
         if (!valid.length) return;
-        setAddDeviceImages(prev => [...prev, ...valid]);
-        setAddDevicePreviews(prev => [...prev, ...valid.map(f => URL.createObjectURL(f))]);
+        // HEIC จาก iPhone เบราว์เซอร์เปิดไม่ได้ → preview ขึ้นกรอบว่าง แปลงเป็น JPEG ก่อน
+        const shown = await ensureViewableImages(valid);
+        setAddDeviceImages(prev => [...prev, ...shown]);
+        setAddDevicePreviews(prev => [...prev, ...shown.map(f => URL.createObjectURL(f))]);
         e.target.value = "";
     };
 

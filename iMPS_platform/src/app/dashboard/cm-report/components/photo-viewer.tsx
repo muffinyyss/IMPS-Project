@@ -71,7 +71,7 @@ export function ZoomableImg({
 /** นามสกุลที่หน้า Open และ backend รับ */
 export const CM_ACCEPT_ATTACH = [
     ".pdf", ".docx", ".doc", ".xlsx", ".xls", ".pptx", ".ppt", ".txt", ".csv",
-    ".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg", ".heic", ".bmp",
+    ".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg", ".heic", ".heif", ".avif", ".bmp",
     ".mp4", ".mov", ".mkv", ".avi", ".webm", ".wmv",
 ].join(",");
 
@@ -83,7 +83,7 @@ export function isAllowedCmAttachment(name?: string | null): boolean {
     return dot >= 0 && CM_ATTACH_EXTENSIONS.has(value.slice(dot));
 }
 
-const IMAGE_EXT = /\.(jpe?g|png|webp|gif|svg|heic|bmp)(\?|#|$)/i;
+const IMAGE_EXT = /\.(jpe?g|png|webp|gif|svg|heic|heif|avif|bmp)(\?|#|$)/i;
 const VIDEO_EXT = /\.(mp4|mov|mkv|avi|webm|wmv)(\?|#|$)/i;
 
 /**

@@ -1,5 +1,6 @@
 "use client";
 import ConfirmDialog from "./ConfirmDialog";
+import { ensureViewableImage, looksLikeImageFile } from "@/utils/heic";
 import LoadingOverlay from "../../components/Loadingoverlay";
 import React, { useEffect, useState, useMemo, useCallback, useRef, Fragment } from "react";
 import {
@@ -151,7 +152,10 @@ async function readJpegDimensions(file: File): Promise<{ width: number; height: 
 }
 
 // ─── Normalize EXIF orientation: returns a new File with pixels rotated upright ───
-async function normalizeImageOrientation(file: File): Promise<File> {
+async function normalizeImageOrientation(rawFile: File): Promise<File> {
+  // HEIC จาก iPhone: canvas decode ไม่ออก → preview ขึ้นกรอบว่าง และ EXIF orientation
+  // ด้านล่างก็ทำงานไม่ได้ แปลงเป็น JPEG ที่ server ก่อนทุกอย่าง
+  const file = await ensureViewableImage(rawFile);
   if (!file.type.startsWith("image/") || file.type === "image/gif" || file.type === "image/svg+xml") return file;
   try {
     const orientation = await readExifOrientation(file);
@@ -558,7 +562,7 @@ export function SearchDataTables() {
 
   const pickChargerImage: React.ChangeEventHandler<HTMLInputElement> = async (e) => {
     const files = Array.from(e.target.files || []);
-    const valid = files.filter(f => { if (!f.type.startsWith("image/")) { alert(t.imageOnly); return false; } if (f.size > MAX_IMAGE_BYTES) { alert(`${f.name} ${t.fileTooLarge}`); return false; } return true; });
+    const valid = files.filter(f => { if (!looksLikeImageFile(f)) { alert(t.imageOnly); return false; } if (f.size > MAX_IMAGE_BYTES) { alert(`${f.name} ${t.fileTooLarge}`); return false; } return true; });
     e.target.value = "";
     if (!valid.length) return;
     const normalized = await Promise.all(valid.map(normalizeImageOrientation));
@@ -568,7 +572,7 @@ export function SearchDataTables() {
 
   const pickDeviceImage: React.ChangeEventHandler<HTMLInputElement> = async (e) => {
     const files = Array.from(e.target.files || []);
-    const valid = files.filter(f => { if (!f.type.startsWith("image/")) { alert(t.imageOnly); return false; } if (f.size > MAX_IMAGE_BYTES) { alert(`${f.name} ${t.fileTooLarge}`); return false; } return true; });
+    const valid = files.filter(f => { if (!looksLikeImageFile(f)) { alert(t.imageOnly); return false; } if (f.size > MAX_IMAGE_BYTES) { alert(`${f.name} ${t.fileTooLarge}`); return false; } return true; });
     e.target.value = "";
     if (!valid.length) return;
     const normalized = await Promise.all(valid.map(normalizeImageOrientation));
@@ -582,7 +586,7 @@ export function SearchDataTables() {
 
   const pickStationImage: React.ChangeEventHandler<HTMLInputElement> = async (e) => {
     const files = Array.from(e.target.files || []);
-    const valid = files.filter(f => { if (!f.type.startsWith("image/")) { alert(t.imageOnly); return false; } if (f.size > MAX_IMAGE_BYTES) { alert(`${f.name} ${t.fileTooLarge}`); return false; } return true; });
+    const valid = files.filter(f => { if (!looksLikeImageFile(f)) { alert(t.imageOnly); return false; } if (f.size > MAX_IMAGE_BYTES) { alert(`${f.name} ${t.fileTooLarge}`); return false; } return true; });
     e.target.value = "";
     if (!valid.length) return;
     const normalized = await Promise.all(valid.map(normalizeImageOrientation));
@@ -593,7 +597,7 @@ export function SearchDataTables() {
   // ✅ MDB image handler
   const pickMdbImage: React.ChangeEventHandler<HTMLInputElement> = async (e) => {
     const files = Array.from(e.target.files || []);
-    const valid = files.filter(f => { if (!f.type.startsWith("image/")) { alert(t.imageOnly); return false; } if (f.size > MAX_IMAGE_BYTES) { alert(`${f.name} ${t.fileTooLarge}`); return false; } return true; });
+    const valid = files.filter(f => { if (!looksLikeImageFile(f)) { alert(t.imageOnly); return false; } if (f.size > MAX_IMAGE_BYTES) { alert(`${f.name} ${t.fileTooLarge}`); return false; } return true; });
     e.target.value = "";
     if (!valid.length) return;
     const normalized = await Promise.all(valid.map(normalizeImageOrientation));
@@ -616,7 +620,7 @@ export function SearchDataTables() {
 
   const pickAddChargerImage: React.ChangeEventHandler<HTMLInputElement> = async (e) => {
     const files = Array.from(e.target.files || []);
-    const valid = files.filter(f => { if (!f.type.startsWith("image/")) { alert(t.imageOnly); return false; } if (f.size > MAX_IMAGE_BYTES) { alert(`${f.name} ${t.fileTooLarge}`); return false; } return true; });
+    const valid = files.filter(f => { if (!looksLikeImageFile(f)) { alert(t.imageOnly); return false; } if (f.size > MAX_IMAGE_BYTES) { alert(`${f.name} ${t.fileTooLarge}`); return false; } return true; });
     e.target.value = "";
     if (!valid.length) return;
     const normalized = await Promise.all(valid.map(normalizeImageOrientation));
@@ -626,7 +630,7 @@ export function SearchDataTables() {
 
   const pickAddDeviceImage: React.ChangeEventHandler<HTMLInputElement> = async (e) => {
     const files = Array.from(e.target.files || []);
-    const valid = files.filter(f => { if (!f.type.startsWith("image/")) { alert(t.imageOnly); return false; } if (f.size > MAX_IMAGE_BYTES) { alert(`${f.name} ${t.fileTooLarge}`); return false; } return true; });
+    const valid = files.filter(f => { if (!looksLikeImageFile(f)) { alert(t.imageOnly); return false; } if (f.size > MAX_IMAGE_BYTES) { alert(`${f.name} ${t.fileTooLarge}`); return false; } return true; });
     e.target.value = "";
     if (!valid.length) return;
     const normalized = await Promise.all(valid.map(normalizeImageOrientation));

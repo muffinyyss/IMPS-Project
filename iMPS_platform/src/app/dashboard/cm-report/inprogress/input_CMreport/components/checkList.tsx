@@ -588,7 +588,7 @@ function PhotoUpload({ photos_problem, onAdd, onRemove, max, disabled, lang }: {
  * เลือกไฟล์แนบของ "การดำเนินการแก้ไข" 1 รายการ
  * กรองนามสกุลที่ backend ไม่รับทิ้งไปเลย และคุมจำนวนให้เท่ากับเพดานต่อกลุ่มของ /cmreport/{id}/photos
  */
-function pickActionFiles(files: FileList | null, currentCount: number, lang: Lang): PhotoItem[] {
+async function pickActionFiles(files: FileList | null, currentCount: number, lang: Lang): Promise<PhotoItem[]> {
     if (!files || files.length === 0) return [];
     const th = lang === "th";
     const picked = Array.from(files);
@@ -606,7 +606,9 @@ function pickActionFiles(files: FileList | null, currentCount: number, lang: Lan
             ? `แนบไฟล์ได้สูงสุด ${MAX_PHOTOS} ไฟล์ต่อรายการ (เพิ่มได้อีก ${remain} ไฟล์)`
             : `Maximum ${MAX_PHOTOS} files per item (${remain} remaining)`);
     }
-    return allowed.slice(0, remain).map((f, k) => ({
+    // กล่องนี้แนบได้ทั้งเอกสารและรูป — ensureViewableImages ปล่อยไฟล์ที่ไม่ใช่ HEIC ผ่านไปเฉย ๆ
+    const viewable = await ensureViewableImages(allowed.slice(0, remain));
+    return viewable.map((f, k) => ({
         id: `file-${Date.now()}-${k}-${f.name}`,
         file: f,
         preview: URL.createObjectURL(f),
@@ -791,8 +793,8 @@ function ProblemGroupBlock({ faultyEquipment, value, onChange, onRemove, onAddGr
     const removeImg = (i: number, kind: "beforeImages" | "afterImages", id: string) => {
         onChange({ ...value, corrective_actions: value.corrective_actions.map((a, j) => j === i ? { ...a, [kind]: a[kind].filter(im => im.id !== id) } : a) });
     };
-    const addFiles = (i: number, files: FileList | null) => {
-        const picked = pickActionFiles(files, value.corrective_actions[i]?.files?.length ?? 0, lang);
+    const addFiles = async (i: number, files: FileList | null) => {
+        const picked = await pickActionFiles(files, value.corrective_actions[i]?.files?.length ?? 0, lang);
         if (!picked.length) return;
         onChange({ ...value, corrective_actions: value.corrective_actions.map((a, j) => j === i ? { ...a, files: [...(a.files ?? []), ...picked].slice(0, MAX_PHOTOS) } : a) });
     };
@@ -1922,8 +1924,8 @@ export default function CMInProgressForm() {
         }));
     };
 
-    const addCorrectiveFiles = (index: number, files: FileList | null) => {
-        const picked = pickActionFiles(files, job.corrective_actions[index]?.files?.length ?? 0, lang);
+    const addCorrectiveFiles = async (index: number, files: FileList | null) => {
+        const picked = await pickActionFiles(files, job.corrective_actions[index]?.files?.length ?? 0, lang);
         if (!picked.length) return;
         setJob(prev => ({
             ...prev,
