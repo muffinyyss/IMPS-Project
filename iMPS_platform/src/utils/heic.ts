@@ -59,6 +59,20 @@ export async function isHeicFile(file: File): Promise<boolean> {
     return HEIC_EXT_RE.test(file.name || "");
 }
 
+const IMAGE_EXT_RE = /\.(jpe?g|png|webp|gif|bmp|tiff?|heic|heif|hif|avif)$/i;
+
+/**
+ * เป็นไฟล์รูปหรือเปล่า — ใช้แทน `file.type.startsWith("image/")` ตรง ๆ
+ *
+ * บางเครื่อง (เลือกผ่าน file manager บน Android/เดสก์ท็อป) ส่ง File ที่ `type`
+ * เป็นสตริงว่างมา ตัวกรองที่เช็คแค่ type จึงเด้ง "เลือกรูปภาพเท่านั้น" ใส่รูปที่ถูกต้อง
+ * โดยเฉพาะ .heic ที่ OS เก่า ๆ ไม่รู้จัก mime
+ */
+export function looksLikeImageFile(file: File): boolean {
+    if ((file.type || "").startsWith("image/")) return true;
+    return IMAGE_EXT_RE.test(file.name || "");
+}
+
 function toJpgName(name: string): string {
     const base = (name || "").replace(/\.[^.]*$/, "");
     return `${base || `image_${Date.now()}`}.jpg`;
@@ -79,18 +93,75 @@ export async function ensureViewableImage(file: File): Promise<File> {
 
         const res = await apiFetch(`${API_BASE}/images/convert`, { method: "POST", body: fd });
         if (!res.ok) {
-            console.warn("[heic] แปลง HEIC ที่ server ไม่สำเร็จ", res.status, await res.text().catch(() => ""));
+            const detail = await res.text().catch(() => "");
+            console.warn("[heic] แปลง HEIC ที่ server ไม่สำเร็จ", res.status, detail);
+            // 413 มาจาก nginx (client_max_body_size) ไม่ใช่ FastAPI — ไฟล์ HEIC ดิบจาก
+            // iPhone มักใหญ่กว่าเพดาน และฝั่ง client บีบก่อนส่งไม่ได้เพราะ decode ไม่ออก
+            reportHeicConversionFailure(res.status === 413 ? "too_large" : "server");
             return file;
         }
 
         const blob = await res.blob();
-        if (!blob.size) return file;
+        if (!blob.size) {
+            reportHeicConversionFailure("server");
+            return file;
+        }
 
         return new File([blob], toJpgName(file.name), { type: "image/jpeg" });
     } catch (e) {
         console.warn("[heic] แปลง HEIC ไม่สำเร็จ ใช้ไฟล์เดิมต่อ (backend จะแปลงให้ตอนอัปโหลด)", e);
+        reportHeicConversionFailure("network");
         return file;
     }
+}
+
+/**
+ * เตือนเมื่อแปลง HEIC ไม่สำเร็จ
+ *
+ * ห้ามเงียบ: รูปยังอัปโหลดได้ (backend แปลงให้อีกชั้น) แต่สิ่งที่หายไปคือ
+ * **ตราประทับวันเวลา/พิกัดบนรูป** ของฟอร์ม PM ซึ่งประทับผ่าน canvas บนเบราว์เซอร์
+ * ถ้า decode HEIC ไม่ออกก็ประทับไม่ได้ ใบ PM จะขาดหลักฐานโดยไม่มีใครรู้ตัว
+ * — บั๊กแบบเดียวกับที่ทำให้รูป HEIC หลุดขึ้น production มาตั้งแต่แรก
+ *
+ * รวมนับแล้วเตือนครั้งเดียว ไม่เด้งทีละใบ (ล้อแบบเดียวกับ upload-safety.ts)
+ */
+type HeicFailReason = "too_large" | "server" | "network";
+
+let failCount = 0;
+let failReason: HeicFailReason = "server";
+let failTimer: ReturnType<typeof setTimeout> | null = null;
+
+export function reportHeicConversionFailure(reason: HeicFailReason) {
+    failCount++;
+    // เหตุผลที่ผู้ใช้ทำอะไรได้เองมาก่อน — ไฟล์ใหญ่เกินแก้ได้ที่ตั้งค่ากล้อง
+    if (reason === "too_large") failReason = reason;
+    else if (failReason !== "too_large") failReason = reason;
+
+    if (failTimer) clearTimeout(failTimer);
+    failTimer = setTimeout(() => {
+        const n = failCount;
+        const why = failReason;
+        failCount = 0;
+        failReason = "server";
+        failTimer = null;
+        if (typeof window === "undefined") return;
+
+        const head = `แปลงรูป HEIC ${n} รูป ไม่สำเร็จ`;
+        const why_th =
+            why === "too_large" ? "(ไฟล์ใหญ่เกินกว่าที่เซิร์ฟเวอร์รับได้)"
+                : why === "network" ? "(เชื่อมต่อเซิร์ฟเวอร์ไม่ได้)"
+                    : "(เซิร์ฟเวอร์แปลงไม่สำเร็จ)";
+        // ใช้ template literal ขึ้นบรรทัดจริง — อ่านง่ายกว่าต่อสตริงด้วย \n ทีละท่อน
+        window.alert(
+            `${head} ${why_th}
+
+รูปยังอัปโหลดและเปิดดูได้ตามปกติ แต่จะไม่มีวันเวลาและพิกัดประทับบนรูป
+
+ถ้าต้องการให้ประทับครบ ให้ตั้งค่าที่ iPhone:
+ตั้งค่า → กล้อง → รูปแบบ → เลือก "เข้ากันได้มากที่สุด" (แทน "ประสิทธิภาพสูงสุด")
+แล้วถ่ายรูปใหม่`,
+        );
+    }, 800);
 }
 
 /** แปลงทีละหลายไฟล์ ทำทีละใบเพื่อไม่ให้ยิง request พร้อมกันจนมือถือค้าง */

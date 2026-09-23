@@ -91,6 +91,14 @@ describe("ensureViewableImage", () => {
         expect(await ensureViewableImage(f)).toBe(f);
     });
 
+    // 413 มาจาก nginx (client_max_body_size) ไม่ใช่ FastAPI — HEIC ดิบจาก iPhone
+    // มักใหญ่กว่าเพดาน และบีบก่อนส่งไม่ได้เพราะเบราว์เซอร์ decode ไม่ออก
+    it("413 (ไฟล์ใหญ่เกิน) → คืนไฟล์เดิม ไม่ throw", async () => {
+        apiFetch.mockResolvedValue({ ok: false, status: 413, text: async () => "too large" });
+        const f = bmff("heic", "IMG_big.jpg");
+        expect(await ensureViewableImage(f)).toBe(f);
+    });
+
     it("server คืน blob ว่าง → คืนไฟล์เดิม", async () => {
         apiFetch.mockResolvedValue({ ok: true, blob: async () => new Blob([]) });
         const f = bmff("heic", "IMG_3.jpg");

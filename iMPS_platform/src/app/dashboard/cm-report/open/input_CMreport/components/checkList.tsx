@@ -7,6 +7,7 @@ import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { ArrowLeftIcon, PhotoIcon, XMarkIcon, CheckCircleIcon, ExclamationTriangleIcon } from "@heroicons/react/24/solid";
 import { InformationCircleIcon } from "@heroicons/react/24/outline";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
+import { ensureViewableImages } from "@/utils/heic";
 import { draftKey as getDraftKey, saveDraftLocal, loadDraftLocal, clearDraftLocal, type CMDraftData } from "../lib/draft";
 import { putPhoto, getPhotosByDraftKey, delPhoto, delPhotosByDraftKey, createPreviewUrl, photoRefToFile, type PhotoRef } from "../lib/draftPhotos";
 import { apiFetch } from "@/utils/api";
@@ -1053,7 +1054,9 @@ export default function CMOpenForm() {
                 : `Maximum ${MAX_PHOTOS} files (${Math.max(0, remain)} remaining)`);
         }
         if (remain <= 0 || allowedFiles.length === 0) return;
-        const filesToAdd = allowedFiles.slice(0, remain);
+        // HEIC จาก iPhone: เบราว์เซอร์นอกจาก Safari เปิดไม่ได้ → preview ขึ้นกรอบว่าง
+        // และรูปที่เซฟลง IndexedDB (putPhoto) ก็จะเป็น HEIC ไปด้วย แปลงเป็น JPEG ก่อน
+        const filesToAdd = await ensureViewableImages(allowedFiles.slice(0, remain));
 
         const now = new Date().toLocaleString("th-TH", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
         const cachedLoc = gpsCache.current.fetched ? gpsCache.current.location : undefined;

@@ -102,7 +102,6 @@ const T = {
   noAssignee: { th: "ยังไม่ได้มอบหมายช่าง", en: "No technician assigned" },
 
   startPm: { th: "เริ่ม PM", en: "Start PM" },
-  pickCharger: { th: "เลือกตู้ที่จะเริ่ม PM", en: "Pick a charger to start" },
   waitPlanner: {
     th: "ผู้วางแผนยังไม่ได้เลือกอุปกรณ์ที่ต้อง PM — รอให้วางแผนเสร็จก่อนจึงเริ่มได้",
     en: "The planner has not selected the equipment yet — wait for the plan to be completed",
@@ -135,10 +134,10 @@ type Props = {
   onSaved: () => void;
   onCancel: () => void;
   /**
-   * ช่างกด "เริ่ม PM" จากใบงานนี้ — sn = ตู้ที่เลือกเริ่ม (เฉพาะใบงานของตู้)
+   * ช่างกด "เริ่ม PM" จากใบงานนี้ → เปิดใบ PM แล้วไปหน้ารวม 5 ส่วน
    * ไม่ส่ง prop นี้มา = ไม่มีปุ่ม (เช่นตอน planner เปิดหน้านี้มาวางแผน)
    */
-  onStart?: (sn?: string) => void;
+  onStart?: () => void;
 };
 
 // class ชุดเดียวกับ CM form
@@ -332,11 +331,6 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
   // เริ่ม PM ได้ต่อเมื่อ planner เลือกอุปกรณ์ไว้แล้ว — อ่านจากแผนที่บันทึกแล้ว
   // ไม่ใช่ state ของ checkbox ที่ planner อาจกำลังแก้ค้างอยู่
   const plannedEquipment = wo?.selected_equipment ?? [];
-  // ใบงานเดียวครอบได้หลายตู้ — ต้องรู้ว่าจะเริ่มตู้ไหนก่อนถึงจะเปิดฟอร์มถูกใบ
-  const startChargers =
-    source === "charger"
-      ? plannedEquipment.filter((e) => e.type === "charger" && (e.sn ?? "").trim())
-      : [];
   const showStart = !canPlan && !!onStart;
   const canStart = !loading && !!wo && plannedEquipment.length > 0;
   const locked = !canPlan || (alreadyPlanned && !editMode);
@@ -653,26 +647,17 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
                     </Button>
                   )}
 
-                  {/* ช่าง: ปุ่มเดียวที่กดได้คือเริ่มงาน — ใบงานหลายตู้แยกปุ่มต่อตู้ */}
+                  {/* ช่าง: ปุ่มเดียวที่กดได้คือเริ่มงาน — ไปหน้ารวม 5 ส่วนของใบ PM
+                      เลือกส่วน/ตู้ที่จะกรอกเอาที่หน้านั้น ไม่ต้องตัดสินใจตั้งแต่ตรงนี้ */}
                   {showStart && (
-                    <>
-                      {startChargers.length > 1 && (
-                        <span className="tw-mr-auto tw-text-sm tw-text-blue-gray-500">
-                          {t("pickCharger", lang)}
-                        </span>
-                      )}
-                      {(startChargers.length > 1 ? startChargers : [null]).map((c, i) => (
-                        <Button
-                          key={c?.sn ?? `start-${i}`}
-                          type="button"
-                          onClick={() => onStart?.(c?.sn ?? startChargers[0]?.sn ?? undefined)}
-                          disabled={!canStart}
-                          className="tw-bg-amber-500 hover:tw-bg-amber-600 tw-text-white tw-font-semibold hover:tw-shadow-lg hover:tw-shadow-amber-500/30 tw-transition-all disabled:tw-opacity-50 disabled:tw-shadow-none"
-                        >
-                          {c ? `${t("startPm", lang)} · ${equipLabel(c)}` : t("startPm", lang)}
-                        </Button>
-                      ))}
-                    </>
+                    <Button
+                      type="button"
+                      onClick={() => onStart?.()}
+                      disabled={!canStart}
+                      className="tw-bg-amber-500 hover:tw-bg-amber-600 tw-text-white tw-font-semibold hover:tw-shadow-lg hover:tw-shadow-amber-500/30 tw-transition-all disabled:tw-opacity-50 disabled:tw-shadow-none"
+                    >
+                      {t("startPm", lang)}
+                    </Button>
                   )}
                 </div>
               </div>

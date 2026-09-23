@@ -27,7 +27,11 @@ invoke==2.2.0
 Jinja2==3.1.6
 MarkupSafe==3.0.3
 motor==3.7.1
-numpy==2.3.2
+# numpy 2.3.x ต้องการ Python >= 3.11 แต่เซิร์ฟเวอร์ dev รัน Python 3.10 อยู่
+# ไม่มี marker นี้ `pip install -r requirements.txt` จะ fail ทั้งไฟล์บนเซิร์ฟเวอร์
+# (pip resolve ก่อนติดตั้ง แพ็กเกจอื่นเลยไม่ถูกลงสักตัว) — 2.2.6 คือตัวล่าสุดที่รองรับ 3.10
+numpy==2.3.2; python_version >= "3.11"
+numpy==2.2.6; python_version < "3.11"
 paho-mqtt==2.1.0
 pandas==2.3.2
 paramiko==4.0.0

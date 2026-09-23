@@ -1,5 +1,6 @@
 "use client";
 import LoadingOverlay from "../../components/Loadingoverlay";
+import { ensureViewableImage, looksLikeImageFile } from "@/utils/heic";
 import { useEffect, useState, useMemo, useRef } from "react";
 import { apiFetch } from "@/utils/api";
 import { WARRANTY_STATUS_OPTIONS, INVESTMENT_SCOPE_OPTIONS, MultiSelectDropdown } from "./stationOptions";
@@ -517,7 +518,7 @@ export default function AddStationModal({
     /* ── file validation ── */
     const pickValid = (files: FileList | null): File[] =>
         Array.from(files || []).filter((f) => {
-            if (!f.type.startsWith("image/")) { alert(t.selectImageOnly); return false; }
+            if (!looksLikeImageFile(f)) { alert(t.selectImageOnly); return false; }
             if (f.size > 3 * 1024 * 1024) { alert(t.fileTooLarge); return false; }
             return true;
         });
@@ -587,7 +588,10 @@ export default function AddStationModal({
     };
 
     /* ── normalize EXIF orientation (rotate image upright) ── */
-    const normalizeImageOrientation = async (file: File): Promise<File> => {
+    const normalizeImageOrientation = async (rawFile: File): Promise<File> => {
+    // HEIC จาก iPhone: canvas decode ไม่ออก → preview ขึ้นกรอบว่าง และ EXIF orientation
+    // ด้านล่างก็ทำงานไม่ได้ แปลงเป็น JPEG ที่ server ก่อนทุกอย่าง
+        const file = await ensureViewableImage(rawFile);
         if (!file.type.startsWith("image/") || file.type === "image/gif" || file.type === "image/svg+xml") {
             return file;
         }
