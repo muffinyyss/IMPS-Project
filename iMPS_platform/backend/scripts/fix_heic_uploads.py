@@ -10,10 +10,13 @@
   2. ฟอร์ม CM — เก็บไฟล์ดิบชื่อ .heic → ต้องเขียนเป็น .jpg แล้วตามไปแก้ URL ใน
      MongoDB ด้วย ไม่งั้นหน้าเว็บยังชี้ไปไฟล์เดิมที่ถูกลบไปแล้ว
 
-วิธีใช้ (ดูอย่างเดียวก่อน แล้วค่อยลงมือ):
+วิธีใช้ — รันจาก backend/ (ดูอย่างเดียวก่อน แล้วค่อยลงมือ):
 
-    python scripts/fix_heic_uploads.py --dry-run
-    python scripts/fix_heic_uploads.py
+    python3 scripts/fix_heic_uploads.py --dry-run
+    python3 scripts/fix_heic_uploads.py
+
+หมายเหตุ: เซิร์ฟเวอร์ dev (Ubuntu, Python 3.10) ไม่มี alias `python` มีแต่ `python3`
+ส่วนเครื่อง dev Windows ใช้ `python` ได้ตามปกติ
 
 ตัวเลือก:
     --uploads-root PATH   ระบุโฟลเดอร์ uploads เอง (ปกติอ่านจาก env UPLOADS_ROOT)
@@ -48,6 +51,11 @@ from image_convert import HEIF_SUPPORTED, normalize_image_bytes, sniff_image_kin
 
 # prefix แรกใน /uploads/<prefix>/... → ชื่อ MongoDB ที่เก็บ url ของไฟล์นั้น
 # (ดู url_path ใน routers/*.py)
+#
+# ไม่มี "stations" ในตารางนี้โดยตั้งใจ: routers/stations.py ตั้งชื่อไฟล์เองเป็น
+# `{kind}-{uuid}.{jpg|png|webp}` เสมอ ไม่เคยเป็น .heic จึงเข้าเคส "เขียนทับที่เดิม"
+# ตลอด ไม่ต้องแก้ URL ใน DB — ถ้าวันหนึ่งเจอ .heic ใต้ stations/ สคริปต์จะไม่แตะ
+# แล้วฟ้องว่าไม่รู้ว่าเก็บ URL ไว้ที่ไหน (ปลอดภัยกว่าเดาแล้วลบไฟล์ทิ้ง)
 DB_BY_PREFIX = {
     "pm": "PMReport",
     "mdbpm": "MDBPMReport",
@@ -90,7 +98,9 @@ def main() -> int:
     # แล้วรายงานว่า "ไม่พบเอกสารที่อ้าง url นี้" ซึ่งอ่านแล้วเข้าใจผิดว่าข้อมูลหาย
     ap.add_argument("--mongo-uri", default=os.getenv("MONGO_URI"))
     ap.add_argument("--dry-run", action="store_true", help="แสดงรายการที่จะแก้ แต่ยังไม่เขียนจริง")
-    ap.add_argument("--no-db", action="store_true", help="ไม่ต้องอัปเดต URL ใน MongoDB")
+    ap.add_argument("--no-db", action="store_true",
+                    help="ไม่แตะ MongoDB — แปลงเฉพาะไฟล์ที่ไม่ต้องเปลี่ยนนามสกุล "
+                         "ไฟล์ .heic ที่ต้องแก้ URL ด้วยจะถูกข้าม")
     ap.add_argument("--keep-backup", action="store_true", help="เก็บไฟล์ HEIC เดิมไว้")
     args = ap.parse_args()
 
@@ -125,10 +135,14 @@ def main() -> int:
             return 2
         print(f"mongo:   {args.mongo_uri.split('@')[-1]}")
 
-    scanned = converted = renamed = failed = 0
+    scanned = converted = renamed = failed = skipped = 0
 
     for path in root.rglob("*"):
         if not path.is_file():
+            continue
+        # ไฟล์สำรองจาก --keep-backup เป็นไบต์ HEIC อยู่แล้วโดยตั้งใจ ถ้าไม่ข้าม
+        # การรันซ้ำจะไปเข้าเคส "เปลี่ยนนามสกุล" แล้วพยายามแก้ URL ใน Mongo ที่ไม่มีอยู่จริง
+        if path.name.endswith(".heic-orig"):
             continue
         scanned += 1
         try:
@@ -167,6 +181,15 @@ def main() -> int:
             continue
 
         # เคส CM: ต้องเปลี่ยนนามสกุลเป็น .jpg แล้วตามไปแก้ URL ใน MongoDB
+        #
+        # --no-db แปลว่า "ห้ามแตะ DB" จึงเปลี่ยนชื่อไฟล์ไม่ได้ด้วย — เปลี่ยนแล้วไม่ได้แก้ URL
+        # ตาม รูปจะหายจากหน้าเว็บทันที ข้ามไปแล้วบอกให้รันใหม่โดยไม่ใส่ --no-db
+        if args.no_db:
+            print("  ! ข้าม: ไฟล์นี้ต้องเปลี่ยนนามสกุลและแก้ URL ใน MongoDB "
+                  "แต่สั่ง --no-db ไว้ (รันใหม่โดยไม่ใส่ --no-db)")
+            skipped += 1
+            continue
+
         new_path = path.with_suffix(".jpg")
         if new_path.exists():
             new_path = path.with_name(f"{path.stem}_converted.jpg")
@@ -175,9 +198,7 @@ def main() -> int:
         old_url = f"/uploads/{rel}"
         new_url = f"/uploads/{new_path.relative_to(root).as_posix()}"
 
-        db_ok = args.no_db
-        if db_client is not None:
-            db_ok = _update_db(db_client, rel, old_url, new_url)
+        db_ok = _update_db(db_client, rel, old_url, new_url)
 
         if db_ok:
             if args.keep_backup:
@@ -194,7 +215,9 @@ def main() -> int:
             print("  ! อัปเดต URL ใน MongoDB ไม่สำเร็จ — คงไฟล์เดิมไว้ ยังไม่แก้")
 
     print(
-        f"\nสแกน {scanned} ไฟล์ | แปลง {converted} | เปลี่ยนชื่อ+แก้ DB {renamed} | ล้มเหลว {failed}"
+        f"\nสแกน {scanned} ไฟล์ | แปลง {converted} | เปลี่ยนชื่อ+แก้ DB {renamed}"
+        + (f" | ข้าม {skipped}" if skipped else "")
+        + f" | ล้มเหลว {failed}"
         + ("  (dry-run: ยังไม่เขียนอะไรลงดิสก์)" if args.dry_run else "")
     )
     return 1 if failed else 0
