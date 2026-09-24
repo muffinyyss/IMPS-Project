@@ -1,12 +1,18 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import React, { useEffect, useState, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 
-import DCTables from "@/app/dashboard/test-report/dc/list/components/dc-table";
-import ACTables from "@/app/dashboard/test-report/ac/list/components/ac-table";
 import { ChevronDoubleUpIcon, ChevronDoubleDownIcon } from "@heroicons/react/24/solid";
 import useLanguage, { type Lang } from "@/utils/useLanguage";
+
+// Les tableaux ci-dessous vivent dans des onglets et un seul est rendu a la fois,
+// mais un import statique les embarque tous dans le bundle de la page. next/dynamic
+// les decoupe : seul l'onglet ouvert est telecharge. Pas de `ssr: false` — le rendu
+// serveur est conserve, donc le squelette du tableau reste dans le HTML servi.
+const DCTables = dynamic(() => import("@/app/dashboard/test-report/dc/list/components/dc-table"));
+const ACTables = dynamic(() => import("@/app/dashboard/test-report/ac/list/components/ac-table"));
 
 type ChargerType = "DC" | "AC";
 

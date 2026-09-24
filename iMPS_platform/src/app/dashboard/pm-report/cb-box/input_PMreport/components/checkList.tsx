@@ -486,8 +486,7 @@ function useMeasure(keys: readonly string[]) {
 
 
 async function fetchReport(reportId: string, stationId: string) {
-    const token = localStorage.getItem("access_token") ?? "";
-    const res = await fetch(`${API_BASE}/cbboxpmreport/get?station_id=${stationId}&report_id=${reportId}`, { headers: token ? { Authorization: `Bearer ${token}` } : undefined, credentials: "include" });
+    const res = await fetch(`${API_BASE}/cbboxpmreport/get?station_id=${stationId}&report_id=${reportId}`, { credentials: "include" });
     if (!res.ok) throw new Error(await res.text());
     return res.json();
 }
@@ -1083,9 +1082,7 @@ export default function CBBOXPMForm() {
 
     // Load me
     useEffect(() => {
-        const token = localStorage.getItem("access_token") ?? "";
-        if (!token) return;
-        fetch(`${API_BASE}/me`, { headers: { Authorization: `Bearer ${token}` }, credentials: "include" })
+        fetch(`${API_BASE}/me`, { credentials: "include" })
             .then(res => res.ok ? res.json() : null)
             .then((data: Me | null) => { if (data) setInspector(prev => prev || data.username || ""); })
             .catch(console.error);
@@ -1357,7 +1354,6 @@ export default function CBBOXPMForm() {
         // ถ้าไม่มี รอบอัปโหลดรอบสองจะส่งรูปเดิมซ้ำ
         const pending = (items || []).filter(p => !p.isNA && !p.uploaded && !uploadedIds.has(p.id) && (p.file || p.ref));
         if (pending.length === 0) return;
-        const token = localStorage.getItem("access_token");
         const url = `${API_BASE}/cbboxpmreport/${reportId}/post/photos`;
         // ส่งทีละรูป (1 request/รูป) เพื่อไม่ให้ body รวมเกิน limit ของ nginx (กัน 413 เมื่อข้อหนึ่งมีหลายรูป)
         for (const p of pending) {
@@ -1367,7 +1363,7 @@ export default function CBBOXPMForm() {
             form.append("group", group);
             form.append("side", "post");
             form.append("files", compressed);
-            const res = await fetch(url, { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : undefined, body: form, credentials: "include" });
+            const res = await fetch(url, { method: "POST", body: form, credentials: "include" });
             if (!res.ok) throw new Error(await res.text());
             uploadedIds.add(p.id);
             setPhotos(prev => ({ ...prev, [stateKey]: (prev[stateKey as any] || []).map(x => x.id === p.id ? { ...x, uploaded: true } : x) }));
@@ -1401,9 +1397,8 @@ export default function CBBOXPMForm() {
         const expected = expectedCountByGroup(photosRef.current as any, k => photoGroupKey(k));
         if (Object.keys(expected).length === 0) return true;
 
-        const token = localStorage.getItem("access_token");
         const res = await fetch(`${API_BASE}/cbboxpmreport/get?station_id=${encodeURIComponent(sid)}&report_id=${reportId}`,
-            { headers: token ? { Authorization: `Bearer ${token}` } : undefined, credentials: "include" });
+            { credentials: "include" });
         if (!res.ok) throw new Error(await res.text());
         const doc = await res.json() as { photos?: Record<string, unknown[]> };
         const shortfall = findShortfall(expected, doc?.photos);
@@ -1427,12 +1422,11 @@ export default function CBBOXPMForm() {
         if (submitting) return;
         setSubmitting(true);
         try {
-            const token = localStorage.getItem("access_token");
             // ฟอร์มนี้เหลือแค่ Post-PM แล้ว (ไม่มีด่าน Pre ที่เคยสร้าง report_id ให้)
             // ใบใหม่ให้ backend สร้างรายงานตอนกดบันทึก — ถ้าเคยกดแล้วอัปรูปหลุด ใช้ id เดิมจาก draft กันได้รายงานซ้ำ
             let finalReportId: string = reportId || editId || loadDraftLocal<any>(postKey)?.pendingReportId || "";
             const payload = { station_id: stationId, ...(jobId ? { job_id: jobId } : {}), inspector, job: { station_name: job.station_name, date: job.date }, ...(job.date ? { pm_date: job.date } : {}), rows, measures: { m5: m5.state }, summary, dropdownQ1, dropdownQ2, ...(summaryCheck ? { summaryCheck } : {}), ...(jobId ? {} : { work_start: workStart, work_finish: workFinish, maximo_labor: maximoLabor, maximo_contractor: contractorPicked ? maximoContractor.trim() : "" }), wonum: searchParams.get("wonum") ?? "", side: "post", ...(finalReportId ? { report_id: finalReportId } : {}) };
-            const res = await fetch(`${API_BASE}/cbboxpmreport/submit`, { method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, credentials: "include", body: JSON.stringify(payload) });
+            const res = await fetch(`${API_BASE}/cbboxpmreport/submit`, { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify(payload) });
             if (!res.ok) throw new Error(await res.text());
             const { report_id } = await res.json() as { report_id: string };
             if (!finalReportId) {
@@ -1459,7 +1453,7 @@ export default function CBBOXPMForm() {
                 .toISOString().slice(0, 16);
             if (!jobId && (workStart > nowLocal || workFinish > nowLocal)) { alert(t("alertWorkTimeFuture", lang)); setSubmitting(false); return; }
 
-            const finalizeRes = await fetch(`${API_BASE}/cbboxpmreport/${finalReportId}/finalize`, { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : undefined, credentials: "include", body: new URLSearchParams({ station_id: stationId }) });
+            const finalizeRes = await fetch(`${API_BASE}/cbboxpmreport/${finalReportId}/finalize`, { method: "POST", credentials: "include", body: new URLSearchParams({ station_id: stationId }) });
             if (!finalizeRes.ok) throw new Error(await finalizeRes.text());
             const allPhotos = Object.values(photosRef.current).flat();
             await Promise.all(allPhotos.map(p => delPhoto(postKey, p.id)));

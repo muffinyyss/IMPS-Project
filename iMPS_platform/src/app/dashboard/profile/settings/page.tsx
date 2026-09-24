@@ -19,6 +19,7 @@ import {
 
 import Profile from "./components/profile";
 import useLanguage, { type Lang } from "@/utils/useLanguage";
+import { logout } from "@/utils/api";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
@@ -82,11 +83,7 @@ export default function Settings() {
 
   // ===== ดึง user id จาก /me =====
   useEffect(() => {
-    const token = localStorage.getItem("access_token");
-    if (!token) return;
-
     fetch(`${API_BASE}/me`, {
-      headers: { Authorization: `Bearer ${token}` },
       credentials: "include",
     })
       .then((res) => res.json())
@@ -121,13 +118,11 @@ export default function Settings() {
     setSuccess("");
 
     try {
-      const token = localStorage.getItem("access_token");
       
       const res = await fetch(`${API_BASE}/user_update/${userId}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         credentials: "include",
         body: JSON.stringify({
@@ -143,9 +138,8 @@ export default function Settings() {
       // ===== เปิด Overlay ล็อกหน้าจอ =====
       setRedirecting(true);
       
-      setTimeout(() => {
-        localStorage.removeItem("access_token");
-        localStorage.removeItem("refresh_token");
+      setTimeout(async () => {
+        await logout();
         router.push("/auth/signin/basic");
       }, 2000);
 

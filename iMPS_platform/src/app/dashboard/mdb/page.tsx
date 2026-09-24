@@ -174,22 +174,6 @@ const intDiv = (v: any, d: number) => {
     return Number.isFinite(n) && d ? (n / d).toFixed(2) : "0.00";
 };
 
-async function login(email: string, password: string) {
-    const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE}/login/`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",        // ★ สำคัญ: เอาคุกกี้เข้า/ออก
-        body: JSON.stringify({ email, password }),
-    });
-    if (!res.ok) throw new Error("Login failed");
-    const data = await res.json();
-
-    // เก็บ token ไว้ใช้กับ fetch อื่น (non-SSE) ได้ตามต้องการ
-    localStorage.setItem("accessToken", data.access_token);
-
-    localStorage.setItem("user", JSON.stringify(data.user));
-}
-
 export default function MDBPage() {
     const searchParams = useSearchParams();
     const [stationId, setStationId] = useState<string | null>(null);
@@ -216,9 +200,7 @@ export default function MDBPage() {
         if (!stationId) return;
         setEditInit({ topic: "", broker: "" });
         try {
-            const token = localStorage.getItem("access_token") || localStorage.getItem("accessToken") || "";
             const res = await fetch(`${API_BASE}/MDB/equipment/${encodeURIComponent(stationId)}`, {
-                headers: token ? { Authorization: `Bearer ${token}` } : {},
                 credentials: "include",
             });
             if (res.ok) {
@@ -301,9 +283,8 @@ export default function MDBPage() {
     useEffect(() => {
         const load = () => {
             try {
-                const token = localStorage.getItem("access_token");
                 const rawUser = localStorage.getItem("user");
-                setUserLogin(token && rawUser ? JSON.parse(rawUser) : null);
+                setUserLogin(rawUser ? JSON.parse(rawUser) : null);
             } catch {
                 setUserLogin(null);
             }

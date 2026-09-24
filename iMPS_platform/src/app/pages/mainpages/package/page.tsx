@@ -11,7 +11,7 @@ import {
 } from "@/components/MaterialTailwind";
 
 import { PricingCard } from "@/widgets/cards";
-import { apiFetch, getAccessToken } from "@/utils/api";
+import { apiFetch, hasSession } from "@/utils/api";
 
 // ปรับ type ตาม response จริงของ API
 type PricingPlan = {
@@ -31,7 +31,7 @@ export default function PricingPage() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
 
   useEffect(() => {
-    setIsLoggedIn(!!getAccessToken());
+    setIsLoggedIn(hasSession());
   }, []);
 
   useEffect(() => {

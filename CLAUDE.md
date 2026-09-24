@@ -9,7 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **iMPS** (Intelligent Maintenance and Predictive System) is a monitoring and maintenance platform for a fleet of EV charging stations in Thailand. It is composed of three distinct systems:
 
 1. **`iMPS_platform/`** — Full-stack web application
-   - **Frontend**: Next.js 14 (App Router) + TypeScript + Material Tailwind + TailwindCSS, runs on port `3001`
+   - **Frontend**: Next.js 15 (App Router) + React 19 + TypeScript + Material Tailwind + TailwindCSS, runs on port `3001`
    - **Backend**: FastAPI (Python) + Motor (async MongoDB), runs on port `8000`
 2. **`pipeline/`** — Python data ingestion pipeline (MQTT → MongoDB)
 
@@ -22,7 +22,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 npm install --legacy-peer-deps   # react-calendar@4.8.0 conflicts with @types/react@19 — flag required
 npm run dev          # Dev server on http://localhost:3001
-npm run build        # Production build (TypeScript errors are ignored — see next.config.js)
+npm run build        # Production build (fails on TypeScript errors — check first with npm run typecheck)
+npm test             # Vitest
+npm run test:smoke   # Playwright: API-call budget per page
 npm run lint         # ESLint
 npm run build:pdf-css   # Compile Tailwind CSS for PDF templates
 npm run watch:pdf-css   # Watch mode for PDF CSS
@@ -72,7 +74,7 @@ The app uses **Next.js App Router** with a shell layout in `src/app/layout.tsx` 
 
 **Fonts**: Thai-first — Kanit (thai+latin), Plus Jakarta Sans, JetBrains Mono. CSS variables: `--font-kanit`, `--font-jakarta`, `--font-mono`.
 
-**Build note**: `next.config.js` sets `typescript.ignoreBuildErrors: true` and applies CSS class name mangling in production builds.
+**Build note**: `next.config.js` sets `typescript.ignoreBuildErrors: false` (never turn it back on) and applies CSS class name mangling in production builds. `package.json` `overrides` forces `@material-tailwind/react` onto the root React 19 — it otherwise pulls its own React 18 copy.
 
 ### Backend Architecture
 

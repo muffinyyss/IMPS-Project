@@ -17,6 +17,7 @@ import StationDetailCard from "./components/stationDetailsCard";
 import { useSearchParams, useRouter } from "next/navigation";
 import { apiFetch } from "@/utils/api";
 import useLanguage from "@/utils/useLanguage";
+import { startVisiblePoll } from "@/utils/visible-poll";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
 
@@ -279,8 +280,8 @@ export default function ChargersPage() {
     };
 
     fetchStatus();
-    const id = setInterval(fetchStatus, 5000);
-    return () => { clearInterval(id); ctrl.abort(); };
+    const stop = startVisiblePoll(fetchStatus, 5000);
+    return () => { stop(); ctrl.abort(); };
   }, [sn]);
 
   // ===== Render =====

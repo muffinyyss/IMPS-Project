@@ -7,13 +7,13 @@ from datetime import datetime, timezone
 from bson.objectid import ObjectId
 from bson.errors import InvalidId
 from zoneinfo import ZoneInfo
-from pymongo.errors import DuplicateKeyError
+from pymongo.errors import DuplicateKeyError, OperationFailure
 from typing import List, Dict, Any, Optional
 import asyncio, json, re, uuid, pathlib, secrets
 from image_convert import normalize_image_bytes, ImageConversionError
 from config import (
     users_collection, station_collection, charger_collection,
-    charger_onoff, charger_onoff_sync, _validate_station_id, th_tz, settingDB,
+    charger_onoff, charger_onoff_sync, _validate_station_id, th_tz, settingDB, settingDB_sync,
     CBM_DB, ALL_STATIONS_ROLES,
 )
 from deps import UserClaims, get_current_user
@@ -24,6 +24,7 @@ from brand_scope import (
 from routers.pm_helpers import (
     UPLOADS_ROOT,
 )
+from services.unified_migration import UNIFIED_NAMES, unified_sort
 
 router = APIRouter()
 
@@ -179,24 +180,211 @@ async def get_maximo_station_chargers(
     return {"enabled": True, "chargers": chargers}
 
 
+# ============================================================
+# Lecture groupée des bases « 1 collection par SN »
+# ============================================================
+# edgeboxStatus et settingParameter gardent une collection par numéro de série.
+# Lire le dernier document de N séries coûte N commandes Mongo — c'est ce qui
+# reste le plus cher sur la page Stations, qui rejoue ces lectures toutes les 10 s.
+# $unionWith (MongoDB 4.4+) permet de les lire en une seule commande par paquet.
+#
+# La version du serveur de production n'est pas vérifiable depuis le réseau de
+# développement (port 27017 filtré) : plutôt que de la supposer, on tente
+# l'agrégation et on retombe définitivement sur la lecture unitaire si le serveur
+# refuse l'étage. Le résultat est identique dans les deux cas.
+
+_UNION_CHUNK = 120           # collections par agrégation (limite serveur : 1000 étages)
+_union_supported: Optional[bool] = None      # None = pas encore éprouvé
+
+# Migration « 1 collection par SN » → « 1 collection + champ sn ».
+# Tant qu'elle n'a pas eu lieu, ces collections n'existent pas et on lit comme avant.
+# Dès qu'elles existent, une seule commande suffit pour toutes les séries, et le
+# nombre de commandes cesse de croître avec le parc. La bascule est automatique :
+# services/unified_migration.py, lancé au démarrage puis entretenu en tâche de fond.
+_unified_ready: Dict[str, bool] = {}          # par base, éprouvé une fois par processus
+
+# champs ajoutés par la copie, à ne jamais renvoyer au client
+_UNIFIED_EXTRA = ("_id", "sn", "_src")
+
+
+def _apply_projection(doc: dict, projection: Optional[dict]) -> dict:
+    """Reproduit la projection Mongo côté Python, pour que les trois chemins de
+    lecture renvoient exactement le même document."""
+    out = {k: v for k, v in doc.items() if k not in _UNIFIED_EXTRA}
+    if not projection:
+        return out
+    include = [k for k, v in projection.items() if k != "_id" and v]
+    if include:
+        return {k: out[k] for k in include if k in out}
+    return out
+
+
+async def _latest_from_unified(
+    db, names: List[str], sort: Dict[str, int], projection: Optional[dict]
+) -> Optional[Dict[str, dict]]:
+    """Dernier document de chaque SN depuis la collection unifiée — une commande.
+
+    Renvoie None quand la migration n'a pas (encore) eu lieu pour cette base :
+    l'appelant retombe alors sur les collections par SN.
+    """
+    unified = UNIFIED_NAMES.get(db.name)
+    if unified is None:
+        return None
+
+    ready = _unified_ready.get(db.name)
+    if ready is False:
+        return None
+    if ready is None:
+        try:
+            found = await db.list_collection_names(filter={"name": unified})
+        except Exception as e:
+            print(f"[unified] {db.name}: impossible de vérifier {unified} ({e})")
+            return None
+        ready = bool(found)
+        _unified_ready[db.name] = ready
+        if not ready:
+            return None
+
+    try:
+        cursor = db[unified].aggregate([
+            {"$match": {"sn": {"$in": names}}},
+            {"$sort": {"sn": 1, **unified_sort(sort)}},
+            {"$group": {"_id": "$sn", "doc": {"$first": "$$ROOT"}}},
+        ])
+        out: Dict[str, dict] = {}
+        async for row in cursor:
+            doc = row.get("doc") or {}
+            sn = doc.pop("sn", None)
+            if sn is not None:
+                out[sn] = _apply_projection(doc, projection)
+        if not out:
+            # Aucun document alors qu'on demandait des séries. Cas normal sur un parc
+            # neuf, mais c'est aussi ce qu'on obtient si la collection unifiée a été
+            # supprimée (une agrégation sur une collection absente ne lève rien, elle
+            # renvoie du vide) ou si le pipeline a cessé de l'alimenter. Sans ce
+            # garde-fou, tous les chargeurs passeraient « hors ligne » en silence.
+            # On réexamine l'existence et on laisse l'appelant lire les collections
+            # par SN pour cette requête.
+            _unified_ready.pop(db.name, None)
+            print(f"[unified] {db.name}.{unified} n'a rien renvoyé pour "
+                  f"{len(names)} série(s) — lecture par SN pour cette requête")
+            return None
+        return out
+    except Exception as e:
+        # la collection existe mais la lecture échoue : ne pas condamner la requête
+        print(f"[unified] {db.name}.{unified} illisible ({e}) — repli sur les collections par SN")
+        return None
+
+
+
+def _union_pipeline(names: List[str], sort: Dict[str, int], projection: Optional[dict]):
+    """Agrégation qui renvoie le 1er document de chaque collection, étiqueté par __coll."""
+    def leg(name: str):
+        stages: List[Dict[str, Any]] = [{"$sort": sort}, {"$limit": 1}]
+        if projection:
+            stages.append({"$project": projection})
+        stages.append({"$addFields": {"__coll": name}})
+        return stages
+
+    pipeline = leg(names[0])
+    for name in names[1:]:
+        pipeline.append({"$unionWith": {"coll": name, "pipeline": leg(name)}})
+    return pipeline
+
+
+async def _latest_by_collection(
+    db,
+    names,
+    sort: Dict[str, int],
+    projection: Optional[dict] = None,
+) -> Dict[str, dict]:
+    """{nom de collection: dernier document} — collections vides absentes du résultat.
+
+    Équivalent strict de `find_one(sort=...)` sur chaque collection, mais en une
+    commande par paquet de _UNION_CHUNK quand le serveur supporte $unionWith.
+    """
+    global _union_supported
+    names = list(dict.fromkeys(names))       # dédoublonne en gardant l'ordre
+    if not names:
+        return {}
+
+    # 1) collection unifiée : une commande, quel que soit le nombre de séries
+    unified = await _latest_from_unified(db, names, sort, projection)
+    if unified is not None:
+        return unified
+
+    # 2) et 3) collections par SN. On écarte d'abord celles qui n'existent pas :
+    # le résultat est le même (pas de collection = pas de document) pour beaucoup
+    # moins de travail. Si la question échoue, on interroge tout, comme avant.
+    try:
+        have = set(await db.list_collection_names())
+        names = [n for n in names if n in have]
+    except Exception as e:
+        print(f"[union] {db.name}: list_collection_names indisponible ({e}) — on interroge tout")
+    if not names:
+        return {}
+
+    if _union_supported is not False:
+        try:
+            out: Dict[str, dict] = {}
+            for i in range(0, len(names), _UNION_CHUNK):
+                chunk = names[i:i + _UNION_CHUNK]
+                cursor = db[chunk[0]].aggregate(_union_pipeline(chunk, sort, projection))
+                async for doc in cursor:
+                    name = doc.pop("__coll", None)
+                    if name is not None:
+                        out[name] = doc
+            _union_supported = True
+            return out
+        except OperationFailure as e:
+            # serveur < 4.4, ou $unionWith interdit par la configuration
+            _union_supported = False
+            print(f"[union] $unionWith indisponible ({e}) — repli sur la lecture unitaire")
+        except Exception as e:
+            # panne ponctuelle : on sert la requête en cours par le repli sans
+            # condamner le chemin rapide pour tout le processus
+            print(f"[union] agrégation échouée ({e}) — repli sur la lecture unitaire")
+
+    sem = asyncio.Semaphore(40)
+
+    async def one(name: str):
+        async with sem:
+            try:
+                return name, await db[name].find_one({}, projection, sort=list(sort.items()))
+            except Exception as e:
+                print(f"[union] lecture de {name} échouée: {e}")
+                return name, None
+
+    pairs = await asyncio.gather(*(one(n) for n in names))
+    return {n: d for n, d in pairs if d is not None}
+
+
+def _onoff_from_doc(doc: Optional[dict]) -> Dict[str, Any]:
+    """Interprète un document edgeboxStatus — seule définition du statut on/off."""
+    if not doc:
+        return {"status": None, "statusAt": None}
+    val = doc.get("status", None)
+    ts = doc.get("timestamp", None)
+    if isinstance(val, (int, bool)):
+        status = bool(val)
+    else:
+        try:
+            status = bool(int(val))
+        except Exception:
+            status = None
+    status_at = parse_iso_utc(ts) if isinstance(ts, str) else None
+    return {"status": status, "statusAt": status_at}
+
+
+_ONOFF_SORT = {"timestamp": -1, "_id": -1}
+_ONOFF_PROJECTION = {"_id": 0, "status": 1, "timestamp": 1}
+
+
 async def latest_onoff(sn: str) -> Dict[str, Any]:
     try:
         coll = charger_onoff[sn]
         docs = await coll.find().sort([("timestamp", -1), ("_id", -1)]).limit(1).to_list(length=1)
-        doc = docs[0] if docs else None
-        if not doc:
-            return {"status": None, "statusAt": None}
-        val = doc.get("status", None)
-        ts = doc.get("timestamp", None)
-        if isinstance(val, (int, bool)):
-            status = bool(val)
-        else:
-            try:
-                status = bool(int(val))
-            except Exception:
-                status = None
-        status_at = parse_iso_utc(ts) if isinstance(ts, str) else None
-        return {"status": status, "statusAt": status_at}
+        return _onoff_from_doc(docs[0] if docs else None)
     except Exception as e:
         print(f"[latest_onoff] Error for SN {sn}: {e}")
         return {"status": None, "statusAt": None}
@@ -227,16 +415,16 @@ async def station_onoff_bulk(current: UserClaims = Depends(get_current_user)):
         for c in charger_collection.find(charger_query, {"_id": 0, "SN": 1})
     } - {"", "-"})
 
-    sem = asyncio.Semaphore(40)
+    # _latest_by_collection choisit la source (collection unifiée, $unionWith, ou une
+    # lecture par SN) et écarte lui-même les séries sans collection. Ne pas filtrer ici :
+    # après migration les collections par SN n'existent plus, le filtre viderait la liste.
+    docs = await _latest_by_collection(charger_onoff, sns, _ONOFF_SORT, _ONOFF_PROJECTION)
 
-    async def fetch_one(sn: str):
-        async with sem:
-            return sn, await latest_onoff(sn)
-
-    results = await asyncio.gather(*(fetch_one(sn) for sn in sns))
-
-    statuses = {}
-    for sn, data in results:
+    # ต้องคง key ของทุก SN ไว้ ไม่ใช่เฉพาะที่ query — ฝั่งหน้าเว็บแยก "ไม่มีข้อมูล"
+    # (undefined → ไม่แตะค่าเดิม) ออกจาก "รายงานว่าออฟไลน์" (status null → false)
+    statuses = {sn: {"status": None, "statusAt": None} for sn in sns}
+    for sn in sns:
+        data = _onoff_from_doc(docs.get(sn))
         status_at = data["statusAt"]
         statuses[sn] = {
             "status": data["status"],
@@ -515,6 +703,43 @@ def get_charger_status(station_id: str, chargeBoxID: str) -> bool:
         return False
 
 
+def ensure_status_indexes() -> int:
+    """index (timestamp desc, _id desc) sur chaque collection de edgeboxStatus / settingParameter
+
+    Ces deux bases gardent 1 collection par SN et le pipeline y écrit en continu.
+    Les lectures sont toutes des find_one(sort=[("timestamp", -1), ("_id", -1)]) :
+    sans index Mongo trie la collection entière en mémoire à chaque appel, donc le
+    coût grandit avec le nombre de documents. Mesuré en local sur une collection :
+    1,25 ms à 1 000 documents, 3,21 ms à 10 000, 9,45 ms à 50 000 — contre ~0,3 ms
+    constant avec l'index. /station-availability/bulk fait ~200 de ces lectures
+    toutes les 10 s, l'écart devient le coût dominant à mesure que les données
+    s'accumulent. Appelé au démarrage, comme ensure_cm_indexes().
+    """
+    created = 0
+    for db_sync in (charger_onoff_sync, settingDB_sync):
+        try:
+            names = db_sync.list_collection_names()
+        except Exception:
+            continue
+        unified = UNIFIED_NAMES.get(db_sync.name)
+        for name in names:
+            if name.startswith("_") or name.startswith("system."):
+                continue
+            # la collection unifiée est indexée par (sn, timestamp, _id) — posé par
+            # scripts/migrate_per_sn_collections.py ; l'index par SN n'y servirait à rien
+            if name == unified:
+                continue
+            try:
+                db_sync.get_collection(name).create_index(
+                    [("timestamp", -1), ("_id", -1)],
+                    name="timestamp_-1__id_-1", background=True,
+                )
+                created += 1
+            except Exception:
+                pass  # l'index n'est qu'un accélérateur — l'app doit démarrer même s'il échoue
+    return created
+
+
 def get_station_status(station_id: str) -> bool:
     try:
         coll = charger_onoff_sync[str(station_id)]
@@ -538,12 +763,24 @@ def get_next_charger_no(station_id: str) -> int:
     return 1
 
 
-def format_charger(doc: dict, include_status: bool = True) -> ChargerOut:
+def format_charger(
+    doc: dict,
+    include_status: bool = True,
+    status_collections: Optional[set] = None,
+) -> ChargerOut:
+    """status_collections : ชื่อ collection ที่มีจริงใน edgeboxStatus (ผู้เรียกถามมาแล้ว)
+
+    ถ้าไม่มี collection ของคีย์นั้น ก็ไม่มีเอกสาร = False อยู่แล้ว จึงข้าม query ได้
+    /all-stations/ เรียกฟังก์ชันนี้ 1 ครั้งต่อตู้ (692 ตู้ = 692 คำสั่ง)
+    """
     charger_id = str(doc["_id"])
     station_id = doc.get("station_id", "")
     status = None
     if include_status:
-        status = get_charger_status(station_id, doc.get("chargeBoxID", ""))
+        if status_collections is not None and station_id not in status_collections:
+            status = False
+        else:
+            status = get_charger_status(station_id, doc.get("chargeBoxID", ""))
 
     normalized = _normalize_images(doc.get("images", {}))
 
@@ -580,19 +817,38 @@ def format_charger(doc: dict, include_status: bool = True) -> ChargerOut:
         updatedBy=doc.get("updatedBy"),
     )
 
-def format_station_with_chargers(station_doc: dict, charger_docs: List[dict]) -> StationOut:
+def format_station_with_chargers(
+    station_doc: dict,
+    charger_docs: List[dict],
+    username_by_id: Optional[Dict[str, str]] = None,
+    status_by_station: Optional[Dict[str, bool]] = None,
+    status_collections: Optional[set] = None,
+) -> StationOut:
+    """username_by_id / status_by_station : ตารางที่ผู้เรียกเตรียมมาแล้ว
+
+    /all-stations/ เรียกฟังก์ชันนี้ 1 ครั้งต่อสถานี ถ้าปล่อยให้แต่ละครั้งไป query เอง
+    จะกลายเป็น 2 คำสั่งต่อสถานี (355 สถานี = 710 คำสั่ง) ผู้เรียกที่ทำสถานีเดียว
+    ไม่ต้องส่งอะไรมา — พฤติกรรมเหมือนเดิมทุกประการ
+    """
     station_id = station_doc.get("station_id", "")
     user_id = station_doc.get("user_id")
     user_id_str = str(user_id) if user_id else ""
 
     username = station_doc.get("username")  # fallback ก่อน
     if user_id:
-        db_username = get_username_by_user_id(user_id if isinstance(user_id, ObjectId) else to_object_id(user_id))
+        if username_by_id is not None:
+            db_username = username_by_id.get(user_id_str)
+        else:
+            db_username = get_username_by_user_id(user_id if isinstance(user_id, ObjectId) else to_object_id(user_id))
         if db_username:
             username = db_username  
             
-    status = get_station_status(station_id)
-    chargers = [format_charger(c) for c in charger_docs]
+    status = (
+        status_by_station.get(station_id, False)
+        if status_by_station is not None
+        else get_station_status(station_id)
+    )
+    chargers = [format_charger(c, status_collections=status_collections) for c in charger_docs]
 
     normalized = _normalize_images(station_doc.get("images", {}))
     station_image_list = normalized.get("station", [])
@@ -733,8 +989,83 @@ def station_match_query(current: UserClaims) -> Optional[Dict[str, Any]]:
     return {"$and": [base, brand_clause]}
 
 
+def load_station_scope(
+    current: UserClaims,
+    station_id: Optional[str] = None,
+    station_fields: tuple = ("station_id",),
+    charger_fields: tuple = ("SN", "station_id"),
+) -> tuple:
+    """(สถานี, ตู้) ที่ผู้เรียกเห็นได้ — sync PyMongo ให้เรียกผ่าน executor
+
+    endpoint ที่รวมข้อมูลทุกสถานีในคำขอเดียว (/pm-reports/*, /test-reports/all-stations)
+    ต้องเริ่มจากชุดนี้แทน station_collection.find({}) — เดิม PM ใช้ find({}) ทุกบัญชีที่
+    ล็อกอินได้จึงเห็นเอกสาร PM ของทั้ง 355 สถานี ไม่ว่าจะเป็นเจ้าของหรือไม่
+    สถานีที่ปนยี่ห้อยังเห็นได้ แต่ตู้ยี่ห้อที่ไม่ได้ดูแลถูกกรองออก (กติกา brand_scope)
+    """
+    access = station_match_query(current)
+    if access is None:
+        return [], []
+    clauses = [access] if access else []
+    if station_id:
+        clauses.append({"station_id": station_id})
+    query = {"$and": clauses} if clauses else {}
+
+    stations = list(station_collection.find(query, {"_id": 0, **{f: 1 for f in station_fields}}))
+    station_ids = [s["station_id"] for s in stations if s.get("station_id")]
+    if not station_ids:
+        return stations, []
+    projection = {"_id": 0, "brand": 1, **{f: 1 for f in charger_fields}}
+    chargers = list(charger_collection.find({"station_id": {"$in": station_ids}}, projection))
+    return stations, filter_chargers(chargers, brand_scope_of(current))
+
+
+# ============================================================
+# Vue « liste » de /all-stations/
+# ============================================================
+# Les pages Stations et PM affichent les 355 stations d'un seul tenant : la
+# recherche et le tri portent sur la totalité, on ne peut donc pas paginer côté
+# serveur sans changer ce que l'utilisateur peut faire. Mais ces deux pages font
+# passer la réponse par un mapCharger/mapStation qui jette déjà une partie des
+# champs — tout ce que ce mapping ne garde pas traverse le réseau pour rien.
+#
+# ?view=list renvoie les mêmes stations, dans le même ordre, sans ces champs-là.
+# Le plus lourd est pipeline_config (la configuration MQTT du pipeline, portée
+# par chaque tour) : il est aussi écarté côté Mongo, ce qui évite de le décoder.
+# Sans le paramètre la réponse est inchangée — /notifications et
+# PipelineConfigModal consomment la réponse complète.
+
+_LIST_DROP_STATION = ("createdAt", "createdBy", "updatedAt", "updatedBy", "stationImages")
+_LIST_DROP_CHARGER = ("createdAt", "createdBy", "updatedAt", "updatedBy",
+                      "charger_name", "pipeline_config")
+_LIST_IMAGE_KEYS_STATION = ("station", "mdb")
+_LIST_IMAGE_KEYS_CHARGER = ("charger", "device")
+
+
+def _keep_images(images: Optional[dict], keys) -> dict:
+    imgs = images or {}
+    return {k: imgs[k] for k in keys if k in imgs}
+
+
+def _thin_for_list(station: dict) -> dict:
+    """Réduit une station sérialisée à ce que les pages liste affichent."""
+    out = {k: v for k, v in station.items() if k not in _LIST_DROP_STATION}
+    out["images"] = _keep_images(out.get("images"), _LIST_IMAGE_KEYS_STATION)
+    out["chargers"] = [
+        {
+            **{k: v for k, v in charger.items() if k not in _LIST_DROP_CHARGER},
+            "images": _keep_images(charger.get("images"), _LIST_IMAGE_KEYS_CHARGER),
+        }
+        for charger in out.get("chargers") or []
+    ]
+    return out
+
+
 @router.get("/all-stations/")
-def get_all_stations(current: UserClaims = Depends(get_current_user)):
+def get_all_stations(
+    current: UserClaims = Depends(get_current_user),
+    view: str = Query("", description="list = seulement les champs affichés par les pages liste"),
+):
+    lean = view == "list"
     match_query = station_match_query(current)
     if match_query is None:
         return {"stations": []}
@@ -746,18 +1077,50 @@ def get_all_stations(current: UserClaims = Depends(get_current_user)):
     chargers_by_station: Dict[str, list] = {}
     if station_ids:
         chargers_cursor = charger_collection.find(
-            {"station_id": {"$in": station_ids}}
+            {"station_id": {"$in": station_ids}},
+            {"pipeline_config": 0} if lean else None,
         ).sort("chargerNo", 1)
         # สถานีที่ปนยี่ห้อ: เห็นสถานีได้ แต่เหลือเฉพาะตู้ที่บริษัทตัวเองดูแล
         scope = brand_scope_of(current)
         for charger_doc in filter_chargers(chargers_cursor, scope):
             chargers_by_station.setdefault(charger_doc.get("station_id"), []).append(charger_doc)
 
+    # ── ชื่อเจ้าของทุกสถานีในคำสั่งเดียว (เดิม find_one ต่อสถานี) ──
+    owner_oids = []
+    for s_doc in stations_list:
+        oid = s_doc.get("user_id")
+        if not oid:
+            continue
+        oid = oid if isinstance(oid, ObjectId) else to_object_id(oid)
+        if oid:
+            owner_oids.append(oid)
+    username_by_id: Dict[str, str] = {}
+    if owner_oids:
+        for u in users_collection.find({"_id": {"$in": list(set(owner_oids))}}, {"username": 1}):
+            username_by_id[str(u["_id"])] = u.get("username") or ""
+
+    # ── สถานะสถานี: edgeboxStatus มี 1 collection ต่อคีย์ ──
+    # ถามชื่อที่มีจริงครั้งเดียว แทนการยิง find_one ไปยังคีย์ที่ไม่มี collection อยู่เลย
+    # (ผลลัพธ์เท่าเดิม: ไม่มี collection / ไม่มีเอกสาร = False)
+    try:
+        existing_status = set(charger_onoff_sync.list_collection_names())
+    except Exception:
+        existing_status = None
+    status_by_station: Dict[str, bool] = {
+        sid: (get_station_status(sid)
+              if existing_status is None or sid in existing_status
+              else False)
+        for sid in station_ids
+    }
+
     result = []
     for station_doc in stations_list:
         charger_docs = chargers_by_station.get(station_doc.get("station_id"), [])
-        station_out = format_station_with_chargers(station_doc, charger_docs)
-        result.append(station_out.dict())
+        station_out = format_station_with_chargers(
+            station_doc, charger_docs, username_by_id, status_by_station, existing_status
+        )
+        payload = station_out.dict()
+        result.append(_thin_for_list(payload) if lean else payload)
 
     return {"stations": result}
 
@@ -954,6 +1317,10 @@ def update_station(
 # ---------------------------------------------------------
 @router.delete("/delete_stations/{id}", status_code=204)
 def delete_station(id: str, current: UserClaims = Depends(get_current_user)):
+    # ลบถาวรทั้งสถานีพร้อมตู้ทุกตู้ — ปุ่มลบแสดงให้ admin เท่านั้น แต่เดิม backend ไม่ตรวจ role เลย
+    # บัญชีไหนที่ล็อกอินได้ก็ลบได้ (_id ของสถานีมากับ /all-stations/ อยู่แล้ว)
+    if current.role != "admin":
+        raise HTTPException(status_code=403, detail="Only admin can delete stations")
     oid = to_object_id(id)
     station = station_collection.find_one({"_id": oid})
     if not station:
@@ -1107,6 +1474,9 @@ def update_charger(
 # ---------------------------------------------------------
 @router.delete("/delete_charger/{id}", status_code=204)
 def delete_charger(id: str, current: UserClaims = Depends(get_current_user)):
+    # เหตุผลเดียวกับ delete_station — ปุ่มลบตู้แสดงให้ admin เท่านั้น
+    if current.role != "admin":
+        raise HTTPException(status_code=403, detail="Only admin can delete chargers")
     oid = to_object_id(id)
     charger = charger_collection.find_one({"_id": oid})
     if not charger:
@@ -1413,13 +1783,12 @@ class AvailabilityOut(BaseModel):
     total: int
     available: int
 
-async def charger_heads(sn: str) -> Optional[Dict[str, int]]:
-    """นับหัวชาร์จ total/available จากเอกสาร settingParameter ล่าสุดของ SN นั้น"""
-    try:
-        doc = await settingDB[sn].find_one({}, {"_id": 0}, sort=[("_id", -1)])
-    except Exception as e:
-        print(f"[availability] Error for SN {sn}: {e}")
-        return None
+_HEADS_SORT = {"_id": -1}
+_HEADS_PROJECTION = {"_id": 0}
+
+
+def _heads_from_doc(doc: Optional[dict]) -> Optional[Dict[str, int]]:
+    """Compte total/available depuis un document settingParameter — définition unique."""
     if not doc:
         return None
 
@@ -1438,6 +1807,16 @@ async def charger_heads(sn: str) -> Optional[Dict[str, int]]:
             available += 1
         n += 1
     return {"total": total, "available": available}
+
+
+async def charger_heads(sn: str) -> Optional[Dict[str, int]]:
+    """นับหัวชาร์จ total/available จากเอกสาร settingParameter ล่าสุดของ SN นั้น"""
+    try:
+        doc = await settingDB[sn].find_one({}, _HEADS_PROJECTION, sort=[("_id", -1)])
+    except Exception as e:
+        print(f"[availability] Error for SN {sn}: {e}")
+        return None
+    return _heads_from_doc(doc)
 
 
 @router.get("/station-availability/bulk")
@@ -1471,13 +1850,12 @@ async def get_station_availability_bulk(current: UserClaims = Depends(get_curren
         if c.get("SN") and c["SN"].strip() and c["SN"].strip() != "-"
     ]
 
-    sem = asyncio.Semaphore(40)
-
-    async def fetch_one(sn: str):
-        async with sem:
-            return await charger_heads(sn)
-
-    results = await asyncio.gather(*(fetch_one(sn) for _, sn in pairs))
+    # même remarque que pour /charger-onoff/bulk : la source et le filtrage des séries
+    # sans collection sont décidés dans _latest_by_collection.
+    docs = await _latest_by_collection(
+        settingDB, [sn for _, sn in pairs], _HEADS_SORT, _HEADS_PROJECTION
+    )
+    results = [_heads_from_doc(docs.get(sn)) for _, sn in pairs]
 
     stations: Dict[str, Dict[str, Any]] = {
         sid: {"station_id": sid, "total": 0, "available": 0, "chargers": []}

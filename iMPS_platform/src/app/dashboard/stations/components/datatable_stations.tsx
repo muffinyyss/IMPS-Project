@@ -19,8 +19,10 @@ import {
 import { useRouter } from "next/navigation";
 import AddStation, { type NewStationPayload, MaximoLocationSelect, type MaximoLocation } from "@/app/dashboard/stations/components/addstations";
 import { WARRANTY_STATUS_OPTIONS, INVESTMENT_SCOPE_OPTIONS, MultiSelectDropdown } from "@/app/dashboard/stations/components/stationOptions";
-import { apiFetch } from "@/utils/api";
+import { apiFetch, getSessionProfile } from "@/utils/api";
 import { isStaffRole, staffChargerPath } from "@/utils/roles";
+import { startVisiblePoll } from "@/utils/visible-poll";
+import TableSkeletonRows from "@/components/TableSkeletonRows";
 
 // const API_BASE = "http://localhost:8000";
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "";
@@ -82,8 +84,6 @@ export type ChargerUpdatePayload = {
   chargerType?: string;
 };
 
-type JwtClaims = { sub: string; user_id?: string; username?: string; role?: string; company?: string | null; station_ids?: string[]; exp?: number; };
-function decodeJwt(token: string | null): JwtClaims | null { try { if (!token) return null; const payload = token.split(".")[1]; const json = atob(payload.replace(/-/g, "+").replace(/_/g, "/")); return JSON.parse(json); } catch { return null; } }
 type CompanyOwner = { id: string; name: string };
 type Lang = "th" | "en";
 function getTodayDate(): string { return new Date().toISOString().split("T")[0]; }
@@ -312,16 +312,6 @@ const CHARGER_TONES = {
   red: { bar: "tw-bg-gradient-to-r tw-from-red-400 tw-to-rose-500", iconBox: "tw-bg-red-50 tw-ring-1 tw-ring-red-200", icon: "tw-text-red-500", chip: "tw-bg-red-100 tw-text-red-600", dot: "tw-bg-red-400" },
   gray: { bar: "tw-bg-gradient-to-r tw-from-gray-300 tw-to-gray-400", iconBox: "tw-bg-gray-50 tw-ring-1 tw-ring-gray-200", icon: "tw-text-gray-400", chip: "tw-bg-gray-100 tw-text-gray-500", dot: "tw-bg-gray-300" },
 } as const;
-
-const TableRowSkeleton = ({ cols }: { cols: number }) => (
-  <tr className="tw-animate-pulse">
-    {Array.from({ length: cols }).map((_, i) => (
-      <td key={i} className="tw-px-3 tw-py-4">
-        <div className="tw-h-4 tw-rounded-md tw-bg-blue-gray-100/60" style={{ width: i === 0 ? 32 : `${50 + Math.random() * 40}%` }} />
-      </td>
-    ))}
-  </tr>
-);
 
 export function SearchDataTables() {
   const router = useRouter();
@@ -648,8 +638,8 @@ export function SearchDataTables() {
     if (data.length === 0) return;
     let stopped = false;
     const poll = async () => { if (stopped) return; try { await fetchAvailability(); } catch (e: any) { if (e?.status === 401 || e?.message?.includes("401")) { stopped = true; return; } console.error("[availability poll] error:", e); } };
-    const interval = setInterval(poll, 10000);
-    return () => { stopped = true; clearInterval(interval); };
+    const stop = startVisiblePoll(poll, 10000);
+    return () => { stopped = true; stop(); };
   }, [data]);
 
   useEffect(() => {
@@ -756,18 +746,17 @@ export function SearchDataTables() {
     };
   };
 
-  const refetchStations = async () => { try { const statusesPromise = fetchChargerStatusesBulk(); const availabilityPromise = fetchAvailability(); const res = await apiFetch(`/all-stations/`); if (!res.ok) return; const json = await res.json(); const list = Array.isArray(json?.stations) ? json.stations : []; const rows = list.map(mapStation); const statuses = await statusesPromise; setData(statuses ? applyChargerStatuses(rows, statuses) : rows); await availabilityPromise; } catch (e) { console.error("Failed to refetch stations:", e); } };
+  const refetchStations = async () => { try { const statusesPromise = fetchChargerStatusesBulk(); const availabilityPromise = fetchAvailability(); const res = await apiFetch(`/all-stations/?view=list`); if (!res.ok) return; const json = await res.json(); const list = Array.isArray(json?.stations) ? json.stations : []; const rows = list.map(mapStation); const statuses = await statusesPromise; setData(statuses ? applyChargerStatuses(rows, statuses) : rows); await availabilityPromise; } catch (e) { console.error("Failed to refetch stations:", e); } };
 
   useEffect(() => {
     (async () => {
       try {
-        const token = localStorage.getItem("access_token") || localStorage.getItem("accessToken") || "";
-        const claims = decodeJwt(token);
+        const claims = getSessionProfile();
         if (claims) setMe({ user_id: claims.user_id ?? "-", username: claims.username ?? "-", role: claims.role ?? "user" });
         // ยิง 3 คำขอพร้อมกัน — statuses/availability ไม่ต้องรอ all-stations
         const statusesPromise = fetchChargerStatusesBulk();
         const availabilityPromise = fetchAvailability();
-        const res = await apiFetch(`/all-stations/`);
+        const res = await apiFetch(`/all-stations/?view=list`);
         if (!res.ok) { setErr(`${t.fetchFailed}: ${res.status}`); setData([]); return; }
         const json = await res.json();
         const list = Array.isArray(json?.stations) ? json.stations : [];
@@ -1191,7 +1180,7 @@ export function SearchDataTables() {
             <div className="tw-overflow-x-auto tw-w-full">
               <table className="tw-w-full tw-border-separate tw-border-spacing-0 tw-min-w-[900px]">
                 <thead className="tw-bg-gradient-to-r tw-from-gray-900 tw-to-gray-800"><tr>{["", "Station", "Chargers", "Available", "Owner", "Status", ""].map((h, i) => (<th key={i} className="tw-px-3 tw-py-3"><div className="tw-h-3 tw-rounded tw-bg-white/20 tw-animate-pulse" style={{ width: h ? `${h.length * 8}px` : 32 }} /></th>))}</tr></thead>
-                <tbody>{Array.from({ length: 5 }).map((_, i) => <TableRowSkeleton key={i} cols={7} />)}</tbody>
+                <tbody><TableSkeletonRows rows={table.getState().pagination.pageSize} cols={7} /></tbody>
               </table>
             </div>
           ) : err ? (<div className="tw-p-4 tw-text-red-600">{err}</div>) : (

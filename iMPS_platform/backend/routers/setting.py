@@ -8,6 +8,8 @@ import json, re, asyncio, logging
 
 from config import settingDB, _ensure_utc_iso, to_json, mqtt_client, MQTT_TOPIC, BROKER_HOST, BROKER_PORT, charger_collection, charger_coll_async
 from deps import UserClaims, get_current_user
+# SN มากับ body → ด่านกลาง (access_guard.enforce_access) มองไม่เห็น ต้องตรวจเองในทุก endpoint ที่สั่งงานตู้
+from access_guard import assert_scope_sn
 
 router = APIRouter()
 
@@ -146,7 +148,8 @@ class PLCMaxSetting(BaseModel):
     dynamic_max_power1: Optional[float] = None
 
 @router.post("/setting/PLC/MAX")
-async def setting_plc_max(payload: PLCMaxSetting):
+async def setting_plc_max(payload: PLCMaxSetting, current: UserClaims = Depends(get_current_user)):
+    assert_scope_sn(current, payload.SN)
     now_iso = datetime.now().isoformat()
     try:
         incoming = payload.model_dump(exclude_unset=True)
@@ -174,7 +177,8 @@ class PLCCPCommand(BaseModel):
     cp_status1: Literal["start", "stop"]
 
 @router.post("/setting/PLC/CP")
-async def setting_plc_cp(payload: PLCCPCommand):
+async def setting_plc_cp(payload: PLCCPCommand, current: UserClaims = Depends(get_current_user)):
+    assert_scope_sn(current, payload.SN)
     now_iso = datetime.now().isoformat()
 
     # Lookup ocppConfig topic from station config
@@ -205,7 +209,8 @@ class PLCH2MaxSetting(BaseModel):
     dynamic_max_power2: Optional[float] = None
 
 @router.post("/setting/PLC/MAXH2")
-async def setting_plc_maxh2(payload: PLCH2MaxSetting):
+async def setting_plc_maxh2(payload: PLCH2MaxSetting, current: UserClaims = Depends(get_current_user)):
+    assert_scope_sn(current, payload.SN)
     now_iso = datetime.now().isoformat()
     try:
         incoming = payload.model_dump(exclude_unset=True)
@@ -233,7 +238,8 @@ class PLCH2CPCommand(BaseModel):
     cp_status2: Literal["start", "stop"]
 
 @router.post("/setting/PLC/CPH2")
-async def setting_plc_cph2(payload: PLCH2CPCommand):
+async def setting_plc_cph2(payload: PLCH2CPCommand, current: UserClaims = Depends(get_current_user)):
+    assert_scope_sn(current, payload.SN)
     now_iso = datetime.now().isoformat()
 
     # Lookup ocppConfig topic from station config
@@ -268,6 +274,7 @@ def update_charger_setting(
     body: ChargerSettingBody,
     current: UserClaims = Depends(get_current_user),
 ):
+    assert_scope_sn(current, body.SN)
     now_iso = datetime.now(timezone.utc).isoformat()
 
     updates = {}

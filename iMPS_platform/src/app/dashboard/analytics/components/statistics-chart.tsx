@@ -15,12 +15,22 @@ const StatisticsChart = dynamic(
     ssr: false,
   }
 );
+
+// Reste du template Creative Tim. statisticsChartsData etait un tableau de
+// configurations de graphes ; il a ete reecrit en fonction (MDB, history, dates)
+// pour la page MDB, mais ce composant continuait de faire .map dessus — la page
+// /dashboard/analytics levait donc un TypeError des qu'elle etait rendue. Elle
+// n'est referencee ni dans src/routes.jsx ni dans le sidenav : a supprimer avec
+// le reste du template (recommandation 4 du rapport). En attendant, on ne plante
+// plus le rendu — ni au build, ni dans le navigateur.
+const chartsData = Array.isArray(statisticsChartsData) ? statisticsChartsData : [];
+
 type Props = {};
 
 export default function StatisticChart({}: Props) {
   return (
     <div className="tw-grid tw-grid-cols-1 tw-gap-6 md:tw-grid-cols-2 xl:tw-grid-cols-3">
-      {statisticsChartsData.map((props) => (
+      {chartsData.map((props: any) => (
         <StatisticsChart
           key={props.title}
           {...props}

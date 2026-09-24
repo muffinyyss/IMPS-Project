@@ -224,16 +224,14 @@ export default function AiSection() {
 
   const refetchModulesProgress = useCallback(async (sid: string) => {
     try {
-      const token = typeof window !== "undefined" ? localStorage.getItem("access_token") || "" : "";
       const res = await fetch(
         `${API_BASE}/modules/progress?station_id=${encodeURIComponent(sid)}`,
         {
           headers: {
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
             "Cache-Control": "no-cache",
             Pragma: "no-cache",
           },
-          credentials: token ? "omit" : "include",
+          credentials: "include",
           cache: "no-store",
         }
       );
@@ -252,16 +250,14 @@ export default function AiSection() {
     setLoadingInfo(true);
     setError(null);
     try {
-      const token = typeof window !== "undefined" ? localStorage.getItem("access_token") || "" : "";
       const res = await fetch(
         `${API_BASE}/station/info?station_id=${encodeURIComponent(sid)}`,
         {
           headers: {
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
             "Cache-Control": "no-cache",
             Pragma: "no-cache",
           },
-          credentials: token ? "omit" : "include",
+          credentials: "include",
           cache: "no-store",
         }
       );
@@ -311,14 +307,12 @@ export default function AiSection() {
     }));
 
     try {
-      const token = typeof window !== "undefined" ? localStorage.getItem("access_token") || "" : "";
       const res = await fetch(`${API_BASE}/station/${encodeURIComponent(stationId)}/${moduleId}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {})
         },
-        credentials: token ? "omit" : "include",
+        credentials: "include",
         body: JSON.stringify({ enabled: next }),
       });
 

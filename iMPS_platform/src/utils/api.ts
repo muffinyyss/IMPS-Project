@@ -3,46 +3,75 @@ import { showSessionToast, detailToProblem, showNetworkError } from "./session-t
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE?.replace(/\/+$/, "") ?? "http://localhost:8000";
 
-const ACCESS_KEY = "access_token";
-const ACCESS_KEY2 = "accessToken";
-const REFRESH_KEY = "refresh_token";
+// ✅ session อยู่ในคุกกี้ HttpOnly ที่ backend ตั้ง (access_token + refresh_token)
+// JavaScript ของหน้าเว็บอ่าน token ไม่ได้เลย — script ที่ถูกฉีดเข้ามาจึงขโมยไปใช้นอกเบราว์เซอร์ไม่ได้
+// ฝั่ง frontend แค่ส่ง credentials: "include" ทุกครั้งที่เรียก API
+// ใน localStorage เหลือเฉพาะโปรไฟล์ที่ไม่ใช่ความลับ (user / userRole) ไว้แสดงเมนูตาม role
+const LEGACY_TOKEN_KEYS = ["access_token", "accessToken", "refresh_token", "token"];
+const PROFILE_KEYS = ["user", "userRole"];
+
+/** token ที่เวอร์ชันก่อนเก็บไว้ใน localStorage — ลบทิ้งทันทีที่โหลดโค้ดชุดนี้ */
+function purgeLegacyTokens() {
+  try {
+    LEGACY_TOKEN_KEYS.forEach((k) => localStorage.removeItem(k));
+  } catch { }
+}
+
+if (typeof window !== "undefined") purgeLegacyTokens();
 
 function toUrl(input: RequestInfo | URL) {
   const s = typeof input === "string" ? input : input.toString();
   return s.startsWith("/") ? `${API_BASE}${s}` : s;
 }
 
-export function getAccessToken() {
-  if (typeof window === "undefined") return "";
-  return (
-    localStorage.getItem(ACCESS_KEY) ||
-    localStorage.getItem(ACCESS_KEY2) ||
-    ""
-  );
+/** มีโปรไฟล์จากการ login ค้างอยู่ไหม — ใช้ตัดสินใจเรื่อง UI เท่านั้น สิทธิ์จริงตรวจที่ backend ทุกครั้ง */
+export function hasSession() {
+  if (typeof window === "undefined") return false;
+  try {
+    const raw = localStorage.getItem("user");
+    return !!raw && raw !== "undefined" && raw !== "null";
+  } catch {
+    return false;
+  }
 }
 
-export function setAccessToken(token?: string) {
+export type SessionProfile = {
+  user_id?: string;
+  username?: string;
+  email?: string;
+  role?: string;
+  company?: string;
+  station_id?: string[];
+};
+
+/** โปรไฟล์ที่ /login (หรือ /users/switch-role) ส่งกลับมา — ใช้แทนการถอด JWT ที่ JS อ่านไม่ได้แล้ว */
+export function getSessionProfile(): SessionProfile | null {
+  if (typeof window === "undefined") return null;
   try {
-    if (!token) {
-      localStorage.removeItem(ACCESS_KEY);
-      localStorage.removeItem(ACCESS_KEY2);
-    } else {
-      localStorage.setItem(ACCESS_KEY, token);
-      localStorage.setItem(ACCESS_KEY2, token);
-    }
+    const raw = localStorage.getItem("user");
+    if (!raw || raw === "undefined" || raw === "null") return null;
+    const obj = JSON.parse(raw);
+    return (obj?.user ?? obj) || null;
+  } catch {
+    return null;
+  }
+}
+
+export function clearSessionProfile() {
+  try {
+    [...LEGACY_TOKEN_KEYS, ...PROFILE_KEYS].forEach((k) => localStorage.removeItem(k));
   } catch { }
 }
 
-export function getRefreshToken() {
-  if (typeof window === "undefined") return "";
-  return localStorage.getItem(REFRESH_KEY) || "";
-}
-
-export function setRefreshToken(token?: string) {
+/** ออกจากระบบจริง: ให้ backend เพิกถอน session และลบคุกกี้ — ลบ localStorage อย่างเดียวไม่พอ */
+export async function logout() {
   try {
-    if (!token) localStorage.removeItem(REFRESH_KEY);
-    else localStorage.setItem(REFRESH_KEY, token);
-  } catch { }
+    await fetch(`${API_BASE}/logout`, { method: "POST", credentials: "include" });
+  } catch {
+    // เครือข่ายล่ม — ยังล้างโปรไฟล์ฝั่งนี้ต่อ ผู้ใช้กดออกแล้วต้องไม่เห็นเมนูค้าง
+  }
+  clearSessionProfile();
+  if (typeof window !== "undefined") window.dispatchEvent(new Event("auth"));
 }
 
 // ✅ กัน redirect ซ้ำหลายครั้ง
@@ -93,13 +122,11 @@ function notifyNetworkError() {
 }
 
 async function doRefresh(): Promise<boolean> {
-  const refreshToken = getRefreshToken();
   try {
+    // refresh token มากับคุกกี้เอง — backend ตั้งคุกกี้ access ใหม่กลับมา body ไม่มี token
     const r = await fetch(`${API_BASE}/refresh`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
       credentials: "include",
-      body: JSON.stringify({ refresh_token: refreshToken || undefined }),
     });
 
     if (!r.ok) {
@@ -111,17 +138,6 @@ async function doRefresh(): Promise<boolean> {
       console.warn("[apiFetch] refresh failed:", detail || r.status);
       return false;
     }
-
-    let acc = "";
-    let ref = "";
-    try {
-      const body = await r.clone().json();
-      acc = body?.access_token || "";
-      ref = body?.refresh_token || "";
-    } catch { }
-
-    if (acc) setAccessToken(acc);
-    if (ref) setRefreshToken(ref);
     return true;
   } catch (err) {
     console.error("[apiFetch] refresh network error:", err);
@@ -148,20 +164,15 @@ const MAX_RETRIES = 2;
 export async function apiFetch(input: string | URL, init: RequestInit = {}) {
   const url = toUrl(input);
 
+  // session มากับคุกกี้ — Authorization ที่ caller รุ่นเก่ายังส่งมา ("Bearer null") ไม่มีความหมายแล้ว
   const headers = new Headers(init.headers || {});
-  const token = getAccessToken();
-
-  // ⚡ FIX: ไม่สนใจ Authorization ที่ caller ส่งมา — ใช้ token ล่าสุดเสมอ
-  // เพื่อป้องกัน stale token จาก caller ที่ดึง token ไว้นานแล้ว
-  if (token) {
-    headers.set("Authorization", `Bearer ${token}`);
-  }
+  headers.delete("Authorization");
 
   const baseInit: RequestInit = {
     ...init,
     headers,
     mode: "cors",
-    credentials: token ? "omit" : "include",
+    credentials: "include",
   };
 
   // ✅ retry พร้อม backoff ก่อนยอมแพ้
@@ -195,37 +206,14 @@ export async function apiFetch(input: string | URL, init: RequestInit = {}) {
 
   console.warn("[apiFetch] 401 →", detail);
 
-  // ⚡ FIX: ถ้ามี refresh_token → ลอง refresh เสมอ ไม่ว่า detail จะเป็นอะไร
-  // เดิมเช็คแค่บาง detail ทำให้ "UNAUTHENTICATED", "Signature has expired" ฯลฯ ไม่ถูก refresh
-  const refreshToken = getRefreshToken();
-  const shouldTryRefresh = !!refreshToken;
-
-  if (shouldTryRefresh) {
-    const ok = await refreshOnce();
-
-    if (ok) {
-      // ⚡ FIX: ดึง token ใหม่ล่าสุดหลัง refresh สำเร็จ — ใส่ทับเสมอ
-      const newToken = getAccessToken();
-      const retryHeaders = new Headers(init.headers || {});
-      if (newToken) {
-        retryHeaders.set("Authorization", `Bearer ${newToken}`);
-      } else {
-        retryHeaders.delete("Authorization");
-      }
-
-      const retry = await fetch(url, {
-        ...baseInit,
-        headers: retryHeaders,
-        credentials: newToken ? "omit" : "include",
-      });
-
-      if (retry.status !== 401) return retry;
-    }
+  // ลอง refresh ครั้งเดียวเสมอ — มี refresh token ไหมรู้ได้เฉพาะ backend (คุกกี้ HttpOnly)
+  if (await refreshOnce()) {
+    const retry = await fetch(url, baseInit);
+    if (retry.status !== 401) return retry;
   }
 
   // ---------- refresh ไม่รอด → แจ้งเตือน + เด้ง login ----------
-  setAccessToken(undefined);
-  setRefreshToken(undefined);
+  clearSessionProfile();
   redirectToLogin(detail || "expired");
   throw new Error("UNAUTHENTICATED");
 }

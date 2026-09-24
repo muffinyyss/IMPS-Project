@@ -143,16 +143,10 @@ export default function MDBInfo(props: MDBType) {
         if (cooldownRef.current) clearInterval(cooldownRef.current);
     }, []);
 
-    const authHeaders = () => {
-        const token = localStorage.getItem("access_token") || localStorage.getItem("accessToken") || "";
-        return token ? { Authorization: `Bearer ${token}` } : {};
-    };
-
     const loadRelayCfg = React.useCallback(async () => {
         if (!stationId) return;
         try {
             const res = await fetch(`${API_BASE}/MDB/relay-topics/${encodeURIComponent(stationId)}`, {
-                headers: authHeaders(),
                 credentials: "include",
             });
             if (res.ok) {
@@ -175,7 +169,7 @@ export default function MDBInfo(props: MDBType) {
         try {
             const res = await fetch(`${API_BASE}/MDB/relay-control`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json", ...authHeaders() },
+                headers: { "Content-Type": "application/json" },
                 credentials: "include",
                 body: JSON.stringify({ station_id: stationId, action }),
             });

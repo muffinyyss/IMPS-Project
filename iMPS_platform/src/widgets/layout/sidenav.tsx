@@ -27,6 +27,9 @@ import {
 import { useOnClickOutside, useMediaQuery } from "usehooks-ts";
 import { useMaterialTailwindController, setOpenSidenav } from "@/context";
 import { createPortal } from "react-dom";
+// ลิงก์เมนูใช้ตัวนี้: prefetch ตอนชี้เมาส์ ไม่ใช่ตอนโผล่ในจอ
+import NavLink from "@/components/HoverPrefetchLink";
+
 
 /* ---------- Styles / Const ---------- */
 const COLORS: Record<string, string> = {
@@ -192,7 +195,7 @@ export default function Sidenav({ }: PropTypes) {
     title?: string;
     newTab?: boolean;
   }) => {
-    const Wrapper: any = external ? "a" : Link;
+    const Wrapper: any = external ? "a" : NavLink;
     return (
       <Wrapper
         href={href}
@@ -272,7 +275,7 @@ export default function Sidenav({ }: PropTypes) {
           }`}
       >
         {!miniMode && (
-          <Link href="/" className="tw-flex tw-items-center tw-gap-1">
+          <Link href="/" prefetch={false} className="tw-flex tw-items-center tw-gap-1">
             <Typography variant="h2" className="tw-font-bold tw-ml-3 tw-mt-2">
               <span className="tw-text-yellow-500">i</span>
               <span className="tw-text-black">MPS</span>
@@ -475,7 +478,7 @@ export default function Sidenav({ }: PropTypes) {
                                       </ListItem>
                                     </a>
                                   ) : (
-                                    <Link key={k} href={safeHref(subPage.path)}>
+                                    <NavLink key={k} href={safeHref(subPage.path)}>
                                       <ListItem
                                         className={`tw-capitalize ${isActivePath(subPage.path) ? activeRouteClasses : collapseItemClasses
                                           }`}
@@ -483,7 +486,7 @@ export default function Sidenav({ }: PropTypes) {
                                         <SafeListItemPrefix>{subPage.icon}</SafeListItemPrefix>
                                         {subPage.name}
                                       </ListItem>
-                                    </Link>
+                                    </NavLink>
                                   )
                                 )}
                               </List>
@@ -497,7 +500,7 @@ export default function Sidenav({ }: PropTypes) {
                             </ListItem>
                           </a>
                         ) : (
-                          <Link key={idx} href={safeHref(page.path)}>
+                          <NavLink key={idx} href={safeHref(page.path)}>
                             <ListItem
                               className={`tw-capitalize ${isActivePath(page.path) ? activeRouteClasses : collapseItemClasses
                                 }`}
@@ -505,7 +508,7 @@ export default function Sidenav({ }: PropTypes) {
                               <SafeListItemPrefix>{page.icon}</SafeListItemPrefix>
                               {page.name}
                             </ListItem>
-                          </Link>
+                          </NavLink>
                         )
                       )}
                     </List>
@@ -527,14 +530,14 @@ export default function Sidenav({ }: PropTypes) {
                     </ListItem>
                   </a>
                 ) : (
-                  <Link href={safeHref(path)}>
+                  <NavLink href={safeHref(path)}>
                     <ListItem
                       className={`tw-capitalize ${isActivePath(path) ? activeRouteClasses : collapseItemClasses}`}
                     >
                       <SafeListItemPrefix>{icon}</SafeListItemPrefix>
                       {name}
                     </ListItem>
-                  </Link>
+                  </NavLink>
                 )}
               </List>
             )

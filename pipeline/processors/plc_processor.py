@@ -80,6 +80,9 @@ class PLCProcessor:
         setting_doc = create_setting_document(plc_data, insulation_data, ts_str)
         if not state.check_duplicate('setting', setting_doc):
             self.mongodb.insert_one('setting', serial_number, setting_doc)
+            # copie vers la collection unifiee pendant la migration (voir insert_unified)
+            self.mongodb.insert_unified(
+                self.mongodb.get_database('setting'), serial_number, setting_doc)
             logger.debug(f"[{station_id}] Inserted settingParameter document")
         else:
             logger.debug(f"[{station_id}] Skipped duplicate settingParameter")

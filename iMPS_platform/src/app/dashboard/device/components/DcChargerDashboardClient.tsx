@@ -24,6 +24,7 @@ import {
 } from "@heroicons/react/24/solid";
 import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
 import { apiFetch } from "@/utils/api"; // ← ปรับ path ให้ตรงกับโปรเจกต์
+import { startVisiblePoll } from "@/utils/visible-poll";
 
 /* =========================
    Constants
@@ -295,7 +296,7 @@ export default function DCChargerDashboard() {
     const [timestamp, setTimestamp] = useState<string>("");
     const [stationId, setStationId] = useState<string>("");
     const abortRef = useRef<AbortController | null>(null);
-    const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const stopPollRef = useRef<(() => void) | null>(null);
 
     const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
 
@@ -428,15 +429,15 @@ export default function DCChargerDashboard() {
 
         // ยกเลิก request เก่าก่อน
         abortRef.current?.abort();
-        if (pollRef.current) clearInterval(pollRef.current);
+        stopPollRef.current?.();
 
         // fetch ครั้งแรกทันที
         const ctrl = new AbortController();
         abortRef.current = ctrl;
         fetchData(ctrl.signal);
 
-        // polling
-        pollRef.current = setInterval(() => {
+        // polling — หยุดเองเมื่อ tab อยู่เบื้องหลัง
+        stopPollRef.current = startVisiblePoll(() => {
             const c = new AbortController();
             abortRef.current = c;
             fetchData(c.signal);
@@ -444,7 +445,7 @@ export default function DCChargerDashboard() {
 
         return () => {
             abortRef.current?.abort();
-            if (pollRef.current) clearInterval(pollRef.current);
+            stopPollRef.current?.();
         };
     }, [stationId, fetchData]);
 

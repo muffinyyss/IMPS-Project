@@ -11,6 +11,8 @@
     "start": "next start",
     "lint": "next lint",
     "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "test:smoke": "playwright test",
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
     "build:pdf-css": "tailwindcss -i ./backend/pdf/templates/tw.css -o ./backend/pdf/static/css/pmreport.css --minify",
@@ -56,7 +58,7 @@
     "react-apexcharts": "1.4.1",
     "react-calendar": "4.8.0",
     "react-datepicker": "5.1.0",
-    "react-day-picker": "8.10.0",
+    "react-day-picker": "8.10.2",
     "react-dom": "^19.2.8",
     "react-dropzone": "14.2.3",
     "react-hook-form": "7.49.3",
@@ -69,6 +71,7 @@
     "zustand": "^5.0.8"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@types/lodash": "^4.17.20",
     "@types/node": "20",
     "@types/react": "^19.2.14",
@@ -145,6 +148,12 @@
       "shortcutName": "iMPS Fault Detection",
       "runAfterFinish": true,
       "deleteAppDataOnUninstall": false
+    }
+  },
+  "overrides": {
+    "@material-tailwind/react": {
+      "react": "$react",
+      "react-dom": "$react-dom"
     }
   }
 }

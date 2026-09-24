@@ -93,6 +93,8 @@ charger_collection.create_index("chargeBoxID")
 
 charger_onoff = client["edgeboxStatus"]
 charger_onoff_sync = client1["edgeboxStatus"]
+# handle sync de settingParameter — sert à créer les index depuis du code non-async
+settingDB_sync = client1["settingParameter"]
 MDB_DB = client["MDB"]
 MDB_realtime_DB = client["MDB_realtime"]
 MDB_history_DB = client["MDB_history"]

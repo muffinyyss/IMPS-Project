@@ -953,9 +953,8 @@ function PhotoMultiInput({
     );
 }
 async function fetchReport(reportId: string, stationId: string) {
-    const token = localStorage.getItem("access_token") ?? "";
     const url = `${API_BASE}/stationpmreport/get?station_id=${stationId}&report_id=${reportId}`;
-    const res = await fetch(url, { method: "GET", headers: token ? { Authorization: `Bearer ${token}` } : undefined, credentials: "include" });
+    const res = await fetch(url, { method: "GET", credentials: "include" });
     if (!res.ok) throw new Error(await res.text());
     return await res.json();
 }
@@ -1212,11 +1211,9 @@ export default function StationPMReport() {
     }, [stationId, editId, postKey, postApiLoaded, reviewMode]);
 
     useEffect(() => {
-        const token = typeof window !== "undefined" ? localStorage.getItem("access_token") ?? "" : "";
-        if (!token) return;
         (async () => {
             try {
-                const res = await fetch(`${API_BASE}/me`, { method: "GET", headers: { Authorization: `Bearer ${token}` }, credentials: "include" });
+                const res = await fetch(`${API_BASE}/me`, { method: "GET", credentials: "include" });
                 if (!res.ok) return;
                 const data: Me = await res.json();
                 setMe(data);
@@ -1389,7 +1386,6 @@ export default function StationPMReport() {
         // uploadedIds จำเป็นเพราะ setPhotos() ยังไม่ flush เข้า photosRef ภายใน tick เดียวกัน
         const pending = (items || []).filter(p => !p.isNA && !p.uploaded && !uploadedIds.has(p.id) && (p.file || p.ref));
         if (pending.length === 0) return;
-        const token = localStorage.getItem("access_token");
         const url = `${API_BASE}/stationpmreport/${reportId}/post/photos`;
         // ส่งทีละรูป (1 request/รูป) เพื่อไม่ให้ body รวมเกิน limit ของ nginx (กัน 413 เมื่อข้อหนึ่งมีหลายรูป)
         for (const p of pending) {
@@ -1399,7 +1395,7 @@ export default function StationPMReport() {
             form.append("group", group);
             form.append("side", "post");
             form.append("files", compressed);
-            const res = await fetch(url, { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : undefined, body: form, credentials: "include" });
+            const res = await fetch(url, { method: "POST", body: form, credentials: "include" });
             if (!res.ok) throw new Error(await res.text());
             uploadedIds.add(p.id);
             setPhotos(prev => ({ ...prev, [stateKey]: ((prev as any)[stateKey] || []).map((x: PhotoItem) => x.id === p.id ? { ...x, uploaded: true } : x) }));
@@ -1441,9 +1437,8 @@ export default function StationPMReport() {
         const expected = expectedCountByGroup(photosRef.current as any, k => toGroupKey(k) ?? k);
         if (Object.keys(expected).length === 0) return true;
 
-        const token = localStorage.getItem("access_token");
         const res = await fetch(`${API_BASE}/stationpmreport/get?station_id=${encodeURIComponent(sid)}&report_id=${reportId}`,
-            { headers: token ? { Authorization: `Bearer ${token}` } : undefined, credentials: "include" });
+            { credentials: "include" });
         if (!res.ok) throw new Error(await res.text());
         const doc = await res.json() as { photos?: Record<string, unknown[]> };
         const shortfall = findShortfall(expected, doc?.photos);
@@ -1515,7 +1510,6 @@ export default function StationPMReport() {
         if (submitting) return;
         setSubmitting(true);
         try {
-            const token = localStorage.getItem("access_token");
             // ฟอร์มนี้มีแค่ Post-PM — ไม่มีด่านก่อนหน้าที่สร้าง report_id ให้
             // ใบใหม่ให้ backend สร้างรายงานตอนกดบันทึก — ถ้าเคยกดแล้วอัปรูปหลุด ใช้ id เดิมจาก draft กันได้รายงานซ้ำ
             let finalReportId: string = reportId || editId || loadDraftLocal<any>(postKey)?.pendingReportId || "";
@@ -1525,7 +1519,7 @@ export default function StationPMReport() {
                 ...(summaryCheck ? { summaryCheck } : {}), ...(jobId ? {} : { work_start: workStart, work_finish: workFinish, maximo_labor: maximoLabor, maximo_contractor: contractorPicked ? maximoContractor.trim() : "" }), wonum: searchParams.get("wonum") ?? "", side: "post", ...(finalReportId ? { report_id: finalReportId } : {}),
             };
             const res = await fetch(`${API_BASE}/stationpmreport/submit`, {
-                method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+                method: "POST", headers: { "Content-Type": "application/json" },
                 credentials: "include", body: JSON.stringify(payload),
             });
             if (!res.ok) throw new Error(await res.text());
@@ -1557,7 +1551,7 @@ export default function StationPMReport() {
             if (!jobId && (workStart > nowLocal || workFinish > nowLocal)) { alert(t("alertWorkTimeFuture", lang)); setSubmitting(false); return; }
 
             const finalizeRes = await fetch(`${API_BASE}/stationpmreport/${finalReportId}/finalize`, {
-                method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+                method: "POST",
                 credentials: "include", body: new URLSearchParams({ station_id: stationId }),
             });
             if (!finalizeRes.ok) throw new Error(await finalizeRes.text());

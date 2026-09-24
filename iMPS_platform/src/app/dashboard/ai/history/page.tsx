@@ -34,7 +34,7 @@ const t = (k: keyof typeof T, lang: Lang) => T[k][lang];
 
 function AnimatedNumber({ value, decimals = 0 }: { value: number | null; decimals?: number }) {
     const [display, setDisplay] = useState(value ?? 0);
-    const frameRef = useRef<number>();
+    const frameRef = useRef<number | undefined>(undefined);
     useEffect(() => {
         if (value == null) return;
         const start = display; const end = value; const duration = 800; const startTime = performance.now();

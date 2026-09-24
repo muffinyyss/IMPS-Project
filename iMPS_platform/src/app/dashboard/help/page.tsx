@@ -8,6 +8,7 @@ import {
   ChevronRightIcon,
 } from "@heroicons/react/24/solid";
 import useLanguage, { type Lang } from "@/utils/useLanguage";
+import { getSessionProfile } from "@/utils/api";
 
 type DocKey = "userManual" | "sourceCodeManual";
 
@@ -60,20 +61,8 @@ export default function HelpPage() {
   const [role, setRole] = useState<string>("");
 
   useEffect(() => {
-    const token =
-      localStorage.getItem("access_token") ||
-      localStorage.getItem("accessToken") ||
-      "";
-    if (!token) return;
-    try {
-      const payload = token.split(".")[1];
-      const claims = JSON.parse(
-        atob(payload.replace(/-/g, "+").replace(/_/g, "/"))
-      );
-      setRole(claims.role || "user");
-    } catch {
-      setRole("user");
-    }
+    const profile = getSessionProfile();
+    if (profile) setRole(profile.role || "user");
   }, []);
 
   const docs = DOCS.filter((d) => !d.adminOnly || role === "admin");

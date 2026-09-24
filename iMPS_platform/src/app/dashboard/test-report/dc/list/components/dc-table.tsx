@@ -22,6 +22,7 @@ import { ArrowUpTrayIcon, DocumentArrowDownIcon } from "@heroicons/react/24/outl
 import { ChevronLeftIcon, ChevronRightIcon, ChevronUpDownIcon, ArrowLeftIcon } from "@heroicons/react/24/solid";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from "@material-tailwind/react";
+import TableSkeletonRows from "@/components/TableSkeletonRows";
 
 // ===== Types =====
 type TData = {
@@ -189,7 +190,9 @@ const resolveFileHref = (v: any, apiBase: string): string => {
 
 // ===== Main Component =====
 export default function DCReportPage({ token, apiBase = BASE }: Props) {
-  const [loading, setLoading] = useState(false);
+  // true au depart : le squelette doit occuper la hauteur finale des le premier
+  // rendu, sinon le tableau grandit de 0 a N lignes quand les donnees arrivent.
+  const [loading, setLoading] = useState(true);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [data, setData] = useState<TData[]>([]);
   const [filtering, setFiltering] = useState("");
@@ -278,7 +281,7 @@ export default function DCReportPage({ token, apiBase = BASE }: Props) {
 
   // ===== Fetch data =====
   const fetchRows = useCallback(async () => {
-    if (!sn) { setData([]); return; }
+    if (!sn) { setData([]); setLoading(false); return; }
     setLoading(true);
     
     try {
@@ -790,14 +793,8 @@ export default function DCReportPage({ token, apiBase = BASE }: Props) {
 
               <tbody>
                 {loading ? (
-                  <tr>
-                    <td colSpan={columns.length} className="tw-text-center tw-py-10 sm:tw-py-12 lg:tw-py-16">
-                      <div className="tw-flex tw-flex-col tw-items-center tw-gap-2 sm:tw-gap-3">
-                        <div className="tw-w-6 tw-h-6 sm:tw-w-8 sm:tw-h-8 lg:tw-w-10 lg:tw-h-10 tw-border-2 sm:tw-border-3 tw-border-blue-500 tw-border-t-transparent tw-rounded-full tw-animate-spin"></div>
-                        <span className="tw-text-blue-gray-400 tw-text-xs sm:tw-text-sm">{t.loading}</span>
-                      </div>
-                    </td>
-                  </tr>
+                      /* โครงร่างสูงเท่าหน้าจริง — กัน layout shift ตอนข้อมูลมาถึง */
+                      <TableSkeletonRows rows={table.getState().pagination.pageSize} cols={columns.length} />
                 ) : table.getRowModel().rows.length ? (
                   table.getRowModel().rows.map((row) => (
                     // <tr key={row.id} className="odd:tw-bg-white even:tw-bg-gray-50 hover:tw-bg-blue-gray-50/50 tw-transition-colors">

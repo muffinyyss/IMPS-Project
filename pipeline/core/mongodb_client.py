@@ -71,6 +71,40 @@ class MongoDBClient:
             return None
         return db[collection_name]
     
+    def get_database(self, db_key: str) -> Optional[Database]:
+        """Base complete derriere une cle de configuration (ex. 'setting')."""
+        return self._databases.get(db_key)
+
+    def insert_unified(self, db, serial_number: str, document: Dict[str, Any]) -> None:
+        """Recopie un document dans la collection unifiee de la meme base, SN en champ.
+
+        Migration « 1 collection par SN » vers « 1 collection + champ sn » : pendant la
+        bascule le pipeline alimente les deux, pour que le backend puisse lire l'une ou
+        l'autre sans fenetre d'incoherence. Voir
+        iMPS_platform/backend/scripts/migrate_per_sn_collections.py.
+
+        L'ecriture principale a deja eu lieu quand on arrive ici : un echec de la copie
+        ne doit jamais faire perdre une mesure, donc on journalise et on continue.
+        """
+        if db is None or not serial_number:
+            return
+        unified_name = self.config.unified_collections.get(db.name)
+        if not unified_name:
+            return
+        try:
+            mirrored = dict(document)
+            # insert_one a pose un _id sur l'original : on le garde sous _src.
+            # C'est la cle d'unicite de la collection unifiee (donc pas de doublon
+            # si la reprise repasse sur le meme document) ET sa cle de tri, car
+            # l'_id de la copie ne dit rien de l'ordre d'origine.
+            src = mirrored.pop('_id', None)
+            mirrored['sn'] = serial_number
+            if src is not None:
+                mirrored['_src'] = src
+            db[unified_name].insert_one(mirrored)
+        except Exception as e:
+            logger.warning(f"Copie vers {unified_name} echouee pour {serial_number}: {e}")
+
     def get_station_collection(self, db_key: str, 
                                 station_config: StationConfig) -> Optional[Collection]:
         """

@@ -359,7 +359,7 @@ export function isWorkOrder(r: CMRow): boolean {
     const before = normalizeWorkStatus(r.status_before_cancel);
     return before !== "new" && before !== "wait_cs_approve";
   }
-  return ws !== "new" && ws !== "rejected" && ws !== "wait_cs_approve" && ws !== "cancelled";
+  return ws !== "new" && ws !== "wait_cs_approve";
 }
 
 /** สีป้ายสถานะละเอียด (8 bucket) — ใช้ในตารางใบงาน ให้ตรงกับสีการ์ด KPI ด้านบน */
