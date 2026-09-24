@@ -20,13 +20,9 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Query
 
-from brand_scope import brand_scope_of, filter_chargers
-from config import (
-    ACTestReportDB, ACUrlDB, DCTestReportDB, DCUrlDB,
-    charger_collection, station_collection, th_tz,
-)
+from config import ACTestReportDB, ACUrlDB, DCTestReportDB, DCUrlDB, th_tz
 from deps import UserClaims, get_current_user
-from routers.stations import station_match_query
+from routers.stations import load_station_scope
 
 router = APIRouter()
 
@@ -141,26 +137,12 @@ async def _fetch_docs(db, sn: str, projection: dict, limit: int) -> list[dict]:
 
 
 def _load_scope(current: UserClaims, station_id: Optional[str]) -> tuple[list[dict], list[dict]]:
-    """สถานี + ตู้ที่ผู้เรียกเห็นได้ (sync PyMongo — เรียกผ่าน executor)"""
-    # station_match_query รวมกติกา role + ยี่ห้อไว้แล้ว (จุดร่วมเดียวกับหน้า EV Station)
-    access = station_match_query(current)
-    if access is None:
-        return [], []
-    clauses = [access] if access else []
-    if station_id:
-        clauses.append({"station_id": station_id})
-    query = {"$and": clauses} if clauses else {}
-
-    stations = list(station_collection.find(query, {"_id": 0, "station_id": 1, "station_name": 1, "company": 1}))
-    station_ids = [s["station_id"] for s in stations if s.get("station_id")]
-    if not station_ids:
-        return stations, []
-    chargers = list(charger_collection.find(
-        {"station_id": {"$in": station_ids}},
-        {"_id": 0, "SN": 1, "station_id": 1, "brand": 1},
-    ))
-    # สถานีที่ปนยี่ห้อยังเห็นได้ แต่ตู้ยี่ห้อที่ไม่ได้ดูแลต้องหลุดออก (กติกา brand_scope)
-    return stations, filter_chargers(chargers, brand_scope_of(current))
+    """สถานี + ตู้ที่ผู้เรียกเห็นได้ — กติกาเดียวกับ /pm-reports/* (ดู load_station_scope)"""
+    return load_station_scope(
+        current, station_id,
+        station_fields=("station_id", "station_name", "company"),
+        charger_fields=("SN", "station_id", "brand"),
+    )
 
 
 # ===== Endpoint =====

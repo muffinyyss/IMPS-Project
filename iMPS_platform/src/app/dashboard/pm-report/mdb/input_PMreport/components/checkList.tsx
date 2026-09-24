@@ -349,7 +349,7 @@ type Me = { id: string; username: string; email: string; role: string; company: 
 
 async function getStationInfoPublic(stationId: string): Promise<StationPublic> {
     const url = `${API_BASE}/station/info/public?station_id=${encodeURIComponent(stationId)}`;
-    const res = await fetch(url, { cache: "no-store" });
+    const res = await fetch(url, { cache: "no-store", credentials: "include" });
     if (res.status === 404) throw new Error("Station not found");
     if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
     const json = await res.json();

@@ -903,13 +903,21 @@ async def cmreport_list_all(
         chargers_by_station = None  # อ่านรวมไม่ได้ — ให้แต่ละสถานี query เองแบบเดิม
 
     scope = _assignee_scope(current)
+    # CMReport เก็บ 1 collection ต่อสถานี — สถานีที่ยังไม่เคยมีใบงานจะไม่มี collection
+    # ถามชื่อที่มีจริงครั้งเดียว แทนการยิง find() ให้ครบทั้ง 355 สถานี
+    # (_cm_items_for_station คืน [] อยู่แล้วเมื่อไม่มีเอกสาร ผลลัพธ์จึงเท่าเดิม)
+    try:
+        existing_cm = set(await CMReportDB.list_collection_names())
+    except Exception:
+        existing_cm = None       # ถามไม่สำเร็จ → ยิงทุกสถานีเหมือนเดิม
+
     tasks = [
         _cm_items_for_station(
             s["station_id"], s.get("station_name", "-"), status, s.get("company", ""), scope, current,
             charger_docs=None if chargers_by_station is None else chargers_by_station.get(s["station_id"], []),
         )
         for s in stations
-        if s.get("station_id")
+        if s.get("station_id") and (existing_cm is None or s["station_id"] in existing_cm)
     ]
     results = await asyncio.gather(*tasks, return_exceptions=True)
 

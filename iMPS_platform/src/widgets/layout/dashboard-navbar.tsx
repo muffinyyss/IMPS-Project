@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { onSelectionChange } from "@/utils/selection-events";
 
 import {
   Bars3Icon,
@@ -100,16 +101,12 @@ export function DashboardNavbar() {
   const [userRole, setUserRole] = useState<string>("");
 
   useEffect(() => {
-    const token = localStorage.getItem("access_token") || localStorage.getItem("accessToken") || "";
-    if (token) {
-      try {
-        const payload = token.split(".")[1];
-        const json = atob(payload.replace(/-/g, "+").replace(/_/g, "/"));
-        const claims = JSON.parse(json);
-        setUserRole(claims.role || "user");
-      } catch {
-        setUserRole("user");
-      }
+    // JWT อยู่ในคุกกี้ HttpOnly (อ่านไม่ได้) — role มากับโปรไฟล์ที่ได้ตอน login / switch-role
+    try {
+      const raw = localStorage.getItem("user");
+      if (raw) setUserRole(JSON.parse(raw)?.role || "user");
+    } catch {
+      setUserRole("user");
     }
   }, []);
 
@@ -145,13 +142,8 @@ export function DashboardNavbar() {
       });
       if (!res.ok) throw new Error(((await res.json().catch(() => ({}))) as any).detail || `HTTP ${res.status}`);
       const data = await res.json();
-      // เก็บ localStorage แบบเดียวกับตอน login เป๊ะ (access + refresh + user + userRole) — ให้ session sync
+      // คุกกี้ session ใหม่ถูกตั้งมากับ response แล้ว — อัปเดตโปรไฟล์แบบเดียวกับตอน login
       try {
-        if (data.access_token) {
-          localStorage.setItem("access_token", data.access_token);
-          localStorage.setItem("accessToken", data.access_token);
-        }
-        if (data.refresh_token) localStorage.setItem("refresh_token", data.refresh_token);
         if (data.user) {
           localStorage.setItem("user", JSON.stringify(data.user));
           localStorage.setItem("userRole", data.user?.role ?? "");
@@ -264,58 +256,13 @@ export function DashboardNavbar() {
       requestAnimationFrame(loadSelection);
     };
 
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === "selected_sn" ||
-        e.key === "selected_station_id" ||
-        e.key === "selected_station_name" ||
-        e.key === "selected_charger_no") {
-        requestAnimationFrame(loadSelection);
-      }
-    };
-
-    window.addEventListener("storage", handleStorageChange);
-    window.addEventListener("charger:selected", handleChargerEvent);
-    window.addEventListener("charger:deselected", handleChargerEvent);
-    window.addEventListener("station:selected", handleChargerEvent);
-
-    const interval = setInterval(loadSelection, 1000);
-
-    return () => {
-      window.removeEventListener("storage", handleStorageChange);
-      window.removeEventListener("charger:selected", handleChargerEvent);
-      window.removeEventListener("charger:deselected", handleChargerEvent);
-      window.removeEventListener("station:selected", handleChargerEvent);
-      clearInterval(interval);
-    };
+    // เดิมมี setInterval ทุก 1 s + listener แยกของ "storage" — selection-events
+    // รวมทั้ง event ในแท็บเดียวกันและจากแท็บอื่นไว้ที่เดียวแล้ว
+    return onSelectionChange(handleChargerEvent);
   }, [loadSelection]);
 
-  // ===== Listen for localStorage changes within same tab =====
-  useEffect(() => {
-    const originalSetItem = localStorage.setItem.bind(localStorage);
-    localStorage.setItem = (key: string, value: string) => {
-      originalSetItem(key, value);
-
-      if (key === "selected_sn" ||
-        key === "selected_station_id" ||
-        key === "selected_station_name" ||
-        key === "selected_charger_no") {
-        window.dispatchEvent(new CustomEvent("localStorageChange", {
-          detail: { key, value }
-        }));
-      }
-    };
-
-    const handleLocalStorageChange = () => {
-      requestAnimationFrame(loadSelection);
-    };
-
-    window.addEventListener("localStorageChange", handleLocalStorageChange);
-
-    return () => {
-      localStorage.setItem = originalSetItem;
-      window.removeEventListener("localStorageChange", handleLocalStorageChange);
-    };
-  }, [loadSelection]);
+  // การเขียน localStorage ใน tab เดียวกันถูก patch ไว้ใน selection-events แล้ว
+  // (เดิม patch ที่นี่ แต่ถูกถอดตอน navbar unmount ทำให้ผู้ฟังรายอื่น เช่น ai/useStation เงียบไป)
 
   const t = {
     currentStation: lang === "th" ? "สถานี" : "Station",
@@ -352,7 +299,7 @@ export function DashboardNavbar() {
                 <>
                   {/* Breadcrumbs - Hidden on mobile */}
                   <div className="tw-hidden sm:tw-flex tw-items-center tw-gap-1 tw-text-xs tw-text-gray-400 tw-mb-1">
-                    <Link href="/" className="hover:tw-text-gray-600 tw-transition-colors">
+                    <Link href="/" prefetch={false} className="hover:tw-text-gray-600 tw-transition-colors">
                       <HomeIcon className="tw-h-3.5 tw-w-3.5" />
                     </Link>
                     {segs.slice(0, -1).map((seg, i) => (

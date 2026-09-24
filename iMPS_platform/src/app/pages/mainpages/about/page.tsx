@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { apiFetch, getAccessToken } from "@/utils/api";
+import { apiFetch, hasSession } from "@/utils/api";
 
 type AboutContent = {
   title: string;
@@ -13,7 +13,7 @@ export default function About() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
 
   useEffect(() => {
-    setIsLoggedIn(!!getAccessToken());
+    setIsLoggedIn(hasSession());
   }, []);
 
   useEffect(() => {

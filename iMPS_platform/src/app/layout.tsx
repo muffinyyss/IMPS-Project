@@ -8,6 +8,7 @@ import InnerContent from "./content";
 import { Kanit, Plus_Jakarta_Sans, JetBrains_Mono } from "next/font/google";
 import "@fortawesome/fontawesome-free/css/fontawesome.min.css";
 import "@fortawesome/fontawesome-free/css/solid.min.css";
+import "@fortawesome/fontawesome-free/css/regular.min.css";
 import "@fortawesome/fontawesome-free/css/brands.min.css";
 import "react-calendar/dist/Calendar.css";
 import "./globals.css";

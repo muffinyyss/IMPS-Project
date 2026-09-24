@@ -1,5 +1,6 @@
 "use client";
 import React, { useEffect, useState } from "react";
+import { onSelectionChange } from "@/utils/selection-events";
 
 /** 1) เมนูแม่แบบ + สิทธิ์ที่เห็นเมนูนั้น ๆ */
 const baseRoutes = [
@@ -313,26 +314,9 @@ export function useRoutes(rolesFromApp) {
     // Check on mount
     checkChargerSelection();
 
-    // Listen for URL changes
-    window.addEventListener("popstate", checkChargerSelection);
-
-    // Custom event for programmatic navigation
-    window.addEventListener("charger:selected", checkChargerSelection);
-    window.addEventListener("charger:deselected", checkChargerSelection);
-
-    // Listen for storage changes
-    window.addEventListener("storage", checkChargerSelection);
-
-    // Check periodically for URL changes (fallback for Next.js router)
-    const interval = setInterval(checkChargerSelection, 500);
-
-    return () => {
-      window.removeEventListener("popstate", checkChargerSelection);
-      window.removeEventListener("charger:selected", checkChargerSelection);
-      window.removeEventListener("charger:deselected", checkChargerSelection);
-      window.removeEventListener("storage", checkChargerSelection);
-      clearInterval(interval);
-    };
+    // เดิมที่นี่มี setInterval ทุก 500 ms เพราะ pushState ของ Next.js ไม่ยิง popstate
+    // ตอนนี้ selection-events patch pushState/localStorage ให้แล้ว จึงฟัง event เดียวพอ
+    return onSelectionChange(checkChargerSelection);
   }, []);
 
   const routes = React.useMemo(() => {

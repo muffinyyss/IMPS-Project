@@ -146,14 +146,6 @@ export default function PMCard({ sn }: PMCardProps) {
     return `${d} ${d === 1 ? t.day : t.days}`;
   };
 
-  const token = useMemo(
-    () =>
-      localStorage.getItem("access_token") ||
-      localStorage.getItem("accessToken") ||
-      "",
-    []
-  );
-
   useEffect(() => {
     if (!isActive) return;
 
@@ -164,8 +156,6 @@ export default function PMCard({ sn }: PMCardProps) {
       setLoading(false);
       return;
     }
-
-    if (!token) return;
 
     let aborted = false;
     const ctrl = new AbortController();
@@ -234,7 +224,7 @@ export default function PMCard({ sn }: PMCardProps) {
       aborted = true;
       ctrl.abort();
     };
-  }, [isActive, sn, token]);
+  }, [isActive, sn]);
 
   return (
     <Card className="tw-border tw-border-blue-gray-100 tw-shadow-sm tw-h-full">

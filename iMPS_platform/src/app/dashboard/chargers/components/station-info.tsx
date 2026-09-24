@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState, useRef, useCallback } from "react";
 import PipelineConfigModal from "./PipelineConfigModal";
+import { getSessionProfile } from "@/utils/api";
 
 type Lang = "th" | "en";
 
@@ -157,15 +158,6 @@ const EXCLUDED_KEYS = new Set([
   "__v", "$oid", "$date",
 ]);
 
-type JwtClaims = { role?: string; };
-function decodeJwt(token: string | null): JwtClaims | null {
-  try {
-    if (!token) return null;
-    const payload = token.split(".")[1];
-    return JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/")));
-  } catch { return null; }
-}
-
 // ===== Flatten nested object =====
 // { voltage: { L1: 220 }, temp: 25 } → [["voltage.L1", 220], ["temp", 25]]
 function flattenObject(
@@ -286,9 +278,8 @@ export default function StationInfo({
   }, []);
 
   useEffect(() => {
-    const token = localStorage.getItem("access_token") || localStorage.getItem("accessToken") || localStorage.getItem("token") || "";
-    const claims = decodeJwt(token);
-    setCanConfig(claims?.role === "admin");
+    // role มากับโปรไฟล์ตอน login — JWT อยู่ในคุกกี้ HttpOnly อ่านจาก JS ไม่ได้
+    setCanConfig(getSessionProfile()?.role === "admin");
   }, []);
 
   const menuRef = useRef<HTMLDivElement>(null);
@@ -363,7 +354,6 @@ export default function StationInfo({
     };
 
     const connect = async () => {
-      const token = localStorage.getItem("token") || localStorage.getItem("access_token") || "";
       const url = `${apiBaseUrl}/CBM?SN=${encodeURIComponent(snForApi)}`;
 
       setSseStatus("connecting");
@@ -372,8 +362,8 @@ export default function StationInfo({
       try {
         const res = await fetch(url, {
           signal: abort.signal,
+          credentials: "include",
           headers: {
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
             Accept: "text/event-stream",
           },
         });
@@ -453,13 +443,12 @@ export default function StationInfo({
     const timeout = setTimeout(() => ctrl.abort(), 10000);
 
     try {
-      const token = localStorage.getItem("token") || localStorage.getItem("access_token") || "";
       const res = await fetch(`${apiBaseUrl}/CBM?SN=${encodeURIComponent(snForApi)}`, {
         signal: ctrl.signal,
         headers: {
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
           Accept: "text/event-stream",
         },
+        credentials: "include",
       });
       if (!res.ok) { setAvailableFields([]); return; }
 

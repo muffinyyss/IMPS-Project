@@ -25,6 +25,7 @@ import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
 import { failureCodeLabel } from "@/app/dashboard/cm-report/lib/failureCode";
 import { brandScopeOf, canOpenCmAtStation } from "@/utils/brandScope";
 import { COMPANY_FILTER_OPTIONS } from "@/utils/cm-dashboard";
+import TableSkeletonRows, { TableBodySpacer } from "@/components/TableSkeletonRows";
 
 // ==================== TRANSLATIONS ====================
 const T = {
@@ -173,7 +174,9 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
   const { lang } = useLanguage();
   const [userRole, setUserRole] = useState<string>("");
   const isTechnician = userRole.toLowerCase() === "technician";
-  const [loading, setLoading] = useState(false);
+  // true au depart : le squelette doit occuper la hauteur finale des le premier
+  // rendu, sinon le tableau grandit de 0 a N lignes quand les donnees arrivent.
+  const [loading, setLoading] = useState(true);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [data, setData] = useState<TData[]>([]);
   const [filtering, setFiltering] = useState("");
@@ -221,12 +224,6 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
     (async () => {
       try {
         const headers: Record<string, string> = {};
-        if (!useHttpOnlyCookie) {
-          const t = typeof window !== "undefined"
-            ? localStorage.getItem("access_token") ?? ""
-            : "";
-          if (t) headers.Authorization = `Bearer ${t}`;
-        }
 
         const res = await apiFetch(`${apiBase}/me`, {
           method: "GET",
@@ -391,7 +388,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
   }
 
   const fetchRows = async () => {
-    if (!stationId) { setData([]); return; }
+    if (!stationId) { setData([]); setLoading(false); setPageLoading(false); return; }
     setLoading(true);
 
     try {
@@ -1092,14 +1089,8 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
               {/* Table Body */}
               <tbody className="tw-divide-y tw-divide-blue-gray-50">
                 {loading ? (
-                  <tr>
-                    <td colSpan={columns.length} className="tw-text-center tw-py-10 sm:tw-py-12 lg:tw-py-16">
-                      <div className="tw-flex tw-flex-col tw-items-center tw-gap-2 sm:tw-gap-3">
-                        <div className="tw-w-6 tw-h-6 sm:tw-w-8 sm:tw-h-8 lg:tw-w-10 lg:tw-h-10 tw-border-2 sm:tw-border-3 tw-border-blue-500 tw-border-t-transparent tw-rounded-full tw-animate-spin"></div>
-                        <span className="tw-text-blue-gray-400 tw-text-xs sm:tw-text-sm">{t("loading", lang)}</span>
-                      </div>
-                    </td>
-                  </tr>
+                      /* โครงร่างสูงเท่าหน้าจริง — กัน layout shift ตอนข้อมูลมาถึง */
+                      <TableSkeletonRows rows={table.getState().pagination.pageSize} cols={columns.length} rowHeight="var(--table-row-h)" />
                 ) : table.getRowModel().rows.length ? (
                   table.getRowModel().rows.map((row, index) => (
                     <tr
@@ -1143,6 +1134,11 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
                 )}
               </tbody>
             </table>
+            {/* complète la page jusqu'à pageSize lignes : le pied de tableau ne bouge plus */}
+            <TableBodySpacer
+              pageSize={table.getState().pagination.pageSize}
+              shown={loading ? table.getState().pagination.pageSize : table.getRowModel().rows.length}
+            />
           </div>
         </CardFooter>
 

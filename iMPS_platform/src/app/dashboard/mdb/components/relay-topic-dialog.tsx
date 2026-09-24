@@ -90,7 +90,6 @@ export default function RelayTopicDialog({
         setSaving(true);
         setToast(null);
         try {
-            const token = localStorage.getItem("access_token") || localStorage.getItem("accessToken") || "";
 
             const payload = {
                 station_id: stationId,
@@ -100,7 +99,6 @@ export default function RelayTopicDialog({
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
-                    ...(token ? { Authorization: `Bearer ${token}` } : {}),
                 },
                 credentials: "include",
                 body: JSON.stringify(payload),

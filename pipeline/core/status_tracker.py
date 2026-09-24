@@ -99,6 +99,8 @@ class StatusTracker:
             }
             
             collection.insert_one(doc)
+            # copie vers la collection unifiee pendant la migration (voir insert_unified)
+            self.mongodb.insert_unified(db, serial_number, doc)
             logger.debug(f"[{station_id}] Wrote {device} status: {status}")
             
         except Exception as e:

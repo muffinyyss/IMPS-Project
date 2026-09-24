@@ -9,11 +9,26 @@ from fastapi import APIRouter, Request, Query, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 from typing import Optional, List
 from deps import UserClaims, get_current_user
+from routers.stations import load_station_scope, station_match_query
 from datetime import datetime, timezone
 from bson import ObjectId
 from pydantic import BaseModel, Field
 import json
 import re
+
+
+async def _visible_error_collections(current: UserClaims, names: List[str]) -> List[str]:
+    """errorDB มี 1 collection ต่อ SN — เหลือเฉพาะตู้ที่ผู้เรียกเห็นได้ (กติกาเดียวกับหน้า EV Station)
+
+    เดิมทุก endpoint วนทุก collection: owner จึงเห็น fault ของตู้ทุกสถานีในระบบ
+    แพทเทิร์นเดียวกับที่ /pm-reports/* เคยส่งเอกสาร PM ของทุกสถานีให้ทุกบัญชี
+    เห็นทุกสถานีอยู่แล้ว → คืนรายการเดิม ไม่เสีย query เพิ่ม
+    """
+    if station_match_query(current) == {}:
+        return names
+    _, chargers = await asyncio.get_running_loop().run_in_executor(None, load_station_scope, current)
+    allowed = {str(c.get("SN")) for c in chargers if c.get("SN")}
+    return [n for n in names if n in allowed]
 
 router = APIRouter(
     prefix="/notifications",
@@ -486,6 +501,7 @@ async def get_all_notifications(
 
     collection_names = await errorDB.list_collection_names()
     collection_names = [c for c in collection_names if not c.startswith("system.")]
+    collection_names = await _visible_error_collections(current, collection_names)
 
     print(f"[notifications] Found {len(collection_names)} SN collections: {collection_names}")
 
@@ -551,13 +567,14 @@ async def get_all_notifications(
 
 
 @router.get("/count")
-async def get_notification_count(request: Request):
+async def get_notification_count(request: Request, current: UserClaims = Depends(get_current_user)):
     errorDB = get_error_db(request)
     unread_count = 0
     total_count = 0
 
     collection_names = await errorDB.list_collection_names()
     collection_names = [c for c in collection_names if not c.startswith("system.")]
+    collection_names = await _visible_error_collections(current, collection_names)
 
     for station_name in collection_names:
         try:
@@ -577,7 +594,7 @@ async def get_notification_count(request: Request):
 
 
 @router.get("/stream")
-async def notifications_stream(request: Request):
+async def notifications_stream(request: Request, current: UserClaims = Depends(get_current_user)):
     """SSE stream สำหรับ real-time notifications จากทุก stations (ไม่ส่ง email — ย้ายไปตอนเปิดใบงาน CM)"""
     errorDB = get_error_db(request)
 
@@ -595,6 +612,7 @@ async def notifications_stream(request: Request):
         # ----- Initial load -----
         collection_names = await errorDB.list_collection_names()
         collection_names = [c for c in collection_names if not c.startswith("system.")]
+        collection_names = await _visible_error_collections(current, collection_names)
 
         initial_notifications = []
 
@@ -640,6 +658,7 @@ async def notifications_stream(request: Request):
 
             collection_names = await errorDB.list_collection_names()
             collection_names = [c for c in collection_names if not c.startswith("system.")]
+            collection_names = await _visible_error_collections(current, collection_names)
 
             for station_id in collection_names:
                 try:
@@ -709,6 +728,7 @@ async def mark_as_read(
 async def mark_all_as_read(
     request: Request,
     station_id: Optional[str] = Query(None),
+    current: UserClaims = Depends(get_current_user),
 ):
     errorDB = get_error_db(request)
 
@@ -717,6 +737,8 @@ async def mark_all_as_read(
     else:
         collection_names = await errorDB.list_collection_names()
         collection_names = [c for c in collection_names if not c.startswith("system.")]
+    # ไม่งั้นบัญชีเดียวทำเครื่องหมาย "อ่านแล้ว" ให้การแจ้งเตือนของทุกสถานีในระบบ
+    collection_names = await _visible_error_collections(current, collection_names)
 
     updated_count = 0
     for name in collection_names:

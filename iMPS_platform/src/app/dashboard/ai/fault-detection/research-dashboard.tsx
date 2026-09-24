@@ -241,7 +241,7 @@ type FaultSlice = FaultCountItem & {
   percentage: number;
 };
 
-const buildFaultSlices = (items: FaultCountItem[], total: number): FaultSlice[] =>
+const buildFaultSlices = (items: readonly FaultCountItem[], total: number): FaultSlice[] =>
   items.map((item, index) => ({
     ...item,
     color: FAULT_DISTRIBUTION_COLORS[item.family] ?? FALLBACK_FAULT_COLORS[index % FALLBACK_FAULT_COLORS.length],

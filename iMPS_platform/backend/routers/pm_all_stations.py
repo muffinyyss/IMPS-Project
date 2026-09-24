@@ -8,8 +8,16 @@ import traceback
 import re
 from bson import ObjectId
 
-from config import charger_collection, station_collection
+from config import (
+    charger_collection,
+    PMReportDB, PMUrlDB,
+    MDBPMReportDB, MDBPMUrlDB,
+    CCBPMReportDB, CCBPMUrlDB,
+    CBBOXPMReportDB, CBBOXPMUrlDB,
+    stationPMReportDB, stationPMUrlDB,
+)
 from deps import UserClaims, get_current_user
+from routers.stations import load_station_scope
 from routers.pm_helpers import (
     get_pmreport_collection_for,
     get_mdbpmreport_collection_for,
@@ -24,14 +32,6 @@ from routers.pm_helpers import (
 )
 
 router = APIRouter()
-
-PM_SOURCES = [
-    ("CHARGER",    get_pmreport_collection_for),
-    ("MDB",   get_mdbpmreport_collection_for),
-    ("CCB",   get_ccbpmreport_collection_for),
-    ("CB-BOX", get_cbboxpmreport_collection_for),
-    ("STATION", get_stationpmreport_collection_for)
-]
 
 PROJECTION = {
     "_id": 1, "doc_name": 1, "issue_id": 1, "wonum": 1,
@@ -150,36 +150,6 @@ async def _fetch_sn_source(
         return []
 
 
-async def _fetch_reports_for_sn(
-    sn: str,
-    station_id: str,
-    limit_per_source: int,
-) -> list[dict]:
-    tasks = [
-        _fetch_sn_source(label, fn, sn, station_id, limit_per_source)
-        for label, fn in PM_SOURCES
-    ]
-    results = await asyncio.gather(*tasks, return_exceptions=True)
-    combined = []
-    for r in results:
-        if isinstance(r, list):
-            combined.extend(r)
-    return combined
-
-
-async def _fetch_station_level_reports(
-    station_id: str,
-    limit: int,
-) -> list[dict]:
-    try:
-        coll = get_stationpmreport_collection_for(station_id)
-        docs = await _query_collection(coll, PROJECTION, limit)
-        return [_serialize_report(d, "STATION", station_id) for d in docs]
-    except Exception:
-        traceback.print_exc()
-        return []
-
-
 _PM_TYPE_TO_SECTION = {
     "CHARGER": "charger", "MDB": "mdb", "CCB": "ccb", "CB-BOX": "cbbox", "STATION": "station",
 }
@@ -276,22 +246,20 @@ async def get_all_station_pm_reports(
 ):
     loop = asyncio.get_event_loop()
 
-    # ── 1. Stations (sync PyMongo) ──────────────────────────────
-    station_query = {"station_id": station_id} if station_id else {}
-
+    # ── 1–2. Stations + chargers ที่ผู้เรียกเห็นได้ (sync PyMongo) ─────
+    # กติกาเดียวกับหน้า EV Station และ Test — เดิม find({}) ส่งทุกสถานีให้ทุกบัญชี
     try:
-        stations = await loop.run_in_executor(
+        stations, chargers = await loop.run_in_executor(
             None,
-            lambda: list(
-                station_collection.find(
-                    station_query,
-                    {"_id": 0, "station_id": 1, "station_name": 1, "company": 1}
-                )
-            )
+            lambda: load_station_scope(
+                current, station_id,
+                station_fields=("station_id", "station_name", "company"),
+                charger_fields=("SN", "chargeBoxID", "station_id", "brand"),
+            ),
         )
     except Exception:
         traceback.print_exc()
-        stations = []
+        stations, chargers = [], []
 
     if not stations:
         return {"reports": [], "total": 0, "stations_count": 0}
@@ -300,21 +268,6 @@ async def get_all_station_pm_reports(
     station_name_map = {s["station_id"]: s.get("station_name", "-") for s in stations}
     # บริษัทเจ้าของสถานี — PM Dashboard ใช้กรอง COMPANY (แพทเทิร์นเดียวกับ CM)
     station_company_map = {s["station_id"]: (s.get("company") or "") for s in stations}
-
-    # ── 2. Chargers (sync PyMongo) ──────────────────────────────
-    try:
-        chargers = await loop.run_in_executor(
-            None,
-            lambda: list(
-                charger_collection.find(
-                    {"station_id": {"$in": station_ids}},
-                    {"_id": 0, "SN": 1, "chargeBoxID": 1, "station_id": 1, "brand": 1}
-                )
-            )
-        )
-    except Exception:
-        traceback.print_exc()
-        chargers = []
 
     sn_list = [
         (c["SN"], c.get("station_id", ""))
@@ -345,30 +298,21 @@ async def get_all_station_pm_reports(
     # ── 3. Fetch all sources concurrently ───────────────────────
     # CHARGER → keyed ด้วย SN ; MDB/CCB/CB-BOX/STATION → keyed ด้วย station_id
     # นับ "เอกสาร" ทั้ง report form + ไฟล์อัปโหลด (URL) ให้ตรงกับคอลัมน์/การ์ด
-    _station_keyed_report = [
-        ("MDB",     get_mdbpmreport_collection_for),
-        ("CCB",     get_ccbpmreport_collection_for),
-        ("CB-BOX",  get_cbboxpmreport_collection_for),
-        ("STATION", get_stationpmreport_collection_for),
-    ]
-    _station_keyed_url = [
-        ("MDB",     get_mdbpmurl_coll_upload),
-        ("CCB",     get_ccbpmurl_coll_upload),
-        ("CB-BOX",  get_cbboxpmurl_coll_upload),
-        ("STATION", get_stationpmurl_coll_upload),
-    ]
-    tasks = (
-        # report forms
-        [_fetch_sn_source("CHARGER", get_pmreport_collection_for, sn, sid, limit_per_source)
-         for sn, sid in sn_list]
-        + [_fetch_sn_source(label, fn, sid, sid, limit_per_source)
-           for sid in station_ids for label, fn in _station_keyed_report]
-        # uploaded files (URL)
-        + [_fetch_sn_source("CHARGER", get_pmurl_coll_upload, sn, sid, limit_per_source)
-           for sn, sid in sn_list]
-        + [_fetch_sn_source(label, fn, sid, sid, limit_per_source)
-           for sid in station_ids for label, fn in _station_keyed_url]
+    # ยิงเฉพาะ collection ที่มีอยู่จริง — ดู _existing_collection_names
+    existing = await _existing_collection_names(
+        [db for _, pairs, _ in _PM_TYPE_SOURCES for db, _ in pairs]
     )
+    station_pairs = [(sid, sid) for sid in station_ids]
+
+    tasks = []
+    for idx in (0, 1):            # 0 = report form, 1 = ไฟล์อัปโหลด (URL) — คงลำดับเดิม
+        for label, pairs, mode in _PM_TYPE_SOURCES:
+            db, fn = pairs[idx]
+            have = existing.get(db.name)   # None = ถามไม่สำเร็จ → ยิงทุกคีย์เหมือนเดิม
+            for key, sid in (sn_list if mode == "sn" else station_pairs):
+                if have is not None and key not in have:
+                    continue
+                tasks.append(_fetch_sn_source(label, fn, key, sid, limit_per_source))
 
     all_results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -416,12 +360,18 @@ async def get_all_station_pm_reports(
 # แต่ละ type: (label, [report getter, url getter], key_mode)
 #   key_mode "sn"  → นับต่อ SN ของตู้ชาร์จในสถานี
 #   key_mode "sid" → นับต่อ station_id
+# แต่ละคู่เป็น (db, getter) — ต้องรู้ db เพื่อถามชื่อ collection ที่มีจริงครั้งเดียวต่อ db
 _PM_TYPE_SOURCES = [
-    ("CHARGER", [get_pmreport_collection_for, get_pmurl_coll_upload], "sn"),
-    ("MDB",     [get_mdbpmreport_collection_for, get_mdbpmurl_coll_upload], "sid"),
-    ("CCB",     [get_ccbpmreport_collection_for, get_ccbpmurl_coll_upload], "sid"),
-    ("CB-BOX",  [get_cbboxpmreport_collection_for, get_cbboxpmurl_coll_upload], "sid"),
-    ("STATION", [get_stationpmreport_collection_for, get_stationpmurl_coll_upload], "sid"),
+    ("CHARGER", [(PMReportDB, get_pmreport_collection_for),
+                 (PMUrlDB, get_pmurl_coll_upload)], "sn"),
+    ("MDB",     [(MDBPMReportDB, get_mdbpmreport_collection_for),
+                 (MDBPMUrlDB, get_mdbpmurl_coll_upload)], "sid"),
+    ("CCB",     [(CCBPMReportDB, get_ccbpmreport_collection_for),
+                 (CCBPMUrlDB, get_ccbpmurl_coll_upload)], "sid"),
+    ("CB-BOX",  [(CBBOXPMReportDB, get_cbboxpmreport_collection_for),
+                 (CBBOXPMUrlDB, get_cbboxpmurl_coll_upload)], "sid"),
+    ("STATION", [(stationPMReportDB, get_stationpmreport_collection_for),
+                 (stationPMUrlDB, get_stationpmurl_coll_upload)], "sid"),
 ]
 _PM_TYPES = [t[0] for t in _PM_TYPE_SOURCES]
 
@@ -435,6 +385,35 @@ async def _count_collection(coll, filt: dict) -> int:
         return int(maybe)
     except Exception:
         return 0
+
+
+async def _existing_collection_names(dbs) -> dict[str, set[str] | None]:
+    """ชื่อ collection ที่มีอยู่จริง ถามครั้งเดียวต่อ DB
+
+    PM เก็บ 1 collection ต่อ SN / ต่อ station_id กระจายใน 10 DB ถ้าไม่ถามก่อน
+    เราจะยิง count/find/distinct ไปยัง collection ที่ "ไม่มีอยู่" หลายพันครั้งต่อ 1 request
+    (355 สถานี × 4 ชนิด × 2 + 692 SN × 2 = 4,224 คำสั่ง โดยมีจริงแค่ ~240)
+
+    ค่า None = ถามไม่สำเร็จ → ผู้เรียกต้องถอยไปใช้คีย์ทั้งหมดเหมือนเดิม (กันหน้าเว็บว่าง)
+    """
+    uniq = {db.name: db for db in dbs}
+    results = await asyncio.gather(
+        *(db.list_collection_names() for db in uniq.values()), return_exceptions=True
+    )
+    out: dict[str, set[str] | None] = {}
+    for name, names in zip(uniq.keys(), results):
+        if isinstance(names, BaseException):
+            traceback.print_exception(names)
+            out[name] = None
+        else:
+            out[name] = {n for n in names if not n.startswith("system.")}
+    return out
+
+
+def _keys_present(existing: dict[str, set[str] | None], db, keys):
+    """คัดเฉพาะคีย์ที่มี collection อยู่จริงใน db นั้น (ถามไม่สำเร็จ → คืนทั้งหมดตามเดิม)"""
+    have = existing.get(db.name)
+    return keys if have is None else [k for k in keys if k in have]
 
 
 @router.get("/pm-reports/counts")
@@ -460,30 +439,15 @@ async def get_pm_report_counts(
         date_filter = {"pm_date": {"$regex": f"^{re.escape(year)}-"}}
 
     try:
-        stations = await loop.run_in_executor(
-            None,
-            lambda: list(station_collection.find({}, {"_id": 0, "station_id": 1})),
-        )
+        stations, chargers = await loop.run_in_executor(None, load_station_scope, current)
     except Exception:
         traceback.print_exc()
-        stations = []
+        stations, chargers = [], []
 
     station_ids = [s["station_id"] for s in stations if s.get("station_id")]
     empty = {"counts": {}, "by_type": {t: 0 for t in _PM_TYPES}, "total": 0, "stations_count": 0}
     if not station_ids:
         return empty
-
-    try:
-        chargers = await loop.run_in_executor(
-            None,
-            lambda: list(charger_collection.find(
-                {"station_id": {"$in": station_ids}},
-                {"_id": 0, "SN": 1, "station_id": 1},
-            )),
-        )
-    except Exception:
-        traceback.print_exc()
-        chargers = []
 
     # SN ต่อสถานี
     sns_by_station: dict[str, list[str]] = {sid: [] for sid in station_ids}
@@ -493,36 +457,38 @@ async def get_pm_report_counts(
         if sn and sn not in ("-", "", None) and sid in sns_by_station:
             sns_by_station[sid].append(sn)
 
-    async def _count_station_by_type(sid: str):
-        per_type: dict[str, int] = {}
-        for label, getters, mode in _PM_TYPE_SOURCES:
-            n = 0
-            keys = sns_by_station.get(sid, []) if mode == "sn" else [sid]
-            for key in keys:
-                for fn in getters:
-                    try:
-                        n += await _count_collection(fn(key), date_filter)
-                    except Exception:
-                        pass
-            per_type[label] = n
-        return (sid, per_type)
-
-    results = await asyncio.gather(
-        *[_count_station_by_type(sid) for sid in station_ids],
-        return_exceptions=True,
+    # นับเฉพาะ collection ที่มีอยู่จริง — ดู _existing_collection_names
+    existing = await _existing_collection_names(
+        [db for _, pairs, _ in _PM_TYPE_SOURCES for db, _ in pairs]
     )
 
     # counts[sid] = { TYPE: n, ... , "total": n }  → คอลัมน์เลือกแสดงตาม type ได้
-    counts: dict[str, dict] = {}
+    counts: dict[str, dict] = {sid: {t: 0 for t in _PM_TYPES} for sid in station_ids}
+
+    jobs: list[tuple[str, str]] = []      # (station_id, type label) ขนานกับ tasks
+    tasks = []
+    for label, pairs, mode in _PM_TYPE_SOURCES:
+        for db, fn in pairs:
+            for sid in station_ids:
+                keys = sns_by_station.get(sid, []) if mode == "sn" else [sid]
+                for key in _keys_present(existing, db, keys):
+                    try:
+                        coll = fn(key)
+                    except Exception:
+                        continue      # คีย์ผิดรูป (เช่น station_id แปลก) — ข้ามเหมือนเดิม
+                    jobs.append((sid, label))
+                    tasks.append(_count_collection(coll, date_filter))
+
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    for (sid, label), n in zip(jobs, results):
+        if isinstance(n, int):
+            counts[sid][label] += n
+
     by_type: dict[str, int] = {t: 0 for t in _PM_TYPES}
-    for r in results:
-        if isinstance(r, tuple):
-            sid, per_type = r
-            per_type = {t: per_type.get(t, 0) for t in _PM_TYPES}
-            per_type["total"] = sum(per_type.values())
-            counts[sid] = per_type
-            for t in _PM_TYPES:
-                by_type[t] += per_type[t]
+    for sid, per_type in counts.items():
+        per_type["total"] = sum(per_type[t] for t in _PM_TYPES)
+        for t in _PM_TYPES:
+            by_type[t] += per_type[t]
 
     return {
         "counts": counts,
@@ -551,29 +517,14 @@ async def get_pm_report_months(current: UserClaims = Depends(get_current_user)):
     """
     loop = asyncio.get_event_loop()
     try:
-        stations = await loop.run_in_executor(
-            None,
-            lambda: list(station_collection.find({}, {"_id": 0, "station_id": 1})),
-        )
+        stations, chargers = await loop.run_in_executor(None, load_station_scope, current)
     except Exception:
         traceback.print_exc()
-        stations = []
+        stations, chargers = [], []
 
     station_ids = [s["station_id"] for s in stations if s.get("station_id")]
     if not station_ids:
         return {"months": []}
-
-    try:
-        chargers = await loop.run_in_executor(
-            None,
-            lambda: list(charger_collection.find(
-                {"station_id": {"$in": station_ids}},
-                {"_id": 0, "SN": 1},
-            )),
-        )
-    except Exception:
-        traceback.print_exc()
-        chargers = []
 
     sns = [c["SN"] for c in chargers if c.get("SN") and c["SN"] not in ("-", "", None)]
 
@@ -584,11 +535,15 @@ async def get_pm_report_months(current: UserClaims = Depends(get_current_user)):
             if isinstance(d, str) and re.match(r"^\d{4}-\d{2}", d):
                 months.add(d[:7])
 
+    existing = await _existing_collection_names(
+        [db for _, pairs, _ in _PM_TYPE_SOURCES for db, _ in pairs]
+    )
+
     tasks = []
-    for _label, getters, mode in _PM_TYPE_SOURCES:
+    for _label, pairs, mode in _PM_TYPE_SOURCES:
         keys = sns if mode == "sn" else station_ids
-        for key in keys:
-            for fn in getters:
+        for db, fn in pairs:
+            for key in _keys_present(existing, db, keys):
                 try:
                     tasks.append(_collect(fn(key)))
                 except Exception:

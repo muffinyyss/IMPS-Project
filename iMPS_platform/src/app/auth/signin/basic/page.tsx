@@ -3,6 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 import React, { useState } from "react";
 import Link from "next/link";
+import HoverPrefetchLink from "@/components/HoverPrefetchLink";
 import { ArrowLeftIcon } from "@heroicons/react/24/outline";
 import { useRouter } from "next/navigation";
 // @material-tailwind/react
@@ -13,6 +14,7 @@ import {
   Typography,
 } from "@/components/MaterialTailwind";
 import useLanguage, { type Lang } from "@/utils/useLanguage";
+import { safeNextPath } from "@/utils/safe-next";
 // import { headers } from "next/headers";
 
 // ===== Translations =====
@@ -92,9 +94,7 @@ export default function BasicPage() {
         throw new Error((data as any)?.detail || `${t("loginFailed", lang)} ❌`);
       }
 
-      // ✅ เก็บคีย์ให้ “ตรงกับ Navbar”
-      localStorage.setItem("access_token", data.access_token);
-      localStorage.setItem("refresh_token", data.refresh_token);
+      // token อยู่ในคุกกี้ HttpOnly ที่ backend ตั้งให้แล้ว — เก็บแค่โปรไฟล์ไว้แสดงเมนูตาม role
       localStorage.setItem("user", JSON.stringify(data.user));
       localStorage.setItem("userRole", data.user?.role ?? "");
 
@@ -102,7 +102,9 @@ export default function BasicPage() {
       window.dispatchEvent(new Event("auth"));
 
       setMessage(data?.message || t("loginSuccess", lang));
-      router.push("/pages/mainpages/home");
+      // กลับไปหน้าที่ขอไว้ก่อนถูกส่งมา login (middleware / session หมดอายุ) — เฉพาะ path ภายในเว็บ
+      const safeNext = safeNextPath(new URLSearchParams(window.location.search).get("next"));
+      router.push(safeNext || "/pages/mainpages/home");
     } catch (err: any) {
       console.error(err);
       setMessage(err?.message || t("serverError", lang));
@@ -117,7 +119,7 @@ export default function BasicPage() {
 
       {/* ปุ่ม Back มุมซ้ายบน */}
       <div className="tw-absolute tw-top-4 tw-left-4">
-        <Link href="/">
+        <Link href="/" prefetch={false}>
           <Button
             variant="outlined"
             size="sm"
@@ -192,14 +194,14 @@ export default function BasicPage() {
             </div>
 
             <div className="tw-flex tw-justify-end tw-mt-2">
-              <Link href="/auth/reset/basic-reset">
+              <HoverPrefetchLink href="/auth/reset/basic-reset">
                 <Typography
                   variant="small"
                   className="!tw-font-medium !tw-text-blue-gray-500 hover:!tw-text-blue-gray-900 tw-transition-colors"
                 >
                   {t("forgotPassword", lang)}
                 </Typography>
-              </Link>
+              </HoverPrefetchLink>
             </div>
 
             {/* <Button className="tw-mt-6" fullWidth type="submit">

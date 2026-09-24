@@ -1279,9 +1279,8 @@ function BackgroundUploadBanner({ lang }: { lang: Lang }) {
 }
 
 async function fetchReport(reportId: string, stationId: string) {
-    const token = localStorage.getItem("access_token") ?? "";
     const url = `${API_BASE}/ccbpmreport/get?station_id=${stationId}&report_id=${reportId}`;
-    const res = await fetch(url, { method: "GET", headers: token ? { Authorization: `Bearer ${token}` } : undefined, credentials: "include" });
+    const res = await fetch(url, { method: "GET", credentials: "include" });
     if (!res.ok) throw new Error(await res.text());
     return await res.json();
 }
@@ -1728,11 +1727,9 @@ export default function CCBPMReport() {
     }, [stationId, editId, postKey, postApiLoaded, reviewMode]);
 
     useEffect(() => {
-        const token = typeof window !== "undefined" ? localStorage.getItem("access_token") ?? "" : "";
-        if (!token) return;
         (async () => {
             try {
-                const res = await fetch(`${API_BASE}/me`, { method: "GET", headers: { Authorization: `Bearer ${token}` }, credentials: "include" });
+                const res = await fetch(`${API_BASE}/me`, { method: "GET", credentials: "include" });
                 if (!res.ok) return;
                 const data: Me = await res.json();
                 setMe(data);
@@ -1873,7 +1870,6 @@ export default function CCBPMReport() {
         // uploadedIds จำเป็นเพราะ setPhotos() ยังไม่ flush เข้า photosRef ภายใน tick เดียวกัน
         const pending = (items || []).filter(p => !p.isNA && !p.uploaded && !uploadedIds.has(p.id) && (p.file || p.ref));
         if (pending.length === 0) return;
-        const token = localStorage.getItem("access_token");
         const url = `${API_BASE}/${PM_PREFIX}/${reportId}/post/photos`;
         // ส่งทีละรูป (1 request/รูป) เพื่อไม่ให้ body รวมเกิน limit ของ nginx (กัน 413 เมื่อข้อหนึ่งมีหลายรูป)
         for (const p of pending) {
@@ -1883,7 +1879,7 @@ export default function CCBPMReport() {
             form.append("group", group);
             form.append("side", "post");
             form.append("files", compressed);
-            const res = await fetch(url, { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : undefined, body: form, credentials: "include" });
+            const res = await fetch(url, { method: "POST", body: form, credentials: "include" });
             if (!res.ok) throw new Error(await res.text());
             uploadedIds.add(p.id);
             setPhotos(prev => ({ ...prev, [stateKey]: ((prev as any)[stateKey] || []).map((x: PhotoItem) => x.id === p.id ? { ...x, uploaded: true } : x) }));
@@ -1923,9 +1919,8 @@ export default function CCBPMReport() {
         const expected = expectedCountByGroup(photosRef.current as any, toGroupKey);
         if (Object.keys(expected).length === 0) return true;
 
-        const token = localStorage.getItem("access_token");
         const res = await fetch(`${API_BASE}/${PM_PREFIX}/get?station_id=${encodeURIComponent(sid)}&report_id=${reportId}`,
-            { headers: token ? { Authorization: `Bearer ${token}` } : undefined, credentials: "include" });
+            { credentials: "include" });
         if (!res.ok) throw new Error(await res.text());
         const doc = await res.json() as { photos?: Record<string, unknown[]> };
         const shortfall = findShortfall(expected, doc?.photos);
@@ -2000,7 +1995,6 @@ export default function CCBPMReport() {
         if (submitting) return;
         setSubmitting(true);
         try {
-            const token = localStorage.getItem("access_token");
             // ฟอร์มนี้เหลือแค่ Post-PM แล้ว (ไม่มีด่าน Pre ที่เคยสร้าง report_id ให้)
             // ใบใหม่ให้ backend สร้างรายงานตอนกดบันทึก — ถ้าเคยกดแล้วอัปรูปหลุด ใช้ id เดิมจาก draft กันได้รายงานซ้ำ
             let finalReportId: string = reportId || editId || loadDraftLocal<any>(postKey)?.pendingReportId || "";
@@ -2023,7 +2017,7 @@ export default function CCBPMReport() {
 
             const res = await fetch(`${API_BASE}/${PM_PREFIX}/submit`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+                headers: { "Content-Type": "application/json" },
                 credentials: "include",
                 body: JSON.stringify(payload),
             });
@@ -2057,7 +2051,6 @@ export default function CCBPMReport() {
 
             const finalizeRes = await fetch(`${API_BASE}/${PM_PREFIX}/${finalReportId}/finalize`, {
                 method: "POST",
-                headers: token ? { Authorization: `Bearer ${token}` } : undefined,
                 credentials: "include",
                 body: new URLSearchParams({ station_id: stationId }),
             });

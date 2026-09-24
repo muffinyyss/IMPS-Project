@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
 import { aiApi, Station } from "../lib/api";
+import { onSelectionChange } from "@/utils/selection-events";
 
 export function useStation() {
     const [activeSn, setActiveSn]   = useState<string>("");
@@ -56,24 +57,9 @@ export function useStation() {
             }
         };
 
-        window.addEventListener("charger:selected",    handleChange);
-        window.addEventListener("charger:deselected",  handleChange);
-        window.addEventListener("station:selected",    handleChange);
-        window.addEventListener("localStorageChange",  handleChange);
-
-        // Polling fallback ทุก 3s กันกรณี event ไม่ fire
-        const interval = setInterval(() => {
-            const sn = localStorage.getItem("selected_sn") || "";
-            if (sn && sn !== activeSn) switchStation(sn);
-        }, 3000);
-
-        return () => {
-            window.removeEventListener("charger:selected",   handleChange);
-            window.removeEventListener("charger:deselected", handleChange);
-            window.removeEventListener("station:selected",   handleChange);
-            window.removeEventListener("localStorageChange", handleChange);
-            clearInterval(interval);
-        };
+        // เดิมมี polling fallback ทุก 3 s เพราะ event ไม่ครอบคลุมทุกกรณี
+        // selection-events รวม pushState + localStorage ไว้แล้ว จึงไม่ต้อง poll
+        return onSelectionChange(handleChange);
     }, [activeSn, switchStation]);
 
     return { activeSn, activeName, stations, loading, switchStation, loadStations };

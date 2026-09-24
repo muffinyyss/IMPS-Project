@@ -48,6 +48,10 @@ iMPS_platform/backend/uploads/
 .env.local
 backend/uploads/
 
+# Playwright (smoke test)
+/test-results/
+/playwright-report/
+
 # scratch and hand-off material (build script output, rendered previews, model snapshots)
 /output/
 /tmp/

@@ -17,6 +17,8 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
+from contextlib import asynccontextmanager  # noqa: E402
+
 import main  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from jose import jwt  # noqa: E402
@@ -26,6 +28,15 @@ from config import (  # noqa: E402
 )
 from routers.pm_helpers import UPLOADS_ROOT  # noqa: E402
 
+
+@asynccontextmanager
+async def _no_lifespan(_app):
+    # ไม่เปิด watcher อีเมล / migration ตอนเทสต์ — แต่ต้องใช้ event loop เดียวตลอด
+    # (Motor ผูกกับ loop แรกที่ใช้ TestClient แบบไม่มี with จะเปิด loop ใหม่ทุก request)
+    yield
+
+
+main.app.router.lifespan_context = _no_lifespan
 client = TestClient(main.app)
 
 STATION = "STN_TEST_UPLOADS_ACCESS"
@@ -75,6 +86,7 @@ def teardown() -> None:
 
 
 def main_test() -> int:
+    client.__enter__()
     rel_station, rel_sn = setup()
     try:
         print("--- /uploads: ปฏิเสธ ---")

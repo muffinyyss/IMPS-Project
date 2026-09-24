@@ -41,8 +41,9 @@ import {
 
 // components
 import AddUser, { NewUserPayload } from "@/app/dashboard/users/components/adduser";
-import { apiFetch } from "@/utils/api";
+import { apiFetch, getSessionProfile } from "@/utils/api";
 import useLanguage, { type Lang } from "@/utils/useLanguage";
+import TableSkeletonRows from "@/components/TableSkeletonRows";
 
 /* -------------------- Translations -------------------- */
 const T = {
@@ -122,26 +123,7 @@ export type UserUpdatePayload = {
   tel?: string;
 };
 
-type JwtClaims = {
-  sub: string;
-  user_id?: string;
-  username?: string;
-  role?: string;
-  company?: string | null;
-  station_ids?: string[];
-  exp?: number;
-};
 
-function decodeJwt(token: string | null): JwtClaims | null {
-  try {
-    if (!token) return null;
-    const payload = token.split(".")[1];
-    const json = atob(payload.replace(/-/g, "+").replace(/_/g, "/"));
-    return JSON.parse(json);
-  } catch {
-    return null;
-  }
-}
 
 /* -------------------- Component -------------------- */
 export default function SearchDataTables() {
@@ -153,29 +135,16 @@ export default function SearchDataTables() {
   const [meRole, setMeRole] = useState<string>("user");
   const isAdmin = meRole === "admin";
 
-  const getToken = () =>
-    localStorage.getItem("access_token") ||
-    localStorage.getItem("accessToken") ||
-    "";
-
-  const isTokenExpired = (token: string) => {
-    const claims = decodeJwt(token);
-    if (!claims?.exp) return true;
-    return claims.exp <= Math.floor(Date.now() / 1000);
-  };
-
-  // ตรวจ token + ตั้ง meRole + ปักธง authChecked (และ redirect ถ้าไม่ผ่าน)
+  // ตรวจ session + ตั้ง meRole + ปักธง authChecked (และ redirect ถ้าไม่ผ่าน)
+  // JWT อยู่ในคุกกี้ HttpOnly: อายุ token ตรวจที่ middleware + backend ส่วน role มากับโปรไฟล์
   useEffect(() => {
-    const token = getToken();
-    if (!token || isTokenExpired(token)) {
-      localStorage.removeItem("access_token");
-      localStorage.removeItem("accessToken");
+    const profile = getSessionProfile();
+    if (!profile) {
       const next = encodeURIComponent(window.location.pathname);
       router.replace(`/auth/signin/basic?next=${next}`);
       return;
     }
-    const claims = decodeJwt(token);
-    if (claims?.role) setMeRole(claims.role);
+    if (profile.role) setMeRole(profile.role);
     setAuthChecked(true);
   }, [router]);
 
@@ -694,9 +663,9 @@ export default function SearchDataTables() {
         </CardBody>
 
         <CardFooter className="tw-p-0 tw-overflow-scroll">
-          {loading ? (
-            <div className="tw-p-4">{t("loading", lang)}</div>
-          ) : err ? (
+          {/* เดิมซ่อนทั้งตาราง (รวมหัวตาราง) ระหว่างโหลด แล้วค่อยโผล่มาทั้งก้อน
+              ทำให้หน้าขยับทั้งบล็อก — ตอนนี้คงตารางไว้ แล้วใส่โครงร่างใน tbody แทน */}
+          {err ? (
             <div className="tw-p-4 tw-text-red-600">{err}</div>
           ) : (
             <table className="tw-table-auto tw-text-left tw-w-full tw-min-w-max">
@@ -722,7 +691,9 @@ export default function SearchDataTables() {
                 ))}
               </thead>
               <tbody>
-                {table.getRowModel().rows.length ? (
+                {loading ? (
+                  <TableSkeletonRows rows={table.getState().pagination.pageSize} cols={columns.length} />
+                ) : table.getRowModel().rows.length ? (
                   table.getRowModel().rows.map((row) => (
                     <tr key={row.id} className="odd:tw-bg-white even:tw-bg-blue-gray-50/30 hover:tw-bg-blue-50/40 hover:tw-shadow-[inset_3px_0_0_0_#2196F3] tw-transition-colors">
                       {row.getVisibleCells().map((cell) => (

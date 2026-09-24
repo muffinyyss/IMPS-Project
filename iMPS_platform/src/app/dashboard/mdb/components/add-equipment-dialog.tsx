@@ -104,14 +104,12 @@ export default function AddEquipmentDialog({
         setSaving(true);
         setToast(null);
         try {
-            const token = localStorage.getItem("access_token") || localStorage.getItem("accessToken") || "";
 
             const payload = { station_id: stationId, topic: topic.trim(), broker: broker.trim() };
             const res = await fetch(`${API_BASE}/MDB/equipment`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
-                    ...(token ? { Authorization: `Bearer ${token}` } : {}),
                 },
                 credentials: "include",
                 body: JSON.stringify(payload),

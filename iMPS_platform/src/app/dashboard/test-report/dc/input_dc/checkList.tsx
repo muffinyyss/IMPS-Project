@@ -688,7 +688,7 @@ export default function DCForm() {
 
   (async () => {
     try {
-      const res = await fetch(`${API_BASE}/station/info/public?sn=${encodeURIComponent(sn)}`, { cache: "no-store" });
+      const res = await fetch(`${API_BASE}/station/info/public?sn=${encodeURIComponent(sn)}`, { cache: "no-store", credentials: "include" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data: { station: StationPublic } = await res.json();
       if (!alive) return;

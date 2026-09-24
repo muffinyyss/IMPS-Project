@@ -98,13 +98,11 @@ export default function ChargeBoxId() {
     setLoading(true);
     setError(null);
     try {
-      const token = typeof window !== "undefined" ? localStorage.getItem("access_token") || "" : "";
       const res = await fetch(`${API_BASE}/charger/info?sn=${encodeURIComponent(SN)}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        credentials: token ? "omit" : "include",
+        credentials: "include",
         signal,
       });
-      if (res.status === 401) { if (typeof window !== "undefined") localStorage.removeItem("access_token"); throw new Error("Unauthorized"); }
+      if (res.status === 401) throw new Error("Unauthorized");
       if (res.status === 403) throw new Error("Forbidden");
       if (res.status === 404) throw new Error("Charger not found");
       if (!res.ok) { let msg = `HTTP ${res.status}`; try { const j = await res.json(); msg = j.detail || j.message || msg; } catch { } throw new Error(msg); }
@@ -149,11 +147,10 @@ export default function ChargeBoxId() {
     setSaving(true);
     setSaveMsg(null);
     try {
-      const token = typeof window !== "undefined" ? localStorage.getItem("access_token") || "" : "";
       const res = await fetch(`${API_BASE}/charger/setting`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        credentials: token ? "omit" : "include",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ SN, chargeBoxID: editChargeBoxId.trim(), ocppUrl: editOcppUrl.trim() }),
       });
       if (!res.ok) {

@@ -40,6 +40,14 @@ class MongoDBConfig:
     config_collection: str = "charger"
     # mdb_realtime_db: str = "MDB_realtime"
     # mdb_history_db: str = "MDB_history"
+    # Collections unifiees de la migration « 1 collection par SN » -> « 1 collection
+    # + champ sn ». Doit rester aligne sur _UNIFIED_NAMES (backend/routers/stations.py)
+    # et sur UNIFIED (backend/scripts/migrate_per_sn_collections.py).
+    unified_collections: Dict[str, str] = field(default_factory=lambda: {
+        "edgeboxStatus": "status_by_sn",
+        "settingParameter": "parameters_by_sn",
+    })
+
     edgebox_status_db: str = "edgeboxStatus"
     pi5_status_db: str = "pi5Status"
     router_status_db: str = "routerStatus"
