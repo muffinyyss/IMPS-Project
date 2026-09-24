@@ -805,7 +805,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
                           <td key={cell.id} style={{ width: cell.column.getSize() }}
                             className={`!tw-border-y !tw-border-x-0 tw-align-middle ${align === "center" ? "tw-text-center" : align === "right" ? "tw-text-right" : "tw-text-left"
                               }`}>
-                            <Typography variant="small"
+                            <Typography as="div" variant="small"
                               className="!tw-font-normal !tw-text-blue-gray-600 tw-py-3 md:tw-py-4 tw-px-3 md:tw-px-4">
                               {flexRender(cell.column.columnDef.cell, cell.getContext())}
                             </Typography>

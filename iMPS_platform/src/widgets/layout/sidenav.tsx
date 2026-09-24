@@ -63,8 +63,6 @@ const SKIP_MINI = new Set(["my profile", "logout"]);
 const SafeListItemPrefix = ({ children }: { children: React.ReactNode }) => (
   <ListItemPrefix
     placeholder=""
-    onPointerEnterCapture={undefined}
-    onPointerLeaveCapture={undefined}
     onResize={undefined}
     onResizeCapture={undefined}
   >

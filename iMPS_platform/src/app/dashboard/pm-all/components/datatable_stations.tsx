@@ -1350,7 +1350,7 @@ export function SearchDataTables() {
                                         >
                                             {row.getVisibleCells().map((cell) => (
                                                 <td key={cell.id} className={`!tw-border-y !tw-border-x-0 tw-px-3 tw-py-3 ${cell.column.id === "pm_count" ? "tw-text-center" : cell.column.id === "station_name" ? "tw-w-full" : ""}`}>
-                                                    <Typography variant="small" className={`!tw-font-normal !tw-text-blue-gray-600 ${cell.column.id === "pm_count" ? "tw-text-center" : ""}`}>
+                                                    <Typography as="div" variant="small" className={`!tw-font-normal !tw-text-blue-gray-600 ${cell.column.id === "pm_count" ? "tw-text-center" : ""}`}>
                                                         {flexRender(cell.column.columnDef.cell, cell.getContext())}
                                                     </Typography>
                                                 </td>

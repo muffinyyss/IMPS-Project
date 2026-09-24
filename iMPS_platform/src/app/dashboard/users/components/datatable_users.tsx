@@ -727,7 +727,7 @@ export default function SearchDataTables() {
                     <tr key={row.id} className="odd:tw-bg-white even:tw-bg-blue-gray-50/30 hover:tw-bg-blue-50/40 hover:tw-shadow-[inset_3px_0_0_0_#2196F3] tw-transition-colors">
                       {row.getVisibleCells().map((cell) => (
                         <td key={cell.id} className="!tw-border-y !tw-border-x-0">
-                          <Typography variant="small" className="!tw-font-normal !tw-text-blue-gray-500 tw-py-4 tw-px-4">
+                          <Typography as="div" variant="small" className="!tw-font-normal !tw-text-blue-gray-500 tw-py-4 tw-px-4">
                             {flexRender(cell.column.columnDef.cell, cell.getContext())}
                           </Typography>
                         </td>
