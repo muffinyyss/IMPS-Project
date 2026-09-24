@@ -1,50 +1,11 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React from "react";
 
 // @material-tailwind/react
 import { Typography } from "@material-tailwind/react";
-import { apiFetch, getAccessToken } from "@/utils/api";
 
 export default function Landing() {
-  const [users, setUsers] = useState<string[]>([]);
-  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
-
-  // เช็คสถานะล็อกอินจาก localStorage
-  useEffect(() => {
-    setIsLoggedIn(!!getAccessToken());
-  }, []);
-
-  // ถ้าล็อกอินแล้ว ค่อย fetch รายชื่อผู้ใช้
-  useEffect(() => {
-    if (!isLoggedIn) {
-      setUsers([]);
-      return;
-    }
-
-    (async () => {
-      try {
-        // apiFetch จัดการให้หมด:
-        // ✅ ใส่ Authorization header
-        // ✅ ใส่ base URL
-        // ✅ refresh token อัตโนมัติ
-        // ✅ เด้ง login ถ้า session หมด
-        const res = await apiFetch("/");
-        const data = await res.json();
-
-        const names = Array.isArray(data)
-          ? data.map((u: any) => u.username ?? String(u))
-          : [];
-
-        setUsers(names);
-      } catch {
-        // ถ้า UNAUTHENTICATED → apiFetch เด้ง login ให้แล้ว
-        // ถ้า network error → apiFetch แสดง toast ให้แล้ว
-        setUsers([]);
-      }
-    })();
-  }, [isLoggedIn]);
-
   return (
     <div className="tw-min-h-screen tw-bg-white">
       {/* HERO */}
@@ -76,20 +37,6 @@ export default function Landing() {
           />
         </div>
       </section>
-
-      {/* Users list (ถ้าล็อกอินแล้ว) */}
-      {isLoggedIn && users.length > 0 && (
-        <section className="tw-mx-auto tw-max-w-7xl tw-px-4 tw-mt-20">
-          <Typography variant="h4" className="tw-mb-4">
-            Users
-          </Typography>
-          <ul className="tw-list-disc tw-pl-6 tw-text-gray-700">
-            {users.map((name, i) => (
-              <li key={i}>{name}</li>
-            ))}
-          </ul>
-        </section>
-      )}
 
       <div className="tw-mt-20" />
     </div>
