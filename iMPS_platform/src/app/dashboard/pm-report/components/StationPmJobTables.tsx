@@ -25,8 +25,9 @@ import {
   Button, Card, CardBody, CardHeader, Dialog, DialogBody, DialogFooter, DialogHeader, Input, Typography,
 } from "@material-tailwind/react";
 import {
-  ArrowLeftIcon, CheckCircleIcon, DocumentArrowDownIcon, EyeIcon, PencilSquareIcon, PlusIcon,
+  ArrowLeftIcon, CheckCircleIcon, DocumentArrowDownIcon, EyeIcon, PencilSquareIcon, PlusIcon, XMarkIcon,
 } from "@heroicons/react/24/outline";
+import { discardOpenFormDraft } from "@/app/dashboard/pm-report/lib/discardDraft";
 import { apiFetch } from "@/utils/api";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
 import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
@@ -170,6 +171,11 @@ const T = {
   },
   fill: { th: "กรอก", en: "Fill in" },
   edit: { th: "แก้ไข", en: "Edit" },
+  cancelEdit: { th: "ยกเลิกการแก้ไข", en: "Cancel edit" },
+  cancelEditConfirm: {
+    th: "ยกเลิกการแก้ไข?\nสิ่งที่แก้ไว้ (รวมรูปที่แนบใหม่) จะหายทั้งหมด เอกสารกลับเป็นแบบที่ส่งไว้",
+    en: "Cancel editing?\nAll changes (including newly attached photos) will be discarded and the document stays as submitted.",
+  },
   view: { th: "ดู", en: "View" },
   notFilled: { th: "ยังไม่กรอก", en: "Not filled" },
   downloadPdf: { th: "PDF ทั้งใบ", en: "Full PDF" },
@@ -689,6 +695,20 @@ export default function StationPmJobTables() {
         <PencilSquareIcon className="tw-h-4 tw-w-4" /> {t("edit", lang)}
       </Button>
     );
+    // กำลังแก้ส่วนที่ส่งแล้ว (เข้ามาจากปุ่ม "แก้ไข") — ยกเลิกได้ ทิ้งสิ่งที่แก้ในเครื่องแล้วกลับหน้าดู
+    // (ส่วนที่ยังเป็น draft เช่นโดนตีกลับ ไม่ได้มาจากปุ่มนี้ ใช้ปุ่มย้อนกลับตามเดิม)
+    const editingSent = !viewing && !!openedSection?.report_id && sectionStatus === "wait for approve";
+    const cancelEdit = async () => {
+      if (!window.confirm(t("cancelEditConfirm", lang))) return;
+      try { await discardOpenFormDraft(); } catch (err) { console.error("discard draft failed:", err); }
+      goto({ review: "1", approve: null });
+    };
+    const cancelButton = editingSent && (
+      <Button size="sm" variant="outlined" onClick={() => { void cancelEdit(); }} className="tw-flex tw-items-center tw-gap-1.5">
+        <XMarkIcon className="tw-h-4 tw-w-4" /> {t("cancelEdit", lang)}
+      </Button>
+    );
+    const actionButton = editButton || cancelButton;
     return (
       <div className="tw-mt-4 sm:tw-mt-6 lg:tw-mt-8">
         <div className="tw-mb-3 tw-flex tw-items-center tw-justify-between tw-gap-2">
@@ -696,11 +716,11 @@ export default function StationPmJobTables() {
             <ArrowLeftIcon className="tw-h-4 tw-w-4" />
             {backLabel} · {t("back", lang)}
           </Button>
-          {editButton}
+          {actionButton}
         </div>
         <SectionForm key={viewing ? "view" : "edit"} />
-        {editButton && (
-          <div className="tw-mx-auto tw-mt-4 tw-flex tw-max-w-6xl tw-justify-end">{editButton}</div>
+        {actionButton && (
+          <div className="tw-mx-auto tw-mt-4 tw-flex tw-max-w-6xl tw-justify-end">{actionButton}</div>
         )}
       </div>
     );

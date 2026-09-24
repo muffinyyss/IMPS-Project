@@ -14,6 +14,7 @@ import { ensureViewableImage } from "@/utils/heic";
 import { collectPending, unrecoverablePhotos, expectedCountByGroup, findShortfall, shortfallMessage, pendingMessage, unrecoverableMessage } from "@/utils/pm-photo-sync";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
 import { pmFormReturnRoute } from "@/app/dashboard/pm-report/lib/origin";
+import { registerDraftDiscard } from "@/app/dashboard/pm-report/lib/discardDraft";
 import { apiFetch } from "@/utils/api";
 import { serverPhotosToForm, formKeyFromForward, measureAsText, mergeDraftPhotos, deleteRemovedServerPhotos, isServerPhoto, type ViewPhoto } from "@/app/dashboard/pm-report/lib/reviewData";
 import { useDebouncedEffect } from "@/app/dashboard/pm-report/lib/useDebouncedEffect";
@@ -1065,6 +1066,11 @@ export default function CBBOXPMForm() {
     const [restoredKey, setRestoredKey] = useState<string | null>(null);
     // ส่งเสร็จแล้วล้าง draft — autosave ที่ค้างอยู่ (รวมตอนออกจากหน้า) ห้ามเขียนกลับ
     const draftClearedRef = useRef(false);
+    // ปุ่ม "ยกเลิกการแก้ไข" ที่หน้ารวมล้าง draft ของฟอร์มนี้ผ่านตัวนี้ (หน้ารวมไม่รู้สูตร key ของแต่ละฟอร์ม)
+    useEffect(() => registerDraftDiscard(async () => {
+        draftClearedRef.current = true; // กัน autosave ที่ค้างอยู่เขียนกลับมาตอนออกจากหน้า
+        await clearDraftLocal(postKey);
+    }), [postKey]);
     useEffect(() => { draftClearedRef.current = false; }, [postKey]);
     const restoringKeyRef = useRef<string | null>(null);
 
