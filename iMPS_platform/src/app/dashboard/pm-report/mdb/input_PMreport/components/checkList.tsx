@@ -22,6 +22,7 @@ import { useLanguage, type Lang } from "@/utils/useLanguage";
 import { apiFetch } from "@/utils/api";
 import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
 import { pmFormReturnRoute } from "@/app/dashboard/pm-report/lib/origin";
+import { registerDraftDiscard } from "@/app/dashboard/pm-report/lib/discardDraft";
 import { serverPhotosToForm, mergeDraftPhotos, deleteRemovedServerPhotos, isServerPhoto, type ViewPhoto } from "@/app/dashboard/pm-report/lib/reviewData";
 import { useDebouncedEffect } from "@/app/dashboard/pm-report/lib/useDebouncedEffect";
 
@@ -1028,6 +1029,11 @@ export default function MDBPMForm() {
     const [restoredKey, setRestoredKey] = useState<string | null>(null);
     // ส่งเสร็จแล้วล้าง draft — autosave ที่ค้างอยู่ (รวมตอนออกจากหน้า) ห้ามเขียนกลับ
     const draftClearedRef = useRef(false);
+    // ปุ่ม "ยกเลิกการแก้ไข" ที่หน้ารวมล้าง draft ของฟอร์มนี้ผ่านตัวนี้ (หน้ารวมไม่รู้สูตร key ของแต่ละฟอร์ม)
+    useEffect(() => registerDraftDiscard(async () => {
+        draftClearedRef.current = true; // กัน autosave ที่ค้างอยู่เขียนกลับมาตอนออกจากหน้า
+        await clearDraftLocal(currentDraftKey);
+    }), [currentDraftKey]);
     useEffect(() => { draftClearedRef.current = false; }, [currentDraftKey]);
 
     const reportIdRef = useRef<string | null>(null);

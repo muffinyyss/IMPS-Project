@@ -11,6 +11,7 @@ import Image from "next/image";
 import { draftKey, saveDraftLocal, loadDraftLocal, clearDraftLocal } from "../lib/draft";
 import { useRouter, useSearchParams } from "next/navigation";
 import { pmFormReturnRoute } from "@/app/dashboard/pm-report/lib/origin";
+import { registerDraftDiscard } from "@/app/dashboard/pm-report/lib/discardDraft";
 import { serverPhotosToForm, formKeyFromForward, measureAsText, mergeDraftPhotos, deleteRemovedServerPhotos, isServerPhoto, type ViewPhoto } from "@/app/dashboard/pm-report/lib/reviewData";
 import { useDebouncedEffect } from "@/app/dashboard/pm-report/lib/useDebouncedEffect";
 import PmApprovalBar from "@/app/dashboard/pm-report/components/PmApprovalBar";
@@ -1870,6 +1871,11 @@ export default function ChargerPMForm() {
     const draftRestored = restoredKey === postKey;
     // ตั้งเป็น true หลังบันทึกสำเร็จและล้าง draft แล้ว
     const draftClearedRef = useRef(false);
+    // ปุ่ม "ยกเลิกการแก้ไข" ที่หน้ารวมล้าง draft ของฟอร์มนี้ผ่านตัวนี้ (หน้ารวมไม่รู้สูตร key ของแต่ละฟอร์ม)
+    useEffect(() => registerDraftDiscard(async () => {
+        draftClearedRef.current = true; // กัน autosave ที่ค้างอยู่เขียนกลับมาตอนออกจากหน้า
+        await clearDraftLocal(postKey);
+    }), [postKey]);
     useEffect(() => { draftClearedRef.current = false; }, [postKey]);
 
     useEffect(() => {
