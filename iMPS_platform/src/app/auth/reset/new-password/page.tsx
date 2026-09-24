@@ -124,8 +124,6 @@ function NewPasswordForm() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 crossOrigin={undefined}
-                onPointerEnterCapture={undefined}
-                onPointerLeaveCapture={undefined}
                 icon={<EyeIcon show={showPassword} onToggle={() => setShowPassword(!showPassword)} />}
               />
               <Typography
@@ -143,8 +141,6 @@ function NewPasswordForm() {
                 value={confirm}
                 onChange={(e) => setConfirm(e.target.value)}
                 crossOrigin={undefined}
-                onPointerEnterCapture={undefined}
-                onPointerLeaveCapture={undefined}
               />
             </div>
 

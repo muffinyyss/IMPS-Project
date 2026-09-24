@@ -35,8 +35,6 @@ export default function DCFormActions({
           className={`tw-h-10 tw-text-sm ${!isComplete && !isLoading ? 'tw-opacity-50 tw-cursor-not-allowed' : ''}`}
           disabled={isDisabled}
           placeholder={undefined}
-          onPointerEnterCapture={undefined}
-          onPointerLeaveCapture={undefined}
         >
           {isLoading
             ? (lang === "th" ? "กำลังบันทึก..." : "Saving...")

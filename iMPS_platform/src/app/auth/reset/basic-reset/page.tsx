@@ -86,8 +86,6 @@ export default function BasicResetPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               crossOrigin={undefined}
-              onPointerEnterCapture={undefined}
-              onPointerLeaveCapture={undefined}
             />
           </div>
 

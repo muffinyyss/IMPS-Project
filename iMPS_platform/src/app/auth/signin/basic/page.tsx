@@ -156,8 +156,6 @@ export default function BasicPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 crossOrigin={undefined}
-                onPointerEnterCapture={undefined}
-                onPointerLeaveCapture={undefined}
               />
               <Typography
                 variant="small"
@@ -176,8 +174,6 @@ export default function BasicPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 crossOrigin={undefined}
-                onPointerEnterCapture={undefined}
-                onPointerLeaveCapture={undefined}
                 icon={
                   <div onClick={() => setShowPassword(!showPassword)} className="tw-cursor-pointer">
                     {showPassword ? (

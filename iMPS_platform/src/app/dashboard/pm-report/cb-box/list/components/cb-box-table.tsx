@@ -940,7 +940,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
                         const align = (cell.column.columnDef as any).meta?.cellAlign ?? "left";
                         return (
                           <td key={cell.id} className={`tw-align-middle tw-border-0 tw-py-2.5 sm:tw-py-3 lg:tw-py-4 tw-px-2 sm:tw-px-3 lg:tw-px-4 ${align === "center" ? "tw-text-center" : align === "right" ? "tw-text-right" : "tw-text-left"}`}>
-                            <Typography variant="small" className="!tw-font-normal !tw-text-blue-gray-700 tw-text-[11px] sm:tw-text-xs lg:tw-text-sm">
+                            <Typography as="div" variant="small" className="!tw-font-normal !tw-text-blue-gray-700 tw-text-[11px] sm:tw-text-xs lg:tw-text-sm">
                               {flexRender(cell.column.columnDef.cell, cell.getContext())}
                             </Typography>
                           </td>
