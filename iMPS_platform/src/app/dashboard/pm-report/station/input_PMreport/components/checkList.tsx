@@ -1643,13 +1643,11 @@ export default function StationPMReport() {
                 <Button variant="outlined" size="sm" onClick={goBackToList} title={t("backToList", lang)}>
                     <ArrowLeftIcon className="tw-w-4 tw-h-4 tw-stroke-gray-900 tw-stroke-2" />
                 </Button>
-                {!reviewMode && (
-                    <Tabs value="post">
-                        <TabsHeader className="tw-bg-gray-50 tw-rounded-lg">
-                            <Tab value="post" className="tw-px-4 tw-py-2 tw-font-medium">Post‑PM</Tab>
-                        </TabsHeader>
-                    </Tabs>
-                )}
+                <Tabs value="post">
+                    <TabsHeader className="tw-bg-gray-50 tw-rounded-lg">
+                        <Tab value="post" className="tw-px-4 tw-py-2 tw-font-medium">Post‑PM</Tab>
+                    </TabsHeader>
+                </Tabs>
             </div>
 
             
@@ -1688,13 +1686,11 @@ export default function StationPMReport() {
                     </div>
 
                     <div className="tw-mt-6 sm:tw-mt-8 tw-space-y-4 sm:tw-space-y-6">
-                        {/* โหมดตรวจ: ตัดเฉพาะรายการข้อที่ช่างกรอก ดูจากตารางผลการตรวจก่อน/หลังด้านล่างแทน
-                            ส่วนหัวเอกสารกับข้อมูลสถานีคงไว้ ผู้อนุมัติต้องรู้ว่ากำลังดูใบไหน */}
+                        {/* หน้าดูใช้ฟอร์มเดียวกับตอนกรอก — fieldset ล็อกไม่ให้แก้ */}
                         <fieldset disabled={reviewMode} className="pm-readonly tw-m-0 tw-min-w-0 tw-border-0 tw-p-0 tw-space-y-4 sm:tw-space-y-6">{QUESTIONS.map((q) => renderQuestionBlock(q))}</fieldset>
                     </div>
 
-                    {/* โหมดตรวจ: ย้ายไปไว้ล่างสุด ให้อ่านหลังดูตารางผลการตรวจเสร็จ */}
-                    {!reviewMode && summaryBlock}
+                    {summaryBlock}
 
                     <div className="tw-mt-6 sm:tw-mt-8 tw-flex tw-flex-col tw-gap-3">
                     {/* ใบที่เป็นส่วนหนึ่งของใบ PM สถานี: เวลาทำงาน/ช่างที่ลงเวลา Maximo กรอกครั้งเดียวตอนกด
@@ -1796,13 +1792,6 @@ export default function StationPMReport() {
                 </div>
                 </fieldset>
             </form>
-            {reviewMode && editId && (
-                <div className="tw-mx-auto tw-max-w-6xl tw-mt-6 tw-rounded-xl tw-border tw-border-blue-gray-100 tw-bg-white tw-p-5 tw-shadow-sm sm:tw-p-6">
-                    <fieldset disabled className="pm-readonly tw-m-0 tw-min-w-0 tw-border-0 tw-p-0">
-                        {summaryBlock}
-                    </fieldset>
-                </div>
-            )}
             {/* ตรวจเสร็จแล้วกดต่อได้เลย ไม่ต้องเลื่อนกลับขึ้นไปข้างบน */}
             {approveMode && editId && (
                 <div id="pm-approve-bottom" className="tw-mx-auto tw-max-w-6xl tw-mt-6 tw-flex tw-items-center tw-justify-end tw-gap-2 tw-border-t tw-border-blue-gray-100 tw-pt-5">

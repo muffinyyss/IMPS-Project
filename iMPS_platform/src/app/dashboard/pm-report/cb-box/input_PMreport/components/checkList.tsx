@@ -1490,17 +1490,15 @@ export default function CBBOXPMForm() {
         <section className="tw-pb-24">
             <div className="tw-mx-auto tw-max-w-6xl tw-flex tw-items-center tw-justify-between tw-mb-4">
                 <Button variant="outlined" size="sm" onClick={goBackToList} title={t("backToList", lang)}><ArrowLeftIcon className="tw-w-4 tw-h-4 tw-stroke-gray-900 tw-stroke-2" /></Button>
-                {!reviewMode && (
-                    <Tabs value={displayTab} key={displayTab}>
-                        <TabsHeader className="tw-bg-gray-100 tw-rounded-lg">
-                            {TABS.map(tb => (
-                                <Tab key={tb.id} value={tb.id} className="tw-px-4 tw-py-2 tw-font-medium">
-                                    {tb.label}
-                                </Tab>
-                            ))}
-                        </TabsHeader>
-                    </Tabs>
-                )}
+                <Tabs value={displayTab} key={displayTab}>
+                    <TabsHeader className="tw-bg-gray-100 tw-rounded-lg">
+                        {TABS.map(tb => (
+                            <Tab key={tb.id} value={tb.id} className="tw-px-4 tw-py-2 tw-font-medium">
+                                {tb.label}
+                            </Tab>
+                        ))}
+                    </TabsHeader>
+                </Tabs>
             </div>
             {/* โหมดตรวจ: ฟอร์มกรอกไม่ต้องโชว์ ดูจากตารางผลการตรวจก่อน/หลังด้านล่างแทน
                 แต่ยังต้อง mount ไว้ ค่าที่คำนวณจากฟอร์ม (ความครบถ้วน, สรุป) ใช้ต่อข้างล่าง */}
@@ -1521,11 +1519,9 @@ export default function CBBOXPMForm() {
                         <div className="sm:tw-col-span-2 lg:tw-col-span-2"><Input label={t("inspector", lang)} value={inspector} readOnly crossOrigin="" containerProps={{ className: "!tw-min-w-0" }} className="!tw-bg-gray-50" /></div>
                         <div className="lg:tw-col-span-1"><Input label={t("pmDate", lang)} type="text" value={job.date} readOnly crossOrigin="" containerProps={{ className: "!tw-min-w-0" }} className="!tw-bg-gray-50" /></div>
                     </div>
-                    <div className="tw-space-y-4 tw-mt-6">{/* โหมดตรวจ: ตัดเฉพาะรายการข้อที่ช่างกรอก ดูจากตารางผลการตรวจก่อน/หลังด้านล่างแทน
-                            ส่วนหัวเอกสารกับข้อมูลสถานีคงไว้ ผู้อนุมัติต้องรู้ว่ากำลังดูใบไหน */}
+                    <div className="tw-space-y-4 tw-mt-6">{/* หน้าดูใช้ฟอร์มเดียวกับตอนกรอก — fieldset ล็อกไม่ให้แก้ */}
                         <fieldset disabled={reviewMode} className="pm-readonly tw-m-0 tw-min-w-0 tw-border-0 tw-p-0 tw-space-y-4 sm:tw-space-y-6">{QUESTIONS.map((q) => renderQuestionBlock(q))}</fieldset></div>
-                    {/* โหมดตรวจ: ย้ายไปไว้ล่างสุด ให้อ่านหลังดูตารางผลการตรวจเสร็จ */}
-                    {!reviewMode && summaryBlock}
+                    {summaryBlock}
                     <div className="tw-flex tw-flex-col tw-gap-3 tw-mt-8">
                     {/* ใบที่เป็นส่วนหนึ่งของใบ PM สถานี: เวลาทำงาน/ช่างที่ลงเวลา Maximo กรอกครั้งเดียวตอนกด
                         "ปิดใบงาน" ที่หน้ารวมของใบ — ไม่ต้องกรอกซ้ำทุกส่วน (ใบเดี่ยวรุ่นเก่ายังกรอกที่นี่) */}
@@ -1624,13 +1620,6 @@ export default function CBBOXPMForm() {
                 </div>
                 </fieldset>
             </form>
-            {reviewMode && editId && (
-                <div className="tw-mx-auto tw-max-w-6xl tw-mt-6 tw-rounded-xl tw-border tw-border-blue-gray-100 tw-bg-white tw-p-5 tw-shadow-sm sm:tw-p-6">
-                    <fieldset disabled className="pm-readonly tw-m-0 tw-min-w-0 tw-border-0 tw-p-0">
-                        {summaryBlock}
-                    </fieldset>
-                </div>
-            )}
             {/* ตรวจเสร็จแล้วกดต่อได้เลย ไม่ต้องเลื่อนกลับขึ้นไปข้างบน */}
             {approveMode && editId && (
                 <div id="pm-approve-bottom" className="tw-mx-auto tw-max-w-6xl tw-mt-6 tw-flex tw-items-center tw-justify-end tw-gap-2 tw-border-t tw-border-blue-gray-100 tw-pt-5">
