@@ -8,6 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "test:smoke": "playwright test",
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
     "build:pdf-css": "tailwindcss -i ./backend/pdf/templates/tw.css -o ./backend/pdf/static/css/pmreport.css --minify",
@@ -58,6 +60,7 @@
     "zustand": "^5.0.8"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@types/lodash": "^4.17.20",
     "@types/node": "20",
     "@types/react": "^19.2.14",

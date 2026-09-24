@@ -41,3 +41,7 @@ next-env.d.ts
 iMPS_platform/backend/uploads/
 .env.local
 backend/uploads/
+
+# Playwright (smoke test)
+/test-results/
+/playwright-report/

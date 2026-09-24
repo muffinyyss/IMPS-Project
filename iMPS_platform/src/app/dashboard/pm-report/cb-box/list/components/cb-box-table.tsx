@@ -213,8 +213,7 @@ async function fetchPreviewDocName(stationId: string, pmDate: string): Promise<s
   const u = new URL(`${BASE}/cbboxpmreport/preview-docname`);
   u.searchParams.set("station_id", stationId);
   u.searchParams.set("pm_date", pmDate);
-  const token = typeof window !== "undefined" ? localStorage.getItem("access_token") ?? "" : "";
-  const r = await apiFetch(u.toString(), { credentials: "include", headers: token ? { Authorization: `Bearer ${token}` } : undefined });
+  const r = await apiFetch(u.toString(), { credentials: "include" });
   if (!r.ok) return null;
   const j = await r.json();
   return (j && typeof j.doc_name === "string") ? j.doc_name : null;
@@ -225,8 +224,7 @@ async function fetchLatestDocName(stationId: string, dateISO: string): Promise<s
   u.searchParams.set("station_id", stationId);
   u.searchParams.set("pm_date", dateISO);
   u.searchParams.set("_ts", String(Date.now()));
-  const token = typeof window !== "undefined" ? localStorage.getItem("access_token") ?? "" : "";
-  const r = await apiFetch(u.toString(), { credentials: "include", cache: "no-store", headers: token ? { Authorization: `Bearer ${token}` } : undefined });
+  const r = await apiFetch(u.toString(), { credentials: "include", cache: "no-store" });
   if (!r.ok) return null;
   const j = await r.json();
   return (j && typeof j.doc_name === "string") ? j.doc_name : null;
@@ -295,8 +293,6 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
   function makeHeaders(): Record<string, string> {
     const h: Record<string, string> = { "Content-Type": "application/json" };
     if (!useHttpOnlyCookie) {
-      const t = token || (typeof window !== "undefined" ? localStorage.getItem("access_token") ?? "" : "");
-      if (t) h.Authorization = `Bearer ${t}`;
     }
     return h;
   }

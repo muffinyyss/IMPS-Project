@@ -101,16 +101,12 @@ export function DashboardNavbar() {
   const [userRole, setUserRole] = useState<string>("");
 
   useEffect(() => {
-    const token = localStorage.getItem("access_token") || localStorage.getItem("accessToken") || "";
-    if (token) {
-      try {
-        const payload = token.split(".")[1];
-        const json = atob(payload.replace(/-/g, "+").replace(/_/g, "/"));
-        const claims = JSON.parse(json);
-        setUserRole(claims.role || "user");
-      } catch {
-        setUserRole("user");
-      }
+    // JWT อยู่ในคุกกี้ HttpOnly (อ่านไม่ได้) — role มากับโปรไฟล์ที่ได้ตอน login / switch-role
+    try {
+      const raw = localStorage.getItem("user");
+      if (raw) setUserRole(JSON.parse(raw)?.role || "user");
+    } catch {
+      setUserRole("user");
     }
   }, []);
 
@@ -146,13 +142,8 @@ export function DashboardNavbar() {
       });
       if (!res.ok) throw new Error(((await res.json().catch(() => ({}))) as any).detail || `HTTP ${res.status}`);
       const data = await res.json();
-      // เก็บ localStorage แบบเดียวกับตอน login เป๊ะ (access + refresh + user + userRole) — ให้ session sync
+      // คุกกี้ session ใหม่ถูกตั้งมากับ response แล้ว — อัปเดตโปรไฟล์แบบเดียวกับตอน login
       try {
-        if (data.access_token) {
-          localStorage.setItem("access_token", data.access_token);
-          localStorage.setItem("accessToken", data.access_token);
-        }
-        if (data.refresh_token) localStorage.setItem("refresh_token", data.refresh_token);
         if (data.user) {
           localStorage.setItem("user", JSON.stringify(data.user));
           localStorage.setItem("userRole", data.user?.role ?? "");

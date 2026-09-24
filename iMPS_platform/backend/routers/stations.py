@@ -993,6 +993,36 @@ def station_match_query(current: UserClaims) -> Optional[Dict[str, Any]]:
     return {"$and": [base, brand_clause]}
 
 
+def load_station_scope(
+    current: UserClaims,
+    station_id: Optional[str] = None,
+    station_fields: tuple = ("station_id",),
+    charger_fields: tuple = ("SN", "station_id"),
+) -> tuple:
+    """(สถานี, ตู้) ที่ผู้เรียกเห็นได้ — sync PyMongo ให้เรียกผ่าน executor
+
+    endpoint ที่รวมข้อมูลทุกสถานีในคำขอเดียว (/pm-reports/*, /test-reports/all-stations)
+    ต้องเริ่มจากชุดนี้แทน station_collection.find({}) — เดิม PM ใช้ find({}) ทุกบัญชีที่
+    ล็อกอินได้จึงเห็นเอกสาร PM ของทั้ง 355 สถานี ไม่ว่าจะเป็นเจ้าของหรือไม่
+    สถานีที่ปนยี่ห้อยังเห็นได้ แต่ตู้ยี่ห้อที่ไม่ได้ดูแลถูกกรองออก (กติกา brand_scope)
+    """
+    access = station_match_query(current)
+    if access is None:
+        return [], []
+    clauses = [access] if access else []
+    if station_id:
+        clauses.append({"station_id": station_id})
+    query = {"$and": clauses} if clauses else {}
+
+    stations = list(station_collection.find(query, {"_id": 0, **{f: 1 for f in station_fields}}))
+    station_ids = [s["station_id"] for s in stations if s.get("station_id")]
+    if not station_ids:
+        return stations, []
+    projection = {"_id": 0, "brand": 1, **{f: 1 for f in charger_fields}}
+    chargers = list(charger_collection.find({"station_id": {"$in": station_ids}}, projection))
+    return stations, filter_chargers(chargers, brand_scope_of(current))
+
+
 # ============================================================
 # Vue « liste » de /all-stations/
 # ============================================================
@@ -1286,6 +1316,10 @@ def update_station(
 # ---------------------------------------------------------
 @router.delete("/delete_stations/{id}", status_code=204)
 def delete_station(id: str, current: UserClaims = Depends(get_current_user)):
+    # ลบถาวรทั้งสถานีพร้อมตู้ทุกตู้ — ปุ่มลบแสดงให้ admin เท่านั้น แต่เดิม backend ไม่ตรวจ role เลย
+    # บัญชีไหนที่ล็อกอินได้ก็ลบได้ (_id ของสถานีมากับ /all-stations/ อยู่แล้ว)
+    if current.role != "admin":
+        raise HTTPException(status_code=403, detail="Only admin can delete stations")
     oid = to_object_id(id)
     station = station_collection.find_one({"_id": oid})
     if not station:
@@ -1439,6 +1473,9 @@ def update_charger(
 # ---------------------------------------------------------
 @router.delete("/delete_charger/{id}", status_code=204)
 def delete_charger(id: str, current: UserClaims = Depends(get_current_user)):
+    # เหตุผลเดียวกับ delete_station — ปุ่มลบตู้แสดงให้ admin เท่านั้น
+    if current.role != "admin":
+        raise HTTPException(status_code=403, detail="Only admin can delete chargers")
     oid = to_object_id(id)
     charger = charger_collection.find_one({"_id": oid})
     if not charger:

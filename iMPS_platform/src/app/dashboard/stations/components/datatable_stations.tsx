@@ -18,7 +18,7 @@ import {
 import { useRouter } from "next/navigation";
 import AddStation, { type NewStationPayload, MaximoLocationSelect, type MaximoLocation } from "@/app/dashboard/stations/components/addstations";
 import { WARRANTY_STATUS_OPTIONS, INVESTMENT_SCOPE_OPTIONS, MultiSelectDropdown } from "@/app/dashboard/stations/components/stationOptions";
-import { apiFetch } from "@/utils/api";
+import { apiFetch, getSessionProfile } from "@/utils/api";
 import { isStaffRole, staffChargerPath } from "@/utils/roles";
 import { startVisiblePoll } from "@/utils/visible-poll";
 import TableSkeletonRows from "@/components/TableSkeletonRows";
@@ -83,8 +83,6 @@ export type ChargerUpdatePayload = {
   chargerType?: string;
 };
 
-type JwtClaims = { sub: string; user_id?: string; username?: string; role?: string; company?: string | null; station_ids?: string[]; exp?: number; };
-function decodeJwt(token: string | null): JwtClaims | null { try { if (!token) return null; const payload = token.split(".")[1]; const json = atob(payload.replace(/-/g, "+").replace(/_/g, "/")); return JSON.parse(json); } catch { return null; } }
 type UsernamesResp = { username: string[] };
 type Owner = { user_id: string; username: string };
 type Lang = "th" | "en";
@@ -754,8 +752,7 @@ export function SearchDataTables() {
   useEffect(() => {
     (async () => {
       try {
-        const token = localStorage.getItem("access_token") || localStorage.getItem("accessToken") || "";
-        const claims = decodeJwt(token);
+        const claims = getSessionProfile();
         if (claims) setMe({ user_id: claims.user_id ?? "-", username: claims.username ?? "-", role: claims.role ?? "user" });
         // ยิง 3 คำขอพร้อมกัน — statuses/availability ไม่ต้องรอ all-stations
         const statusesPromise = fetchChargerStatusesBulk();

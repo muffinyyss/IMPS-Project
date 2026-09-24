@@ -141,9 +141,8 @@ export default function NotificationsPage() {
   // เพิ่มฟังก์ชัน fetchEmailRules
   const fetchEmailRules = useCallback(async () => {
     try {
-      const token = localStorage.getItem("access_token");
       const res = await fetch(`${API_BASE}/notifications/email-rules`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        credentials: "include",
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
@@ -252,9 +251,8 @@ export default function NotificationsPage() {
   const fetchStations = useCallback(async () => {
     setLoadingStations(true);
     try {
-      const token = localStorage.getItem("access_token");
       const res = await fetch(`${API_BASE}/all-stations/`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        credentials: "include",
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
@@ -291,9 +289,8 @@ export default function NotificationsPage() {
   const fetchUsers = useCallback(async () => {
     setLoadingUsers(true);
     try {
-      const token = localStorage.getItem("access_token");
       const res = await fetch(`${API_BASE}/all-users/`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        credentials: "include",
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
@@ -371,12 +368,11 @@ export default function NotificationsPage() {
     setLoading(true);
     setError(null);
     try {
-      const token = localStorage.getItem("access_token");
       const params = new URLSearchParams();
       if (dateFrom) params.set("date_from", dateFrom);
       if (dateTo) params.set("date_to", dateTo);
       const res = await fetch(`${API_BASE}/notifications/all?${params}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        credentials: "include",
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
@@ -465,14 +461,13 @@ export default function NotificationsPage() {
   // ===== Email Rule helpers =====
   const saveEmailRule = async (rule: EmailRule) => {
     try {
-      const token = localStorage.getItem("access_token");
       const res = await fetch(`${API_BASE}/notifications/email-rules`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify(rule),
+        credentials: "include",
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
@@ -511,10 +506,9 @@ export default function NotificationsPage() {
     });
 
     try {
-      const token = localStorage.getItem("access_token");
       const res = await fetch(`${API_BASE}/notifications/email-rules/${ruleId}`, {
         method: "DELETE",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        credentials: "include",
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       showToast(lang === "th" ? "ลบกฎเรียบร้อยแล้ว" : "Rule deleted successfully", "success");
@@ -543,11 +537,11 @@ export default function NotificationsPage() {
     });
 
     try {
-      const token = localStorage.getItem("access_token");
       const res = await fetch(`${API_BASE}/notifications/email-rules`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(toggled),
+        credentials: "include",
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       showToast(toggled.enabled ? (lang === "th" ? "เปิดใช้งานกฎแล้ว" : "Rule enabled") : (lang === "th" ? "ปิดใช้งานกฎแล้ว" : "Rule disabled"), "success");

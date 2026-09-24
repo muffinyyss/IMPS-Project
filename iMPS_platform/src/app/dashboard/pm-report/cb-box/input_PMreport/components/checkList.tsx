@@ -494,7 +494,7 @@ function useDebouncedEffect(effect: () => void, deps: any[], delay = 800) {
 }
 
 async function getStationInfoPublic(stationId: string): Promise<StationPublic> {
-    const res = await fetch(`${API_BASE}/station/info/public?station_id=${encodeURIComponent(stationId)}`, { cache: "no-store" });
+    const res = await fetch(`${API_BASE}/station/info/public?station_id=${encodeURIComponent(stationId)}`, { cache: "no-store", credentials: "include" });
     if (!res.ok) throw new Error("Station not found");
     const json = await res.json();
     return json.station ?? json;
@@ -502,21 +502,18 @@ async function getStationInfoPublic(stationId: string): Promise<StationPublic> {
 
 async function fetchPreviewIssueId(stationId: string, pmDate: string): Promise<string | null> {
     const u = new URL(`${API_BASE}/cbboxpmreport/preview-issueid`); u.searchParams.set("station_id", stationId); u.searchParams.set("pm_date", pmDate);
-    const token = localStorage.getItem("access_token") ?? "";
-    const r = await fetch(u.toString(), { credentials: "include", headers: token ? { Authorization: `Bearer ${token}` } : undefined });
+    const r = await fetch(u.toString(), { credentials: "include" });
     if (!r.ok) return null; return (await r.json())?.issue_id ?? null;
 }
 
 async function fetchPreviewDocName(stationId: string, pmDate: string): Promise<string | null> {
     const u = new URL(`${API_BASE}/cbboxpmreport/preview-docname`); u.searchParams.set("station_id", stationId); u.searchParams.set("pm_date", pmDate);
-    const token = localStorage.getItem("access_token") ?? "";
-    const r = await fetch(u.toString(), { credentials: "include", headers: token ? { Authorization: `Bearer ${token}` } : undefined });
+    const r = await fetch(u.toString(), { credentials: "include" });
     if (!r.ok) return null; return (await r.json())?.doc_name ?? null;
 }
 
 async function fetchReport(reportId: string, stationId: string) {
-    const token = localStorage.getItem("access_token") ?? "";
-    const res = await fetch(`${API_BASE}/cbboxpmreport/get?station_id=${stationId}&report_id=${reportId}`, { headers: token ? { Authorization: `Bearer ${token}` } : undefined, credentials: "include" });
+    const res = await fetch(`${API_BASE}/cbboxpmreport/get?station_id=${stationId}&report_id=${reportId}`, { credentials: "include" });
     if (!res.ok) throw new Error(await res.text());
     return res.json();
 }
@@ -1115,9 +1112,7 @@ export default function CBBOXPMForm() {
 
     // Load me
     useEffect(() => {
-        const token = localStorage.getItem("access_token") ?? "";
-        if (!token) return;
-        fetch(`${API_BASE}/me`, { headers: { Authorization: `Bearer ${token}` }, credentials: "include" })
+        fetch(`${API_BASE}/me`, { credentials: "include" })
             .then(res => res.ok ? res.json() : null)
             .then((data: Me | null) => { if (data) setInspector(prev => prev || data.username || ""); })
             .catch(console.error);
@@ -1503,7 +1498,6 @@ export default function CBBOXPMForm() {
         // ถ้าไม่มี รอบอัปโหลดรอบสองจะส่งรูปเดิมซ้ำ
         const pending = (items || []).filter(p => !p.isNA && !p.uploaded && !uploadedIds.has(p.id) && (p.file || p.ref));
         if (pending.length === 0) return;
-        const token = localStorage.getItem("access_token");
         const url = side === "pre" ? `${API_BASE}/cbboxpmreport/${reportId}/pre/photos` : `${API_BASE}/cbboxpmreport/${reportId}/post/photos`;
         // ส่งทีละรูป (1 request/รูป) เพื่อไม่ให้ body รวมเกิน limit ของ nginx (กัน 413 เมื่อข้อหนึ่งมีหลายรูป)
         for (const p of pending) {
@@ -1513,7 +1507,7 @@ export default function CBBOXPMForm() {
             form.append("group", group);
             form.append("side", side);
             form.append("files", compressed);
-            const res = await fetch(url, { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : undefined, body: form, credentials: "include" });
+            const res = await fetch(url, { method: "POST", body: form, credentials: "include" });
             if (!res.ok) throw new Error(await res.text());
             uploadedIds.add(p.id);
             setPhotos(prev => ({ ...prev, [stateKey]: (prev[stateKey as any] || []).map(x => x.id === p.id ? { ...x, uploaded: true } : x) }));
@@ -1547,9 +1541,8 @@ export default function CBBOXPMForm() {
         const expected = expectedCountByGroup(photosRef.current as any, k => photoGroupKey(k));
         if (Object.keys(expected).length === 0) return true;
 
-        const token = localStorage.getItem("access_token");
         const res = await fetch(`${API_BASE}/cbboxpmreport/get?station_id=${encodeURIComponent(sid)}&report_id=${reportId}`,
-            { headers: token ? { Authorization: `Bearer ${token}` } : undefined, credentials: "include" });
+            { credentials: "include" });
         if (!res.ok) throw new Error(await res.text());
         const doc = await res.json() as { photos_pre?: Record<string, unknown[]>; photos?: Record<string, unknown[]> };
         const shortfall = findShortfall(expected, side === "pre" ? doc?.photos_pre : doc?.photos);
@@ -1571,14 +1564,13 @@ export default function CBBOXPMForm() {
         if (submitting) return;
         setSubmitting(true);
         try {
-            const token = localStorage.getItem("access_token");
             const rowsPreData: Record<string, { pf: string; remark: string }> = {};
             QUESTIONS.forEach(q => { rowsPreData[q.key] = { pf: rows[q.key]?.pf || "", remark: rows[q.key]?.remark || "" }; });
             const payload = { station_id: stationId, issue_id: job.issue_id, job: { station_name: job.station_name, date: job.date }, inspector, measures_pre: { m5: m5.state }, rows_pre: rowsPreData, pm_date: job.date, doc_name: docName, dropdownQ1, dropdownQ2, side: "pre", comment_pre: summary };
             // กดบันทึกซ้ำหลังอัปรูปหลุด ต้องใช้รายงานใบเดิม ไม่งั้นจะได้รายงานซ้ำอีกใบ
             let report_id: string = preReportIdRef.current || loadDraftLocal<any>(key)?.pendingReportId || "";
             if (!report_id) {
-                const res = await fetch(`${API_BASE}/cbboxpmreport/pre/submit`, { method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, credentials: "include", body: JSON.stringify(payload) });
+                const res = await fetch(`${API_BASE}/cbboxpmreport/pre/submit`, { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify(payload) });
                 if (!res.ok) throw new Error(await res.text());
                 const json = await res.json() as { report_id: string; doc_name?: string };
                 report_id = json.report_id;
@@ -1609,11 +1601,10 @@ export default function CBBOXPMForm() {
         if (submitting) return;
         setSubmitting(true);
         try {
-            const token = localStorage.getItem("access_token");
             const finalReportId = reportId || editId;
             if (!finalReportId) throw new Error(t("noReportId", lang));
             const payload = { station_id: stationId, rows, measures: { m5: m5.state }, summary, dropdownQ1, dropdownQ2, ...(summaryCheck ? { summaryCheck } : {}), work_start: workStart, work_finish: workFinish, maximo_labor: maximoLabor, maximo_contractor: contractorPicked ? maximoContractor.trim() : "", wonum: searchParams.get("wonum") ?? "", side: "post", report_id: finalReportId };
-            const res = await fetch(`${API_BASE}/cbboxpmreport/submit`, { method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, credentials: "include", body: JSON.stringify(payload) });
+            const res = await fetch(`${API_BASE}/cbboxpmreport/submit`, { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify(payload) });
             if (!res.ok) throw new Error(await res.text());
             // ต้องยืนยันรูปครบก่อน ถึงจะ finalize + ลบรูปในเครื่อง
             if (!(await syncPhotosAndVerify(finalReportId, "post"))) return;
@@ -1626,7 +1617,7 @@ export default function CBBOXPMForm() {
                 .toISOString().slice(0, 16);
             if (workStart > nowLocal || workFinish > nowLocal) { alert(t("alertWorkTimeFuture", lang)); setSubmitting(false); return; }
 
-            const finalizeRes = await fetch(`${API_BASE}/cbboxpmreport/${finalReportId}/finalize`, { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : undefined, credentials: "include", body: new URLSearchParams({ station_id: stationId }) });
+            const finalizeRes = await fetch(`${API_BASE}/cbboxpmreport/${finalReportId}/finalize`, { method: "POST", credentials: "include", body: new URLSearchParams({ station_id: stationId }) });
             if (!finalizeRes.ok) throw new Error(await finalizeRes.text());
             const allPhotos = Object.values(photosRef.current).flat();
             await Promise.all(allPhotos.map(p => delPhoto(postKey, p.id)));
@@ -1637,7 +1628,8 @@ export default function CBBOXPMForm() {
 
     // Tab navigation
     const active: TabId = useMemo(() => searchParams.get("pmtab") === "post" ? "post" : "pre", [searchParams]);
-    const displayTab: TabId = "post";
+    // ปิดแท็บ Pre ไว้ถาวร — ใช้ "as" ให้ชนิดยังเป็น TabId เต็ม โค้ดฝั่ง Pre จึงยังคอมไพล์ได้เมื่อเปิดกลับ
+    const displayTab = "post" as TabId;
 
     useEffect(() => {
         const tabParam = searchParams.get("pmtab");

@@ -9,7 +9,7 @@ import re
 from bson import ObjectId
 
 from config import (
-    charger_collection, station_collection,
+    charger_collection,
     PMReportDB, PMUrlDB,
     MDBPMReportDB, MDBPMUrlDB,
     CCBPMReportDB, CCBPMUrlDB,
@@ -17,6 +17,7 @@ from config import (
     stationPMReportDB, stationPMUrlDB,
 )
 from deps import UserClaims, get_current_user
+from routers.stations import load_station_scope
 from routers.pm_helpers import (
     get_pmreport_collection_for,
     get_mdbpmreport_collection_for,
@@ -158,22 +159,20 @@ async def get_all_station_pm_reports(
 ):
     loop = asyncio.get_event_loop()
 
-    # ── 1. Stations (sync PyMongo) ──────────────────────────────
-    station_query = {"station_id": station_id} if station_id else {}
-
+    # ── 1–2. Stations + chargers ที่ผู้เรียกเห็นได้ (sync PyMongo) ─────
+    # กติกาเดียวกับหน้า EV Station และ Test — เดิม find({}) ส่งทุกสถานีให้ทุกบัญชี
     try:
-        stations = await loop.run_in_executor(
+        stations, chargers = await loop.run_in_executor(
             None,
-            lambda: list(
-                station_collection.find(
-                    station_query,
-                    {"_id": 0, "station_id": 1, "station_name": 1, "company": 1}
-                )
-            )
+            lambda: load_station_scope(
+                current, station_id,
+                station_fields=("station_id", "station_name", "company"),
+                charger_fields=("SN", "chargeBoxID", "station_id", "brand"),
+            ),
         )
     except Exception:
         traceback.print_exc()
-        stations = []
+        stations, chargers = [], []
 
     if not stations:
         return {"reports": [], "total": 0, "stations_count": 0}
@@ -182,21 +181,6 @@ async def get_all_station_pm_reports(
     station_name_map = {s["station_id"]: s.get("station_name", "-") for s in stations}
     # บริษัทเจ้าของสถานี — PM Dashboard ใช้กรอง COMPANY (แพทเทิร์นเดียวกับ CM)
     station_company_map = {s["station_id"]: (s.get("company") or "") for s in stations}
-
-    # ── 2. Chargers (sync PyMongo) ──────────────────────────────
-    try:
-        chargers = await loop.run_in_executor(
-            None,
-            lambda: list(
-                charger_collection.find(
-                    {"station_id": {"$in": station_ids}},
-                    {"_id": 0, "SN": 1, "chargeBoxID": 1, "station_id": 1, "brand": 1}
-                )
-            )
-        )
-    except Exception:
-        traceback.print_exc()
-        chargers = []
 
     sn_list = [
         (c["SN"], c.get("station_id", ""))
@@ -366,30 +350,15 @@ async def get_pm_report_counts(
         date_filter = {"pm_date": {"$regex": f"^{re.escape(year)}-"}}
 
     try:
-        stations = await loop.run_in_executor(
-            None,
-            lambda: list(station_collection.find({}, {"_id": 0, "station_id": 1})),
-        )
+        stations, chargers = await loop.run_in_executor(None, load_station_scope, current)
     except Exception:
         traceback.print_exc()
-        stations = []
+        stations, chargers = [], []
 
     station_ids = [s["station_id"] for s in stations if s.get("station_id")]
     empty = {"counts": {}, "by_type": {t: 0 for t in _PM_TYPES}, "total": 0, "stations_count": 0}
     if not station_ids:
         return empty
-
-    try:
-        chargers = await loop.run_in_executor(
-            None,
-            lambda: list(charger_collection.find(
-                {"station_id": {"$in": station_ids}},
-                {"_id": 0, "SN": 1, "station_id": 1},
-            )),
-        )
-    except Exception:
-        traceback.print_exc()
-        chargers = []
 
     # SN ต่อสถานี
     sns_by_station: dict[str, list[str]] = {sid: [] for sid in station_ids}
@@ -459,29 +428,14 @@ async def get_pm_report_months(current: UserClaims = Depends(get_current_user)):
     """
     loop = asyncio.get_event_loop()
     try:
-        stations = await loop.run_in_executor(
-            None,
-            lambda: list(station_collection.find({}, {"_id": 0, "station_id": 1})),
-        )
+        stations, chargers = await loop.run_in_executor(None, load_station_scope, current)
     except Exception:
         traceback.print_exc()
-        stations = []
+        stations, chargers = [], []
 
     station_ids = [s["station_id"] for s in stations if s.get("station_id")]
     if not station_ids:
         return {"months": []}
-
-    try:
-        chargers = await loop.run_in_executor(
-            None,
-            lambda: list(charger_collection.find(
-                {"station_id": {"$in": station_ids}},
-                {"_id": 0, "SN": 1},
-            )),
-        )
-    except Exception:
-        traceback.print_exc()
-        chargers = []
 
     sns = [c["SN"] for c in chargers if c.get("SN") and c["SN"] not in ("-", "", None)]
 

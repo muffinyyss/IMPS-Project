@@ -2865,7 +2865,8 @@ export default function ChargerPMForm() {
         else router.back();
     }, [router, searchParams]);
     const canGoAfter: boolean = isPostMode ? true : (allPhotosAttachedPre && allRequiredInputsFilled);
-    const displayTab: TabId = "post";
+    // ปิดแท็บ Pre ไว้ถาวร — ใช้ "as" ให้ชนิดยังเป็น TabId เต็ม โค้ดฝั่ง Pre จึงยังคอมไพล์ได้เมื่อเปิดกลับ
+    const displayTab = "post" as TabId;
 
     const isSummaryFilled = summary.trim().length > 0;
     const isSummaryCheckFilled = summaryCheck !== "";

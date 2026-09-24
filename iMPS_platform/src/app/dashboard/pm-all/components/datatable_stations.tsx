@@ -15,7 +15,7 @@ import {
     BoltIcon, CpuChipIcon, PhotoIcon,
 } from "@heroicons/react/24/solid";
 import { useRouter } from "next/navigation";
-import { apiFetch } from "@/utils/api";
+import { apiFetch, getSessionProfile } from "@/utils/api";
 import { isStaffRole, staffChargerPath } from "@/utils/roles";
 import { DocumentArrowDownIcon } from "@heroicons/react/24/outline";
 import { startVisiblePoll } from "@/utils/visible-poll";
@@ -93,8 +93,6 @@ type PMReportData = {
     sn?: string;          // ← เพิ่ม (สำหรับ photo download)
     has_photos?: boolean; // ← เพิ่ม
 };
-type JwtClaims = { sub: string; user_id?: string; username?: string; role?: string; company?: string | null; station_ids?: string[]; exp?: number; };
-function decodeJwt(token: string | null): JwtClaims | null { try { if (!token) return null; const payload = token.split(".")[1]; const json = atob(payload.replace(/-/g, "+").replace(/_/g, "/")); return JSON.parse(json); } catch { return null; } }
 type UsernamesResp = { username: string[] };
 type Owner = { user_id: string; username: string };
 type Lang = "th" | "en";
@@ -351,7 +349,7 @@ export function SearchDataTables() {
 
     const fetchPMReports = async (stationId: string) => {
         if (pmReports.has(stationId) || pmLoading.has(stationId)) return;
-        setPmLoading(prev => new Set([...prev, stationId]));
+        setPmLoading(prev => new Set(Array.from(prev).concat(stationId)));
         try {
             const res = await apiFetch(
                 `/pm-reports/all-stations?station_id=${stationId}&limit_per_source=50`
@@ -369,7 +367,7 @@ export function SearchDataTables() {
             console.error("Failed to fetch PM reports:", e);
         } finally {
             setPmLoading(prev => {
-                const next = new Set([...prev]);
+                const next = new Set(Array.from(prev));
                 next.delete(stationId);
                 return next;
             });
@@ -806,8 +804,7 @@ export function SearchDataTables() {
     useEffect(() => {
         (async () => {
             try {
-                const token = localStorage.getItem("access_token") || localStorage.getItem("accessToken") || "";
-                const claims = decodeJwt(token);
+                const claims = getSessionProfile();
                 if (claims) setMe({ user_id: claims.user_id ?? "-", username: claims.username ?? "-", role: claims.role ?? "user" });
                 // ยิง 3 คำขอพร้อมกัน — statuses/availability ไม่ต้องรอ all-stations
                 const statusesPromise = fetchChargerStatusesBulk();
@@ -840,7 +837,7 @@ export function SearchDataTables() {
     // พับจำนวนเอกสาร PM (ตาม type/ช่วงเวลาที่เลือก) ลงในแต่ละแถว
     // เพื่อให้ reference ของ data เปลี่ยนเมื่อ pmCounts/typeFilter เปลี่ยน →
     // react-table จะ rebuild row model และคำนวณค่าใหม่ (แก้บั๊กคอลัมน์นับค้างที่ 0)
-    const tableData = useMemo(
+    const tableData = useMemo<StationRow[]>(
         () => filteredDataByStatus.map((r) => ({
             ...r,
             _pmCount: pmCounts.get(r.station_id)?.[typeFilter] ?? 0,

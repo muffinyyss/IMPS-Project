@@ -290,8 +290,6 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
   function makeHeaders(): Record<string, string> {
     const h: Record<string, string> = { "Content-Type": "application/json" };
     if (!useHttpOnlyCookie) {
-      const t = token || (typeof window !== "undefined" ? localStorage.getItem("access_token") ?? "" : "");
-      if (t) h.Authorization = `Bearer ${t}`;
     }
     return h;
   }

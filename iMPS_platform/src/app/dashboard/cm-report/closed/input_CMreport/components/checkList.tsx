@@ -704,7 +704,7 @@ export default function CMForm() {
             try {
                 const res = await fetch(
                     `${API_BASE}/station/info/public?station_id=${encodeURIComponent(stationId)}`,
-                    { cache: "no-store" }
+                    { cache: "no-store", credentials: "include" }
                 );
                 if (!res.ok) throw new Error(`HTTP ${res.status}`);
                 const data: { station: StationPublic } = await res.json();

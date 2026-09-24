@@ -315,14 +315,8 @@ async function fetchPreviewDocName(
   u.searchParams.set("sn", sn);
   u.searchParams.set("pm_date", pmDate);
 
-  const token =
-    typeof window !== "undefined"
-      ? localStorage.getItem("access_token") ?? ""
-      : "";
-
   const r = await apiFetch(u.toString(), {
     credentials: "include",
-    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
   });
 
   if (!r.ok) {
@@ -343,15 +337,9 @@ async function fetchLatestDocName(
   u.searchParams.set("pm_date", dateISO);
   u.searchParams.set("_ts", String(Date.now()));
 
-  const token =
-    typeof window !== "undefined"
-      ? localStorage.getItem("access_token") ?? ""
-      : "";
-
   const r = await apiFetch(u.toString(), {
     credentials: "include",
     cache: "no-store",
-    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
   });
 
   if (!r.ok) {
@@ -418,12 +406,6 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     (async () => {
       try {
         const headers: Record<string, string> = {};
-        if (!useHttpOnlyCookie) {
-          const t = typeof window !== "undefined"
-            ? localStorage.getItem("access_token") ?? ""
-            : "";
-          if (t) headers.Authorization = `Bearer ${t}`;
-        }
 
         const res = await apiFetch(`${apiBase}/me`, {
           method: "GET",
@@ -470,8 +452,6 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
   function makeHeaders(): Record<string, string> {
     const h: Record<string, string> = { "Content-Type": "application/json" };
     if (!useHttpOnlyCookie) {
-      const t = token || (typeof window !== "undefined" ? localStorage.getItem("access_token") ?? "" : "");
-      if (t) h.Authorization = `Bearer ${t}`;
     }
     return h;
   }

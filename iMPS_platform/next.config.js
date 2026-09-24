@@ -3,8 +3,10 @@ const loaderUtils = require("loader-utils");
 const MangleCssClassPlugin = require("mangle-css-class-webpack-plugin");
 
 module.exports = {
+  // ห้ามเปิดกลับ: เดิมเป็น true ทำให้ type error หลุดขึ้น production ได้เงียบ ๆ (เคยสะสม 124 จุด)
+  // ตอนนี้ build ตกทันทีที่มี type error — ตรวจก่อน build ได้ด้วย npx tsc --noEmit
   typescript: {
-    ignoreBuildErrors: true,
+    ignoreBuildErrors: false,
   },
   webpack: (
     config,

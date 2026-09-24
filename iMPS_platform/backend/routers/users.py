@@ -23,6 +23,9 @@ from config import (
 )
 from deps import UserClaims, get_current_user
 from brand_scope import assert_charger_in_scope, brand_regex, brand_scope_of
+from session_cookies import (
+    REFRESH_COOKIE_NAME, as_utc, clear_session_cookies, set_session_cookies,
+)
 
 router = APIRouter()
 
@@ -56,7 +59,7 @@ class AiPackage(BaseModel):
 #     station_id: Optional[List[str]] = None
 
 @router.post("/login/")
-def login(body: LoginRequest, response: Response):
+def login(body: LoginRequest, request: Request, response: Response):
     user = users_collection.find_one(
         {"email": normalize_email(body.email)},
         {"_id": 1, "email": 1, "username": 1, "password": 1, "role": 1, "company": 1, "station_id": 1, "ai_package": 1},
@@ -122,20 +125,15 @@ def login(body: LoginRequest, response: Response):
         }}
     )
 
-    response.set_cookie(
-        key=ACCESS_COOKIE_NAME,
-        value=jwt_token,
-        httponly=True,
-        secure=False,
-        samesite="lax",
-        max_age=int(timedelta(minutes=token_expire_minutes).total_seconds()),
-        path="/",
+    # token อยู่ในคุกกี้ HttpOnly เท่านั้น — body มีแค่โปรไฟล์ (ไม่ใช่ความลับ) ให้ frontend แสดงเมนูตาม role
+    set_session_cookies(
+        response, request,
+        jwt_token, int(timedelta(minutes=token_expire_minutes).total_seconds()),
+        refresh_token, int(timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS).total_seconds()),
     )
 
     return {
         "message": "ok",
-        "access_token": jwt_token,
-        "refresh_token": refresh_token,
         "user": {
             "user_id": str(user["_id"]),
             "username": user.get("username"),
@@ -278,7 +276,7 @@ class SwitchRoleIn(BaseModel):
 
 
 @router.post("/users/switch-role")
-def switch_role(body: SwitchRoleIn, response: Response, current: UserClaims = Depends(get_current_user)):
+def switch_role(body: SwitchRoleIn, request: Request, response: Response, current: UserClaims = Depends(get_current_user)):
     """
     Super admin (thatsawan) สลับ role ที่กำลังสวม (impersonate) โดยไม่ต้อง login ใหม่ — ออก JWT cookie ใหม่
     gate ด้วย role จริงใน DB == super_admin (ไม่ใช่ JWT) → ใช้ได้แม้กำลัง impersonate role อื่นอยู่ก็สลับกลับได้
@@ -325,21 +323,15 @@ def switch_role(body: SwitchRoleIn, response: Response, current: UserClaims = De
         }]}},
     )
 
-    response.set_cookie(
-        key=ACCESS_COOKIE_NAME,
-        value=new_token,
-        httponly=True,
-        secure=False,
-        samesite="lax",
-        max_age=int(timedelta(minutes=expires_min).total_seconds()),
-        path="/",
+    set_session_cookies(
+        response, request,
+        new_token, int(timedelta(minutes=expires_min).total_seconds()),
+        refresh_token, int(timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS).total_seconds()),
     )
-    # ส่ง token + user กลับเหมือน /login ให้ frontend เก็บ localStorage แบบเดียวกันเป๊ะ
+    # ส่ง user กลับเหมือน /login ให้ frontend อัปเดตโปรไฟล์แบบเดียวกันเป๊ะ (token อยู่ในคุกกี้แล้ว)
     return {
         "ok": True,
         "role": target,
-        "access_token": new_token,
-        "refresh_token": refresh_token,
         "user": {
             "user_id": str(u["_id"]),
             "username": u.get("username") or current.username,
@@ -569,88 +561,111 @@ def get_history(
         raise HTTPException(status_code=403, detail="Forbidden station_id")
 
 class RefreshIn(BaseModel):
-    refresh_token: str
+    # เดิม frontend ส่ง refresh token จาก localStorage มาใน body — รับไว้ช่วงเปลี่ยนผ่าน
+    # (tab ที่เปิดค้างก่อน deploy) แล้วย้ายเข้าคุกกี้ให้เลย ปกติ token มากับคุกกี้เท่านั้น
+    refresh_token: Optional[str] = None
+
+
+def _refresh_denied(request: Request, detail: str) -> JSONResponse:
+    """401 พร้อมล้างคุกกี้ — กัน middleware ของ Next ปล่อยผ่านด้วย refresh token ที่ใช้ไม่ได้แล้ว"""
+    resp = JSONResponse(status_code=401, content={"detail": detail})
+    clear_session_cookies(resp, request)
+    return resp
+
 
 @router.post("/refresh")
-def refresh(body: RefreshIn, response: Response):
+def refresh(request: Request, response: Response, body: Optional[RefreshIn] = None):
+    token = request.cookies.get(REFRESH_COOKIE_NAME) or (body.refresh_token if body else None)
+    if not token:
+        return _refresh_denied(request, "refresh_token_missing")
     try:
-        payload = jwt.decode(body.refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
-        email = payload.get("sub")
-        if not email:
-            raise HTTPException(status_code=401, detail="Invalid token")
-
-        user = users_collection.find_one({"email": email})
-        if not user:
-            raise HTTPException(status_code=401, detail="User not found")
-
-        entry = next((t for t in user.get("refreshTokens", []) if t.get("token") == body.refresh_token), None)
-        if not entry:
-            raise HTTPException(status_code=401, detail="Invalid refresh token")
-
-        now = datetime.now(timezone.utc)
-        if entry.get("expiresAt") and now > entry["expiresAt"]:
-            raise HTTPException(status_code=401, detail="refresh_token_expired")
-
-        # กำหนด idle timeout ตามบทบาท
-        user_role = user.get("role", "user")
-        if user_role in STAFF_ROLES:
-            idle_timeout = SESSION_IDLE_MINUTES_TECHNICIAN  # None = ไม่มี idle timeout
-        else:
-            idle_timeout = SESSION_IDLE_MINUTES_DEFAULT  # 15 นาที
-        
-        # ตรวจสอบ idle timeout
-        idle_at = entry.get("lastActiveAt")
-        if idle_timeout is not None and idle_at and (now - idle_at) > timedelta(minutes=idle_timeout):
-            raise HTTPException(status_code=401, detail="session_idle_timeout")
-
-        # กำหนด token expire time ตามบทบาท
-        if user_role in STAFF_ROLES:
-            token_expire_minutes = ACCESS_TOKEN_EXPIRE_MINUTES_TECHNICIAN  # 24 ชั่วโมง
-        else:
-            token_expire_minutes = ACCESS_TOKEN_EXPIRE_MINUTES_DEFAULT  # 15 นาที
-
-        # สร้าง access ใหม่ (คง sid เดิม) — ไม่แนบ station_ids ลง token เช่นเดียวกับตอน login
-        # (กัน token/คุกกี้ใหญ่เกิน proxy_buffer_size; สิทธิ์สถานีใช้กฎกลางตาม role)
-        new_access = create_access_token({
-            "sub": user["email"],
-            "user_id": str(user["_id"]),
-            "username": user.get("username"),
-            "role": user_role,
-            "company": user.get("company"),
-            "sid": entry.get("sid"),
-        }, expires_delta=timedelta(minutes=token_expire_minutes))
-
-        # อัปเดต lastActiveAt
-        users_collection.update_one(
-            {"_id": user["_id"], "refreshTokens.token": body.refresh_token},
-            {"$set": {"refreshTokens.$.lastActiveAt": now}}
-        )
-
-        # ⚠️ ตั้งคุกกี้ access ใหม่ให้ SSE ทำงานต่อได้
-        response.set_cookie(
-            key=ACCESS_COOKIE_NAME,
-            value=new_access,
-            httponly=True,
-            secure=False,          # โปรดดูข้อ 2 ด้านล่าง
-            samesite="lax",        # โปรดดูข้อ 2 ด้านล่าง
-            max_age=int(timedelta(minutes=token_expire_minutes).total_seconds()),
-            path="/",
-        )
-        return {"access_token": new_access}
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
     except ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="refresh_token_expired")
+        return _refresh_denied(request, "refresh_token_expired")
     except JWTError:
-        raise HTTPException(status_code=401, detail="Invalid token")
-    
-@router.post("/logout")
-async def logout(email: str, refresh_token: str):
-    result = users_collection.update_one(
-        {"email": email, "refreshTokens.token": refresh_token},
-        {"$pull": {"refreshTokens": {"token": refresh_token}}}
+        return _refresh_denied(request, "Invalid token")
+
+    email = payload.get("sub")
+    if not email:
+        return _refresh_denied(request, "Invalid token")
+
+    user = users_collection.find_one({"email": email})
+    if not user:
+        return _refresh_denied(request, "User not found")
+
+    entry = next((t for t in user.get("refreshTokens", []) if t.get("token") == token), None)
+    if not entry:
+        return _refresh_denied(request, "Invalid refresh token")
+
+    # PyMongo คืน datetime แบบ naive — เดิมเทียบกับ now (aware) ตรง ๆ แล้วโยน TypeError
+    # ทำให้ /refresh ตอบ 500 ทุกครั้งและผู้ใช้หลุดไปหน้า login เมื่อ access token หมดอายุ
+    now = datetime.now(timezone.utc)
+    expires_at = as_utc(entry.get("expiresAt"))
+    if expires_at and now > expires_at:
+        return _refresh_denied(request, "refresh_token_expired")
+
+    # กำหนด idle timeout ตามบทบาท
+    user_role = user.get("role", "user")
+    if user_role in STAFF_ROLES:
+        idle_timeout = SESSION_IDLE_MINUTES_TECHNICIAN  # None = ไม่มี idle timeout
+    else:
+        idle_timeout = SESSION_IDLE_MINUTES_DEFAULT  # 15 นาที
+
+    # ตรวจสอบ idle timeout
+    idle_at = as_utc(entry.get("lastActiveAt"))
+    if idle_timeout is not None and idle_at and (now - idle_at) > timedelta(minutes=idle_timeout):
+        return _refresh_denied(request, "session_idle_timeout")
+
+    # กำหนด token expire time ตามบทบาท
+    if user_role in STAFF_ROLES:
+        token_expire_minutes = ACCESS_TOKEN_EXPIRE_MINUTES_TECHNICIAN  # 24 ชั่วโมง
+    else:
+        token_expire_minutes = ACCESS_TOKEN_EXPIRE_MINUTES_DEFAULT  # 15 นาที
+
+    # สร้าง access ใหม่ (คง sid เดิม) — ไม่แนบ station_ids ลง token เช่นเดียวกับตอน login
+    # (กัน token/คุกกี้ใหญ่เกิน proxy_buffer_size; สิทธิ์สถานีใช้กฎกลางตาม role)
+    new_access = create_access_token({
+        "sub": user["email"],
+        "user_id": str(user["_id"]),
+        "username": user.get("username"),
+        "role": user_role,
+        "company": user.get("company"),
+        "sid": entry.get("sid"),
+    }, expires_delta=timedelta(minutes=token_expire_minutes))
+
+    # อัปเดต lastActiveAt
+    users_collection.update_one(
+        {"_id": user["_id"], "refreshTokens.token": token},
+        {"$set": {"refreshTokens.$.lastActiveAt": now}}
     )
-    if result.modified_count == 0:
-        raise HTTPException(status_code=400, detail="Token not found or already logged out")
-    return {"msg": "Logged out successfully"}
+
+    # refresh token ตัวเดิมถูกตั้งกลับด้วยอายุที่เหลือ — ถ้ามาจาก body (ช่วงเปลี่ยนผ่าน) ก็ย้ายเข้าคุกกี้ในจังหวะนี้
+    refresh_left = int((expires_at - now).total_seconds()) if expires_at else int(
+        timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS).total_seconds())
+    set_session_cookies(
+        response, request,
+        new_access, int(timedelta(minutes=token_expire_minutes).total_seconds()),
+        token, refresh_left,
+    )
+    return {"ok": True}
+
+
+@router.post("/logout")
+def logout(request: Request):
+    """เพิกถอน session ใน DB แล้วล้างคุกกี้ — เรียกซ้ำหรือเรียกตอนไม่มี session ก็ตอบ 200
+
+    เดิม frontend แค่ลบ localStorage แต่คุกกี้ HttpOnly ยังอยู่ต่ออีก 24 ชม.
+    "ออกจากระบบ" แล้วจึงยังเรียก API ได้ด้วยคุกกี้นั้น
+    """
+    token = request.cookies.get(REFRESH_COOKIE_NAME)
+    if token:
+        users_collection.update_one(
+            {"refreshTokens.token": token},
+            {"$pull": {"refreshTokens": {"token": token}}},
+        )
+    resp = JSONResponse({"msg": "Logged out successfully"})
+    clear_session_cookies(resp, request)
+    return resp
 
 
 @router.get("/username")

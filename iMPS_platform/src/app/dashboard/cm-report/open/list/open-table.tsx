@@ -224,12 +224,6 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
     (async () => {
       try {
         const headers: Record<string, string> = {};
-        if (!useHttpOnlyCookie) {
-          const t = typeof window !== "undefined"
-            ? localStorage.getItem("access_token") ?? ""
-            : "";
-          if (t) headers.Authorization = `Bearer ${t}`;
-        }
 
         const res = await apiFetch(`${apiBase}/me`, {
           method: "GET",

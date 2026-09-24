@@ -4,6 +4,7 @@ import Link from "next/link";
 import HoverPrefetchLink from "@/components/HoverPrefetchLink";
 import { usePathname, useRouter } from "next/navigation";
 import React, { useEffect, useState } from "react";
+import { logout } from "@/utils/api";
 
 type NavItem = { label: string; href: string; requireAuth?: boolean };
 type User = { username: string; role?: string; company?: string };
@@ -24,11 +25,11 @@ export default function SiteNavbar() {
 
   const loadUserFromStorage = () => {
     try {
-      const token = localStorage.getItem("access_token");
+      // session อยู่ในคุกกี้ HttpOnly (อ่านจาก JS ไม่ได้) — โปรไฟล์ที่ได้ตอน login บอกว่าล็อกอินอยู่
       const rawUser = localStorage.getItem("user");
       const parsed =
         rawUser && rawUser !== "undefined" ? JSON.parse(rawUser) : null;
-      setUser(token && parsed ? parsed as User : null);
+      setUser(parsed ? parsed as User : null);
     } catch {
       setUser(null);
     }
@@ -37,10 +38,8 @@ export default function SiteNavbar() {
   useEffect(() => {
     const load = () => {
       try {
-        const token = localStorage.getItem("access_token");
         const rawUser = localStorage.getItem("user");
-        console.log("[Navbar] token=", token, "rawUser=", rawUser);
-        setUser(token && rawUser ? JSON.parse(rawUser) : null);
+        setUser(rawUser && rawUser !== "undefined" ? JSON.parse(rawUser) : null);
       } catch {
         setUser(null);
       }
@@ -148,11 +147,9 @@ export default function SiteNavbar() {
   };
 
   const handleLogout = async () => {
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("refresh_token");
-    localStorage.removeItem("user");
+    // backend ต้องลบคุกกี้ session — ลบแค่ localStorage แล้วคุกกี้ยังเรียก API ได้ต่ออีก 24 ชม.
+    await logout();
     setUser(null);
-    window.dispatchEvent(new Event("auth"));
     router.push("/auth/signin/basic");
   };
 
