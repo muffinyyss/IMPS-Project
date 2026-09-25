@@ -29,6 +29,7 @@ import { pmFormReturnRoute } from "@/app/dashboard/pm-report/lib/origin";
 import { registerDraftDiscard } from "@/app/dashboard/pm-report/lib/discardDraft";
 import { serverPhotosToForm, formKeyFromForward, measureAsText, mergeDraftPhotos, deleteRemovedServerPhotos, isServerPhoto, type ViewPhoto } from "@/app/dashboard/pm-report/lib/reviewData";
 import { useDebouncedEffect } from "@/app/dashboard/pm-report/lib/useDebouncedEffect";
+import { usePmReviewAction } from "@/app/dashboard/pm-report/lib/reviewAction";
 
 // ==================== GPS + ADDRESS CACHE ====================
 let _cachedLocation: { text: string; timestamp: number } | null = null;
@@ -1439,6 +1440,7 @@ export default function CCBPMReport() {
     // ช่างเปิดดูใบที่ตัวเองส่งไปแล้ว (?review=1) — เห็นหน้าเดียวกับ planner
     // แต่แก้อะไรไม่ได้ และไม่มีปุ่ม Reject/Approve
     const reviewMode = approveMode || searchParams.get("review") === "1";
+    const reviewAction = usePmReviewAction();
 
 
     // laborcode ฝั่ง Maximo ที่ช่างเลือกเอง — username ใน iMPS ใช้แทนกันไม่ได้
@@ -2305,9 +2307,9 @@ export default function CCBPMReport() {
 
             
             <form action="#" noValidate onSubmit={(e) => { e.preventDefault(); return false; }} onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }}>
-                {/* ดูอย่างเดียว: fieldset ปิดทั้งช่องกรอกและปุ่มบันทึกในทีเดียว */}
-                <fieldset disabled={reviewMode} className="pm-readonly tw-m-0 tw-min-w-0 tw-border-0 tw-p-0">
                 <div className="tw-mx-auto tw-max-w-6xl tw-bg-white tw-border tw-border-blue-gray-100 tw-rounded-xl tw-shadow-sm tw-p-6 md:tw-p-8 tw-print:tw-shadow-none tw-print:tw-border-0">
+                {/* ดูอย่างเดียว: fieldset ปิดช่องกรอกทั้งหมด — แถวปุ่มบันทึก/แก้ไขอยู่นอก fieldset ปุ่มแก้ไขจะได้กดได้ */}
+                <fieldset disabled={reviewMode} className="pm-readonly tw-m-0 tw-min-w-0 tw-border-0 tw-p-0">
                     <div className="tw-flex tw-flex-col tw-gap-4 md:tw-flex-row md:tw-items-start md:tw-justify-between md:tw-gap-6">
                         <div className="tw-flex tw-items-start tw-gap-3 md:tw-gap-4">
                             <div className="tw-relative tw-overflow-hidden tw-bg-white tw-rounded-md tw-shrink-0 tw-h-14 tw-w-[64px] sm:tw-h-16 sm:tw-w-[76px] md:tw-h-20 md:tw-w-[108px] lg:tw-h-24 lg:tw-w-[152px]">
@@ -2426,18 +2428,20 @@ export default function CCBPMReport() {
                                 isSummaryFilled={isSummaryFilled} isSummaryCheckFilled={isSummaryCheckFilled}
                             />
                         )}
-                        {/* ดูอย่างเดียว: ตรวจได้ แต่ไม่มีปุ่มบันทึกให้กด */}
-                        {!reviewMode && (
-                            <div className="tw-flex tw-flex-col sm:tw-flex-row tw-justify-end tw-gap-2 sm:tw-gap-3">
+                    </div>
+                </fieldset>
+                    {/* หน้าดูข้อมูล: ปุ่มแก้ไข (ถ้ามีสิทธิ์) อยู่ตำแหน่งเดียวกับปุ่มบันทึกของหน้ากรอก */}
+                    {(!reviewMode || reviewAction) && (
+                        <div className="tw-mt-3 tw-flex tw-flex-col sm:tw-flex-row tw-justify-end tw-gap-2 sm:tw-gap-3">
+                            {reviewMode ? reviewAction : (
                                 <Button type="button" onClick={onFinalSave} disabled={!canFinalSave || submitting}
                                     className="tw-text-sm tw-py-2.5 tw-w-full sm:tw-w-auto tw-bg-gray-800 hover:tw-bg-gray-900 disabled:tw-bg-gray-800 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed">
                                     {submitting ? t("saving", lang) : t("save", lang)}
                                 </Button>
-                            </div>
-                        )}
-                    </div>
+                            )}
+                        </div>
+                    )}
                 </div>
-                </fieldset>
             </form>
             <BackgroundUploadBanner lang={lang} />
             {/* ตรวจเสร็จแล้วกดต่อได้เลย ไม่ต้องเลื่อนกลับขึ้นไปข้างบน */}

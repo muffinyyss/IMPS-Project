@@ -28,6 +28,7 @@ import {
   ArrowLeftIcon, CheckCircleIcon, DocumentArrowDownIcon, EyeIcon, PencilSquareIcon, PlusIcon, XMarkIcon,
 } from "@heroicons/react/24/outline";
 import { discardOpenFormDraft } from "@/app/dashboard/pm-report/lib/discardDraft";
+import { PmReviewActionContext } from "@/app/dashboard/pm-report/lib/reviewAction";
 import { apiFetch } from "@/utils/api";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
 import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
@@ -690,11 +691,12 @@ export default function StationPmJobTables() {
       && currentJob?.status === "draft";
     // ตัด review ออก = ฟอร์มเดิมในโหมดแก้ไข (key ใหม่ให้โหลดเอกสารใหม่ทั้งหมด พร้อมรูปเดิม)
     const startEdit = () => goto({ review: null, approve: null });
-    const editButton = canEditSent && (
-      <Button size="sm" onClick={startEdit} className="tw-flex tw-items-center tw-gap-1.5 tw-bg-gray-900">
+    // ฟอร์มวางปุ่มนี้ตรงตำแหน่งปุ่ม "บันทึก" ของหน้ากรอก (ผ่าน PmReviewActionContext) หน้าตาเดียวกับปุ่มบันทึก
+    const editButton = canEditSent ? (
+      <Button type="button" onClick={startEdit} className="tw-text-sm tw-py-2.5 tw-bg-gray-800 hover:tw-bg-gray-900 tw-w-full sm:tw-w-auto tw-flex tw-items-center tw-justify-center tw-gap-1.5">
         <PencilSquareIcon className="tw-h-4 tw-w-4" /> {t("edit", lang)}
       </Button>
-    );
+    ) : null;
     // กำลังแก้ส่วนที่ส่งแล้ว (เข้ามาจากปุ่ม "แก้ไข") — ยกเลิกได้ ทิ้งสิ่งที่แก้ในเครื่องแล้วกลับหน้าดู
     // (ส่วนที่ยังเป็น draft เช่นโดนตีกลับ ไม่ได้มาจากปุ่มนี้ ใช้ปุ่มย้อนกลับตามเดิม)
     const editingSent = !viewing && !!openedSection?.report_id && sectionStatus === "wait for approve";
@@ -708,7 +710,6 @@ export default function StationPmJobTables() {
         <XMarkIcon className="tw-h-4 tw-w-4" /> {t("cancelEdit", lang)}
       </Button>
     );
-    const actionButton = editButton || cancelButton;
     return (
       <div className="tw-mt-4 sm:tw-mt-6 lg:tw-mt-8">
         <div className="tw-mb-3 tw-flex tw-items-center tw-justify-between tw-gap-2">
@@ -716,11 +717,13 @@ export default function StationPmJobTables() {
             <ArrowLeftIcon className="tw-h-4 tw-w-4" />
             {backLabel} · {t("back", lang)}
           </Button>
-          {actionButton}
+          {cancelButton}
         </div>
-        <SectionForm key={viewing ? "view" : "edit"} />
-        {actionButton && (
-          <div className="tw-mx-auto tw-mt-4 tw-flex tw-max-w-6xl tw-justify-end">{actionButton}</div>
+        <PmReviewActionContext.Provider value={editButton}>
+          <SectionForm key={viewing ? "view" : "edit"} />
+        </PmReviewActionContext.Provider>
+        {cancelButton && (
+          <div className="tw-mx-auto tw-mt-4 tw-flex tw-max-w-6xl tw-justify-end">{cancelButton}</div>
         )}
       </div>
     );
