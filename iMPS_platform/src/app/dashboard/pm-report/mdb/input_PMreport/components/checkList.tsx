@@ -1189,7 +1189,7 @@ export default function MDBPMForm() {
             try {
                 const data = await fetchReport(editId, stationId);
                 setDocFormVersion(Number(data.form_version) || 1);
-                if (data.job) setJob(prev => ({ ...prev, ...data.job, issue_id: data.issue_id ?? prev.issue_id }));
+                if (data.job) setJob(prev => ({ ...prev, ...data.job, station_name: data.job.station_name || prev.station_name, issue_id: data.issue_id ?? prev.issue_id }));
                 if (data.pm_date) setJob(prev => ({ ...prev, date: data.pm_date }));
                 if (data.charger_count) setChargerCount(data.charger_count);
                 if (data.q4_items) setQ6Items(data.q4_items.map((it: any, i: number) => ({ ...it, label: getDynamicLabel.breakerMain(i + 1, lang) })));
@@ -1235,10 +1235,22 @@ export default function MDBPMForm() {
                 if (!res.ok) return;
                 const data: Me = await res.json();
                 setMe(data);
-                setInspector(prev => prev || data.username || "");
+                // หน้าดูข้อมูลต้องโชว์ผู้ตรวจที่บันทึกในเอกสาร ไม่ใช่คนที่เปิดดู
+                if (!reviewMode) setInspector(prev => prev || data.username || "");
             } catch (err) { console.error("fetch /me error:", err); }
         })();
     }, []);
+
+    // ใบที่เปิดจาก edit_id (หน้าดู/แก้ใบเดิม) — เอกสารหลายใบเก็บ job.station_name เป็นค่าว่าง
+    // ต้องเติมชื่อสถานีจากข้อมูลสถานี ไม่งั้นช่อง "สถานที่" ว่าง
+    useEffect(() => {
+        if (!editId || !stationId) return;
+        let alive = true;
+        getStationInfoPublic(stationId)
+            .then(st => { if (alive && st.station_name) setJob(prev => ({ ...prev, station_name: prev.station_name || st.station_name })); })
+            .catch(err => console.error("load station info failed:", err));
+        return () => { alive = false; };
+    }, [editId, stationId]);
 
     useEffect(() => {
         if (editId || !stationId || !job.date) return;

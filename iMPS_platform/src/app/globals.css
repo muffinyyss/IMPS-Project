@@ -209,6 +209,25 @@ fieldset.pm-readonly:disabled button:disabled {
   cursor: default;
 }
 
+/* ช่อง Input/Textarea ของ Material Tailwind มีสไตล์ disabled ของตัวเอง (ซ่อนขอบ + ทำป้ายชื่อโปร่งใส)
+   ทำให้หน้าดูต่างจากหน้ากรอก เช่น Issue ID / สถานที่ / วันที่ PM ไม่มีกรอบและชื่อช่องหาย
+   ดึงกลับมาให้เหมือนตอนกรอก — สีตามธีม input/textarea แบบ outlined สี gray */
+fieldset.pm-readonly:disabled .tw-peer:disabled {
+  border-width: 1px;
+  color: #455a64 !important;               /* blue-gray-700 เท่ากับตอนกรอก */
+  -webkit-text-fill-color: #455a64;
+}
+fieldset.pm-readonly:disabled input.tw-peer:disabled:not(:placeholder-shown) ~ label {
+  color: #9e9e9e;                          /* gray-500 */
+}
+fieldset.pm-readonly:disabled textarea.tw-peer:disabled:not(:placeholder-shown) ~ label {
+  color: #78909c;                          /* blue-gray-400 */
+}
+fieldset.pm-readonly:disabled .tw-peer:disabled:not(:placeholder-shown) ~ label::before,
+fieldset.pm-readonly:disabled .tw-peer:disabled:not(:placeholder-shown) ~ label::after {
+  border-color: #b0bec5;                   /* blue-gray-200 */
+}
+
 /* ปุ่มลบรูปกดไม่ได้อยู่แล้วในโหมดนี้ โชว์ไว้มีแต่หลอกตา */
 fieldset.pm-readonly:disabled [data-photo-remove] { display: none; }
 

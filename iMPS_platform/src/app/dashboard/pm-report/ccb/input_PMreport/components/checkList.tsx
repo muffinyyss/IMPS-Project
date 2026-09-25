@@ -618,6 +618,13 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000"
 const LOGO_SRC = "/img/logo_egat.png";
 
 type StationPublic = { station_id: string; station_name: string; status?: boolean; };
+
+async function fetchStationPublic(stationId: string): Promise<StationPublic | null> {
+    const res = await fetch(`${API_BASE}/station/info/public?station_id=${encodeURIComponent(stationId)}`, { cache: "no-store", credentials: "include" });
+    if (!res.ok) return null;
+    const json = await res.json();
+    return json.station ?? json;
+}
 type Me = { id: string; username: string; email: string; role: string; company: string; tel: string; };
 
 const UNITS = { voltage: ["V"] as const };
@@ -1603,7 +1610,7 @@ export default function CCBPMReport() {
         (async () => {
             try {
                 const data = await fetchReport(editId, stationId);
-                if (data.job) setJob(prev => ({ ...prev, ...data.job, issue_id: data.issue_id ?? prev.issue_id }));
+                if (data.job) setJob(prev => ({ ...prev, ...data.job, station_name: data.job.station_name || prev.station_name, issue_id: data.issue_id ?? prev.issue_id }));
                 if (data.pm_date) setJob(prev => ({ ...prev, date: data.pm_date }));
 
                 // จำนวนเบรกเกอร์ย่อย: ใช้ค่าที่เอกสารบันทึกไว้ ถ้าไม่มีนับจากค่าวัด m10_* แทน
@@ -1733,7 +1740,8 @@ export default function CCBPMReport() {
                 if (!res.ok) return;
                 const data: Me = await res.json();
                 setMe(data);
-                setInspector((prev) => prev || data.username || "");
+                // หน้าดูข้อมูลต้องโชว์ผู้ตรวจที่บันทึกในเอกสาร ไม่ใช่คนที่เปิดดู
+                if (!reviewMode) setInspector((prev) => prev || data.username || "");
             } catch (err) { console.error("fetch /me error:", err); }
         })();
     }, []);
@@ -1745,7 +1753,16 @@ export default function CCBPMReport() {
         setPageLoading(false);
     }, []);
 
-    useEffect(() => { const onInfo = (e: Event) => { const detail = (e as CustomEvent).detail as { info?: StationPublic; station?: StationPublic }; const st = detail.info ?? detail.station; if (!st) return; setJob((prev) => ({ ...prev, station_name: st.station_name ?? prev.station_name })); }; window.addEventListener("station:info", onInfo as EventListener); return () => window.removeEventListener("station:info", onInfo as EventListener); }, []);
+    // ชื่อสถานีสำหรับช่อง "สถานที่" — เดิมรอ event "station:info" ที่ไม่มีใครส่งแล้ว ช่องจึงว่างทั้งตอนกรอกและตอนดู
+    // ดึงเองจากข้อมูลสถานี; เอกสารที่บันทึกชื่อไว้แล้วใช้ค่าในเอกสาร
+    useEffect(() => {
+        if (!stationId) return;
+        let alive = true;
+        fetchStationPublic(stationId)
+            .then(st => { if (alive && st?.station_name) setJob((prev) => ({ ...prev, station_name: prev.station_name || st.station_name })); })
+            .catch(err => console.error("load station info failed:", err));
+        return () => { alive = false; };
+    }, [stationId]);
 
     const makePhotoSetter = (photoKey: number): React.Dispatch<React.SetStateAction<PhotoItem[]>> => {
         return (action: React.SetStateAction<PhotoItem[]>) => {

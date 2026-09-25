@@ -485,6 +485,20 @@ function useMeasure(keys: readonly string[]) {
 }
 
 
+// ชื่อสถานีสำหรับช่อง "สถานที่" — เอกสารที่บันทึกไปแล้วหลายใบเก็บ job.station_name เป็นค่าว่าง
+// ต้องดึงจากข้อมูลสถานีเสมอ ไม่งั้นหน้าดูข้อมูลขึ้นช่องว่าง
+async function fetchStationName(stationId: string): Promise<string> {
+    const res = await fetch(`${API_BASE}/station/info/public?station_id=${encodeURIComponent(stationId)}`, { cache: "no-store", credentials: "include" });
+    if (!res.ok) return "";
+    const json = await res.json();
+    return (json.station ?? json)?.station_name ?? "";
+}
+
+function getTodayLocalStr() {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 async function fetchReport(reportId: string, stationId: string) {
     const res = await fetch(`${API_BASE}/cbboxpmreport/get?station_id=${stationId}&report_id=${reportId}`, { credentials: "include" });
     if (!res.ok) throw new Error(await res.text());
@@ -1023,7 +1037,8 @@ export default function CBBOXPMForm() {
     const contractorMissing = contractorPicked && !maximoContractor.trim();
     const [inspector, setInspector] = useState("");
     const [postApiLoaded, setPostApiLoaded] = useState(false);
-    const [job, setJob] = useState({ issue_id: "", station_name: "", date: "" });
+    // ใบใหม่ยังไม่มีวันที่จากเอกสาร — ใช้วันนี้ (backend ก็ใช้วันนี้ตอนสร้างใบ) ให้ตรงกับที่หน้าดูจะแสดง
+    const [job, setJob] = useState({ issue_id: "", station_name: "", date: editId ? "" : getTodayLocalStr() });
     const [dropdownQ1, setDropdownQ1] = useState("");
     const [dropdownQ2, setDropdownQ2] = useState("");
 
@@ -1080,8 +1095,18 @@ export default function CBBOXPMForm() {
         if (sid) setStationId(sid);
     }, []);
 
-    // Load me
     useEffect(() => {
+        if (!stationId) return;
+        let alive = true;
+        fetchStationName(stationId)
+            .then(name => { if (alive && name) setJob(prev => ({ ...prev, station_name: prev.station_name || name })); })
+            .catch(err => console.error("load station info failed:", err));
+        return () => { alive = false; };
+    }, [stationId]);
+
+    // Load me — หน้าดูข้อมูลต้องโชว์ผู้ตรวจที่บันทึกในเอกสาร ไม่ใช่คนที่เปิดดู
+    useEffect(() => {
+        if (reviewMode) return;
         fetch(`${API_BASE}/me`, { credentials: "include" })
             .then(res => res.ok ? res.json() : null)
             .then((data: Me | null) => { if (data) setInspector(prev => prev || data.username || ""); })
@@ -1093,7 +1118,7 @@ export default function CBBOXPMForm() {
         if (!editId || !stationId) return;
         setPostApiLoaded(false);
         fetchReport(editId, stationId).then(data => {
-            if (data.job) setJob(prev => ({ ...prev, ...data.job, issue_id: data.issue_id ?? prev.issue_id }));
+            if (data.job) setJob(prev => ({ ...prev, ...data.job, station_name: data.job.station_name || prev.station_name, issue_id: data.issue_id ?? prev.issue_id }));
             if (data.pm_date) setJob(prev => ({ ...prev, date: data.pm_date }));
             if (data.doc_name) setDocName(data.doc_name);
             if (data.inspector) setInspector(data.inspector);
