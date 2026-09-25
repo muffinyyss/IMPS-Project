@@ -2097,17 +2097,19 @@ export default function ChargerPMForm() {
             try {
                 const data = await fetchReport(editId, sn);
                 if (data.job) {
-                    setJob(prev => ({ ...prev, ...data.job, issue_id: data.issue_id ?? prev.issue_id, chargingCables: data.job.numberOfCables || data.job.chargingCables || prev.chargingCables || 1 }));
-
-                    if (!data.job?.numberOfCables && sn) {
-                        getChargerInfoBySN(sn)
-                            .then(st => {
-                                if (st.numberOfCables) {
-                                    setJob(prev => ({ ...prev, chargingCables: st.numberOfCables! }));
-                                }
-                            })
-                            .catch(() => { });
-                    }
+                    setJob(prev => ({ ...prev, ...data.job, station_name: data.job.station_name || prev.station_name, issue_id: data.issue_id ?? prev.issue_id, chargingCables: data.job.numberOfCables || data.job.chargingCables || prev.chargingCables || 1 }));
+                }
+                // เอกสารหลายใบเก็บ job.station_name เป็นค่าว่าง — เติมจากข้อมูลตู้ ไม่งั้นช่อง "สถานที่" ในหน้าดูว่าง
+                if ((!data.job?.numberOfCables || !data.job?.station_name) && sn) {
+                    getChargerInfoBySN(sn)
+                        .then(st => {
+                            setJob(prev => ({
+                                ...prev,
+                                station_name: prev.station_name || st.station_name || "",
+                                ...(!data.job?.numberOfCables && st.numberOfCables ? { chargingCables: st.numberOfCables } : {}),
+                            }));
+                        })
+                        .catch(() => { });
                 }
                 if (data.pm_date) setJob(prev => ({ ...prev, date: data.pm_date }));
                 if (data.doc_name) setDocName(data.doc_name);
@@ -2157,7 +2159,8 @@ export default function ChargerPMForm() {
                 if (!res.ok) return;
                 const data: Me = await res.json();
                 setMe(data);
-                setInspector((prev) => prev || data.username || "");
+                // หน้าดูข้อมูลต้องโชว์ผู้ตรวจที่บันทึกในเอกสาร ไม่ใช่คนที่เปิดดู
+                if (!reviewMode) setInspector((prev) => prev || data.username || "");
             } catch (err) { console.error("fetch /me error:", err); }
         })();
     }, []);
