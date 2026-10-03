@@ -25,6 +25,7 @@ import {
   listCompanyFilterOptions,
   isChargerWorkOrder,
   isEdsWorkOrder,
+  mergeCmRows,
 } from "./cm-dashboard";
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
@@ -829,5 +830,18 @@ describe("listYears", () => {
     expect(ys).toContain(2024);
     expect(ys).toContain(new Date().getFullYear());
     expect([...ys].sort((a, b) => b - a)).toEqual(ys);
+  });
+});
+
+describe("mergeCmRows", () => {
+  it("adds user-created rows missing from the latest window", () => {
+    const latest = [makeRow({ id: "a" }), makeRow({ id: "b" })];
+    const user = [makeRow({ id: "b" }), makeRow({ id: "old" })];
+    expect(mergeCmRows(latest, user).map((r) => r.id)).toEqual(["a", "b", "old"]);
+  });
+
+  it("keeps the latest window unchanged when nothing is missing", () => {
+    const latest = [makeRow({ id: "a" })];
+    expect(mergeCmRows(latest, [])).toEqual(latest);
   });
 });

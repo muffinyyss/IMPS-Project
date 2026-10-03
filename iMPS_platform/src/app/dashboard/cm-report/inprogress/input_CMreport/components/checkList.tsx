@@ -1684,6 +1684,13 @@ export default function CMInProgressForm() {
     const hasChosenResult = !!job.repair_result.trim() && job.repair_result !== "WO - wait for scheduled";
 
     const effectiveValidations = useMemo<ValidationItem[]>(() => {
+        // "No problem found" has its own closing requirements (photo + remarks).
+        // A report may still carry a completed repair_result from an earlier round
+        // or a restored draft; do not let that stale value re-enable the normal
+        // cause/correction/action requirements after those fields are hidden.
+        if (isNoProblem) {
+            return validations;
+        }
         if (!hasChosenResult && !isNoProblem) {
             return validations.map(v => v.key === "repairResult"
                 ? { ...v, isRequired: true }

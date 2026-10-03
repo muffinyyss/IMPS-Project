@@ -577,3 +577,12 @@ export function groupCountMultiByBrand(
     series: brands.map((b) => ({ name: b, data: perBrand.get(b)! })),
   };
 }
+
+/**
+ * รวมใบล่าสุด (ถูกตัดที่ limit) กับใบที่คนเปิดทั้งหมด — ใบ auto มีเป็นหมื่นใบจนเบียด
+ * ใบที่คนเปิดหลุดออกจากช่วงล่าสุด จึงต้องดึงใบของคนแยกมาเติมให้ครบเสมอ (ไม่ซ้ำ id)
+ */
+export function mergeCmRows(latest: CMRow[], userCreated: CMRow[]): CMRow[] {
+  const seen = new Set(latest.map((r) => r.id));
+  return [...latest, ...userCreated.filter((r) => !seen.has(r.id))];
+}

@@ -15,6 +15,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card } from "@material-tailwind/react";
 import { apiFetch } from "@/utils/api";
+import { fetchCmRows } from "@/utils/cm-rows";
 import useLanguage from "@/utils/useLanguage";
 import {
   CMRow, ActiveFilters, DateSel, STATUS_LABELS, WorkStatusFilter, EMPTY_FILTERS, CmOrigin,
@@ -197,11 +198,9 @@ export default function CMListPage() {
       setLoading(true);
       setError(null);
       try {
-        const res = await apiFetch(`/cmreport/list-all?limit=${FETCH_LIMIT}`);
-        const json = await res.json();
-        if (!res.ok) throw new Error(json?.detail || `HTTP ${res.status}`);
-        setRows(Array.isArray(json?.items) ? json.items : []);
-        setTotalInDB(json?.total ?? 0);
+        const { rows: loaded, total } = await fetchCmRows(FETCH_LIMIT);
+        setRows(loaded);
+        setTotalInDB(total);
       } catch (e) {
         setError(e instanceof Error ? e.message : "โหลดข้อมูลไม่สำเร็จ");
         setRows([]);
@@ -417,7 +416,7 @@ export default function CMListPage() {
       loading: "กำลังโหลด",
       errorPrefix: "โหลดข้อมูลไม่สำเร็จ",
       noResults: (q?: string) => q ? `ไม่พบรายการที่ตรงกับ "${q}"` : "ไม่พบรายงาน",
-      volumeWarning: (total: number, limit: number) => `ฐานข้อมูลมี ${total.toLocaleString()} รายการ — แสดงผล ${limit.toLocaleString()} รายการล่าสุด`,
+      volumeWarning: (total: number, limit: number) => `ฐานข้อมูลมี ${total.toLocaleString()} รายการ — แสดงผล ${limit.toLocaleString()} รายการล่าสุด (ใบงานที่สร้างเองแสดงครบทุกใบ)`,
       openReportTitle: "เปิดใบงาน CM",
       rejectedStatus: "Reject",
       quickWaitCsApprove: "รอเปิดใบงาน",
@@ -459,7 +458,7 @@ export default function CMListPage() {
       loading: "Loading",
       errorPrefix: "Failed to load data",
       noResults: (q?: string) => q ? `No records matching "${q}"` : "No reports found",
-      volumeWarning: (total: number, limit: number) => `Database has ${total.toLocaleString()} records — showing latest ${limit.toLocaleString()}.`,
+      volumeWarning: (total: number, limit: number) => `Database has ${total.toLocaleString()} records — showing latest ${limit.toLocaleString()} (all user-created work orders are included).`,
       openReportTitle: "Open CM work order",
       rejectedStatus: "Reject",
       quickWaitCsApprove: "SR wait for approve",
