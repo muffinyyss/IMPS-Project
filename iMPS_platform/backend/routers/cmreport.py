@@ -697,12 +697,14 @@ async def _cm_items_for_station(station_id: str, station_name: str, status: str 
                                 station_company: str = "",
                                 scope: dict | None = None,
                                 current: UserClaims | None = None,
-                                charger_docs: list[dict] | None = None) -> list[dict]:
+                                charger_docs: list[dict] | None = None,
+                                origin: str | None = None) -> list[dict]:
     """ดึง CM report ของสถานีเดียว + ใส่ station info
 
     charger_docs: ข้อมูลตู้ของสถานีนี้ที่ caller ดึงไว้แล้ว (list-all ดึงทุกสถานีด้วย
     query เดียว) — ถ้าไม่ส่งมา จะ query เองครั้งเดียวแล้วใช้ร่วมกันทั้ง brand clause
     และ charger index
+    origin: "user" = เฉพาะใบที่คนเปิด, "auto" = เฉพาะใบที่ระบบเปิด, None = ทั้งหมด
     """
     coll = get_cmreport_collection_for(station_id)
 
@@ -721,6 +723,11 @@ async def _cm_items_for_station(station_id: str, station_name: str, status: str 
         _merge_clause(mongo_filter, scope)
     if current is not None:
         _merge_clause(mongo_filter, await _brand_clause_for_station(station_id, current, charger_docs))
+    # เกณฑ์เดียวกับ originOf() ฝั่งหน้าเว็บ — auto_generated เท่านั้นที่นับเป็นใบของระบบ
+    if origin == "user":
+        _merge_clause(mongo_filter, {"auto_generated": {"$ne": True}})
+    elif origin == "auto":
+        _merge_clause(mongo_filter, {"auto_generated": True})
 
     cursor = coll.find(mongo_filter, {
         "_id": 1, "doc_name": 1, "issue_id": 1, "cm_date": 1, "found_date": 1, "status": 1,
@@ -841,6 +848,7 @@ async def _cm_items_for_station(station_id: str, station_name: str, status: str 
 async def cmreport_list_all(
     status: str | None = Query(None),
     station_id: str | None = Query(None),
+    origin: Literal["user", "auto"] | None = Query(None, description="user = ใบที่คนเปิด, auto = ใบที่ระบบเปิด"),
     limit: int = Query(10000, ge=1, le=50000, description="Max items to return"),
     skip: int = Query(0, ge=0, description="Items to skip (for pagination)"),
     current: UserClaims = Depends(get_current_user),
@@ -915,6 +923,7 @@ async def cmreport_list_all(
         _cm_items_for_station(
             s["station_id"], s.get("station_name", "-"), status, s.get("company", ""), scope, current,
             charger_docs=None if chargers_by_station is None else chargers_by_station.get(s["station_id"], []),
+            origin=origin,
         )
         for s in stations
         if s.get("station_id") and (existing_cm is None or s["station_id"] in existing_cm)
