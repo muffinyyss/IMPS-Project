@@ -68,7 +68,7 @@ SECTION_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
 CHARGER_SECTION = "charger"
 
 SECTION_LABELS: dict[str, dict[str, str]] = {
-    "station": {"th": "สถานี", "en": "Station"},
+    "station": {"th": "Station", "en": "Station"},
     "mdb": {"th": "MDB", "en": "MDB"},
     "ccb": {"th": "CCB", "en": "CCB"},
     "cbbox": {"th": "CB_BOX", "en": "CB_BOX"},
