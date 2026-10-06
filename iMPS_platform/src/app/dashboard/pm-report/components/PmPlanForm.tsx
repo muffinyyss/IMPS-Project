@@ -80,14 +80,13 @@ const T = {
   workOrder: { th: "เลขที่ใบงาน (WO)", en: "Work order (WO)" },
   location: { th: "Location", en: "Location" },
   station: { th: "สถานี", en: "Station" },
-  company: { th: "บริษัท", en: "Company" },
   pmDate: { th: "วันที่ PM", en: "PM date" },
-  description: { th: "รายละเอียดใบงาน", en: "Work order description" },
 
   // ป้ายสถานะใช้ชื่อเดียวกับตาราง: ยังไม่ assign = Open, assign แล้ว = In Progress
   planned: { th: "In Progress", en: "In Progress" },
   pending: { th: "Open", en: "Open" },
   plannedAt: { th: "วันที่/เวลาที่วางแผน", en: "Planned at" },
+  plannedBy: { th: "ผู้วางแผน", en: "Planned by" },
   schedStart: { th: "วันที่เริ่มตามแผน", en: "Scheduled start" },
   schedFinish: { th: "วันที่เสร็จตามแผน", en: "Scheduled finish" },
   schedRangeError: {
@@ -165,6 +164,7 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
   const [choices, setChoices] = useState<EquipmentChoices | null>(null);
   const [assigneeOptions, setAssigneeOptions] = useState<PmAssigneeOptions>(EMPTY_PM_ASSIGNEE_OPTIONS);
   const [canPlan, setCanPlan] = useState(false);
+  const [myUsername, setMyUsername] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -196,6 +196,7 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
 
       const me = await meRes.json().catch(() => ({} as any));
       setCanPlan(PM_PLANNING_ROLES.includes(String(me?.role ?? "").trim().toLowerCase()));
+      setMyUsername(String(me?.username ?? ""));
 
       const woJson = await woRes.json().catch(() => ({} as any));
       const found: MaximoWorkOrder | undefined = (Array.isArray(woJson?.items) ? woJson.items : [])
@@ -444,7 +445,7 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
           ) : !wo ? null : (
             <>
               {/* Meta Info - Readonly Inputs */}
-              <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-4 tw-gap-4 tw-mb-6">
+              <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-3 tw-gap-4 tw-mb-6">
                 <div>
                   <label className="tw-block tw-text-sm tw-text-blue-gray-600 tw-mb-1">{t("pmDate", lang)}</label>
                   <Input value={formatDate(wo.pm_date, lang)} readOnly crossOrigin="" className="!tw-w-full !tw-bg-gray-100" containerProps={{ className: "!tw-min-w-0" }} />
@@ -457,18 +458,7 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
                   <label className="tw-block tw-text-sm tw-text-blue-gray-600 tw-mb-1">{t("station", lang)}</label>
                   <Input value={wo.station_id || "— ไม่พบสถานีที่ผูกกับ location นี้ —"} readOnly crossOrigin="" className="!tw-w-full !tw-bg-gray-100" containerProps={{ className: "!tw-min-w-0" }} />
                 </div>
-                <div>
-                  <label className="tw-block tw-text-sm tw-text-blue-gray-600 tw-mb-1">{t("company", lang)}</label>
-                  <Input value={wo.company || ""} readOnly crossOrigin="" className="!tw-w-full !tw-bg-gray-100" containerProps={{ className: "!tw-min-w-0" }} />
-                </div>
               </div>
-
-              {wo.description && (
-                <div className="tw-mb-6">
-                  <label className="tw-block tw-text-sm tw-text-blue-gray-600 tw-mb-1">{t("description", lang)}</label>
-                  <div className={FIELD_RO}>{wo.description}</div>
-                </div>
-              )}
 
               {/* ═══ 1. ข้อมูลการวางแผน ═══ */}
               <div className="tw-mb-6 tw-rounded-lg tw-overflow-hidden tw-border tw-border-blue-gray-100 tw-bg-white tw-shadow-sm">
@@ -482,6 +472,16 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
                         type="text"
                         readOnly
                         value={plannedAt ? plannedAt.replace("T", " ") : "-"}
+                        className={FIELD_RO}
+                      />
+                    </div>
+                    {/* ยังไม่วางแผน = คนที่เปิดฟอร์มอยู่จะเป็นผู้วางแผน (backend ประทับ username ตอนกด Assign) */}
+                    <div>
+                      <label className={LABEL}>{t("plannedBy", lang)}</label>
+                      <input
+                        type="text"
+                        readOnly
+                        value={wo.planned_by || (canPlan && !alreadyPlanned ? myUsername : "") || "-"}
                         className={FIELD_RO}
                       />
                     </div>

@@ -71,7 +71,7 @@ const SECTION_FORMS: Record<SectionId, React.ComponentType> = {
 };
 
 const SECTION_TITLE: Record<SectionId, { th: string; en: string }> = {
-  station: { th: "สถานี", en: "Station" },
+  station: { th: "Station", en: "Station" },
   mdb: { th: "MDB", en: "MDB" },
   ccb: { th: "CCB", en: "CCB" },
   cbbox: { th: "CB_BOX", en: "CB_BOX" },
