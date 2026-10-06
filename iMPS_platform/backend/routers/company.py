@@ -163,6 +163,40 @@ async def list_companies(
     return {"companies": [_serialize(d) for d in docs]}
 
 
+async def _my_company(current: UserClaims) -> str:
+    """company ของคนที่ login — อ่านสดจาก DB เพราะ JWT อายุ 24 ชม. อาจเก่ากว่า profile ที่เพิ่งแก้"""
+    company = (current.company or "").strip()
+    if current.user_id:
+        try:
+            me = await users_coll_async.find_one({"_id": ObjectId(current.user_id)}, {"company": 1})
+            company = ((me or {}).get("company") or company).strip()
+        except (InvalidId, TypeError):
+            pass  # user_id ใน token ไม่ใช่ ObjectId — ใช้ค่าจาก claims ต่อ
+    return company
+
+
+async def coworker_usernames(current: UserClaims) -> List[str]:
+    """
+    บัญชี iMPS ทุก role ที่อยู่ company เดียวกับคนที่ login (รวมตัวเอง)
+    ไม่มี company = ไม่รู้ว่าอยู่ใต้ใคร คืนลิสต์ว่าง (super_admin ก็ไม่เว้น เหมือน pm-options)
+    """
+    company = await _my_company(current)
+    if not company:
+        return []
+    docs = (
+        await users_coll_async.find({"company": _ci(company)}, {"username": 1})
+        .sort("username", 1)
+        .to_list(length=None)
+    )
+    return _dedupe_names(d.get("username", "") for d in docs)
+
+
+@router.get("/coworkers")
+async def list_coworkers(current: UserClaims = Depends(get_current_user)):
+    """รายชื่อบัญชี iMPS ใน company เดียวกัน — ช่องผู้ปฏิบัติงานตอนปิดใบงาน PM ที่ไม่ได้ผูกกับ Maximo"""
+    return {"company": await _my_company(current), "users": await coworker_usernames(current)}
+
+
 @router.get("/pm-options")
 async def pm_assignee_options(current: UserClaims = Depends(get_current_user)):
     """ตัวเลือก "ผู้รับผิดชอบ" ของฟอร์ม PM (วางแผน/เปิดใบงาน) — แยกเป็น 3 กลุ่ม
@@ -181,14 +215,7 @@ async def pm_assignee_options(current: UserClaims = Depends(get_current_user)):
     if (current.role or "").lower() not in PM_ASSIGNER_ROLES:
         raise HTTPException(status_code=403, detail="forbidden")
 
-    # อ่าน company สดจาก DB — JWT อายุ 24 ชม. อาจเก่ากว่า profile ที่เพิ่งแก้
-    company = (current.company or "").strip()
-    if current.user_id:
-        try:
-            me = await users_coll_async.find_one({"_id": ObjectId(current.user_id)}, {"company": 1})
-            company = ((me or {}).get("company") or company).strip()
-        except (InvalidId, TypeError):
-            pass  # user_id ใน token ไม่ใช่ ObjectId — ใช้ค่าจาก claims ต่อ
+    company = await _my_company(current)
 
     # ไม่มี company = ไม่รู้ว่าอยู่ใต้ใคร จึงไม่ควรเห็นชื่อของบริษัทอื่น (super_admin ก็ไม่เว้น)
     if not company:

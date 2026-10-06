@@ -16,6 +16,7 @@ import { pmFormReturnRoute } from "@/app/dashboard/pm-report/lib/origin";
 import { registerDraftDiscard } from "@/app/dashboard/pm-report/lib/discardDraft";
 import { apiFetch } from "@/utils/api";
 import { serverPhotosToForm, formKeyFromForward, measureAsText, mergeDraftPhotos, deleteRemovedServerPhotos, isServerPhoto, type ViewPhoto } from "@/app/dashboard/pm-report/lib/reviewData";
+import { useJobDocIds } from "@/app/dashboard/pm-report/lib/useJobDocIds";
 import { useDebouncedEffect } from "@/app/dashboard/pm-report/lib/useDebouncedEffect";
 import { usePmCancelEdit, usePmReviewAction } from "@/app/dashboard/pm-report/lib/reviewAction";
 
@@ -985,6 +986,8 @@ export default function CBBOXPMForm() {
     const [docName, setDocName] = useState("");
     const [reportId, setReportId] = useState("");
     const [stationId, setStationId] = useState<string | null>(null);
+    // เปิดจากใบ PM สถานี → หัวฟอร์มใช้เลขที่/ชื่อเอกสารของใบแม่ (ส่วนที่ยังไม่บันทึกไม่มีเลขในตัวเอง)
+    const jobDocIds = useJobDocIds(jobId, stationId ?? searchParams.get("station_id"));
     const [summary, setSummary] = useState("");
     const [summaryCheck, setSummaryCheck] = useState<PF>("");
     // เวลาทำงานจริงของช่าง (datetime-local) — ส่งเข้า Maximo ทาง IN09 ตอนปิดใบงาน
@@ -1520,10 +1523,10 @@ export default function CBBOXPMForm() {
                             <div className="tw-relative tw-overflow-hidden tw-bg-white tw-rounded-md tw-shrink-0 tw-h-14 tw-w-[64px] sm:tw-h-16 sm:tw-w-[76px] md:tw-h-20 md:tw-w-[108px] lg:tw-h-24 lg:tw-w-[152px]"><Image src={LOGO_SRC} alt="Logo" fill priority className="tw-object-contain" sizes="152px" /></div>
                             <div className="tw-min-w-0"><div className="tw-font-semibold tw-text-gray-900 tw-text-sm sm:tw-text-base">{t("pageTitle", lang)}</div><div className="tw-text-xs sm:tw-text-sm tw-text-gray-600">{t("companyAddressShort", lang)}<br />{t("callCenter", lang)}</div></div>
                         </div>
-                        <div className="tw-text-left md:tw-text-right tw-text-sm tw-text-gray-700 tw-border-t tw-border-gray-100 tw-pt-3 md:tw-border-t-0 md:tw-pt-0 md:tw-shrink-0"><div className="tw-font-semibold">{t("docName", lang)}</div><div className="tw-break-all">{docName || "-"}</div></div>
+                        <div className="tw-text-left md:tw-text-right tw-text-sm tw-text-gray-700 tw-border-t tw-border-gray-100 tw-pt-3 md:tw-border-t-0 md:tw-pt-0 md:tw-shrink-0"><div className="tw-font-semibold">{t("docName", lang)}</div><div className="tw-break-all">{jobDocIds?.doc_name || docName || "-"}</div></div>
                     </div>
                     <div className="tw-mt-8 tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 lg:tw-grid-cols-6 tw-gap-4">
-                        <div className="lg:tw-col-span-1"><Input label={t("issueId", lang)} value={job.issue_id || "-"} readOnly crossOrigin="" containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full !tw-bg-gray-50" /></div>
+                        <div className="lg:tw-col-span-1"><Input label={t("issueId", lang)} value={jobDocIds?.issue_id || job.issue_id || "-"} readOnly crossOrigin="" containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full !tw-bg-gray-50" /></div>
                         <div className="sm:tw-col-span-2 lg:tw-col-span-2"><Input label={t("location", lang)} value={job.station_name} readOnly crossOrigin="" containerProps={{ className: "!tw-min-w-0" }} className="!tw-bg-gray-50" /></div>
                         <div className="sm:tw-col-span-2 lg:tw-col-span-2"><Input label={t("inspector", lang)} value={inspector} readOnly crossOrigin="" containerProps={{ className: "!tw-min-w-0" }} className="!tw-bg-gray-50" /></div>
                         <div className="lg:tw-col-span-1"><Input label={t("pmDate", lang)} type="text" value={job.date} readOnly crossOrigin="" containerProps={{ className: "!tw-min-w-0" }} className="!tw-bg-gray-50" /></div>

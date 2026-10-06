@@ -29,6 +29,7 @@ import {
   PM_DEFAULT_SPAN_DAYS,
   pmAssigneeGroups,
   pmAssigneeNames,
+  PM_PLANNER_FILL_ROLES,
   PM_PLANNING_ROLES,
   toDateTimeLocalValue,
   type EquipmentChoices,
@@ -165,6 +166,7 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
   const [assigneeOptions, setAssigneeOptions] = useState<PmAssigneeOptions>(EMPTY_PM_ASSIGNEE_OPTIONS);
   const [canPlan, setCanPlan] = useState(false);
   const [myUsername, setMyUsername] = useState("");
+  const [myRole, setMyRole] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -195,7 +197,9 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
       ]);
 
       const me = await meRes.json().catch(() => ({} as any));
-      setCanPlan(PM_PLANNING_ROLES.includes(String(me?.role ?? "").trim().toLowerCase()));
+      const role = String(me?.role ?? "").trim().toLowerCase();
+      setCanPlan(PM_PLANNING_ROLES.includes(role));
+      setMyRole(role);
       setMyUsername(String(me?.username ?? ""));
 
       const woJson = await woRes.json().catch(() => ({} as any));
@@ -326,7 +330,8 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
   // เริ่ม PM ได้ต่อเมื่อ planner เลือกอุปกรณ์ไว้แล้ว — อ่านจากแผนที่บันทึกแล้ว
   // ไม่ใช่ state ของ checkbox ที่ planner อาจกำลังแก้ค้างอยู่
   const plannedEquipment = wo?.selected_equipment ?? [];
-  const showStart = !canPlan && !!onStart;
+  // ช่างเห็นปุ่มเสมอ ส่วน planner/admin กรอกเองได้หลังวางแผนเสร็จแล้ว (ก่อนนั้นต้องกด Assign ก่อน)
+  const showStart = !!onStart && (!canPlan || (alreadyPlanned && PM_PLANNER_FILL_ROLES.includes(myRole)));
   const canStart = !loading && !!wo && plannedEquipment.length > 0;
   // วางแผนเสร็จแล้ว = อ่านอย่างเดียวถาวร (PM ไม่มีแก้ไขแผน)
   const locked = !canPlan || alreadyPlanned;
@@ -520,8 +525,9 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
                       </label>
                       {/* คนที่วางแผนไม่ได้ (เช่นช่าง) เรียก /companies/pm-options ไม่ได้ — ได้ 403
                           แล้ว list ว่าง ทำให้ขึ้น "ไม่พบ..." ซึ่งไม่จริง
-                          โหมดอ่านอย่างเดียวจึงแสดงชื่อที่มอบหมายไว้เป็นข้อความแทน */}
-                      {!canPlan ? (
+                          โหมดอ่านอย่างเดียวจึงแสดงชื่อที่มอบหมายไว้เป็นข้อความแทน
+                          (รวมถึง planner ที่เปิดใบที่วางแผนแล้ว — แก้ไม่ได้อยู่ดี) */}
+                      {locked ? (
                         <div className={FIELD_RO}>
                           {assignees.length > 0 ? assignees.join(", ") : t("noAssignee", lang)}
                         </div>
