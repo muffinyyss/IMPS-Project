@@ -224,6 +224,8 @@ def job_progress(
     ไม่มีแผน หรือแผนไม่ตรงกับส่วนที่สถานีมีเลย → ต้องครบทุกส่วนของใบ
     ส่วนนอกแผนไม่ต้องรอ แต่ถ้ากรอกไว้แล้วก็ต้องส่งให้เรียบร้อยก่อน
 
+    ส่วนที่ช่างกด N/A (ไม่มีอุปกรณ์นี้ / ไม่ต้องตรวจรอบนี้) ไม่ต้องกรอก — ไม่นับเป็นส่วนที่ขาด
+
     Returns: {"status", "ready_to_submit", "missing": [state ของส่วนที่ยังขาด]}
     """
     filled = [s for s in section_states if s.get("report_id")]
@@ -242,7 +244,8 @@ def job_progress(
         need = present
     missing = [
         s for s in section_states
-        if not sent(s) and (section_key(s["section"], s.get("sn") or "") in need or s.get("report_id"))
+        if not s.get("na") and not sent(s)
+        and (section_key(s["section"], s.get("sn") or "") in need or s.get("report_id"))
     ]
 
     if not missing and filled and submitted:
@@ -281,7 +284,9 @@ async def _find_section_report(section: str, station_id: str, sn: str, job_id: s
         return None
 
 
-def _state_row(section: str, label: dict, doc: dict | None, sn: str = "", charger_no: str = "") -> dict:
+def _state_row(
+    section: str, label: dict, doc: dict | None, sn: str = "", charger_no: str = "", na: bool = False,
+) -> dict:
     return {
         "section": section,
         "label": label,
@@ -291,6 +296,16 @@ def _state_row(section: str, label: dict, doc: dict | None, sn: str = "", charge
         "status": _norm_status(doc.get("status")) if doc else "",
         "side": (doc or {}).get("side") or "",
         "inspector": (doc or {}).get("inspector") or "",
+        # N/A ได้เฉพาะส่วนที่ยังไม่มีเอกสาร — กรอกไปแล้วถือว่าไม่ใช่ N/A
+        "na": bool(na and not doc),
+    }
+
+
+def _na_keys(job: dict) -> set[SectionKey]:
+    """ส่วนที่ช่างกด N/A ไว้ในใบนี้"""
+    return {
+        section_key(str(x.get("section") or ""), str(x.get("sn") or ""))
+        for x in job.get("na_sections") or []
     }
 
 
@@ -308,6 +323,7 @@ async def _section_states(job: dict, chargers: list[dict] | None = None) -> list
     job_id = str(job.get("_id"))
     if chargers is None:
         chargers = station_chargers(station_id)
+    na_keys = _na_keys(job)
     out: list[dict] = []
     for section in SECTIONS:
         if section == CHARGER_SECTION:
@@ -319,10 +335,12 @@ async def _section_states(job: dict, chargers: list[dict] | None = None) -> list
                     "th": f"ตู้ชาร์จ {no}" if no else sn,
                     "en": f"Charger {no}" if no else sn,
                 }
-                out.append(_state_row(section, label, doc, sn=sn, charger_no=no))
+                out.append(_state_row(
+                    section, label, doc, sn=sn, charger_no=no, na=section_key(section, sn) in na_keys,
+                ))
             continue
         doc = await _find_section_report(section, station_id, "", job_id)
-        out.append(_state_row(section, SECTION_LABELS[section], doc))
+        out.append(_state_row(section, SECTION_LABELS[section], doc, na=section_key(section) in na_keys))
     return out
 
 
@@ -339,7 +357,7 @@ def _sections_done(sections: list[dict]) -> int:
             any(s.get("section") == member for s in rows)
             for member in member_sections
         )
-        if has_every_member and rows and all(s.get("report_id") for s in rows):
+        if has_every_member and rows and all(s.get("report_id") or s.get("na") for s in rows):
             done += 1
     return done
 
@@ -650,6 +668,62 @@ async def submit_station_pm_job(
     fresh = await jobs.find_one({"_id": job["_id"]}) or job
     log.info(f"  ✅ ปิดใบงาน PM สถานี {fresh.get('issue_id') or job_id} → รออนุมัติ ({current.username or current.sub})")
     return {"ok": True, "job": _serialize_job(fresh, sections, required)}
+
+
+# ══════════════════════════════════════════════════════════════════
+# N/A — ส่วนที่ไม่ต้องกรอกในใบนี้ (เช่นสถานีไม่มีอุปกรณ์นั้น)
+# ══════════════════════════════════════════════════════════════════
+
+class SectionNaIn(BaseModel):
+    section: str
+    sn: str = ""                          # ส่วน charger เท่านั้น
+    na: bool = True                       # False = ยกเลิก N/A กลับไปต้องกรอกเหมือนเดิม
+
+
+@router.post("/stationpmjob/{job_id}/section-na")
+async def set_section_na(
+    job_id: str,
+    body: SectionNaIn,
+    station_id: str = Query(...),
+    current: UserClaims = Depends(get_current_user),
+):
+    """
+    กด/ยกเลิก N/A ของส่วนหนึ่งในใบ — ส่วนที่ N/A ไม่ต้องกรอก ไม่นับเป็นส่วนที่ขาดตอนปิดใบงาน
+    และไม่อยู่ใน PDF
+
+    ทำได้เฉพาะตอนใบยังไม่ได้กด "ปิดใบงาน" และส่วนนั้นยังไม่มีเอกสาร
+    (กรอกไปแล้วต้องใช้เอกสารนั้น — กัน N/A ทับข้อมูลที่ตรวจไว้แล้วเงียบ ๆ)
+    """
+    station_id = station_id.strip()
+    section = (body.section or "").strip().lower()
+    if section not in SECTIONS:
+        raise HTTPException(status_code=400, detail=f"ส่วนของเอกสารไม่ถูกต้อง: {body.section}")
+    sn = (body.sn or "").strip() if section == CHARGER_SECTION else ""
+
+    jobs = get_stationpmjob_collection_for(station_id)
+    job = await jobs.find_one({"_id": pm_flow.to_oid(job_id)})
+    if not job:
+        raise HTTPException(status_code=404, detail=f"ไม่พบใบ PM สถานี id={job_id}")
+    if _job_submitted(job):
+        raise HTTPException(status_code=409, detail="ใบนี้กดปิดใบงานแล้ว แก้ไขไม่ได้")
+
+    sections = await _section_states(job)
+    state = next((s for s in sections if section_key(s["section"], s.get("sn") or "") == section_key(section, sn)), None)
+    if not state:
+        raise HTTPException(status_code=404, detail="ไม่พบส่วนนี้ในใบ")
+    if body.na and state["report_id"]:
+        raise HTTPException(status_code=409, detail="ส่วนนี้กรอกไปแล้ว จึงกด N/A ไม่ได้")
+
+    entry = {"section": section, "sn": sn}
+    await jobs.update_one(
+        {"_id": job["_id"]},
+        {("$addToSet" if body.na else "$pull"): {"na_sections": entry},
+         "$set": {"updatedAt": datetime.now(timezone.utc)}},
+    )
+    fresh = await jobs.find_one({"_id": job["_id"]}) or job
+    log.info(f"  {'⛔ N/A' if body.na else '↩️ ยกเลิก N/A'} ส่วน {section}{f'/{sn}' if sn else ''} "
+             f"ของใบ {fresh.get('issue_id') or job_id} ({current.username or current.sub})")
+    return {"ok": True, "job": _serialize_job(fresh, await _section_states(fresh), await job_planned_keys(fresh))}
 
 
 # ══════════════════════════════════════════════════════════════════

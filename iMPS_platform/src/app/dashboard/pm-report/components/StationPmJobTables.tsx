@@ -25,7 +25,7 @@ import {
   Button, Card, CardBody, CardHeader, Dialog, DialogBody, DialogFooter, DialogHeader, Input, Typography,
 } from "@material-tailwind/react";
 import {
-  ArrowLeftIcon, CheckCircleIcon, DocumentArrowDownIcon, EyeIcon, PencilSquareIcon, PlusIcon, XMarkIcon,
+  ArrowLeftIcon, CheckCircleIcon, ClipboardDocumentListIcon, DocumentArrowDownIcon, PencilSquareIcon, PlusIcon, XMarkIcon,
 } from "@heroicons/react/24/outline";
 import { discardOpenFormDraft } from "@/app/dashboard/pm-report/lib/discardDraft";
 import { PmCancelEditContext, PmReviewActionContext } from "@/app/dashboard/pm-report/lib/reviewAction";
@@ -114,6 +114,8 @@ type SectionState = {
   status: string;
   side: string;
   inspector: string;
+  /** ช่างกด N/A ไว้ — ส่วนนี้ไม่ต้องกรอก (มีได้เฉพาะส่วนที่ยังไม่มีเอกสาร) */
+  na?: boolean;
 };
 
 type Job = {
@@ -244,6 +246,13 @@ const T = {
 
   noChargers: { th: "สถานีนี้ยังไม่มีตู้ชาร์จในระบบ", en: "No chargers registered at this station" },
   chargersDone: { th: "กรอกแล้ว", en: "filled" },
+  na: { th: "N/A", en: "N/A" },
+  markNa: { th: "ไม่ต้องกรอกส่วนนี้ (N/A)", en: "Mark as N/A (no need to fill)" },
+  undoNa: { th: "ยกเลิก N/A — กลับไปต้องกรอก", en: "Undo N/A — fill this section" },
+  confirmNa: {
+    th: "กด N/A ส่วนนี้? ส่วนที่ N/A ไม่ต้องกรอก และจะไม่อยู่ใน PDF (ยกเลิกได้ก่อนกดปิดใบงาน)",
+    en: "Mark this section as N/A? It won't need to be filled and won't appear in the PDF (can be undone before closing the job).",
+  },
 } as const;
 
 const t = (k: keyof typeof T, lang: Lang) => T[k][lang === "en" ? "en" : "th"];
@@ -287,6 +296,7 @@ function fmtDate(iso: string, lang: Lang) {
 function sectionStatusLabel(status: string, lang: Lang, jobClosedByTech = true) {
   const s = String(status || "").trim().toLowerCase();
   if (!s) return t("notFilled", lang);
+  if (s === "na") return t("na", lang);
   // ส่วนที่ช่างส่งจากฟอร์มแล้ว แต่ยังไม่ได้กด "ปิดใบงาน" — ยังไม่ได้รออนุมัติจริง
   if (s === "wait for approve") return jobClosedByTech ? "Wait for approve" : t("sectionSent", lang);
   if (s === "draft") return lang === "en" ? "Draft" : "กำลังกรอก";
@@ -301,8 +311,11 @@ function sectionStatusLabel(status: string, lang: Lang, jobClosedByTech = true) 
  * ส่งครบแล้วแต่ยังมีใบรออนุมัติ = wait for approve
  * ปิดครบทุกใบ = closed
  */
-function aggregateStatus(rows: SectionState[]): string {
-  if (!rows.length) return "";
+function aggregateStatus(allRows: SectionState[]): string {
+  if (!allRows.length) return "";
+  // ส่วนที่ N/A ไม่ต้องกรอก — ไม่เอามาคิดสถานะ, N/A ทั้งหมด = "na"
+  const rows = allRows.filter((r) => !r.na);
+  if (!rows.length) return "na";
   const filled = rows.filter((r) => !!r.report_id);
   if (!filled.length) return "";
   const statuses = filled.map((r) => String(r.status || "").trim().toLowerCase());
@@ -316,37 +329,78 @@ function aggregateStatus(rows: SectionState[]): string {
 function sectionChipClass(status: string) {
   const s = String(status || "").trim().toLowerCase();
   if (!s) return "tw-bg-gray-100 tw-text-gray-400 tw-border-gray-200";
+  if (s === "na") return "tw-bg-gray-100 tw-text-gray-500 tw-border-gray-300";
   if (s === "wait for approve") return "tw-bg-purple-50 tw-text-purple-700 tw-border-purple-200";
   if (s === "draft") return "tw-bg-amber-50 tw-text-amber-700 tw-border-amber-200";
   return "tw-bg-green-50 tw-text-green-700 tw-border-green-200";
 }
 
-/** ปุ่มชื่ออุปกรณ์ของใบลูก 1 ใบ — ไอคอนบอกว่าเปิดกรอก/แก้ไขหรือดู */
+/**
+ * ปุ่มชื่ออุปกรณ์ของใบลูก 1 ใบ — ไอคอนบอกว่าเปิดกรอก/แก้ไขหรือดู
+ * ข้าง ๆ มีปุ่ม N/A ให้กดว่าส่วนนี้ไม่ต้องกรอก (เฉพาะส่วนที่ยังไม่มีเอกสาร และใบยังไม่ได้ปิดใบงาน)
+ */
 function SectionFillButton({
-  job, state, lang, onOpen,
+  job, state, lang, onOpen, onToggleNa, busy = false,
 }: {
   job: Job;
   state: SectionState;
   lang: Lang;
   onOpen: (job: Job, s: SectionState) => void;
+  onToggleNa: (job: Job, s: SectionState, na: boolean) => void;
+  busy?: boolean;
 }) {
   const filled = !!state.report_id;
   const status = String(state.status).trim().toLowerCase();
   const sent = filled && ["closed", "submitted", "wait for approve"].includes(status);
   const label = pick(state.label, lang);
   const action = sent ? t("view", lang) : filled ? t("edit", lang) : label;
-  const Icon = sent ? EyeIcon : PencilSquareIcon;
+  // ไอคอนหน้าชื่ออุปกรณ์บอกสถานะของฟอร์ม:
+  //   ยังไม่กรอก = แบบฟอร์ม | ส่งแล้ว (เสร็จ) = เครื่องหมายถูกสีเขียว | กลับไปแก้ไข (บันทึกไว้แต่ยังไม่ส่ง) = ดินสอ
+  const Icon = sent ? CheckCircleIcon : filled ? PencilSquareIcon : ClipboardDocumentListIcon;
+  const iconClass = sent ? "tw-text-green-600" : filled ? "tw-text-amber-600" : "";
+  const na = !!state.na;
+  // ปิดใบงานแล้ว (รออนุมัติ/ปิด) เปลี่ยน N/A ไม่ได้ — ปุ่มหายไป เหลือแค่ป้าย N/A
+  const canToggleNa = job.status === "draft" && !filled;
   return (
-    <Button
-      size="sm"
-      variant={filled ? "outlined" : "filled"}
-      onClick={() => onOpen(job, state)}
-      title={`${action}: ${label}`}
-      aria-label={`${action}: ${label}`}
-      className="tw-flex tw-w-full tw-items-center tw-justify-center tw-gap-1.5"
-    >
-      <Icon className="tw-h-4 tw-w-4" /> {label}
-    </Button>
+    <div className="tw-flex tw-w-full tw-items-stretch tw-gap-1.5">
+      {na ? (
+        <div
+          title={`${label}: ${t("na", lang)}`}
+          className="tw-flex tw-min-w-0 tw-flex-1 tw-items-center tw-justify-center tw-gap-1.5 tw-rounded-lg tw-border tw-border-dashed tw-border-gray-300 tw-bg-gray-50 tw-px-3 tw-py-2 tw-text-xs tw-font-bold tw-uppercase tw-text-gray-400"
+        >
+          <span className="tw-truncate tw-line-through">{label}</span>
+          <span className="tw-rounded tw-bg-gray-200 tw-px-1.5 tw-py-0.5 tw-text-[10px] tw-text-gray-600">
+            {t("na", lang)}
+          </span>
+        </div>
+      ) : (
+        <Button
+          size="sm"
+          variant={filled ? "outlined" : "filled"}
+          onClick={() => onOpen(job, state)}
+          title={`${action}: ${label}`}
+          aria-label={`${action}: ${label}`}
+          className="tw-flex tw-min-w-0 tw-flex-1 tw-items-center tw-justify-center tw-gap-1.5"
+        >
+          <Icon className={`tw-h-4 tw-w-4 tw-shrink-0 ${iconClass}`} /> <span className="tw-truncate">{label}</span>
+        </Button>
+      )}
+      {canToggleNa && (
+        <Button
+          size="sm"
+          variant={na ? "filled" : "outlined"}
+          color="gray"
+          disabled={busy}
+          onClick={() => onToggleNa(job, state, !na)}
+          title={`${label}: ${na ? t("undoNa", lang) : t("markNa", lang)}`}
+          aria-label={`${label}: ${na ? t("undoNa", lang) : t("markNa", lang)}`}
+          aria-pressed={na}
+          className="tw-shrink-0 tw-px-3"
+        >
+          {t("na", lang)}
+        </Button>
+      )}
+    </div>
   );
 }
 
@@ -523,6 +577,31 @@ export default function StationPmJobTables() {
       review: closed || waiting ? "1" : null,
       action: null, pmtab: null,
     });
+  };
+
+  /** กด/ยกเลิก N/A ของส่วนหนึ่ง — ส่วนที่ N/A ไม่ต้องกรอก ไม่นับเป็นส่วนที่ขาดตอนปิดใบงาน */
+  const toggleNa = async (job: Job, s: SectionState, na: boolean) => {
+    if (acting) return;
+    if (na && !window.confirm(`${pick(s.label, lang)}\n\n${t("confirmNa", lang)}`)) return;
+    setActing(true);
+    try {
+      const res = await apiFetch(
+        `/stationpmjob/${encodeURIComponent(job.id)}/section-na?station_id=${encodeURIComponent(job.station_id)}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ section: s.section, sn: s.sn || "", na }),
+        }
+      );
+      const json = await res.json().catch(() => ({} as any));
+      if (!res.ok) throw new Error(json?.detail || t("errAction", lang));
+      if (json?.job) setJobs((prev) => prev.map((j) => (j.id === json.job.id ? json.job : j)));
+      else await loadJobs();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : t("errAction", lang));
+    } finally {
+      setActing(false);
+    }
   };
 
   /** ออกจากหน้าใบงาน — มาจาก PM List ก็กลับไปหน้านั้น */
@@ -862,7 +941,7 @@ export default function StationPmJobTables() {
       const hasEverySection = group.sectionIds.every((sectionId) =>
         rows.some((item) => item.section === sectionId)
       );
-      return hasEverySection && rows.length > 0 && rows.every((item) => !!item.report_id);
+      return hasEverySection && rows.length > 0 && rows.every((item) => !!item.report_id || !!item.na);
     }).length;
     // ปิดใบงาน — มีเฉพาะใบที่ยังทำอยู่ กดได้เมื่อส่งครบทุกส่วนในแผนแล้ว
     // ยังไม่ครบ: ปุ่มจาง ชี้ค้างเห็นว่าขาดส่วนไหน
@@ -888,14 +967,27 @@ export default function StationPmJobTables() {
           </Button>
           <div className="tw-flex tw-flex-wrap tw-items-center tw-justify-end tw-gap-2">
           {closeJobButton}
-          <a
-            href={`${API_BASE}/stationpmjob/${encodeURIComponent(job.id)}/pdf?station_id=${encodeURIComponent(job.station_id)}&lang=${lang}`}
-            target="_blank"
-            rel="noreferrer"
-            className="tw-inline-flex tw-items-center tw-gap-1.5 tw-rounded-lg tw-border tw-border-gray-300 tw-px-3 tw-py-2 tw-text-sm tw-font-semibold tw-text-gray-700 hover:tw-bg-gray-50"
-          >
-            <DocumentArrowDownIcon className="tw-h-4 tw-w-4" /> {t("downloadPdf", lang)}
-          </a>
+          {/* PDF ทั้งใบ — โหลดได้เมื่อกรอกครบทุกอุปกรณ์ในแผนแล้ว
+              ใบที่ส่งอนุมัติ/ปิดแล้วครบแน่นอน (ปิดใบงานต้องครบก่อน) ส่วนใบที่ยังทำอยู่ดูจาก ready_to_submit
+              ยังไม่ครบ: ปุ่มจาง ชี้ค้างเห็นว่าขาดส่วนไหน (ข้อความเดียวกับปุ่มปิดใบงาน) */}
+          {job.status !== "draft" || job.ready_to_submit ? (
+            <a
+              href={`${API_BASE}/stationpmjob/${encodeURIComponent(job.id)}/pdf?station_id=${encodeURIComponent(job.station_id)}&lang=${lang}`}
+              target="_blank"
+              rel="noreferrer"
+              className="tw-inline-flex tw-items-center tw-gap-1.5 tw-rounded-lg tw-border tw-border-gray-300 tw-px-3 tw-py-2 tw-text-sm tw-font-semibold tw-text-gray-700 hover:tw-bg-gray-50"
+            >
+              <DocumentArrowDownIcon className="tw-h-4 tw-w-4" /> {t("downloadPdf", lang)}
+            </a>
+          ) : (
+            <span
+              title={closeJobHint}
+              aria-disabled="true"
+              className="tw-inline-flex tw-cursor-not-allowed tw-items-center tw-gap-1.5 tw-rounded-lg tw-border tw-border-gray-300 tw-px-3 tw-py-2 tw-text-sm tw-font-semibold tw-text-gray-700 tw-opacity-50"
+            >
+              <DocumentArrowDownIcon className="tw-h-4 tw-w-4" /> {t("downloadPdf", lang)}
+            </span>
+          )}
           </div>
         </div>
 
@@ -960,7 +1052,7 @@ export default function StationPmJobTables() {
             const rows = job.sections.filter((x) => group.sectionIds.includes(x.section));
             const groupStatus = aggregateStatus(rows);
             const isCharger = group.id === CHARGER_SECTION;
-            const doneCount = rows.filter((x) => !!x.report_id).length;
+            const doneCount = rows.filter((x) => !!x.report_id || !!x.na).length;
             return (
               <Card
                 key={group.id}
@@ -989,9 +1081,9 @@ export default function StationPmJobTables() {
                       </div>
                       <p className="tw-mt-1 tw-text-xs tw-text-gray-500">{pick(SECTION_GROUP_HINT[group.id], lang)}</p>
 
-                      {/* Station — แสดงเฉพาะปุ่มของ Station/MDB/CCB/CB_BOX */}
+                      {/* Station — แสดงเฉพาะปุ่มของ Station/MDB/CCB/CB_BOX เรียงต่อกันลงมาทีละปุ่ม */}
                       {!isCharger && (
-                        <div className="tw-mt-3 tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 tw-gap-2">
+                        <div className="tw-mt-3 tw-grid tw-grid-cols-1 tw-gap-2">
                           {group.sectionIds.map((sectionId) => {
                             const state = job.sections.find((item) => item.section === sectionId);
                             if (!state) return null;
@@ -1002,6 +1094,8 @@ export default function StationPmJobTables() {
                                 state={state}
                                 lang={lang}
                                 onOpen={openSection}
+                                onToggleNa={toggleNa}
+                                busy={acting}
                               />
                             );
                           })}
@@ -1021,6 +1115,8 @@ export default function StationPmJobTables() {
                                 state={c}
                                 lang={lang}
                                 onOpen={openSection}
+                                onToggleNa={toggleNa}
+                                busy={acting}
                               />
                             ))}
                           </div>
