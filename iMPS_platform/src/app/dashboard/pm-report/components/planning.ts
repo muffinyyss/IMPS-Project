@@ -146,6 +146,9 @@ export function togglePmAssigneeBatch(
 /** role ที่วางแผน PM ได้ — ต้องตรงกับ PM_PLANNING_ROLES ใน backend/routers/pm_maximo.py */
 export const PM_PLANNING_ROLES = ["admin", "owner", "planner"];
 
+/** role ที่วางแผนได้และกรอก PM form เองได้ด้วย — เห็นปุ่ม "เริ่ม PM" หลังวางแผนใบงานเสร็จแล้ว */
+export const PM_PLANNER_FILL_ROLES = ["admin", "planner"];
+
 export function derivePlanningStatus(
   selectedCountOrItems: number | Array<EquipmentItem | null | undefined> | null | undefined,
   current?: string | null

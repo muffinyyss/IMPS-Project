@@ -143,6 +143,8 @@ type Job = {
   work_finish?: string;
   maximo_labor?: string[];
   maximo_contractor?: string;
+  /** ใบที่ไม่ได้ผูกกับ Maximo — ผู้ปฏิบัติงานเป็นบัญชี iMPS แทน laborcode */
+  imps_labor?: string[];
 };
 
 type LaborOption = { laborcode: string; name: string; needs_name?: boolean };
@@ -203,6 +205,13 @@ const T = {
     th: "กรอกเวลาทำงานจริงและช่างที่ลงเวลาเข้า Maximo แล้วส่งให้ผู้อนุมัติ — หลังจากนี้แก้ไขเอกสารไม่ได้ จนกว่าจะถูกตีกลับ",
     en: "Enter the actual work time and the technicians to log in Maximo, then send for approval. The document can't be edited afterwards unless it is sent back.",
   },
+  closeJobHintNoMaximo: {
+    th: "กรอกเวลาทำงานจริงและผู้ปฏิบัติงาน แล้วส่งให้ผู้อนุมัติ — หลังจากนี้แก้ไขเอกสารไม่ได้ จนกว่าจะถูกตีกลับ",
+    en: "Enter the actual work time and who did the work, then send for approval. The document can't be edited afterwards unless it is sent back.",
+  },
+  impsLabor: { th: "ผู้ปฏิบัติงาน (บัญชี iMPS)", en: "Technicians (iMPS accounts)" },
+  impsLaborEmpty: { th: "ไม่พบบัญชี iMPS ในบริษัทของคุณ", en: "No iMPS accounts found in your company" },
+  errImpsLabor: { th: "กรุณาเลือกผู้ปฏิบัติงานอย่างน้อย 1 คน", en: "Select at least one technician" },
   workStart: { th: "วันที่เวลาเริ่ม PM", en: "PM start" },
   workFinish: { th: "วันที่เวลา PM เสร็จ", en: "PM finish" },
   maximoLabor: { th: "ช่างที่ลงเวลากับ Maximo", en: "Technicians to log in Maximo" },
@@ -369,6 +378,9 @@ export default function StationPmJobTables() {
   const [maximoLabor, setMaximoLabor] = useState<string[]>([]);
   const [maximoContractor, setMaximoContractor] = useState("");
   const [laborOptions, setLaborOptions] = useState<LaborOption[]>([]);
+  // ใบที่ไม่ได้ผูกกับ Maximo: เลือกผู้ปฏิบัติงานจากบัญชี iMPS ใน company เดียวกับคนที่ login
+  const [impsLabor, setImpsLabor] = useState<string[]>([]);
+  const [coworkers, setCoworkers] = useState<string[]>([]);
   const [closeError, setCloseError] = useState("");
 
   const [rejectOpen, setRejectOpen] = useState(false);
@@ -433,6 +445,21 @@ export default function StationPmJobTables() {
         const data = await res.json();
         if (alive && Array.isArray(data?.items)) setLaborOptions(data.items);
       } catch { /* โหลดไม่ได้ = ไม่บังคับเลือก ไม่บล็อกการปิดใบงาน */ }
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const res = await apiFetch("/companies/coworkers");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (alive && Array.isArray(data?.users)) setCoworkers(data.users);
+      } catch (err) {
+        console.error("load coworkers error:", err);
+      }
     })();
     return () => { alive = false; };
   }, []);
@@ -582,11 +609,14 @@ export default function StationPmJobTables() {
     setWorkFinish(currentJob.work_finish || toLocalDatetimeInput(now));
     setMaximoLabor(currentJob.maximo_labor || []);
     setMaximoContractor(currentJob.maximo_contractor || "");
+    setImpsLabor(currentJob.imps_labor || []);
     setCloseError("");
     setCloseOpen(true);
   };
 
   const contractorPicked = laborOptions.some((o) => o.needs_name && maximoLabor.includes(o.laborcode));
+  // ไม่มีเลขใบงาน Maximo = ไม่มีอะไรให้ลงเวลาใน Maximo (IN09) — ใช้บัญชี iMPS แทน
+  const isMaximoJob = !!currentJob?.wonum;
 
   /** ตรวจแบบเดียวกับ backend (pm_flow.validate_work_time) — บอกให้แก้ก่อนยิง */
   const closeJobProblem = (): string => {
@@ -594,6 +624,7 @@ export default function StationPmJobTables() {
     if (workFinish < workStart) return t("errWorkOrder", lang);
     const nowLocal = toLocalDatetimeInput(new Date());
     if (workStart > nowLocal || workFinish > nowLocal) return t("errWorkFuture", lang);
+    if (!isMaximoJob) return impsLabor.length === 0 ? t("errImpsLabor", lang) : "";
     if (laborOptions.length > 0 && maximoLabor.length === 0) return t("errLabor", lang);
     if (contractorPicked && !maximoContractor.trim()) return t("errContractor", lang);
     return "";
@@ -615,8 +646,9 @@ export default function StationPmJobTables() {
           body: JSON.stringify({
             work_start: workStart,
             work_finish: workFinish,
-            maximo_labor: maximoLabor,
-            maximo_contractor: contractorPicked ? maximoContractor.trim() : "",
+            ...(isMaximoJob
+              ? { maximo_labor: maximoLabor, maximo_contractor: contractorPicked ? maximoContractor.trim() : "" }
+              : { imps_labor: impsLabor }),
           }),
         }
       );
@@ -832,6 +864,22 @@ export default function StationPmJobTables() {
       );
       return hasEverySection && rows.length > 0 && rows.every((item) => !!item.report_id);
     }).length;
+    // ปิดใบงาน — มีเฉพาะใบที่ยังทำอยู่ กดได้เมื่อส่งครบทุกส่วนในแผนแล้ว
+    // ยังไม่ครบ: ปุ่มจาง ชี้ค้างเห็นว่าขาดส่วนไหน
+    // วางทั้งแถบบนและท้ายการ์ดทั้ง 2 ใบ — ทุกปุ่มปิดทั้งใบพร้อมกัน (ไม่ได้ปิดแยกรายการ์ด)
+    const closeJobButton = job.status === "draft" && (
+      <span title={closeJobHint}>
+        <Button
+          size="sm"
+          disabled={!job.ready_to_submit || acting}
+          onClick={openCloseJob}
+          className="tw-flex tw-items-center tw-gap-1.5 tw-bg-green-600 disabled:tw-pointer-events-none"
+        >
+          <CheckCircleIcon className="tw-h-4 tw-w-4" />
+          {acting ? t("closingJob", lang) : t("closeJob", lang)}
+        </Button>
+      </span>
+    );
     return (
       <div className="tw-mt-4 sm:tw-mt-6 lg:tw-mt-8 tw-mx-auto tw-max-w-5xl">
         <div className="tw-mb-4 tw-flex tw-items-center tw-justify-between tw-gap-3">
@@ -839,21 +887,7 @@ export default function StationPmJobTables() {
             <ArrowLeftIcon className="tw-h-4 tw-w-4" /> {t("back", lang)}
           </Button>
           <div className="tw-flex tw-flex-wrap tw-items-center tw-justify-end tw-gap-2">
-          {/* ปิดใบงาน — มีเฉพาะใบที่ยังทำอยู่ กดได้เมื่อส่งครบทุกส่วนในแผนแล้ว
-              ยังไม่ครบ: ปุ่มจาง ชี้ค้างเห็นว่าขาดส่วนไหน */}
-          {job.status === "draft" && (
-            <span title={closeJobHint}>
-              <Button
-                size="sm"
-                disabled={!job.ready_to_submit || acting}
-                onClick={openCloseJob}
-                className="tw-flex tw-items-center tw-gap-1.5 tw-bg-green-600 disabled:tw-pointer-events-none"
-              >
-                <CheckCircleIcon className="tw-h-4 tw-w-4" />
-                {acting ? t("closingJob", lang) : t("closeJob", lang)}
-              </Button>
-            </span>
-          )}
+          {closeJobButton}
           <a
             href={`${API_BASE}/stationpmjob/${encodeURIComponent(job.id)}/pdf?station_id=${encodeURIComponent(job.station_id)}&lang=${lang}`}
             target="_blank"
@@ -930,10 +964,12 @@ export default function StationPmJobTables() {
             return (
               <Card
                 key={group.id}
-                className="tw-border tw-border-gray-200 tw-shadow-sm"
+                className="tw-h-full tw-border tw-border-gray-200 tw-shadow-sm"
               >
-                <CardBody className="tw-p-4">
-                  <div className="tw-flex tw-items-start tw-gap-3">
+                {/* การ์ดสูงเท่ากันทั้งแถว (grid stretch) และดันปุ่มปิดใบงานลงล่างสุด
+                    — ปุ่มของทั้ง 2 การ์ดจึงอยู่ระดับเดียวกัน แม้จำนวนปุ่มอุปกรณ์จะต่างกัน */}
+                <CardBody className="tw-flex tw-h-full tw-flex-col tw-p-4">
+                  <div className="tw-flex tw-flex-1 tw-items-start tw-gap-3">
                     <div className="tw-flex tw-h-8 tw-w-8 tw-shrink-0 tw-items-center tw-justify-center tw-rounded-full tw-bg-gray-800 tw-text-sm tw-font-bold tw-text-white">
                       {idx + 1}
                     </div>
@@ -992,6 +1028,13 @@ export default function StationPmJobTables() {
                       )}
                     </div>
                   </div>
+
+                  {/* ml-11 = วงกลมเลข (w-8) + gap-3 — เส้นคั่นเริ่มตรงกับเนื้อหาด้านบน */}
+                  {closeJobButton && (
+                    <div className="tw-ml-11 tw-mt-4 tw-flex tw-justify-end tw-border-t tw-border-gray-100 tw-pt-3">
+                      {closeJobButton}
+                    </div>
+                  )}
                 </CardBody>
               </Card>
             );
@@ -1017,7 +1060,7 @@ export default function StationPmJobTables() {
         <Dialog open={closeOpen} handler={() => { if (!acting) setCloseOpen(false); }} size="sm">
           <DialogHeader>{t("closeJob", lang)}</DialogHeader>
           <DialogBody className="tw-flex tw-max-h-[70vh] tw-flex-col tw-gap-4 tw-overflow-y-auto">
-            <p className="tw-text-sm tw-text-gray-600">{t("closeJobHint", lang)}</p>
+            <p className="tw-text-sm tw-text-gray-600">{t(isMaximoJob ? "closeJobHint" : "closeJobHintNoMaximo", lang)}</p>
             <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 tw-gap-3">
               <label className="tw-block">
                 <span className="tw-mb-1.5 tw-block tw-text-xs tw-font-semibold tw-text-gray-700">
@@ -1044,6 +1087,31 @@ export default function StationPmJobTables() {
               </label>
             </div>
 
+            {!isMaximoJob ? (
+            <div>
+              <div className="tw-mb-1.5 tw-text-xs tw-font-semibold tw-text-gray-700">
+                {t("impsLabor", lang)} <span className="tw-text-red-500">*</span>
+              </div>
+              {coworkers.length === 0 ? (
+                <p className="tw-text-xs tw-text-orange-600">{t("impsLaborEmpty", lang)}</p>
+              ) : (
+                <div className="tw-max-h-56 tw-divide-y tw-divide-gray-100 tw-overflow-y-auto tw-rounded-lg tw-border tw-border-gray-200">
+                  {coworkers.map((name) => (
+                    <label key={name} className="tw-flex tw-cursor-pointer tw-items-center tw-gap-2.5 tw-px-3 tw-py-2 hover:tw-bg-gray-50">
+                      <input
+                        type="checkbox"
+                        checked={impsLabor.includes(name)}
+                        onChange={() => setImpsLabor((prev) =>
+                          prev.includes(name) ? prev.filter((n) => n !== name) : [...prev, name])}
+                        className="tw-h-4 tw-w-4 tw-shrink-0"
+                      />
+                      <span className="tw-min-w-0 tw-truncate tw-text-sm tw-text-gray-800">{name}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+            ) : (
             <div>
               <div className="tw-mb-1.5 tw-text-xs tw-font-semibold tw-text-gray-700">
                 {t("maximoLabor", lang)} {laborOptions.length > 0 && <span className="tw-text-red-500">*</span>}
@@ -1077,6 +1145,7 @@ export default function StationPmJobTables() {
                 />
               )}
             </div>
+            )}
 
             {closeError && (
               <div className="tw-rounded-lg tw-border tw-border-red-200 tw-bg-red-50 tw-px-3 tw-py-2 tw-text-sm tw-text-red-700">

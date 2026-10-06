@@ -28,6 +28,7 @@ import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
 import { pmFormReturnRoute } from "@/app/dashboard/pm-report/lib/origin";
 import { registerDraftDiscard } from "@/app/dashboard/pm-report/lib/discardDraft";
 import { serverPhotosToForm, formKeyFromForward, measureAsText, mergeDraftPhotos, deleteRemovedServerPhotos, isServerPhoto, type ViewPhoto } from "@/app/dashboard/pm-report/lib/reviewData";
+import { useJobDocIds } from "@/app/dashboard/pm-report/lib/useJobDocIds";
 import { useDebouncedEffect } from "@/app/dashboard/pm-report/lib/useDebouncedEffect";
 import { usePmCancelEdit, usePmReviewAction } from "@/app/dashboard/pm-report/lib/reviewAction";
 
@@ -1400,6 +1401,8 @@ export default function CCBPMReport() {
     }, []);
     const [summary, setSummary] = useState<string>("");
     const [stationId, setStationId] = useState<string | null>(null);
+    // เปิดจากใบ PM สถานี → หัวฟอร์มใช้เลขที่/ชื่อเอกสารของใบแม่ (ส่วนที่ยังไม่บันทึกไม่มีเลขในตัวเอง)
+    const jobDocIds = useJobDocIds(jobId, stationId ?? searchParams.get("station_id"));
 
     // ใบใหม่ (เปิดจาก job_id ไม่มี edit_id) ก็ต้องมี draft ของตัวเอง ไม่งั้นรีโหลดแล้วข้อมูล+รูปหายหมด
     const postKey = useMemo(
@@ -2327,12 +2330,12 @@ export default function CCBPMReport() {
                         </div>
                         <div className="tw-text-left md:tw-text-right tw-text-sm tw-text-blue-gray-700 tw-border-t tw-border-blue-gray-100 tw-pt-3 md:tw-border-t-0 md:tw-pt-0 md:tw-shrink-0">
                             <div className="tw-font-semibold">{t("docName", lang)}</div>
-                            <div className="tw-break-all">{docName || "-"}</div>
+                            <div className="tw-break-all">{jobDocIds?.doc_name || docName || "-"}</div>
                         </div>
                     </div>
 
                     <div className="tw-mt-6 tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 lg:tw-grid-cols-4 tw-gap-3 sm:tw-gap-4">
-                        <Input label={t("issueId", lang)} value={job.issue_id || "-"} readOnly crossOrigin="" containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full !tw-bg-blue-gray-50 !tw-text-sm" />
+                        <Input label={t("issueId", lang)} value={jobDocIds?.issue_id || job.issue_id || "-"} readOnly crossOrigin="" containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full !tw-bg-blue-gray-50 !tw-text-sm" />
                         <Input label={t("location", lang)} value={job.station_name} readOnly crossOrigin="" containerProps={{ className: "!tw-min-w-0" }} className="!tw-bg-blue-gray-50 !tw-text-sm" />
                         <Input label={t("pmDate", lang)} type="text" value={job.date} readOnly crossOrigin="" containerProps={{ className: "!tw-min-w-0" }} className="!tw-bg-blue-gray-50 !tw-text-sm" />
                         <Input label={t("inspector", lang)} value={inspector} readOnly crossOrigin="" containerProps={{ className: "!tw-min-w-0" }} className="!tw-bg-blue-gray-50 !tw-text-sm" />

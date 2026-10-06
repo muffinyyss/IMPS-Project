@@ -13,6 +13,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { pmFormReturnRoute } from "@/app/dashboard/pm-report/lib/origin";
 import { registerDraftDiscard } from "@/app/dashboard/pm-report/lib/discardDraft";
 import { serverPhotosToForm, formKeyFromForward, measureAsText, mergeDraftPhotos, deleteRemovedServerPhotos, isServerPhoto, type ViewPhoto } from "@/app/dashboard/pm-report/lib/reviewData";
+import { useJobDocIds } from "@/app/dashboard/pm-report/lib/useJobDocIds";
 import { useDebouncedEffect } from "@/app/dashboard/pm-report/lib/useDebouncedEffect";
 import { usePmCancelEdit, usePmReviewAction } from "@/app/dashboard/pm-report/lib/reviewAction";
 import PmApprovalBar from "@/app/dashboard/pm-report/components/PmApprovalBar";
@@ -1791,6 +1792,8 @@ export default function ChargerPMForm() {
     // เปิดจากใบ PM สถานี "ใบเดียว 5 ส่วน" → ส่วน Charger ของใบนั้น
     // มีค่า = ยืมเลขที่/ชื่อเอกสารของใบแม่ ไม่ออกเลขของตัวเอง
     const jobId = searchParams.get("job_id") ?? "";
+    // เปิดจากใบ PM สถานี → หัวฟอร์มใช้เลขที่/ชื่อเอกสารของใบแม่ (ส่วนที่ยังไม่บันทึกไม่มีเลขในตัวเอง)
+    const jobDocIds = useJobDocIds(jobId, searchParams.get("station_id"));
 
     const [photos, setPhotos] = useState<Record<string | number, PhotoItem[]>>({});
     // รูปเดิมของเอกสารที่โหลดมาใส่ฟอร์ม (หน้าดู / แก้ส่วนที่ส่งแล้ว) — ตอนบันทึกเทียบกับ photos
@@ -2927,13 +2930,13 @@ export default function ChargerPMForm() {
                         </div>
                         <div className="tw-text-left md:tw-text-right tw-text-sm tw-text-blue-gray-700 tw-border-t tw-border-blue-gray-100 tw-pt-3 md:tw-border-t-0 md:tw-pt-0 md:tw-shrink-0">
                             <div className="tw-font-semibold">{t("docName", lang)}</div>
-                            <div className="tw-break-all">{docName || "-"}</div>
+                            <div className="tw-break-all">{jobDocIds?.doc_name || docName || "-"}</div>
                         </div>
                     </div>
 
                     <div className="tw-mt-8 tw-space-y-8">
                         <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 lg:tw-grid-cols-8 tw-gap-4">
-                            <div className="lg:tw-col-span-2"><Input label={t("issueId", lang)} value={job.issue_id || "-"} readOnly crossOrigin="" containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full !tw-bg-blue-gray-50" /></div>
+                            <div className="lg:tw-col-span-2"><Input label={t("issueId", lang)} value={jobDocIds?.issue_id || job.issue_id || "-"} readOnly crossOrigin="" containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full !tw-bg-blue-gray-50" /></div>
                             <div className="sm:tw-col-span-2 lg:tw-col-span-2"><Input label={t("location", lang)} value={job.station_name} readOnly crossOrigin="" containerProps={{ className: "!tw-min-w-0" }} className="!tw-bg-blue-gray-50" /></div>
                             <div className="lg:tw-col-span-2"><Input label={t("pmDate", lang)} type="text" value={job.date} readOnly crossOrigin="" containerProps={{ className: "!tw-min-w-0" }} className="!tw-bg-blue-gray-50" /></div>
                             <div className="lg:tw-col-span-2"><Input label={t("inspector", lang)} value={inspector} readOnly crossOrigin="" containerProps={{ className: "!tw-min-w-0" }} className="!tw-bg-blue-gray-50" /></div>

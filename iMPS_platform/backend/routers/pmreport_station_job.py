@@ -378,6 +378,7 @@ def _serialize_job(job: dict, sections: list[dict], required: set[SectionKey] | 
         "work_finish": job.get("work_finish") or "",
         "maximo_labor": job.get("maximo_labor") or [],
         "maximo_contractor": job.get("maximo_contractor") or "",
+        "imps_labor": job.get("imps_labor") or [],
     }
 
 
@@ -555,6 +556,9 @@ class SubmitJobIn(BaseModel):
     work_finish: str
     maximo_labor: list[str] = []          # laborcode ที่ลงเวลาเข้า Maximo (IN09)
     maximo_contractor: str = ""           # ชื่อจริง เมื่อเลือกรหัสกลางของผู้รับเหมา
+    # ใบที่ไม่ได้ผูกกับใบงาน Maximo (ไม่มี wonum) — ไม่มีอะไรให้ลงเวลาใน Maximo
+    # จึงเลือกผู้ปฏิบัติงานจากบัญชี iMPS ใน company เดียวกับคนที่ login แทน
+    imps_labor: list[str] = []
 
 
 @router.post("/stationpmjob/{job_id}/submit")
@@ -573,24 +577,44 @@ async def submit_station_pm_job(
     แล้วเขียนลงใบลูกทุกใบ เพราะตอนอนุมัติ IN09 อ่านจากใบลูก
     """
     from services.cm_maximo import CONTRACTOR_LABOR_CODE
+    from routers.company import coworker_usernames
 
     work_start, work_finish = pm_flow.validate_work_time(body.work_start, body.work_finish)
-    labor = list(dict.fromkeys(str(c).strip() for c in body.maximo_labor if str(c or "").strip()))
-    contractor = (body.maximo_contractor or "").strip()
-    has_contractor_code = any(c.upper() == CONTRACTOR_LABOR_CODE for c in labor)
-    if has_contractor_code and not contractor:
-        raise HTTPException(status_code=400, detail="เลือกรหัสผู้รับเหมาแล้ว กรุณาระบุชื่อผู้รับเหมา")
-    work = {
-        "work_start": work_start,
-        "work_finish": work_finish,
-        "maximo_labor": labor,
-        "maximo_contractor": contractor if has_contractor_code else "",
-    }
     station_id = station_id.strip()
     jobs = get_stationpmjob_collection_for(station_id)
     job = await jobs.find_one({"_id": pm_flow.to_oid(job_id)})
     if not job:
         raise HTTPException(status_code=404, detail=f"ไม่พบใบ PM สถานี id={job_id}")
+
+    if str(job.get("wonum") or "").strip():
+        labor = list(dict.fromkeys(str(c).strip() for c in body.maximo_labor if str(c or "").strip()))
+        contractor = (body.maximo_contractor or "").strip()
+        has_contractor_code = any(c.upper() == CONTRACTOR_LABOR_CODE for c in labor)
+        if has_contractor_code and not contractor:
+            raise HTTPException(status_code=400, detail="เลือกรหัสผู้รับเหมาแล้ว กรุณาระบุชื่อผู้รับเหมา")
+        work = {
+            "work_start": work_start,
+            "work_finish": work_finish,
+            "maximo_labor": labor,
+            "maximo_contractor": contractor if has_contractor_code else "",
+            "imps_labor": [],
+        }
+    else:
+        # ไม่มีใบงาน Maximo — ผู้ปฏิบัติงานต้องเป็นบัญชี iMPS ใน company เดียวกับคนกดปิดใบงาน
+        allowed = {u.lower(): u for u in await coworker_usernames(current)}
+        picked = list(dict.fromkeys(str(u).strip() for u in body.imps_labor if str(u or "").strip()))
+        if not picked:
+            raise HTTPException(status_code=400, detail="กรุณาเลือกผู้ปฏิบัติงานอย่างน้อย 1 คน")
+        outside = [u for u in picked if u.lower() not in allowed]
+        if outside:
+            raise HTTPException(status_code=400, detail=f"ไม่ใช่บัญชีในบริษัทเดียวกัน: {', '.join(outside)}")
+        work = {
+            "work_start": work_start,
+            "work_finish": work_finish,
+            "maximo_labor": [],
+            "maximo_contractor": "",
+            "imps_labor": [allowed[u.lower()] for u in picked],
+        }
 
     required = await job_planned_keys(job)
     sections = await _section_states(job)
