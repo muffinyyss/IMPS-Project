@@ -136,6 +136,8 @@ type Job = {
   /** ส่วนที่ยังขาดก่อนกด "ปิดใบงาน" ได้ */
   missing?: { th: string; en: string }[];
   submitted_by?: string;
+  /** เวลาที่ช่างกด "เริ่ม PM" (รับงาน) — เป็นค่าเริ่มต้นของเวลาเริ่ม PM ตอนปิดใบงาน */
+  createdAt?: string;
   /** กรอกตอนกด "ปิดใบงาน" — เติมกลับให้ตอนกดใหม่หลังโดนตีกลับ */
   work_start?: string;
   work_finish?: string;
@@ -242,6 +244,25 @@ function todayISO() {
   const d = new Date();
   const p = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+/** Date → ค่าของ input datetime-local ตามเวลาเครื่อง "YYYY-MM-DDTHH:MM" */
+function toLocalDatetimeInput(d: Date) {
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+}
+
+/**
+ * ค่าเริ่มต้นของเวลาเริ่ม PM = วันนี้ + เวลาที่กดรับงาน (createdAt ของใบ)
+ * ถ้ารับงานไว้ตั้งแต่วันก่อนแล้วเวลานั้นของวันนี้ยังมาไม่ถึง ใช้วันเวลารับงานจริงแทน (Maximo ไม่รับเวลาอนาคต)
+ */
+function defaultWorkStart(createdAt: string | undefined, now: Date) {
+  if (!createdAt) return "";
+  // backend ส่ง datetime ของ Mongo เป็น UTC ไม่มี offset ต่อท้าย — ต้องบอกเองว่าเป็น UTC
+  const accepted = new Date(/[zZ]|[+-]\d{2}:?\d{2}$/.test(createdAt) ? createdAt : `${createdAt}Z`);
+  if (Number.isNaN(accepted.getTime())) return "";
+  const today = new Date(now);
+  today.setHours(accepted.getHours(), accepted.getMinutes(), 0, 0);
+  return toLocalDatetimeInput(today <= now ? today : accepted);
 }
 
 function fmtDate(iso: string, lang: Lang) {
@@ -550,11 +571,15 @@ export default function StationPmJobTables() {
     }
   };
 
-  /** ช่างกด "ปิดใบงาน" → เปิดหน้าต่างกรอกเวลาทำงาน + ช่างที่ลงเวลา Maximo (เติมค่าเดิมถ้าเคยกรอก) */
+  /**
+   * ช่างกด "ปิดใบงาน" → เปิดหน้าต่างกรอกเวลาทำงาน + ช่างที่ลงเวลา Maximo (เติมค่าเดิมถ้าเคยกรอก)
+   * ยังไม่เคยกรอก: เริ่ม = วันนี้ + เวลาที่กดรับงาน, เสร็จ = ตอนนี้
+   */
   const openCloseJob = () => {
     if (!currentJob || acting || !currentJob.ready_to_submit) return;
-    setWorkStart(currentJob.work_start || "");
-    setWorkFinish(currentJob.work_finish || "");
+    const now = new Date();
+    setWorkStart(currentJob.work_start || defaultWorkStart(currentJob.createdAt, now));
+    setWorkFinish(currentJob.work_finish || toLocalDatetimeInput(now));
     setMaximoLabor(currentJob.maximo_labor || []);
     setMaximoContractor(currentJob.maximo_contractor || "");
     setCloseError("");
@@ -567,7 +592,7 @@ export default function StationPmJobTables() {
   const closeJobProblem = (): string => {
     if (!workStart || !workFinish) return t("errWorkTime", lang);
     if (workFinish < workStart) return t("errWorkOrder", lang);
-    const nowLocal = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    const nowLocal = toLocalDatetimeInput(new Date());
     if (workStart > nowLocal || workFinish > nowLocal) return t("errWorkFuture", lang);
     if (laborOptions.length > 0 && maximoLabor.length === 0) return t("errLabor", lang);
     if (contractorPicked && !maximoContractor.trim()) return t("errContractor", lang);

@@ -919,13 +919,15 @@ def _draw_header(
     pdf.set_line_width(LINE_W_INNER)
 
     # ========== Page number ที่มุมขวาบน ==========
-    page_text = f"{label_page} {pdf.page_no()}"
-    pdf.set_font(base_font, "", FONT_MAIN - 1)
-    page_text_w = pdf.get_string_width(page_text) + 4
-    page_x = pdf.w - right - page_text_w
-    page_y = 5  # ย้ายขึ้นไปด้านบนสุด
-    pdf.set_xy(page_x, page_y)
-    pdf.cell(page_text_w, 4, page_text, align="R")
+    # PDF ทั้งใบปิดไว้ แล้วใส่เลขหน้าต่อเนื่องทั้งเล่มเองหลังเรียงหน้าใหม่
+    if getattr(pdf, "_show_page_no", True):
+        page_text = f"{label_page} {pdf.page_no()}"
+        pdf.set_font(base_font, "", FONT_MAIN - 1)
+        page_text_w = pdf.get_string_width(page_text) + 4
+        page_x = pdf.w - right - page_text_w
+        page_y = 5  # ย้ายขึ้นไปด้านบนสุด
+        pdf.set_xy(page_x, page_y)
+        pdf.cell(page_text_w, 4, page_text, align="R")
 
     # โลโก้
     pdf.rect(x0, y_top, col_left, h_all)
@@ -1413,6 +1415,8 @@ class ReportPDF(HTML2PDF):
         
         # กำหนดค่าเริ่มต้นอื่นๆ
         self._section = "checklist"
+        self._show_page_no = True
+        self._page_kinds: list[str] = []  # ชนิดของแต่ละหน้าตามลำดับ: "checklist" / "photos"
         self._pm_date_th = ""
         self._base_font_name = "Arial"
         # Language labels (defaults)
@@ -1435,6 +1439,7 @@ class ReportPDF(HTML2PDF):
                     addr_line3=self._addr_line3)
 
     def footer(self):
+        self._page_kinds.append(self._section)
         if self._section == "photos":
             return
 
@@ -1462,7 +1467,16 @@ class ReportPDF(HTML2PDF):
             label_date=self._label_date,
         )
 
-def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
+def make_pm_report_html_pdf_bytes(
+    doc: dict,
+    lang: str = "th",
+    page_kinds: list[str] | None = None,
+    show_page_no: bool = True,
+) -> bytes:
+    """
+    page_kinds: ส่ง list เข้ามาเพื่อรับชนิดของแต่ละหน้า ("checklist" / "photos")
+    show_page_no: False = ไม่พิมพ์เลขหน้า (PDF ทั้งใบเรียงหน้าใหม่แล้วใส่เลขเอง)
+    """
     # data
     job = doc.get("job", {}) or {}
     station_name = job.get("station_name", "-")
@@ -1485,11 +1499,11 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
     # ========== เลือกข้อความตามภาษา ==========
     if lang == "en":
         # English titles
-        doc_title_post = "Preventive Maintenance Checklist - Circuit Breaker (POST)"
-        doc_title_post_cont = "Preventive Maintenance Checklist - Circuit Breaker (POST Continued)"
-        doc_title_photo_cont = "Preventive Maintenance - Photos (Continued)"
-        doc_title_photo_pre = "Preventive Maintenance - Photos (PRE)"
-        doc_title_photo_post = "Preventive Maintenance - Photos (POST)"
+        doc_title_post = "Preventive Maintenance Checklist - Circuit Breaker"
+        doc_title_post_cont = "Preventive Maintenance Checklist - Circuit Breaker (Continued)"
+        doc_title_photo_cont = "Preventive Maintenance - Photos - Circuit Breaker (Continued)"
+        doc_title_photo_pre = "Preventive Maintenance - Photos - Circuit Breaker (PRE)"
+        doc_title_photo_post = "Preventive Maintenance - Photos - Circuit Breaker"
 
         # Table headers
         header_item = "Item"
@@ -1515,11 +1529,11 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
 
     else:  # "th"
         # Thai titles
-        doc_title_post = "รายการตรวจสอบการบำรุงรักษาเชิงป้องกัน - Circuit Breaker (หลัง PM)"
-        doc_title_post_cont = "รายการตรวจสอบการบำรุงรักษาเชิงป้องกัน - Circuit Breaker (หลัง PM ต่อ)"
-        doc_title_photo_cont = "การบำรุงรักษาเชิงป้องกัน - รูปภาพ (ต่อ)"
-        doc_title_photo_pre = "การบำรุงรักษาเชิงป้องกัน - รูปภาพ (ก่อน PM)"
-        doc_title_photo_post = "การบำรุงรักษาเชิงป้องกัน - รูปภาพ (หลัง PM)"
+        doc_title_post = "รายการตรวจสอบการบำรุงรักษาเชิงป้องกัน - Circuit Breaker"
+        doc_title_post_cont = "รายการตรวจสอบการบำรุงรักษาเชิงป้องกัน - Circuit Breaker (ต่อ)"
+        doc_title_photo_cont = "การบำรุงรักษาเชิงป้องกัน - รูปภาพ - Circuit Breaker (ต่อ)"
+        doc_title_photo_pre = "การบำรุงรักษาเชิงป้องกัน - รูปภาพ - Circuit Breaker (ก่อน PM)"
+        doc_title_photo_post = "การบำรุงรักษาเชิงป้องกัน - รูปภาพ - Circuit Breaker"
 
         # Table headers
         header_item = "รายการ"
@@ -1546,6 +1560,7 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
     pdf = ReportPDF(unit="mm", format="A4", issue_id=issue_id, doc_name=doc_name)
     pdf._pm_date_th = pm_date_th
     pdf._section = "checklist"
+    pdf._show_page_no = show_page_no
 
     # Set language labels for header and footer
     pdf._label_page = label_page
@@ -2061,7 +2076,7 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
     pdf.set_xy(x0, y)
     pdf.set_font(base_font, "B", 13)
     pdf.set_fill_color(255, 230, 100)
-    title_text = doc_title_photo_post if has_pre_photos else ("Photos" if lang == "en" else "รูปภาพ")
+    title_text = doc_title_photo_post if has_pre_photos else ("Photos - Circuit Breaker" if lang == "en" else "รูปภาพ - Circuit Breaker")
     pdf.cell(page_w, TITLE_H, title_text, border=1, ln=1, align="C", fill=True)
     y += TITLE_H
 
@@ -2155,9 +2170,12 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
                                      question_text, img_items)
         y += row_h_used
 
-    return _output_pdf_bytes(pdf)
+    data = _output_pdf_bytes(pdf)
+    if page_kinds is not None:
+        page_kinds.extend(pdf._page_kinds)
+    return data
 
 
 # -------------------- Public API --------------------
-def generate_pdf(data: dict, lang: str = "th") -> bytes:
-    return make_pm_report_html_pdf_bytes(data, lang=lang)
+def generate_pdf(data: dict, lang: str = "th", **opts) -> bytes:
+    return make_pm_report_html_pdf_bytes(data, lang=lang, **opts)
