@@ -16,7 +16,6 @@ import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import PmApprovalBar from "@/app/dashboard/pm-report/components/PmApprovalBar";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
-import { Tabs, TabsHeader, Tab } from "@material-tailwind/react";
 import { putPhoto, getPhotoByDbKey, delPhoto, type PhotoRef } from "../lib/draftPhotos";
 import { isFileReadable, isImageDecodable, resolveUsableFile, reportMissingDraftPhoto, reportPhotoStorageFailure } from "@/utils/upload-safety";
 import { ensureViewableImage } from "@/utils/heic";
@@ -27,7 +26,7 @@ import { registerDraftDiscard } from "@/app/dashboard/pm-report/lib/discardDraft
 import { apiFetch } from "@/utils/api";
 import { serverPhotosToForm, formKeyFromForward, measureAsText, mergeDraftPhotos, deleteRemovedServerPhotos, isServerPhoto, type ViewPhoto } from "@/app/dashboard/pm-report/lib/reviewData";
 import { useDebouncedEffect } from "@/app/dashboard/pm-report/lib/useDebouncedEffect";
-import { usePmReviewAction } from "@/app/dashboard/pm-report/lib/reviewAction";
+import { usePmCancelEdit, usePmReviewAction } from "@/app/dashboard/pm-report/lib/reviewAction";
 
 // ==================== GPS + IMAGE UTILS ====================
 let _cachedLocation: { text: string; timestamp: number } | null = null;
@@ -1063,6 +1062,7 @@ export default function StationPMReport() {
     // แต่แก้อะไรไม่ได้ และไม่มีปุ่ม Reject/Approve
     const reviewMode = approveMode || searchParams.get("review") === "1";
     const reviewAction = usePmReviewAction();
+    const cancelEditAction = usePmCancelEdit();
 
 
     // laborcode ฝั่ง Maximo ที่ช่างเลือกเอง — username ใน iMPS ใช้แทนกันไม่ได้
@@ -1647,11 +1647,6 @@ export default function StationPMReport() {
                 <Button variant="outlined" size="sm" onClick={goBackToList} title={t("backToList", lang)}>
                     <ArrowLeftIcon className="tw-w-4 tw-h-4 tw-stroke-gray-900 tw-stroke-2" />
                 </Button>
-                <Tabs value="post">
-                    <TabsHeader className="tw-bg-gray-50 tw-rounded-lg">
-                        <Tab value="post" className="tw-px-4 tw-py-2 tw-font-medium">Post‑PM</Tab>
-                    </TabsHeader>
-                </Tabs>
             </div>
 
             
@@ -1787,6 +1782,7 @@ export default function StationPMReport() {
                     {/* หน้าดูข้อมูล: ปุ่มแก้ไข (ถ้ามีสิทธิ์) อยู่ตำแหน่งเดียวกับปุ่มบันทึกของหน้ากรอก */}
                     {(!reviewMode || reviewAction) && (
                         <div className="tw-mt-3 tw-flex tw-flex-col sm:tw-flex-row tw-justify-end tw-gap-2 sm:tw-gap-3">
+                            {!reviewMode && cancelEditAction}
                             {reviewMode ? reviewAction : (
                                 <Button type="button" onClick={onFinalSave} disabled={!canFinalSave || submitting}
                                     className="tw-text-sm tw-py-2.5 tw-bg-gray-800 hover:tw-bg-gray-900"

@@ -1,16 +1,16 @@
 "use client";
 
 /**
- * หน้า PM report — "ใบเดียว 5 ส่วน"
+ * หน้า PM report — "ใบเดียว 2 ส่วนหลัก"
  *
  * เดิมแท็บ Charger / Station / MDB / CCB / CB_BOX แยกกัน 5 แท็บ 5 เอกสาร
  * ตอนนี้ไม่มีแท็บแล้ว รวมเป็นเอกสารใบเดียว (1 เลขที่ / 1 PDF / อนุมัติครั้งเดียว)
- * ที่ข้างในแบ่งเป็น 5 ส่วน — ส่วนที่ 5 (ตู้ชาร์จ) มีใบย่อยตู้ละ 1 ใบ เพราะสถานี
- * หนึ่งมีหลายตู้ แต่ยังนับเป็นส่วนเดียวและใช้เลขที่เอกสารใบเดียวกัน
+ * ที่ข้างในแบ่งเป็น 2 ส่วนหลัก — Station รวม Station/MDB/CCB/CB_BOX และ Charger
+ * มีใบย่อยตู้ละ 1 ใบ เพราะสถานีหนึ่งมีหลายตู้ แต่ยังใช้เลขที่เอกสารใบเดียวกัน
  *
  * 3 หน้าจออยู่ในไฟล์เดียว เลือกด้วย query string:
  *   ไม่มีอะไร                       → ตารางใบ PM ของสถานีนี้
- *   ?view=form&job_id=              → หน้ารวม 5 ส่วนของใบนั้น (hub)
+ *   ?view=form&job_id=              → หน้ารวม 2 ส่วนหลักของใบนั้น (hub)
  *   ?view=form&job_id=&section=     → ฟอร์มกรอกของส่วนนั้น (ใช้ฟอร์มเดิมทั้งดุ้น)
  *                                     ส่วน charger ส่ง &sn= ของตู้ไปด้วย
  *   ?view=form&edit_id= (ไม่มี job_id) → ลิงก์เก่าจากหน้า PM List ที่ชี้ไปเอกสาร
@@ -28,7 +28,7 @@ import {
   ArrowLeftIcon, CheckCircleIcon, DocumentArrowDownIcon, EyeIcon, PencilSquareIcon, PlusIcon, XMarkIcon,
 } from "@heroicons/react/24/outline";
 import { discardOpenFormDraft } from "@/app/dashboard/pm-report/lib/discardDraft";
-import { PmReviewActionContext } from "@/app/dashboard/pm-report/lib/reviewAction";
+import { PmCancelEditContext, PmReviewActionContext } from "@/app/dashboard/pm-report/lib/reviewAction";
 import { apiFetch } from "@/utils/api";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
 import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
@@ -48,8 +48,13 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000"
 
 type SectionId = "station" | "mdb" | "ccb" | "cbbox" | "charger";
 
-/** ลำดับส่วนในใบ — ตรงกับ SECTIONS ฝั่ง backend และลำดับหน้าใน PDF */
-const SECTION_ORDER: SectionId[] = ["station", "mdb", "ccb", "cbbox", "charger"];
+type SectionGroupId = "station" | "charger";
+
+/** หน้าเว็บยุบฟอร์มจริง 5 ชนิดให้เหลือ 2 ส่วนหลัก โดยไม่เปลี่ยนโครงสร้างข้อมูล/PDF เดิม */
+const SECTION_GROUPS: Array<{ id: SectionGroupId; sectionIds: SectionId[] }> = [
+  { id: "station", sectionIds: ["station", "mdb", "ccb", "cbbox"] },
+  { id: "charger", sectionIds: ["charger"] },
+];
 
 /** ส่วนที่ผูกกับตู้ (มีใบย่อยได้หลายใบ) ไม่ใช่กับสถานี */
 const CHARGER_SECTION: SectionId = "charger";
@@ -79,6 +84,14 @@ const SECTION_HINT: Record<SectionId, { th: string; en: string }> = {
   ccb: { th: "ตู้ CCB เบรกเกอร์ย่อย แรงดันไฟฟ้า", en: "CCB cabinet, sub-breakers, voltage" },
   cbbox: { th: "CB Box จุดต่อ และอุปกรณ์ป้องกัน", en: "CB Box, connections and protection devices" },
   charger: { th: "ตู้ชาร์จทุกตู้ในสถานี — กรอกทีละตู้", en: "Every charger at this station — one checklist each" },
+};
+
+const SECTION_GROUP_HINT: Record<SectionGroupId, { th: string; en: string }> = {
+  station: {
+    th: "รวมแบบตรวจ Station, MDB, CCB และ CB_BOX",
+    en: "Includes the Station, MDB, CCB and CB_BOX checklists",
+  },
+  charger: SECTION_HINT.charger,
 };
 
 /** slug ที่ลิงก์เก่า (tab=… ของหน้า PM List) ใช้ → ส่วนในใบรวม */
@@ -137,8 +150,8 @@ type Me = { username: string; role: string };
 const T = {
   pageTitle: { th: "Preventive Maintenance Checklist - Station", en: "Preventive Maintenance Checklist - Station" },
   pageSubtitle: {
-    th: "ใบ PM ของสถานี — 1 ใบรวม สถานี / MDB / CCB / CB_BOX / ตู้ชาร์จ",
-    en: "Station PM document — Station / MDB / CCB / CB_BOX / Chargers in one",
+    th: "ใบ PM ของสถานี — 2 ส่วนหลัก: Station และ Charger",
+    en: "Station PM document — two main sections: Station and Charger",
   },
   newDoc: { th: "+ เปิดใบใหม่", en: "+ New document" },
   colNo: { th: "ลำดับ", en: "No." },
@@ -167,16 +180,18 @@ const T = {
   wonum: { th: "ใบงาน Maximo", en: "Maximo WO" },
   sectionsTitle: { th: "ส่วนของเอกสาร", en: "Document sections" },
   sectionsHint: {
-    th: "กรอกทีละส่วนได้ ทั้ง 5 ส่วนอยู่ในเอกสารเลขที่เดียวกัน",
-    en: "Fill one section at a time — all five share one document number",
+    th: "2 ส่วนหลักอยู่ในเอกสารเลขที่เดียวกัน — MDB, CCB และ CB_BOX รวมอยู่ใน Station",
+    en: "Both sections share one document number — MDB, CCB and CB_BOX are grouped under Station",
   },
-  fill: { th: "กรอก", en: "Fill in" },
   edit: { th: "แก้ไข", en: "Edit" },
   cancelEdit: { th: "ยกเลิกการแก้ไข", en: "Cancel edit" },
   cancelEditConfirm: {
-    th: "ยกเลิกการแก้ไข?\nสิ่งที่แก้ไว้ (รวมรูปที่แนบใหม่) จะหายทั้งหมด เอกสารกลับเป็นแบบที่ส่งไว้",
-    en: "Cancel editing?\nAll changes (including newly attached photos) will be discarded and the document stays as submitted.",
+    th: "สิ่งที่แก้ไขไว้ รวมถึงรูปที่แนบใหม่ จะถูกทิ้ง และเอกสารจะกลับเป็นข้อมูลที่บันทึกไว้ก่อนหน้า ต้องการยกเลิกการแก้ไขใช่หรือไม่?",
+    en: "Your changes, including newly attached photos, will be discarded and the document will return to its previously saved version. Do you want to cancel editing?",
   },
+  continueEdit: { th: "แก้ไขต่อ", en: "Continue editing" },
+  confirmCancelEdit: { th: "ยืนยันยกเลิก", en: "Confirm cancel" },
+  cancellingEdit: { th: "กำลังยกเลิก…", en: "Cancelling…" },
   view: { th: "ดู", en: "View" },
   notFilled: { th: "ยังไม่กรอก", en: "Not filled" },
   downloadPdf: { th: "PDF ทั้งใบ", en: "Full PDF" },
@@ -276,44 +291,31 @@ function sectionChipClass(status: string) {
   return "tw-bg-green-50 tw-text-green-700 tw-border-green-200";
 }
 
-/** ปุ่ม กรอก/แก้ไข/ดู ของใบลูก 1 ใบ — ส่วนที่ผูกกับสถานีและรายตู้ใช้ตัวเดียวกัน */
+/** ปุ่มชื่ออุปกรณ์ของใบลูก 1 ใบ — ไอคอนบอกว่าเปิดกรอก/แก้ไขหรือดู */
 function SectionFillButton({
-  job, state, lang, onOpen, compact,
+  job, state, lang, onOpen,
 }: {
   job: Job;
   state: SectionState;
   lang: Lang;
   onOpen: (job: Job, s: SectionState) => void;
-  compact?: boolean;
 }) {
   const filled = !!state.report_id;
   const status = String(state.status).trim().toLowerCase();
-  // ส่งแล้ว (กรอกแล้ว / รออนุมัติ / ปิดแล้ว) เปิดเป็นหน้าดูอย่างเดียว → ปุ่มรูปตา
-  // ส่วนที่ยังเป็น draft (เช่นโดนตีกลับ) ยังเปิดไปแก้ได้ จึงคงปุ่ม "แก้ไข" ไว้
   const sent = filled && ["closed", "submitted", "wait for approve"].includes(status);
-  if (sent) {
-    return (
-      <Button
-        size="sm"
-        variant="outlined"
-        onClick={() => onOpen(job, state)}
-        title={t("view", lang)}
-        aria-label={t("view", lang)}
-        className={`tw-flex tw-items-center tw-justify-center tw-px-2.5 ${compact ? "" : "tw-mt-3"}`}
-      >
-        <EyeIcon className="tw-h-4 tw-w-4" />
-      </Button>
-    );
-  }
-  const label = filled ? t("edit", lang) : t("fill", lang);
+  const label = pick(state.label, lang);
+  const action = sent ? t("view", lang) : filled ? t("edit", lang) : label;
+  const Icon = sent ? EyeIcon : PencilSquareIcon;
   return (
     <Button
       size="sm"
       variant={filled ? "outlined" : "filled"}
       onClick={() => onOpen(job, state)}
-      className={`tw-flex tw-items-center tw-gap-1.5 ${compact ? "" : "tw-mt-3"}`}
+      title={`${action}: ${label}`}
+      aria-label={`${action}: ${label}`}
+      className="tw-flex tw-w-full tw-items-center tw-justify-center tw-gap-1.5"
     >
-      <PencilSquareIcon className="tw-h-4 tw-w-4" /> {label}
+      <Icon className="tw-h-4 tw-w-4" /> {label}
     </Button>
   );
 }
@@ -332,6 +334,8 @@ export default function StationPmJobTables() {
   const [error, setError] = useState("");
   const [filtering, setFiltering] = useState("");
   const [acting, setActing] = useState(false);
+  const [cancelEditOpen, setCancelEditOpen] = useState(false);
+  const [cancellingEdit, setCancellingEdit] = useState(false);
 
   const [newOpen, setNewOpen] = useState(false);
   const [newDate, setNewDate] = useState(todayISO);
@@ -417,7 +421,7 @@ export default function StationPmJobTables() {
     setLoading(true);
     setError("");
     try {
-      const res = await apiFetch(`/stationpmjob/list?station_id=${encodeURIComponent(stationId)}`);
+      const res = await apiFetch(`/stationpmjob/list?station_id=${encodeURIComponent(stationId)}`, { cache: "no-store" });
       const json = await res.json().catch(() => ({} as any));
       if (!res.ok) throw new Error(json?.detail || `HTTP ${res.status}`);
       setJobs(Array.isArray(json?.items) ? json.items : []);
@@ -430,7 +434,8 @@ export default function StationPmJobTables() {
     }
   }, [stationId, lang]);
 
-  useEffect(() => { loadJobs(); }, [loadJobs]);
+  // ฟอร์มกับหน้ารวมใช้ route เดียวกัน จึงต้องโหลดสถานะใหม่เมื่อเปลี่ยนส่วน/กลับจากฟอร์ม
+  useEffect(() => { void loadJobs(); }, [loadJobs, jobId, section]);
 
   const currentJob = useMemo(
     () => jobs.find((j) => j.id === jobId) ?? null,
@@ -453,7 +458,6 @@ export default function StationPmJobTables() {
     if (back) { router.push(back); return; }
     goto({ view: null, job_id: null, section: null, sn: null, edit_id: null, review: null, action: null, pmtab: null });
   };
-  const backToHub = () => goto({ section: null, sn: null, edit_id: null, review: null, action: null, pmtab: null });
 
   /** เปิดฟอร์มของส่วนนั้น — มีเอกสารแล้วส่ง edit_id ไปให้ฟอร์มโหลดของเดิม */
   const openSection = (job: Job, s: SectionState) => {
@@ -482,9 +486,9 @@ export default function StationPmJobTables() {
 
   /**
    * ช่างกด "เริ่ม PM" จากใบงาน → เปิด (หรือหยิบ) ใบ PM สถานีของใบงานนั้น
-   * แล้วพาไปหน้ารวม 5 ส่วน ให้เลือกเองว่าจะกรอกส่วนไหนก่อน
+   * แล้วพาไปหน้ารวม 2 ส่วนหลัก ให้เลือกเองว่าจะกรอกส่วนไหนก่อน
    *
-   * ใบงานของตู้ก็ลงหน้ารวมเหมือนกัน ไม่กระโดดเข้าส่วนที่ 5 ให้ — ช่างต้องเห็นภาพรวม
+   * ใบงานของตู้ก็ลงหน้ารวมเหมือนกัน ไม่กระโดดเข้าส่วน Charger ให้ — ช่างต้องเห็นภาพรวม
    * ของใบก่อนว่ามีส่วนไหนต้องทำบ้าง (หน้ารวมมีตัวเลือกตู้ให้อยู่แล้ว)
    */
   const startPmFromWo = useCallback(async () => {
@@ -675,13 +679,9 @@ export default function StationPmJobTables() {
   // ══════════════ ฟอร์มของส่วนที่เลือก — ฟอร์มเดิมทั้งดุ้น ══════════════
   if (isFormView && section && SECTION_FORMS[section]) {
     const SectionForm = SECTION_FORMS[section];
-    // ส่วนตู้ใช้ชื่อตู้บนปุ่มย้อนกลับ จะได้รู้ว่ากำลังกรอกตู้ไหนอยู่
     const openedSection = currentJob?.sections.find(
       (x) => x.section === section && (section !== CHARGER_SECTION || x.sn === (searchParams.get("sn") ?? ""))
     );
-    const backLabel = openedSection && section === CHARGER_SECTION
-      ? `${pick(SECTION_TITLE[section], lang)} · ${pick(openedSection.label, lang)}`
-      : pick(SECTION_TITLE[section], lang);
     // เปิดดูส่วนที่ส่งแล้ว → แก้ไขได้จนกว่าจะกด "ปิดใบงาน" (ใบยังเป็น In Progress)
     // เฉพาะ technician / planner / admin (super admin ได้ role admin) — ส่วนที่ปิดแล้ว / ใบที่ส่งอนุมัติแล้ว / หน้าอนุมัติ ดูได้อย่างเดียว
     const viewing = searchParams.get("review") === "1";
@@ -701,29 +701,68 @@ export default function StationPmJobTables() {
     // (ส่วนที่ยังเป็น draft เช่นโดนตีกลับ ไม่ได้มาจากปุ่มนี้ ใช้ปุ่มย้อนกลับตามเดิม)
     const editingSent = !viewing && !!openedSection?.report_id && sectionStatus === "wait for approve";
     const cancelEdit = async () => {
-      if (!window.confirm(t("cancelEditConfirm", lang))) return;
-      try { await discardOpenFormDraft(); } catch (err) { console.error("discard draft failed:", err); }
-      goto({ review: "1", approve: null });
+      if (cancellingEdit) return;
+      setCancellingEdit(true);
+      try {
+        try { await discardOpenFormDraft(); } catch (err) { console.error("discard draft failed:", err); }
+        setCancelEditOpen(false);
+        goto({ review: "1", approve: null });
+      } finally {
+        setCancellingEdit(false);
+      }
     };
     const cancelButton = editingSent && (
-      <Button size="sm" variant="outlined" onClick={() => { void cancelEdit(); }} className="tw-flex tw-items-center tw-gap-1.5">
-        <XMarkIcon className="tw-h-4 tw-w-4" /> {t("cancelEdit", lang)}
+      <Button
+        type="button"
+        variant="outlined"
+        onClick={() => setCancelEditOpen(true)}
+        className="tw-text-sm tw-py-2.5 tw-w-full sm:tw-w-auto tw-border-blue-gray-300 tw-text-blue-gray-700 hover:tw-border-blue-gray-500 hover:tw-bg-blue-gray-50 tw-transition-all"
+      >
+        {t("cancelEdit", lang)}
       </Button>
     );
     return (
       <div className="tw-mt-4 sm:tw-mt-6 lg:tw-mt-8">
-        <div className="tw-mb-3 tw-flex tw-items-center tw-justify-between tw-gap-2">
-          <Button variant="outlined" size="sm" onClick={backToHub} className="tw-flex tw-items-center tw-gap-2">
-            <ArrowLeftIcon className="tw-h-4 tw-w-4" />
-            {backLabel} · {t("back", lang)}
-          </Button>
-          {cancelButton}
-        </div>
         <PmReviewActionContext.Provider value={editButton}>
-          <SectionForm key={viewing ? "view" : "edit"} />
+          <PmCancelEditContext.Provider value={cancelButton}>
+            <SectionForm key={viewing ? "view" : "edit"} />
+          </PmCancelEditContext.Provider>
         </PmReviewActionContext.Provider>
-        {cancelButton && (
-          <div className="tw-mx-auto tw-mt-4 tw-flex tw-max-w-6xl tw-justify-end">{cancelButton}</div>
+        {/* modal รูปแบบเดียวกับหน้า CM (overlay + กล่อง max-w-md) — ไม่ใช้ Dialog ของ Material Tailwind ที่บังคับความกว้าง/ฟอนต์เอง */}
+        {cancelEditOpen && editingSent && (
+          <div
+            className="tw-fixed tw-inset-0 tw-z-[9999] tw-flex tw-items-center tw-justify-center tw-bg-black/50 tw-p-4"
+            onClick={() => { if (!cancellingEdit) setCancelEditOpen(false); }}
+          >
+            <div className="tw-w-full tw-max-w-md tw-rounded-2xl tw-bg-white tw-p-6 tw-shadow-2xl" onClick={e => e.stopPropagation()}>
+              <h3 className="tw-flex tw-items-center tw-gap-2 tw-text-lg tw-font-bold tw-text-blue-gray-800 tw-mb-2">
+                <XMarkIcon className="tw-h-5 tw-w-5 tw-text-amber-600" />
+                {t("cancelEdit", lang)}
+              </h3>
+              <p className="tw-text-sm tw-text-blue-gray-600">
+                {t("cancelEditConfirm", lang)}
+              </p>
+              <div className="tw-flex tw-items-center tw-justify-end tw-gap-3 tw-mt-5">
+                <Button
+                  type="button"
+                  variant="outlined"
+                  disabled={cancellingEdit}
+                  onClick={() => setCancelEditOpen(false)}
+                  className="tw-border-blue-gray-200 tw-text-blue-gray-700 hover:tw-border-blue-gray-300"
+                >
+                  {t("continueEdit", lang)}
+                </Button>
+                <Button
+                  type="button"
+                  disabled={cancellingEdit}
+                  onClick={() => { void cancelEdit(); }}
+                  className="tw-bg-amber-500 hover:tw-bg-amber-600 tw-text-white tw-font-semibold disabled:tw-opacity-50 disabled:tw-cursor-not-allowed"
+                >
+                  {t(cancellingEdit ? "cancellingEdit" : "confirmCancelEdit", lang)}
+                </Button>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     );
@@ -737,18 +776,12 @@ export default function StationPmJobTables() {
     const LegacyForm = SECTION_FORMS[legacySection];
     return (
       <div className="tw-mt-4 sm:tw-mt-6 lg:tw-mt-8">
-        <div className="tw-mb-3 tw-flex tw-items-center tw-gap-2">
-          <Button variant="outlined" size="sm" onClick={leaveWo} className="tw-flex tw-items-center tw-gap-2">
-            <ArrowLeftIcon className="tw-h-4 tw-w-4" />
-            {pick(SECTION_TITLE[legacySection], lang)} · {t("back", lang)}
-          </Button>
-        </div>
         <LegacyForm />
       </div>
     );
   }
 
-  // ══════════════ หน้ารวม 5 ส่วนของใบเดียว (hub) ══════════════
+  // ══════════════ หน้ารวม 2 ส่วนหลักของใบเดียว (hub) ══════════════
   if (isFormView) {
     const job = currentJob;
     if (loading) return <LoadingOverlay show text={t("loading", lang)} />;
@@ -767,6 +800,13 @@ export default function StationPmJobTables() {
       : job.missing?.length
         ? `${t("closeJobMissing", lang)} ${job.missing.map((m) => pick(m, lang)).join(", ")}`
         : t("closeJobEmpty", lang);
+    const completedGroups = SECTION_GROUPS.filter((group) => {
+      const rows = job.sections.filter((item) => group.sectionIds.includes(item.section));
+      const hasEverySection = group.sectionIds.every((sectionId) =>
+        rows.some((item) => item.section === sectionId)
+      );
+      return hasEverySection && rows.length > 0 && rows.every((item) => !!item.report_id);
+    }).length;
     return (
       <div className="tw-mt-4 sm:tw-mt-6 lg:tw-mt-8 tw-mx-auto tw-max-w-5xl">
         <div className="tw-mb-4 tw-flex tw-items-center tw-justify-between tw-gap-3">
@@ -847,25 +887,25 @@ export default function StationPmJobTables() {
           </CardBody>
         </Card>
 
-        {/* 5 ส่วนของเอกสาร — ส่วนที่ 5 (ตู้ชาร์จ) แตกเป็นใบย่อยรายตู้ */}
+        {/* 2 ส่วนหลัก — Station รวม 4 แบบตรวจเดิม ส่วน Charger แตกเป็นใบย่อยรายตู้ */}
         <div className="tw-mb-2 tw-flex tw-flex-wrap tw-items-baseline tw-gap-x-3 tw-gap-y-1">
           <Typography variant="h6" className="tw-text-gray-800">{t("sectionsTitle", lang)}</Typography>
           <span className="tw-min-w-0 tw-text-xs tw-text-gray-500">{t("sectionsHint", lang)}</span>
           <span className="tw-ml-auto tw-shrink-0 tw-text-xs tw-font-semibold tw-text-gray-500">
-            {job.sections_done}/{job.sections_total}
+            {completedGroups}/{SECTION_GROUPS.length}
           </span>
         </div>
 
         <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-4">
-          {SECTION_ORDER.map((id, idx) => {
-            const rows = job.sections.filter((x) => x.section === id);
+          {SECTION_GROUPS.map((group, idx) => {
+            const rows = job.sections.filter((x) => group.sectionIds.includes(x.section));
             const groupStatus = aggregateStatus(rows);
-            const isCharger = id === CHARGER_SECTION;
+            const isCharger = group.id === CHARGER_SECTION;
             const doneCount = rows.filter((x) => !!x.report_id).length;
             return (
               <Card
-                key={id}
-                className={`tw-border tw-border-gray-200 tw-shadow-sm ${isCharger ? "md:tw-col-span-2" : ""}`}
+                key={group.id}
+                className="tw-border tw-border-gray-200 tw-shadow-sm"
               >
                 <CardBody className="tw-p-4">
                   <div className="tw-flex tw-items-start tw-gap-3">
@@ -875,22 +915,36 @@ export default function StationPmJobTables() {
                     <div className="tw-min-w-0 tw-flex-1">
                       <div className="tw-flex tw-flex-wrap tw-items-center tw-gap-2">
                         <span className="tw-font-semibold tw-text-gray-900">
-                          {pick(SECTION_TITLE[id], lang)}
+                          {pick(SECTION_TITLE[group.id], lang)}
                         </span>
                         <span className={`tw-whitespace-nowrap tw-rounded-full tw-border tw-px-2 tw-py-0.5 tw-text-[11px] tw-font-semibold ${sectionChipClass(groupStatus)}`}>
                           {sectionStatusLabel(groupStatus, lang, job.status !== "draft")}
                         </span>
-                        {isCharger && rows.length > 0 && (
+                        {rows.length > 0 && (
                           <span className="tw-text-[11px] tw-font-semibold tw-text-gray-500">
                             {doneCount}/{rows.length} {t("chargersDone", lang)}
                           </span>
                         )}
                       </div>
-                      <p className="tw-mt-1 tw-text-xs tw-text-gray-500">{pick(SECTION_HINT[id], lang)}</p>
+                      <p className="tw-mt-1 tw-text-xs tw-text-gray-500">{pick(SECTION_GROUP_HINT[group.id], lang)}</p>
 
-                      {/* ส่วนที่ผูกกับสถานี — ใบเดียวจบ */}
-                      {!isCharger && rows[0] && (
-                        <SectionFillButton job={job} state={rows[0]} lang={lang} onOpen={openSection} />
+                      {/* Station — แสดงเฉพาะปุ่มของ Station/MDB/CCB/CB_BOX */}
+                      {!isCharger && (
+                        <div className="tw-mt-3 tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 tw-gap-2">
+                          {group.sectionIds.map((sectionId) => {
+                            const state = job.sections.find((item) => item.section === sectionId);
+                            if (!state) return null;
+                            return (
+                              <SectionFillButton
+                                key={sectionId}
+                                job={job}
+                                state={state}
+                                lang={lang}
+                                onOpen={openSection}
+                              />
+                            );
+                          })}
+                        </div>
                       )}
 
                       {/* ส่วนที่ผูกกับตู้ — ตู้ละ 1 ใบ แต่ยังเป็นส่วนเดียวกัน */}
@@ -898,24 +952,15 @@ export default function StationPmJobTables() {
                         rows.length === 0 ? (
                           <p className="tw-mt-3 tw-text-xs tw-text-gray-400">{t("noChargers", lang)}</p>
                         ) : (
-                          <div className="tw-mt-3 tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-2">
+                          <div className="tw-mt-3 tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 tw-gap-2">
                             {rows.map((c) => (
-                              <div
+                              <SectionFillButton
                                 key={c.sn}
-                                className="tw-flex tw-flex-wrap tw-items-center tw-gap-2 tw-rounded-lg tw-border tw-border-gray-200 tw-px-3 tw-py-2"
-                              >
-                                {/* ชื่อตู้กว้างขั้นต่ำไว้ — ที่ไม่พอให้ป้ายสถานะ/ปุ่มขึ้นบรรทัดใหม่ แทนการบีบชื่อจนหาย */}
-                                <div className="tw-min-w-[8rem] tw-flex-1">
-                                  <div className="tw-truncate tw-text-sm tw-font-semibold tw-text-gray-800">
-                                    {pick(c.label, lang)}
-                                  </div>
-                                  <div className="tw-truncate tw-text-[11px] tw-text-gray-400">{c.sn}</div>
-                                </div>
-                                <span className={`tw-shrink-0 tw-whitespace-nowrap tw-rounded-full tw-border tw-px-2 tw-py-0.5 tw-text-[11px] tw-font-semibold ${sectionChipClass(c.status)}`}>
-                                  {sectionStatusLabel(c.status, lang, job.status !== "draft")}
-                                </span>
-                                <SectionFillButton job={job} state={c} lang={lang} onOpen={openSection} compact />
-                              </div>
+                                job={job}
+                                state={c}
+                                lang={lang}
+                                onOpen={openSection}
+                              />
                             ))}
                           </div>
                         )
@@ -1117,18 +1162,18 @@ export default function StationPmJobTables() {
                       <td className="tw-px-3 tw-py-3 tw-text-sm tw-text-gray-700">{fmtDate(job.pm_date, lang)}</td>
                       <td className="tw-px-3 tw-py-3">
                         <div className="tw-flex tw-flex-wrap tw-gap-1">
-                          {SECTION_ORDER.map((id) => {
-                            const rows = job.sections.filter((x) => x.section === id);
+                          {SECTION_GROUPS.map((group) => {
+                            const rows = job.sections.filter((x) => group.sectionIds.includes(x.section));
                             const st = aggregateStatus(rows);
                             const filled = rows.filter((x) => !!x.report_id).length;
                             return (
                               <span
-                                key={id}
+                                key={group.id}
                                 title={sectionStatusLabel(st, lang, job.status !== "draft")}
                                 className={`tw-rounded tw-border tw-px-1.5 tw-py-0.5 tw-text-[10px] tw-font-semibold ${sectionChipClass(st)}`}
                               >
-                                {pick(SECTION_TITLE[id], lang)}
-                                {id === CHARGER_SECTION && rows.length > 1 ? ` ${filled}/${rows.length}` : ""}
+                                {pick(SECTION_TITLE[group.id], lang)}
+                                {rows.length > 1 ? ` ${filled}/${rows.length}` : ""}
                               </span>
                             );
                           })}

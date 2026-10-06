@@ -12,3 +12,10 @@ export const PmReviewActionContext = createContext<ReactNode>(null);
 export function usePmReviewAction(): ReactNode {
     return useContext(PmReviewActionContext);
 }
+
+/** ปุ่มยกเลิกการแก้ไขที่วางข้างปุ่มบันทึกของแต่ละฟอร์ม */
+export const PmCancelEditContext = createContext<ReactNode>(null);
+
+export function usePmCancelEdit(): ReactNode {
+    return useContext(PmCancelEditContext);
+}

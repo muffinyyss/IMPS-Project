@@ -1,15 +1,15 @@
 """
 routers/pmreport_station_job.py
 ===============================
-ใบ PM สถานี "ใบเดียว 5 ส่วน" — Station / MDB / CCB / CB_BOX / Charger
+ใบ PM สถานี "ใบเดียว 2 ส่วนหลัก" — Station / Charger
 
 ที่มา: เดิม 5 ชนิดนี้เป็นคนละเอกสาร คนละเลขที่ คนละ PDF คนละคิวอนุมัติ
 ทั้งที่ช่างเข้าสถานีรอบเดียวแล้วตรวจทั้งหมดพร้อมกัน ตอนนี้รวมเป็น
-เอกสารใบเดียว (1 เลขที่ / 1 PDF / อนุมัติครั้งเดียว) ที่ข้างในแบ่งเป็น 5 ส่วน
-กรอกแยกทีละส่วนได้
+เอกสารใบเดียว (1 เลขที่ / 1 PDF / อนุมัติครั้งเดียว) ที่หน้าเว็บแบ่งเป็น 2 ส่วนหลัก
+โดย Station รวมแบบตรวจ Station/MDB/CCB/CB_BOX และ Charger เป็นอีกส่วนหนึ่ง
 
-ส่วน Charger ต่างจากอีก 4 ส่วนตรงที่สถานีหนึ่งมีหลายตู้ จึงมีใบย่อยได้หลายใบ
-(ตู้ละ 1 ใบ) แต่ยังนับเป็น "ส่วนที่ 5" ส่วนเดียว และใช้เลขที่เอกสารใบเดียวกัน
+ส่วน Charger ต่างจาก Station ตรงที่สถานีหนึ่งมีหลายตู้ จึงมีใบย่อยได้หลายใบ
+(ตู้ละ 1 ใบ) แต่ยังนับเป็นส่วนหลักเดียว และใช้เลขที่เอกสารใบเดียวกัน
 
 โครงเก็บข้อมูล — ตั้งใจไม่ย้ายเนื้อ checklist ออกจากที่เดิม:
   stationPMJob.<station_id>   ← เอกสารแม่ (เลขที่, วันที่, สถานะรวม, ใบงาน Maximo)
@@ -55,8 +55,14 @@ log = logging.getLogger("uvicorn.error")
 
 router = APIRouter()
 
-# 5 ส่วนของใบ PM สถานี — ลำดับนี้คือลำดับที่โชว์ในหน้าเว็บและเรียงหน้าใน PDF
+# ฟอร์มจริง 5 ชนิดของใบ PM — ลำดับนี้ใช้เรียงหน้าใน PDF
 SECTIONS: tuple[str, ...] = ("station", "mdb", "ccb", "cbbox", "charger")
+
+# กลุ่มที่แสดงในหน้าเว็บ — ยุบ MDB/CCB/CB_BOX เข้าใต้ Station
+SECTION_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("station", ("station", "mdb", "ccb", "cbbox")),
+    ("charger", ("charger",)),
+)
 
 # ส่วนที่ผูกกับตู้ (keyed ด้วย SN) ไม่ใช่กับสถานี — มีใบย่อยได้หลายใบในส่วนเดียว
 CHARGER_SECTION = "charger"
@@ -322,14 +328,18 @@ async def _section_states(job: dict, chargers: list[dict] | None = None) -> list
 
 def _sections_done(sections: list[dict]) -> int:
     """
-    นับ "ส่วนที่กรอกแล้ว" แบบ 1 ส่วน = 1 หน่วย เต็มที่ 5
+    นับ "ส่วนหลักที่กรอกแล้ว" เต็มที่ 2: Station และ Charger
 
-    ส่วน charger มีหลายใบย่อย นับว่ากรอกแล้วต่อเมื่อครบทุกตู้ของสถานี
+    Station ต้องครบ Station/MDB/CCB/CB_BOX ส่วน Charger ต้องครบทุกตู้ของสถานี
     """
     done = 0
-    for section in SECTIONS:
-        rows = [s for s in sections if s.get("section") == section]
-        if rows and all(s.get("report_id") for s in rows):
+    for _group, member_sections in SECTION_GROUPS:
+        rows = [s for s in sections if s.get("section") in member_sections]
+        has_every_member = all(
+            any(s.get("section") == member for s in rows)
+            for member in member_sections
+        )
+        if has_every_member and rows and all(s.get("report_id") for s in rows):
             done += 1
     return done
 
@@ -354,7 +364,7 @@ def _serialize_job(job: dict, sections: list[dict], required: set[SectionKey] | 
         "status": status,
         "sections": sections,
         "sections_done": done,
-        "sections_total": len(SECTIONS),
+        "sections_total": len(SECTION_GROUPS),
         "approved_by": job.get("approved_by") or "",
         "approved_at": job.get("approved_at").isoformat() if isinstance(job.get("approved_at"), datetime) else (job.get("approved_at") or ""),
         "reject_remark": job.get("reject_remark") or "",
