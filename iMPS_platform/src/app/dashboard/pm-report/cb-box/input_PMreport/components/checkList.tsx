@@ -7,7 +7,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import PmApprovalBar from "@/app/dashboard/pm-report/components/PmApprovalBar";
 import Image from "next/image";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
-import { Tabs, TabsHeader, Tab } from "@material-tailwind/react";
 import { putPhoto, getPhotoByDbKey, delPhoto, type PhotoRef } from "../lib/draftPhotos";
 import { isFileReadable, isImageDecodable, resolveUsableFile, reportMissingDraftPhoto, reportPhotoStorageFailure } from "@/utils/upload-safety";
 import { ensureViewableImage } from "@/utils/heic";
@@ -18,7 +17,7 @@ import { registerDraftDiscard } from "@/app/dashboard/pm-report/lib/discardDraft
 import { apiFetch } from "@/utils/api";
 import { serverPhotosToForm, formKeyFromForward, measureAsText, mergeDraftPhotos, deleteRemovedServerPhotos, isServerPhoto, type ViewPhoto } from "@/app/dashboard/pm-report/lib/reviewData";
 import { useDebouncedEffect } from "@/app/dashboard/pm-report/lib/useDebouncedEffect";
-import { usePmReviewAction } from "@/app/dashboard/pm-report/lib/reviewAction";
+import { usePmCancelEdit, usePmReviewAction } from "@/app/dashboard/pm-report/lib/reviewAction";
 
 const T = {
     pageTitle: { th: "Preventive Maintenance Checklist - Safety Switch / Circuit Breaker - Box", en: "Preventive Maintenance Checklist - Safety Switch / Circuit Breaker - Box" },
@@ -389,8 +388,6 @@ const DROPDOWN_Q2_OPTIONS = [
     { value: "N/A", th: "N/A", en: "N/A" },
 ] as const;
 
-type TabId = "post";
-const TABS: { id: TabId; label: string }[] = [{ id: "post", label: "Post\u2011PM" }];
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 const LOGO_SRC = "/img/logo_egat.png";
@@ -1000,6 +997,7 @@ export default function CBBOXPMForm() {
     // แต่แก้อะไรไม่ได้ และไม่มีปุ่ม Reject/Approve
     const reviewMode = approveMode || searchParams.get("review") === "1";
     const reviewAction = usePmReviewAction();
+    const cancelEditAction = usePmCancelEdit();
 
     // laborcode ฝั่ง Maximo ที่ช่างเลือกเอง — username ใน iMPS ใช้แทนกันไม่ได้
     const [laborOptions, setLaborOptions] = useState<{ laborcode: string; name: string; needs_name?: boolean }[]>([]);
@@ -1491,7 +1489,6 @@ export default function CBBOXPMForm() {
         } catch (err: any) { alert(`${t("alertSaveFailed", lang)} ${err?.message ?? err}`); } finally { setSubmitting(false); }
     };
 
-    const displayTab: TabId = "post";
 
     useEffect(() => { void prefetchLocation(); }, []);
 
@@ -1511,15 +1508,6 @@ export default function CBBOXPMForm() {
         <section className="tw-pb-24">
             <div className="tw-mx-auto tw-max-w-6xl tw-flex tw-items-center tw-justify-between tw-mb-4">
                 <Button variant="outlined" size="sm" onClick={goBackToList} title={t("backToList", lang)}><ArrowLeftIcon className="tw-w-4 tw-h-4 tw-stroke-gray-900 tw-stroke-2" /></Button>
-                <Tabs value={displayTab} key={displayTab}>
-                    <TabsHeader className="tw-bg-gray-100 tw-rounded-lg">
-                        {TABS.map(tb => (
-                            <Tab key={tb.id} value={tb.id} className="tw-px-4 tw-py-2 tw-font-medium">
-                                {tb.label}
-                            </Tab>
-                        ))}
-                    </TabsHeader>
-                </Tabs>
             </div>
             {/* โหมดตรวจ: ฟอร์มกรอกไม่ต้องโชว์ ดูจากตารางผลการตรวจก่อน/หลังด้านล่างแทน
                 แต่ยังต้อง mount ไว้ ค่าที่คำนวณจากฟอร์ม (ความครบถ้วน, สรุป) ใช้ต่อข้างล่าง */}
@@ -1636,6 +1624,7 @@ export default function CBBOXPMForm() {
                     {/* หน้าดูข้อมูล: ปุ่มแก้ไข (ถ้ามีสิทธิ์) อยู่ตำแหน่งเดียวกับปุ่มบันทึกของหน้ากรอก */}
                     {(!reviewMode || reviewAction) && (
                         <div className="tw-mt-3 tw-flex tw-flex-col sm:tw-flex-row tw-justify-end tw-gap-2 sm:tw-gap-3">
+                            {!reviewMode && cancelEditAction}
                             {reviewMode ? reviewAction : (
                                 <Button className="tw-text-sm tw-py-2.5 tw-bg-gray-800 hover:tw-bg-gray-900 tw-w-full sm:tw-w-auto" type="button" onClick={onFinalSave} disabled={!canFinalSave || submitting}>{submitting ? t("saving", lang) : t("save", lang)}</Button>
                             )}

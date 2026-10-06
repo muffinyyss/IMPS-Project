@@ -4,9 +4,9 @@
 /**
  * หน้า PM report — ไม่มีแท็บแล้ว
  *
- * เดิมหน้านี้แบ่งเป็นแท็บ Charger / Station (ซึ่งรวม MDB/CCB/CB_BOX ไว้แล้ว)
- * ตอนนี้ Charger ถูกย้ายเข้าไปเป็น "ส่วนที่ 5" ของใบ PM สถานี จึงเหลือหน้าจอเดียว
- * คือตาราง/ฟอร์มของใบ PM สถานีที่รวมครบทั้ง 5 ส่วนในเอกสารเลขที่เดียวกัน
+ * หน้านี้แบ่งเอกสารเป็น 2 ส่วนหลัก: Station และ Charger
+ * โดย Station รวมแบบตรวจ Station/MDB/CCB/CB_BOX ไว้ภายใน
+ * ทุกแบบตรวจยังอยู่ในเอกสารเลขที่เดียวกัน
  *
  * ลิงก์เก่าที่ยังส่ง ?tab=… มา (หน้า PM List) ไม่พัง — StationPmJobTables
  * อ่าน tab ไว้ใช้เลือกชนิดฟอร์มของเอกสารใบเดี่ยวรุ่นก่อนรวมใบเท่านั้น
@@ -14,7 +14,7 @@
 
 import React from "react";
 
-// แท็บเดียวที่เหลือ = ใบ PM สถานีใบเดียวที่รวม สถานี/MDB/CCB/CB_BOX/ตู้ชาร์จ เป็น 5 ส่วน
+// ใบ PM สถานีใบเดียว แสดงเป็น 2 ส่วนหลัก: Station (รวม 4 แบบตรวจ) และ Charger
 import StationPmJobTables from "@/app/dashboard/pm-report/components/StationPmJobTables";
 import { useSearchParams } from "next/navigation";
 import useLanguage from "@/utils/useLanguage";

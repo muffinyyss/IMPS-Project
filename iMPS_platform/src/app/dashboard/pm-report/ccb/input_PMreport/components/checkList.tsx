@@ -29,7 +29,7 @@ import { pmFormReturnRoute } from "@/app/dashboard/pm-report/lib/origin";
 import { registerDraftDiscard } from "@/app/dashboard/pm-report/lib/discardDraft";
 import { serverPhotosToForm, formKeyFromForward, measureAsText, mergeDraftPhotos, deleteRemovedServerPhotos, isServerPhoto, type ViewPhoto } from "@/app/dashboard/pm-report/lib/reviewData";
 import { useDebouncedEffect } from "@/app/dashboard/pm-report/lib/useDebouncedEffect";
-import { usePmReviewAction } from "@/app/dashboard/pm-report/lib/reviewAction";
+import { usePmCancelEdit, usePmReviewAction } from "@/app/dashboard/pm-report/lib/reviewAction";
 
 // ==================== GPS + ADDRESS CACHE ====================
 let _cachedLocation: { text: string; timestamp: number } | null = null;
@@ -1441,6 +1441,7 @@ export default function CCBPMReport() {
     // แต่แก้อะไรไม่ได้ และไม่มีปุ่ม Reject/Approve
     const reviewMode = approveMode || searchParams.get("review") === "1";
     const reviewAction = usePmReviewAction();
+    const cancelEditAction = usePmCancelEdit();
 
 
     // laborcode ฝั่ง Maximo ที่ช่างเลือกเอง — username ใน iMPS ใช้แทนกันไม่ได้
@@ -2433,6 +2434,7 @@ export default function CCBPMReport() {
                     {/* หน้าดูข้อมูล: ปุ่มแก้ไข (ถ้ามีสิทธิ์) อยู่ตำแหน่งเดียวกับปุ่มบันทึกของหน้ากรอก */}
                     {(!reviewMode || reviewAction) && (
                         <div className="tw-mt-3 tw-flex tw-flex-col sm:tw-flex-row tw-justify-end tw-gap-2 sm:tw-gap-3">
+                            {!reviewMode && cancelEditAction}
                             {reviewMode ? reviewAction : (
                                 <Button type="button" onClick={onFinalSave} disabled={!canFinalSave || submitting}
                                     className="tw-text-sm tw-py-2.5 tw-w-full sm:tw-w-auto tw-bg-gray-800 hover:tw-bg-gray-900 disabled:tw-bg-gray-800 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed">

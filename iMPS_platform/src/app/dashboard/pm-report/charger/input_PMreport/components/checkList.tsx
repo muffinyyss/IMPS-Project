@@ -14,10 +14,9 @@ import { pmFormReturnRoute } from "@/app/dashboard/pm-report/lib/origin";
 import { registerDraftDiscard } from "@/app/dashboard/pm-report/lib/discardDraft";
 import { serverPhotosToForm, formKeyFromForward, measureAsText, mergeDraftPhotos, deleteRemovedServerPhotos, isServerPhoto, type ViewPhoto } from "@/app/dashboard/pm-report/lib/reviewData";
 import { useDebouncedEffect } from "@/app/dashboard/pm-report/lib/useDebouncedEffect";
-import { usePmReviewAction } from "@/app/dashboard/pm-report/lib/reviewAction";
+import { usePmCancelEdit, usePmReviewAction } from "@/app/dashboard/pm-report/lib/reviewAction";
 import PmApprovalBar from "@/app/dashboard/pm-report/components/PmApprovalBar";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
-import { Tabs, TabsHeader, Tab } from "@material-tailwind/react";
 import { putPhoto, getPhotoByDbKey, delPhoto, type PhotoRef } from "../lib/draftPhotos";
 import { isFileReadable, isImageDecodable, resolveUsableFile, reportMissingDraftPhoto, reportPhotoStorageFailure } from "@/utils/upload-safety";
 import { ensureViewableImage } from "@/utils/heic";
@@ -122,12 +121,8 @@ function resolveUploadFile(task: { file?: File; ref?: PhotoRef }): Promise<File>
     return resolveUsableFile(task.file, dbKey ? () => getPhotoByDbKey(dbKey) : undefined);
 }
 
-type TabId = "post";
 
 // ฟอร์มนี้เหลือแค่ Post-PM (ยกเลิก Pre-PM แล้ว)
-const TABS: { id: TabId; label: string }[] = [
-    { id: "post", label: "Post\u2011PM" },
-];
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 const LOGO_SRC = "/img/logo_egat.png";
@@ -1819,6 +1814,7 @@ export default function ChargerPMForm() {
     // แต่แก้อะไรไม่ได้ และไม่มีปุ่ม Reject/Approve
     const reviewMode = approveMode || searchParams.get("review") === "1";
     const reviewAction = usePmReviewAction();
+    const cancelEditAction = usePmCancelEdit();
 
     // laborcode ฝั่ง Maximo ที่ช่างเลือกเอง — username ใน iMPS ใช้แทนกันไม่ได้
     const [laborOptions, setLaborOptions] = useState<{ laborcode: string; name: string; needs_name?: boolean }[]>([]);
@@ -2907,17 +2903,6 @@ export default function ChargerPMForm() {
                 <Button variant="outlined" size="sm" onClick={goBackToList} title={t("backToList", lang)}>
                     <ArrowLeftIcon className="tw-w-4 tw-h-4 tw-stroke-blue-gray-900 tw-stroke-2" />
                 </Button>
-                <Tabs value="post">
-                    <TabsHeader className="tw-bg-blue-gray-50 tw-rounded-lg">
-                        {TABS.map((tb) => (
-                            <Tab key={tb.id} value={tb.id} className="tw-px-4 tw-py-2 tw-font-medium">
-                                <div className="tw-flex tw-items-center tw-gap-1.5">
-                                    {tb.label}
-                                </div>
-                            </Tab>
-                        ))}
-                    </TabsHeader>
-                </Tabs>
             </div>
 
             
@@ -2989,6 +2974,7 @@ export default function ChargerPMForm() {
                     {/* หน้าดูข้อมูล: ปุ่มแก้ไข (ถ้ามีสิทธิ์) อยู่ตำแหน่งเดียวกับปุ่มบันทึกของหน้ากรอก */}
                     {(!reviewMode || reviewAction) && (
                         <div className="tw-mt-3 tw-flex tw-flex-col sm:tw-flex-row tw-justify-end tw-gap-2 sm:tw-gap-3">
+                            {!reviewMode && cancelEditAction}
                             {reviewMode ? reviewAction : (
                                 <Button type="button" onClick={onFinalSave} disabled={!canFinalSave || submitting}
                                     className="tw-text-sm tw-py-2.5 tw-bg-gray-800 hover:tw-bg-gray-900"
