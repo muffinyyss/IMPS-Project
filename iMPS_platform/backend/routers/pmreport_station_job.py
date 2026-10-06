@@ -808,6 +808,31 @@ async def reject_station_pm_job(
 # PDF ใบเดียวจบ — ต่อ PDF ของแต่ละส่วนเข้าด้วยกัน
 # ══════════════════════════════════════════════════════════════════
 
+def _page_number_overlay(count: int, lang: str):
+    """
+    PDF เลขหน้า "หน้า N" ตำแหน่งเดียวกับที่ template PM วาดเอง (มุมขวาบน)
+    ใช้ทับหน้าที่เรียงใหม่แล้ว — เลขหน้าของแต่ละส่วนเริ่ม 1 ใหม่ทุกส่วน ใช้ในใบรวมไม่ได้
+    """
+    from fpdf import FPDF
+    from pypdf import PdfReader
+    from pdf.templates.pdf_station import FONT_MAIN, add_all_thsarabun_fonts
+
+    pdf = FPDF(unit="mm", format="A4")
+    pdf.set_auto_page_break(False)
+    thai = add_all_thsarabun_fonts(pdf)
+    font = "THSarabun" if thai else "Helvetica"
+    # ไม่มีฟอนต์ไทยก็พิมพ์ภาษาไทยไม่ได้ — ใช้คำอังกฤษแทน
+    label = "หน้า" if thai and lang != "en" else "Page"
+    for n in range(1, count + 1):
+        pdf.add_page()
+        pdf.set_font(font, "", FONT_MAIN - 1)
+        text = f"{label} {n}"
+        w = pdf.get_string_width(text) + 4
+        pdf.set_xy(pdf.w - pdf.r_margin - w, 5)
+        pdf.cell(w, 4, text, align="R")
+    return PdfReader(io.BytesIO(bytes(pdf.output())))
+
+
 @router.get("/stationpmjob/{job_id}/pdf")
 async def export_station_pm_job_pdf(
     job_id: str,
@@ -817,13 +842,14 @@ async def export_station_pm_job_pdf(
     current: UserClaims = Depends(get_current_user),
 ):
     """
-    PDF ของทั้งใบ = PDF ของแต่ละส่วนต่อกันตามลำดับ
-    Station → MDB → CCB → CB_BOX → Charger (ตู้ละชุด เรียงตามหมายเลขตู้)
+    PDF ของทั้งใบ = checklist ของทุกส่วนก่อน แล้วตามด้วยรูปของทุกส่วน
+    ทั้งสองช่วงเรียงส่วนเหมือนกัน: Station → MDB → CCB → CB_BOX → Charger (ตู้ละชุด เรียงตามหมายเลขตู้)
 
-    ใช้ template เดิมของแต่ละชนิด (ไม่ได้เขียนใหม่) แล้วรวมไฟล์ด้วย pypdf
+    ใช้ template เดิมของแต่ละชนิด (ไม่ได้เขียนใหม่) ให้ template บอกว่าแต่ละหน้าเป็น checklist หรือรูป
+    แล้วเรียงหน้าใหม่ด้วย pypdf + ใส่เลขหน้าต่อเนื่องทั้งเล่ม (template ปิดเลขหน้าของตัวเองไว้)
     ส่วนที่ยังไม่ได้กรอกจะถูกข้ามไป
     """
-    from pypdf import PdfWriter
+    from pypdf import PdfReader, PdfWriter
 
     station_id = station_id.strip()
     jobs = get_stationpmjob_collection_for(station_id)
@@ -834,7 +860,8 @@ async def export_station_pm_job_pdf(
     # import ตรงนี้ กัน import วนกับ pdf_routes1 ที่ import main
     from pdf.pdf_routes1 import TEMPLATE_MAP
 
-    writer = PdfWriter()
+    checklist_pages: list = []
+    photo_pages: list = []
     included: list[str] = []
     for state in await _section_states(job):
         if not state["report_id"]:
@@ -850,21 +877,34 @@ async def export_station_pm_job_pdf(
         # ให้ทุกส่วนพิมพ์เลขที่/ชื่อเอกสารของใบแม่ — เป็นเอกสารใบเดียวกัน
         doc = {**doc, "issue_id": job.get("issue_id") or doc.get("issue_id"),
                "doc_name": job.get("doc_name") or doc.get("doc_name")}
+        kinds: list[str] = []
         try:
-            part = info["func"](doc, lang=lang)
-        except TypeError:
-            part = info["func"](doc)
+            part = info["func"](doc, lang=lang, page_kinds=kinds, show_page_no=False)
         except Exception as e:
             log.warning(f"  ⚠️ สร้าง PDF ส่วน {state['section']} {state.get('sn') or ''} ของใบ {job_id} ไม่สำเร็จ: {e}")
             continue
         try:
-            writer.append(io.BytesIO(part))
-            included.append(f"{state['section']}:{state['sn']}" if state.get("sn") else state["section"])
+            pages = PdfReader(io.BytesIO(part)).pages
         except Exception as e:
-            log.warning(f"  ⚠️ ต่อ PDF ส่วน {state['section']} {state.get('sn') or ''} ไม่สำเร็จ: {e}")
+            log.warning(f"  ⚠️ อ่าน PDF ส่วน {state['section']} {state.get('sn') or ''} ไม่สำเร็จ: {e}")
+            continue
+        if len(kinds) != len(pages):
+            # ไม่ควรเกิด — แยกไม่ได้ก็เก็บทั้งส่วนไว้ช่วง checklist ดีกว่าทำหน้าหาย
+            log.warning(f"  ⚠️ ชนิดหน้าของส่วน {state['section']} ไม่ครบ ({len(kinds)}/{len(pages)}) — ไม่แยกรูป")
+            kinds = ["checklist"] * len(pages)
+        for page, kind in zip(pages, kinds):
+            (photo_pages if kind == "photos" else checklist_pages).append(page)
+        included.append(f"{state['section']}:{state['sn']}" if state.get("sn") else state["section"])
 
     if not included:
         raise HTTPException(status_code=404, detail="ใบนี้ยังไม่มีส่วนไหนถูกกรอก จึงยังไม่มี PDF")
+
+    writer = PdfWriter()
+    for page in checklist_pages + photo_pages:
+        writer.add_page(page)
+    numbers = _page_number_overlay(len(writer.pages), lang)
+    for page, number in zip(writer.pages, numbers.pages):
+        page.merge_page(number)
 
     buf = io.BytesIO()
     writer.write(buf)
