@@ -249,10 +249,13 @@ const T = {
   na: { th: "N/A", en: "N/A" },
   markNa: { th: "ไม่ต้องกรอกส่วนนี้ (N/A)", en: "Mark as N/A (no need to fill)" },
   undoNa: { th: "ยกเลิก N/A — กลับไปต้องกรอก", en: "Undo N/A — fill this section" },
+  naTitle: { th: "ไม่ต้องกรอกส่วนนี้ (N/A)", en: "Mark as N/A" },
   confirmNa: {
-    th: "กด N/A ส่วนนี้? ส่วนที่ N/A ไม่ต้องกรอก และจะไม่อยู่ใน PDF (ยกเลิกได้ก่อนกดปิดใบงาน)",
-    en: "Mark this section as N/A? It won't need to be filled and won't appear in the PDF (can be undone before closing the job).",
+    th: "ส่วนที่ N/A ไม่ต้องกรอก และจะไม่อยู่ใน PDF — ยกเลิก N/A ได้จนกว่าจะกดปิดใบงาน",
+    en: "This section won't need to be filled and won't appear in the PDF. You can undo N/A until the job is closed.",
   },
+  confirmNaButton: { th: "ยืนยัน N/A", en: "Confirm N/A" },
+  savingNa: { th: "กำลังบันทึก…", en: "Saving…" },
 } as const;
 
 const t = (k: keyof typeof T, lang: Lang) => T[k][lang === "en" ? "en" : "th"];
@@ -362,7 +365,8 @@ function SectionFillButton({
   // ปิดใบงานแล้ว (รออนุมัติ/ปิด) เปลี่ยน N/A ไม่ได้ — ปุ่มหายไป เหลือแค่ป้าย N/A
   const canToggleNa = job.status === "draft" && !filled;
   return (
-    <div className="tw-flex tw-w-full tw-items-stretch tw-gap-1.5">
+    // ไม่ยืดเต็มการ์ด — กว้างพอดีชื่ออุปกรณ์ + ปุ่ม N/A (มือถือยังเต็มความกว้างให้กดง่าย)
+    <div className="tw-flex tw-w-full tw-items-stretch tw-gap-1.5 sm:tw-max-w-[15rem]">
       {na ? (
         <div
           title={`${label}: ${t("na", lang)}`}
@@ -439,6 +443,10 @@ export default function StationPmJobTables() {
 
   const [rejectOpen, setRejectOpen] = useState(false);
   const [rejectRemark, setRejectRemark] = useState("");
+
+  // ส่วนที่กำลังจะกด N/A — รอยืนยันใน pop-up
+  const [naConfirm, setNaConfirm] = useState<{ job: Job; state: SectionState } | null>(null);
+  const [naError, setNaError] = useState("");
 
   const jobId = searchParams.get("job_id") ?? "";
   // ทางเข้าจากใบงาน Maximo (หน้า PM List ส่งมา) — ทุกชนิดเข้าทางนี้หมดแล้ว
@@ -580,9 +588,15 @@ export default function StationPmJobTables() {
   };
 
   /** กด/ยกเลิก N/A ของส่วนหนึ่ง — ส่วนที่ N/A ไม่ต้องกรอก ไม่นับเป็นส่วนที่ขาดตอนปิดใบงาน */
-  const toggleNa = async (job: Job, s: SectionState, na: boolean) => {
+  // กด N/A ต้องยืนยันใน pop-up ก่อน (ยกเลิก N/A ทำได้ทันที ไม่ต้องถาม)
+  const toggleNa = (job: Job, s: SectionState, na: boolean) => {
     if (acting) return;
-    if (na && !window.confirm(`${pick(s.label, lang)}\n\n${t("confirmNa", lang)}`)) return;
+    if (na) { setNaError(""); setNaConfirm({ job, state: s }); return; }
+    void saveNa(job, s, false);
+  };
+
+  const saveNa = async (job: Job, s: SectionState, na: boolean) => {
+    if (acting) return;
     setActing(true);
     try {
       const res = await apiFetch(
@@ -597,8 +611,11 @@ export default function StationPmJobTables() {
       if (!res.ok) throw new Error(json?.detail || t("errAction", lang));
       if (json?.job) setJobs((prev) => prev.map((j) => (j.id === json.job.id ? json.job : j)));
       else await loadJobs();
+      setNaConfirm(null);
     } catch (err) {
-      alert(err instanceof Error ? err.message : t("errAction", lang));
+      const msg = err instanceof Error ? err.message : t("errAction", lang);
+      // กด N/A ผ่าน pop-up → ขึ้น error ใน pop-up เลย, ยกเลิก N/A ไม่มี pop-up จึงใช้ alert
+      if (na) setNaError(msg); else alert(msg);
     } finally {
       setActing(false);
     }
@@ -1256,6 +1273,59 @@ export default function StationPmJobTables() {
             </Button>
           </DialogFooter>
         </Dialog>
+
+        {/* ยืนยัน N/A — pop-up แบบเดียวกับยืนยันยกเลิกการแก้ไขของแพลตฟอร์ม */}
+        {naConfirm && (
+          <div
+            className="tw-fixed tw-inset-0 tw-z-[9999] tw-flex tw-items-center tw-justify-center tw-bg-black/50 tw-p-4"
+            onClick={() => { if (!acting) setNaConfirm(null); }}
+          >
+            <div
+              role="dialog"
+              aria-modal="true"
+              className="tw-w-full tw-max-w-md tw-rounded-2xl tw-bg-white tw-p-6 tw-shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 className="tw-mb-2 tw-flex tw-items-center tw-gap-2 tw-text-lg tw-font-bold tw-text-blue-gray-800">
+                <span className="tw-rounded tw-bg-gray-200 tw-px-1.5 tw-py-0.5 tw-text-xs tw-font-bold tw-text-gray-700">
+                  {t("na", lang)}
+                </span>
+                {t("naTitle", lang)}
+              </h3>
+              <p className="tw-mb-1 tw-text-sm tw-font-semibold tw-text-blue-gray-800">
+                {pick(naConfirm.state.label, lang)}
+                {naConfirm.state.sn && naConfirm.state.charger_no && (
+                  <span className="tw-ml-2 tw-font-mono tw-text-xs tw-font-normal tw-text-blue-gray-400">{naConfirm.state.sn}</span>
+                )}
+              </p>
+              <p className="tw-text-sm tw-text-blue-gray-600">{t("confirmNa", lang)}</p>
+              {naError && (
+                <div className="tw-mt-3 tw-rounded-lg tw-border tw-border-red-200 tw-bg-red-50 tw-px-3 tw-py-2 tw-text-sm tw-text-red-700">
+                  {naError}
+                </div>
+              )}
+              <div className="tw-mt-5 tw-flex tw-items-center tw-justify-end tw-gap-3">
+                <Button
+                  type="button"
+                  variant="outlined"
+                  disabled={acting}
+                  onClick={() => setNaConfirm(null)}
+                  className="tw-border-blue-gray-200 tw-text-blue-gray-700 hover:tw-border-blue-gray-300"
+                >
+                  {t("cancel", lang)}
+                </Button>
+                <Button
+                  type="button"
+                  disabled={acting}
+                  onClick={() => { void saveNa(naConfirm.job, naConfirm.state, true); }}
+                  className="tw-bg-gray-800 tw-text-white tw-font-semibold hover:tw-bg-gray-900 disabled:tw-cursor-not-allowed disabled:tw-opacity-50"
+                >
+                  {t(acting ? "savingNa" : "confirmNaButton", lang)}
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
 
         <Dialog open={rejectOpen} handler={() => setRejectOpen(false)} size="sm">
           <DialogHeader>{t("reject", lang)}</DialogHeader>

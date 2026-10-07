@@ -60,7 +60,54 @@ type PMRow = {
   exists_in_maximo?: boolean | null;
   /** เอกสารที่เป็นส่วนหนึ่งของใบ PM สถานี (ใบรวม 5 ส่วน) — id ของใบแม่ */
   job_id?: string;
+  /** แถวที่ยุบจากหลายส่วนของใบเดียวกัน — ชนิดอุปกรณ์ทุกส่วนที่กรอกแล้ว (ใช้กรองตามชนิด) */
+  pm_types?: string[];
 };
+
+// ลำดับส่วนในใบ PM สถานี — แถวที่ยุบแล้วใช้ส่วนแรกตามลำดับนี้เป็นตัวแทน
+const JOB_TYPE_ORDER = ["STATION", "MDB", "CCB", "CB-BOX", "CHARGER"];
+
+/**
+ * ใบ PM สถานี 1 ใบ = 1 แถว
+ * backend ส่งเอกสารมาทีละส่วน (Station/MDB/CCB/CB_BOX/ตู้ละใบ) ถ้าไม่ยุบ ใบเดียวจะขึ้นหลายแถว
+ * ทั้งที่สถานะ/เลขใบงาน/การกดเปิดเหมือนกันหมด (กดแล้วไปหน้ารวมของใบเดียวกัน)
+ * เอกสารใบเดี่ยวแบบเก่า (ไม่มี job_id) ยังแสดงแถวละใบเหมือนเดิม
+ */
+function collapseJobRows(rows: PMRow[]): PMRow[] {
+  const out: PMRow[] = [];
+  const byJob = new Map<string, PMRow[]>();
+  for (const r of rows) {
+    if (!r.job_id) { out.push(r); continue; }
+    const key = `${r.station_id}::${r.job_id}`;
+    const list = byJob.get(key);
+    if (list) list.push(r);
+    else byJob.set(key, [r]);
+  }
+  for (const list of byJob.values()) {
+    const rank = (r: PMRow) => {
+      const i = JOB_TYPE_ORDER.indexOf(r.pm_type);
+      return i < 0 ? JOB_TYPE_ORDER.length : i;
+    };
+    const head = [...list].sort((a, b) => rank(a) - rank(b))[0];
+    const inspectors = Array.from(new Set(
+      list.map((r) => String(r.technician || "").trim()).filter((x) => x && x !== "-")
+    ));
+    out.push({
+      ...head,
+      pm_types: Array.from(new Set(list.map((r) => r.pm_type))),
+      technician: inspectors.join(", "),
+      wonum: list.find((r) => r.wonum)?.wonum || head.wonum,
+      // PDF ของใบนี้คือ PDF ทั้งใบ ไม่ใช่ของส่วนใดส่วนหนึ่ง
+      file_url: `/stationpmjob/${encodeURIComponent(head.job_id || "")}/pdf?station_id=${encodeURIComponent(head.station_id)}`,
+    });
+  }
+  return out;
+}
+
+/** แถวนี้มีอุปกรณ์ชนิดนี้ไหม — แถวที่ยุบแล้วมีได้หลายชนิด */
+function hasPmType(r: PMRow, type: string): boolean {
+  return r.pm_types ? r.pm_types.includes(type) : r.pm_type === type;
+}
 
 /** ด่านของงาน — ชื่อเดียวกับที่ใช้ในหน้า PM report */
 type PmStage = "open" | "in_progress" | "wait_approve" | "closed";
@@ -199,8 +246,10 @@ export default function PMListPage() {
         if (repRes.status === "rejected") throw repRes.reason;
         const json = await repRes.value.json();
         if (!repRes.value.ok) throw new Error(json?.detail || `HTTP ${repRes.value.status}`);
-        const reports: PMRow[] = (Array.isArray(json?.reports) ? json.reports : [])
-          .map((r: PMRow) => ({ ...r, kind: "report" as const }));
+        const reports: PMRow[] = collapseJobRows(
+          (Array.isArray(json?.reports) ? json.reports : [])
+            .map((r: PMRow) => ({ ...r, kind: "report" as const }))
+        );
 
         // ใบงาน Maximo — ถ้าโหลดไม่ได้ก็ยังโชว์เอกสารได้ ไม่ต้องล้มทั้งหน้า
         let woRows: PMRow[] = [];
@@ -468,14 +517,14 @@ export default function PMListPage() {
     const q = search.trim().toLowerCase();
     if (!q) return list;
     return list.filter((r) =>
-      [r.station_name, r.station_id, r.wonum, r.issue_id, r.document_name, r.technician, r.sn, r.chargeBoxID, r.pm_type]
+      [r.station_name, r.station_id, r.wonum, r.issue_id, r.document_name, r.technician, r.sn, r.chargeBoxID, r.pm_type, ...(r.pm_types ?? [])]
         .some((v) => String(v ?? "").toLowerCase().includes(q))
     );
   }, [search]);
 
   const searchFiltered = useMemo(() => {
     let list = periodRows;
-    if (typeFilter) list = list.filter((r) => r.pm_type === typeFilter);
+    if (typeFilter) list = list.filter((r) => hasPmType(r, typeFilter));
     if (stageFilter) list = list.filter((r) => stageOf(r) === stageFilter);
     return applySearch(list);
   }, [periodRows, typeFilter, stageFilter, applySearch]);
@@ -483,7 +532,7 @@ export default function PMListPage() {
   // ตัวนับบนปุ่มสถานะ — ไม่ขึ้นกับตัวกรองสถานะที่เลือกอยู่ (เหมือน CM List)
   const stageCounts = useMemo(() => {
     let base = periodRows;
-    if (typeFilter) base = base.filter((r) => r.pm_type === typeFilter);
+    if (typeFilter) base = base.filter((r) => hasPmType(r, typeFilter));
     base = applySearch(base);
     const counts: Record<PmStage, number> = { open: 0, in_progress: 0, wait_approve: 0, closed: 0 };
     for (const r of base) counts[stageOf(r)]++;

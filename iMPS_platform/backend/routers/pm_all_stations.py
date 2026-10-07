@@ -182,37 +182,57 @@ async def _apply_job_status(reports: list[dict], chargers: list[dict]) -> None:
         if sn and sn != "-":
             sns_by_station.setdefault(c.get("station_id") or "", []).append(sn)
 
+    job_docs = await _job_docs(groups.keys())
+
+    # เลขใบงาน Maximo อยู่ที่ใบแม่ — ใบลูกที่กรอกจากหน้ารวมไม่ได้เก็บ wonum ไว้เอง
+    # ต้องเติมให้ ไม่งั้นหน้า PM List จับคู่กับแถวใบงานไม่ได้ แล้วขึ้นใบงานเดียวกันซ้ำ
+    for key, rows in groups.items():
+        job_wonum = str((job_docs.get(key) or {}).get("wonum") or "").strip()
+        for r in rows:
+            if job_wonum and not str(r.get("wonum") or "").strip():
+                r["wonum"] = job_wonum
+
     plans = await planned_keys_by_wonum(
         [r.get("wonum") or "" for rows in groups.values() for r in rows]
     )
-    submitted = await _submitted_job_ids(groups.keys())
 
     for (station_id, _job_id), rows in groups.items():
+        job = job_docs.get((station_id, _job_id)) or {}
+        na_keys = {
+            section_key(str(x.get("section") or ""), str(x.get("sn") or ""))
+            for x in job.get("na_sections") or []
+        }
         # ส่วนทั้งหมดของใบ = 4 ส่วนระดับสถานี + ตู้ละ 1 ใบ (เหมือน _section_states)
         states: dict[tuple[str, str], dict] = {}
         for section in SECTIONS:
             if section == CHARGER_SECTION:
                 for sn in sns_by_station.get(station_id, []):
-                    states[section_key(section, sn)] = {"section": section, "sn": sn, "report_id": "", "status": ""}
+                    key = section_key(section, sn)
+                    states[key] = {"section": section, "sn": sn, "report_id": "", "status": "", "na": key in na_keys}
             else:
-                states[section_key(section)] = {"section": section, "sn": "", "report_id": "", "status": ""}
+                key = section_key(section)
+                states[key] = {"section": section, "sn": "", "report_id": "", "status": "", "na": key in na_keys}
         for r in rows:
             section = _PM_TYPE_TO_SECTION[r["pm_type"]]
             sn = r.get("sn") or ""
             key = section_key(section, sn)
             if key in states and not states[key]["report_id"]:
-                states[key].update(report_id=r.get("id") or "", status=r.get("status") or "")
+                # กรอกแล้ว = ไม่ใช่ N/A (กติกาเดียวกับ _state_row)
+                states[key].update(report_id=r.get("id") or "", status=r.get("status") or "", na=False)
 
         wonum = next((str(r.get("wonum") or "").strip() for r in rows if r.get("wonum")), "")
         job_status = derive_job_status(
-            list(states.values()), plans.get(wonum), (station_id, _job_id) in submitted
+            list(states.values()), plans.get(wonum), bool(job.get("submitted_at"))
         )
         for r in rows:
             r["status"] = job_status
 
 
-async def _submitted_job_ids(keys) -> set[tuple[str, str]]:
-    """ใบ PM สถานีที่ช่างกด "ปิดใบงาน" แล้ว — ถามทีละสถานี ใบละ field เดียว"""
+async def _job_docs(keys) -> dict[tuple[str, str], dict]:
+    """
+    ใบแม่ (ใบ PM สถานี) ของแถวในหน้านี้ — ถามทีละสถานี เอาเฉพาะ field ที่ใช้
+    wonum (เลขใบงาน Maximo), submitted_at (กดปิดใบงานแล้ว), na_sections (ส่วนที่ N/A)
+    """
     from routers.pm_helpers import get_stationpmjob_collection_for
 
     by_station: dict[str, list[ObjectId]] = {}
@@ -220,18 +240,18 @@ async def _submitted_job_ids(keys) -> set[tuple[str, str]]:
         if station_id and ObjectId.is_valid(job_id):
             by_station.setdefault(station_id, []).append(ObjectId(job_id))
 
-    async def one(station_id: str, ids: list[ObjectId]) -> list[tuple[str, str]]:
+    async def one(station_id: str, ids: list[ObjectId]) -> list[tuple[tuple[str, str], dict]]:
         try:
             cursor = get_stationpmjob_collection_for(station_id).find(
-                {"_id": {"$in": ids}, "submitted_at": {"$nin": [None, ""]}}, {"_id": 1}
+                {"_id": {"$in": ids}}, {"_id": 1, "wonum": 1, "submitted_at": 1, "na_sections": 1}
             )
-            return [(station_id, str(d["_id"])) async for d in cursor]
+            return [((station_id, str(d["_id"])), d) async for d in cursor]
         except Exception:
             traceback.print_exc()
             return []
 
     results = await asyncio.gather(*(one(sid, ids) for sid, ids in by_station.items()))
-    return {k for part in results for k in part}
+    return {k: d for part in results for k, d in part}
 
 
 # ===== Endpoint =====
