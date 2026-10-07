@@ -40,7 +40,42 @@ export type MaximoWorkOrder = {
   sched_finish?: string | null;
   planning_status?: string | null;
   receivedAt?: string | null;
+  /** vendor ที่ planner ต้นทางเลือกและมี planner ของตัวเอง — ต้องวางแผนอีกรอบ */
+  vendor_plans?: VendorPlan[] | null;
 };
+
+/** แผนรอบที่ 2 ของ vendor 1 ราย — แผนของ planner ต้นทางยังอยู่ครบ ไม่ถูกแก้ */
+export type VendorPlan = {
+  vendor: string;
+  status: "pending" | "planned" | string;
+  planned_by?: string;
+  planned_at?: string;
+  sched_start?: string;
+  sched_finish?: string;
+  assignees?: string[];
+};
+
+/** แผนของ vendor ที่เป็นบริษัทของคนที่ login อยู่ (ไม่มี = ใบงานนี้ไม่ได้ส่งต่อมาให้) */
+export function myVendorPlan(
+  wo: Pick<MaximoWorkOrder, "vendor_plans"> | null | undefined,
+  company: string | null | undefined,
+): VendorPlan | null {
+  const c = String(company ?? "").trim().toLowerCase();
+  if (!c) return null;
+  return (wo?.vendor_plans ?? []).find((v) => String(v.vendor ?? "").trim().toLowerCase() === c) ?? null;
+}
+
+/** ช่างทั้งหมดของใบงาน = ของ planner ต้นทาง + ที่ vendor มอบหมายเพิ่ม (ไม่ซ้ำ) */
+export function allAssignees(wo: Pick<MaximoWorkOrder, "assignees" | "vendor_plans"> | null | undefined): string[] {
+  const out: string[] = [];
+  const add = (n: unknown) => {
+    const s = String(n ?? "").trim();
+    if (s && !out.includes(s)) out.push(s);
+  };
+  (wo?.assignees ?? []).forEach(add);
+  (wo?.vendor_plans ?? []).forEach((v) => (v.assignees ?? []).forEach(add));
+  return out;
+}
 
 export type EquipmentChoices = {
   wonum: string;

@@ -24,6 +24,7 @@ import {
   equipKey,
   equipLabel,
   fetchPmAssigneeOptions,
+  myVendorPlan,
   formatDate,
   planningChipClass,
   PM_DEFAULT_SPAN_DAYS,
@@ -37,6 +38,7 @@ import {
   type MaximoSource,
   type MaximoWorkOrder,
   type PmAssigneeOptions,
+  type VendorPlan,
 } from "./planning";
 
 // ใช้หัวเอกสารชุดเดียวกับ CM
@@ -112,6 +114,16 @@ const T = {
     en: "This work order is already planned — fields are read-only",
   },
   save: { th: "Assign", en: "Assign" },
+
+  vendorSection: { th: "แผนของ", en: "Plan by" },
+  vendorPending: {
+    th: "รอ planner ของบริษัทนี้วางแผน (เลือกช่างและกำหนดการของตัวเอง)",
+    en: "Waiting for this company's planner to plan (pick its own technicians and schedule)",
+  },
+  vendorHandoffNotice: {
+    th: "ใบงานนี้ถูกส่งต่อให้บริษัทของคุณวางแผนอีกรอบ — แผนของผู้วางแผนต้นทางด้านบนยังอยู่ครบ กรอกแผนของบริษัทคุณในหัวข้อด้านล่างแล้วกด Assign",
+    en: "This work order was handed to your company to plan — the original plan above stays as is. Fill in your company's plan below and press Assign.",
+  },
   saving: { th: "กำลังมอบหมาย…", en: "Assigning…" },
 
   errSched: { th: "กรุณาระบุวันที่เริ่มและวันที่เสร็จตามแผน", en: "Scheduled start and finish are required" },
@@ -167,6 +179,11 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
   const [canPlan, setCanPlan] = useState(false);
   const [myUsername, setMyUsername] = useState("");
   const [myRole, setMyRole] = useState("");
+  const [myCompany, setMyCompany] = useState("");
+  // แผนรอบที่ 2 ของ vendor (บริษัทของคนที่ login) — ใช้เมื่อใบงานถูกส่งต่อมาให้วางแผน
+  const [vSchedStart, setVSchedStart] = useState("");
+  const [vSchedFinish, setVSchedFinish] = useState("");
+  const [vAssignees, setVAssignees] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -201,6 +218,8 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
       setCanPlan(PM_PLANNING_ROLES.includes(role));
       setMyRole(role);
       setMyUsername(String(me?.username ?? ""));
+      const company = String(me?.company ?? "");
+      setMyCompany(company);
 
       const woJson = await woRes.json().catch(() => ({} as any));
       const found: MaximoWorkOrder | undefined = (Array.isArray(woJson?.items) ? woJson.items : [])
@@ -220,6 +239,13 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
         toDateTimeLocalValue(found.sched_finish) || dateTimeLocalFromNow(PM_DEFAULT_SPAN_DAYS)
       );
       setAssignees(Array.isArray(found.assignees) ? found.assignees.filter(Boolean) : []);
+      // แผนของ vendor: ตั้งต้นกำหนดการตามแผนต้นทาง ช่างเริ่มว่าง (ต้องเลือกคนของบริษัทตัวเอง)
+      const vp = myVendorPlan(found, company);
+      setVSchedStart(toDateTimeLocalValue(vp?.sched_start || found.sched_start) || dateTimeLocalFromNow());
+      setVSchedFinish(
+        toDateTimeLocalValue(vp?.sched_finish || found.sched_finish) || dateTimeLocalFromNow(PM_DEFAULT_SPAN_DAYS)
+      );
+      setVAssignees(Array.isArray(vp?.assignees) ? vp!.assignees!.filter(Boolean) : []);
 
       const cJson = await choicesRes.json().catch(() => ({} as any));
       if (!choicesRes.ok) {
@@ -324,6 +350,40 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
     }
   };
 
+  const vSchedRangeInvalid = !!vSchedStart && !!vSchedFinish && vSchedFinish < vSchedStart;
+
+  const onSaveVendor = async () => {
+    if (saving) return;
+    if (!vSchedStart || !vSchedFinish) { setError(t("errSched", lang)); return; }
+    if (vSchedRangeInvalid) { setError(t("schedRangeError", lang)); return; }
+    if (vAssignees.length === 0) { setError(t("errTech", lang)); return; }
+    setSaving(true);
+    setError("");
+    try {
+      const res = await apiFetch(`/maximo/pm/${encodeURIComponent(wonum)}/vendor-plan`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          planned_at: new Date().toISOString(),
+          sched_start: vSchedStart,
+          sched_finish: vSchedFinish,
+          assignees: vAssignees,
+        }),
+      });
+      const j = await res.json().catch(() => ({} as any));
+      if (!res.ok) {
+        setError(String(j?.detail || t("errSave", lang)));
+        return;
+      }
+      onSaved();
+    } catch (err) {
+      console.error("pm vendor plan save error:", err);
+      setError(t("errSave", lang));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const planStatus = derivePlanningStatus(selectedCount, wo?.planning_status ?? "pending");
   const alreadyPlanned = planStatus === "planned";
 
@@ -335,6 +395,10 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
   const canStart = !loading && !!wo && plannedEquipment.length > 0;
   // วางแผนเสร็จแล้ว = อ่านอย่างเดียวถาวร (PM ไม่มีแก้ไขแผน)
   const locked = !canPlan || alreadyPlanned;
+  // ใบงานที่ส่งต่อมาให้บริษัทของคนที่ login วางแผนอีกรอบ และยังไม่ได้วางแผน
+  const mine = myVendorPlan(wo, myCompany);
+  const vendorTurn = canPlan && !!mine && mine.status !== "planned";
+  const vendorPlans: VendorPlan[] = wo?.vendor_plans ?? [];
 
   return (
     <section className="tw-pb-24">
@@ -406,10 +470,18 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
           )}
 
           {/* วางแผนแล้ว — อ่านอย่างเดียว */}
-          {!loading && canPlan && alreadyPlanned && (
+          {!loading && canPlan && alreadyPlanned && !vendorTurn && (
             <div className="tw-mb-4 tw-flex tw-items-start tw-gap-3 tw-px-4 tw-py-3 tw-rounded-lg tw-bg-blue-50 tw-border tw-border-blue-200">
               <ExclamationTriangleIcon className="tw-w-5 tw-h-5 tw-text-blue-500 tw-mt-0.5 tw-flex-shrink-0" />
               <p className="tw-text-sm tw-text-blue-800">{t("plannedNotice", lang)}</p>
+            </div>
+          )}
+
+          {/* ส่งต่อมาให้บริษัทของคุณวางแผนอีกรอบ */}
+          {!loading && vendorTurn && (
+            <div className="tw-mb-4 tw-flex tw-items-start tw-gap-3 tw-px-4 tw-py-3 tw-rounded-lg tw-bg-amber-50 tw-border tw-border-amber-200">
+              <ExclamationTriangleIcon className="tw-w-5 tw-h-5 tw-text-amber-500 tw-mt-0.5 tw-flex-shrink-0" />
+              <p className="tw-text-sm tw-text-amber-800">{t("vendorHandoffNotice", lang)}</p>
             </div>
           )}
 
@@ -546,11 +618,92 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
                 </div>
               </div>
 
-              {/* ═══ 2. อุปกรณ์ที่จะ PM ═══ */}
+              {/* ═══ แผนของ vendor (ส่งต่อมาให้วางแผนอีกรอบ) — 1 หัวข้อต่อ 1 บริษัท ═══ */}
+              {vendorPlans.map((vp, i) => {
+                const editable = vendorTurn && mine === vp;
+                const planned = vp.status === "planned";
+                return (
+                  <div key={vp.vendor} className="tw-mb-6 tw-rounded-lg tw-overflow-hidden tw-border tw-border-blue-gray-100 tw-bg-white tw-shadow-sm">
+                    <SectionHeader
+                      no={2 + i}
+                      title={`${t("vendorSection", lang)} ${vp.vendor}`}
+                      right={
+                        <span className={`tw-rounded-full tw-px-2.5 tw-py-0.5 tw-text-[11px] tw-font-semibold ${planned ? "tw-bg-white tw-text-gray-700" : "tw-bg-amber-100 tw-text-amber-800"}`}>
+                          {planned ? t("planned", lang) : t("pending", lang)}
+                        </span>
+                      }
+                    />
+                    <div className="tw-p-4">
+                      {!planned && !editable ? (
+                        <p className="tw-text-sm tw-text-amber-700">{t("vendorPending", lang)}</p>
+                      ) : (
+                        <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-4">
+                          <div>
+                            <label className={LABEL}>{t("plannedAt", lang)}</label>
+                            <input
+                              type="text" readOnly className={FIELD_RO}
+                              value={planned ? (toDateTimeLocalValue(vp.planned_at).replace("T", " ") || "-") : toDateTimeLocalValue(new Date().toISOString()).replace("T", " ")}
+                            />
+                          </div>
+                          <div>
+                            <label className={LABEL}>{t("plannedBy", lang)}</label>
+                            <input type="text" readOnly className={FIELD_RO} value={planned ? (vp.planned_by || "-") : (myUsername || "-")} />
+                          </div>
+                          <div>
+                            <label className={LABEL}>
+                              {t("schedStart", lang)} {editable && <span className="tw-text-red-500">*</span>}
+                            </label>
+                            {editable ? (
+                              <input type="datetime-local" value={vSchedStart} onChange={(e) => setVSchedStart(e.target.value)} className={FIELD} />
+                            ) : (
+                              <input type="text" readOnly className={FIELD_RO} value={toDateTimeLocalValue(vp.sched_start).replace("T", " ") || "-"} />
+                            )}
+                          </div>
+                          <div>
+                            <label className={LABEL}>
+                              {t("schedFinish", lang)} {editable && <span className="tw-text-red-500">*</span>}
+                            </label>
+                            {editable ? (
+                              <>
+                                <input
+                                  type="datetime-local" value={vSchedFinish} min={vSchedStart || undefined}
+                                  onChange={(e) => setVSchedFinish(e.target.value)}
+                                  className={`tw-w-full tw-rounded-lg tw-border tw-bg-white tw-px-3 tw-py-2.5 tw-text-sm tw-text-blue-gray-800 focus:tw-outline-none ${vSchedRangeInvalid ? "tw-border-red-400 focus:tw-border-red-500" : "tw-border-blue-gray-200 focus:tw-border-blue-500"}`}
+                                />
+                                {vSchedRangeInvalid && (
+                                  <p className="tw-mt-1.5 tw-text-xs tw-text-red-600">{t("schedRangeError", lang)}</p>
+                                )}
+                              </>
+                            ) : (
+                              <input type="text" readOnly className={FIELD_RO} value={toDateTimeLocalValue(vp.sched_finish).replace("T", " ") || "-"} />
+                            )}
+                          </div>
+                          <div>
+                            <label className={LABEL}>
+                              {t("technician", lang)} {editable && <span className="tw-text-red-500">*</span>}
+                            </label>
+                            {editable ? (
+                              assigneeNames.length > 0 ? (
+                                <PmAssigneePicker groups={assigneeGroups} assignees={vAssignees} onChange={setVAssignees} />
+                              ) : (
+                                <p className="tw-mt-1.5 tw-text-xs tw-text-orange-600">{t("noTechnicians", lang)}</p>
+                              )
+                            ) : (
+                              <div className={FIELD_RO}>{(vp.assignees ?? []).join(", ") || t("noAssignee", lang)}</div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+
+              {/* ═══ อุปกรณ์ที่จะ PM ═══ */}
               {choices && (
                 <div className="tw-mb-6 tw-rounded-lg tw-overflow-hidden tw-border tw-border-blue-gray-100 tw-bg-white tw-shadow-sm">
                   <SectionHeader
-                    no={2}
+                    no={2 + vendorPlans.length}
                     title={t("equipSection", lang)}
                     right={
                       <span className="tw-text-xs tw-font-medium tw-text-white/90">
@@ -621,6 +774,17 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
                     <Button
                       onClick={onSave}
                       disabled={locked || saving || !wo}
+                      className="tw-bg-gray-800 hover:!tw-bg-blue-600 tw-text-white hover:tw-shadow-lg hover:!tw-shadow-blue-500/30 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed disabled:tw-shadow-none"
+                    >
+                      {saving ? t("saving", lang) : t("save", lang)}
+                    </Button>
+                  )}
+
+                  {/* planner ของ vendor: Assign แผนของบริษัทตัวเอง */}
+                  {vendorTurn && (
+                    <Button
+                      onClick={onSaveVendor}
+                      disabled={saving || !wo}
                       className="tw-bg-gray-800 hover:!tw-bg-blue-600 tw-text-white hover:tw-shadow-lg hover:!tw-shadow-blue-500/30 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed disabled:tw-shadow-none"
                     >
                       {saving ? t("saving", lang) : t("save", lang)}

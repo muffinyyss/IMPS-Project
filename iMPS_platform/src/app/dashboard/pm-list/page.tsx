@@ -20,7 +20,7 @@ import { DocumentArrowDownIcon, PlusIcon, TrashIcon } from "@heroicons/react/24/
 import { apiFetch } from "@/utils/api";
 import useLanguage from "@/utils/useLanguage";
 import { PM_LIST_ROUTE, PM_ORIGIN_LIST } from "@/app/dashboard/pm-report/lib/origin";
-import { PM_PLANNING_ROLES } from "@/app/dashboard/pm-report/components/planning";
+import { PM_PLANNING_ROLES, allAssignees, myVendorPlan, type VendorPlan } from "@/app/dashboard/pm-report/components/planning";
 import { PM_APPROVE_ROLES } from "@/app/dashboard/pm-report/components/flow";
 import { COMPANY_FILTER_OPTIONS, matchesCompanyFilter } from "@/utils/pm-dashboard";
 import { csvDate, csvFilename, downloadCsv, toCsv } from "@/utils/csv";
@@ -64,6 +64,10 @@ type PMRow = {
   pm_types?: string[];
   /** ที่มาของใบงาน: ใบงานจาก Maximo หรือเปิดเองใน iMPS (ไม่มีเลข WO ก็นับเป็นเปิดเอง) */
   wo_origin?: WoOrigin;
+  /** vendor ที่ planner ต้นทางส่งต่อให้วางแผนอีกรอบ (ยืมจากใบงานผ่าน wonum) */
+  vendor_plans?: VendorPlan[];
+  /** ใบงานส่งต่อมาให้บริษัทของคนที่ดูอยู่ และยังไม่ได้วางแผน — สำหรับคนนี้ใบนี้ยังเป็น Open */
+  vendor_pending_for_me?: boolean;
 };
 
 type WoOrigin = "maximo" | "manual";
@@ -149,6 +153,7 @@ type PmStage = "open" | "in_progress" | "wait_approve" | "closed";
 function stageOf(row: PMRow): PmStage {
   // ใบงาน Maximo: assign แล้ว = In Progress เหมือนในตารางของแต่ละ tab
   if (row.kind === "wo") {
+    if (row.vendor_pending_for_me) return "open";
     return String(row.planning_status ?? "pending").trim().toLowerCase() === "planned"
       ? "in_progress"
       : "open";
@@ -302,13 +307,17 @@ export default function PMListPage() {
           // เอกสาร PM ไม่ได้เก็บ assignees ไว้เอง — ยืมจากใบงานต้นทางผ่าน wonum
           // เพื่อให้กรองงานของช่างได้ทั้งแถว WO และแถวเอกสาร
           const assigneesByWonum = new Map<string, string[]>();
+          const vendorPlansByWonum = new Map<string, VendorPlan[]>();
           for (const w of items) {
             const wn = String(w?.wonum || "").trim();
-            if (wn) assigneesByWonum.set(wn, (Array.isArray(w?.assignees) ? w.assignees : []).filter(Boolean));
+            // ช่างของ planner ต้นทาง + ช่างที่ vendor มอบหมายเพิ่ม — ช่างของ vendor กรองงานตัวเองได้ด้วย
+            if (wn) assigneesByWonum.set(wn, allAssignees(w));
+            if (wn && Array.isArray(w?.vendor_plans) && w.vendor_plans.length) vendorPlansByWonum.set(wn, w.vendor_plans);
           }
           for (const r of reports) {
             const wn = String(r.wonum || "").trim();
             if (wn && assigneesByWonum.has(wn)) r.assignees = assigneesByWonum.get(wn);
+            if (wn && vendorPlansByWonum.has(wn)) r.vendor_plans = vendorPlansByWonum.get(wn);
           }
           woRows = items
             .filter((w) => !withReport.has(String(w?.wonum || "").trim()))
@@ -325,7 +334,8 @@ export default function PMListPage() {
               // ผู้ตรวจสอบ = คนที่กรอกเอกสารจริง ใบงานที่ยังไม่มีเอกสารจึงเว้นว่าง
               // (ช่างที่ถูกมอบหมายยังอยู่ใน assignees ใช้กรองงานของช่างได้เหมือนเดิม)
               technician: "",
-              assignees: Array.isArray(w?.assignees) ? w.assignees.filter(Boolean) : [],
+              assignees: allAssignees(w),
+              vendor_plans: Array.isArray(w?.vendor_plans) ? w.vendor_plans : [],
               sn: String(w?.sn || ""),
               chargeBoxID: "",
               station_id: String(w?.station_id || ""),
@@ -565,10 +575,21 @@ export default function PMListPage() {
   const canSeeAllCompanies = isSuperAdmin || isEgatCompany;
 
   // เกณฑ์เดียวกับ PM Dashboard: EDS = ใบของตู้ FlexxFast, บริษัทอื่นเทียบ company ของสถานี
-  const companyRows = useMemo(
-    () => (canSeeAllCompanies ? scopedRows.filter((r) => matchesCompanyFilter(r, companyFilter)) : scopedRows),
-    [scopedRows, companyFilter, canSeeAllCompanies]
-  );
+  // บริษัทอื่น (เช่น vendor EDS) เห็นใบงานเฉพาะ: ใบที่ planner ต้นทางส่งต่อให้บริษัทตัวเอง
+  // + ใบงานของสถานี/ตู้ที่บริษัทดูแลอยู่แล้ว (เกณฑ์เดียวกับตัวกรองบริษัท)
+  // แถวเอกสารถูกจำกัดตามสถานีที่เห็นได้ที่ backend อยู่แล้ว ไม่ต้องกรองซ้ำ
+  const companyRows = useMemo(() => {
+    const withHandoff = scopedRows.map((r) => {
+      const mine = myVendorPlan(r, userCompany);
+      const pending = !!mine && mine.status !== "planned";
+      return pending === !!r.vendor_pending_for_me ? r : { ...r, vendor_pending_for_me: pending };
+    });
+    if (canSeeAllCompanies) return withHandoff.filter((r) => matchesCompanyFilter(r, companyFilter));
+    if (!userCompany.trim()) return withHandoff;
+    return withHandoff.filter((r) =>
+      r.kind !== "wo" || !!myVendorPlan(r, userCompany) || matchesCompanyFilter(r, userCompany)
+    );
+  }, [scopedRows, companyFilter, canSeeAllCompanies, userCompany]);
 
   const stations = useMemo(() => {
     const names = Array.from(new Set(companyRows.map((r) => r.station_name || r.station_id))).filter(Boolean);

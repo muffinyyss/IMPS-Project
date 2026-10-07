@@ -864,6 +864,19 @@ def _serialize_open(doc: dict) -> dict:
         ),
         "selected_by": doc.get("selected_by"),
         "assignees": doc.get("assignees") or [],
+        # ส่งต่อให้ vendor วางแผนอีกรอบ — แผนของ planner ต้นทางด้านบนไม่ถูกแก้
+        "vendor_plans": [
+            {
+                "vendor": v.get("vendor") or "",
+                "status": v.get("status") or "pending",
+                "planned_by": v.get("planned_by") or "",
+                "planned_at": v.get("planned_at") or "",
+                "sched_start": v.get("sched_start") or "",
+                "sched_finish": v.get("sched_finish") or "",
+                "assignees": v.get("assignees") or [],
+            }
+            for v in (doc.get("vendor_plans") or [])
+        ],
         "planned_at": doc.get("planned_at"),
         "planned_by": doc.get("planned_by"),
         "sched_start": doc.get("sched_start"),
@@ -1081,6 +1094,66 @@ class SelectEquipmentIn(BaseModel):
 
 async def _find_open_wo(wonum: str) -> dict | None:
     return await _open_coll().find_one({"wonum": wonum})
+
+
+# ══════════════════════════════════════════════════════════════════
+# ส่งต่อให้ vendor วางแผนอีกรอบ
+#   planner (เช่น EGAT) เลือก vendor (เช่น EDS) เป็นผู้รับผิดชอบ และ vendor นั้นมี
+#   planner ของตัวเองในระบบ → ใบงานไปขึ้นที่หน้า PM List ของ vendor ให้ planner ของ
+#   vendor วางแผนอีกรอบ (เลือกช่างของตัวเอง + กำหนดการ) แผนของ planner ต้นทางยังอยู่ครบ
+#   เก็บที่ใบงาน: vendor_plans = [{vendor, status: pending|planned, planned_by, planned_at,
+#   sched_start, sched_finish, assignees}]
+# ══════════════════════════════════════════════════════════════════
+
+def _company_of(current: UserClaims) -> str:
+    """company ของคนที่ login — อ่านสดจาก DB (JWT อาจเก่ากว่า profile ที่เพิ่งแก้)"""
+    from config import users_collection
+
+    company = str(current.company or "").strip()
+    if current.user_id:
+        try:
+            me = users_collection.find_one({"_id": ObjectId(current.user_id)}, {"company": 1})
+            company = str((me or {}).get("company") or company).strip()
+        except Exception:
+            pass
+    return company
+
+
+def _vendor_companies_with_planner(names: list[str], exclude_company: str) -> list[str]:
+    """
+    ชื่อผู้รับผิดชอบที่เป็นบริษัท (vendor) ซึ่งมีบัญชี planner ของตัวเองในระบบ
+    คืนตามตัวสะกดที่ planner ต้นทางเลือกไว้ — บริษัทของคนวางแผนเองไม่นับ
+    """
+    from config import users_collection
+
+    wanted = {n.strip().lower(): n.strip() for n in names if str(n or "").strip()}
+    wanted.pop(exclude_company.strip().lower(), None)
+    if not wanted:
+        return []
+    pattern = "^(" + "|".join(re.escape(k) for k in wanted) + ")$"
+    try:
+        companies = users_collection.distinct(
+            "company", {"role": "planner", "company": {"$regex": pattern, "$options": "i"}}
+        )
+    except Exception as e:
+        log.warning(f"  ⚠️ หา planner ของ vendor {list(wanted.values())} ไม่สำเร็จ: {e}")
+        return []
+    found = {str(c or "").strip().lower() for c in companies}
+    return [orig for key, orig in wanted.items() if key in found]
+
+
+def _merge_vendor_plans(existing: list[dict] | None, vendors: list[str]) -> list[dict]:
+    """
+    ใบส่งต่อชุดใหม่ตาม vendor ที่เลือกรอบนี้ — vendor ที่วางแผนไปแล้วเก็บแผนเดิมไว้
+    vendor ที่ไม่ได้เลือกแล้วตัดทิ้ง (ยังไม่ได้วางแผนเท่านั้น — วางแผนแล้วคงไว้เป็นประวัติ)
+    """
+    by_key = {str(v.get("vendor") or "").strip().lower(): v for v in (existing or [])}
+    out: list[dict] = []
+    for name in vendors:
+        key = name.strip().lower()
+        out.append(by_key.pop(key, None) or {"vendor": name.strip(), "status": "pending"})
+    out.extend(v for v in by_key.values() if v.get("status") == "planned")
+    return out
 
 
 def _station_id_of_wo(wo: dict) -> str:
@@ -1396,6 +1469,78 @@ async def delete_pm_wo(
     return {"ok": True, "deleted_wo": removed, "deleted_jobs": jobs_removed}
 
 
+class VendorPlanIn(BaseModel):
+    """แผนรอบที่ 2 ของ vendor — แผนของ planner ต้นทางไม่ถูกแตะ"""
+    planned_at: Optional[str] = None
+    sched_start: str
+    sched_finish: str
+    assignees: list[str] = Field(default_factory=list)
+
+
+@router.post("/maximo/pm/{wonum}/vendor-plan")
+async def set_pm_vendor_plan(
+    wonum: str,
+    body: VendorPlanIn,
+    current: UserClaims = Depends(get_current_user),
+):
+    """
+    planner ของ vendor วางแผนใบงานที่ planner ต้นทางส่งมาให้ (vendor_plans ของบริษัทตัวเอง)
+
+    ช่างที่เลือกต้องเป็นตัวเลือกของบริษัทตัวเอง (ชุดเดียวกับ /companies/pm-options)
+    วางแผนแล้วแก้ไม่ได้ — เหมือนแผนของ planner ต้นทาง
+    """
+    from routers.company import pm_assignee_options
+
+    role = (current.role or "").strip().lower()
+    if role not in PM_PLANNING_ROLES:
+        raise HTTPException(status_code=403, detail="เฉพาะ planner ที่วางแผนใบงานได้")
+
+    wonum = (wonum or "").strip()
+    wo = await _find_open_wo(wonum)
+    if not wo:
+        raise HTTPException(status_code=404, detail=f"ไม่พบใบงาน wonum={wonum}")
+
+    company = _company_of(current).lower()
+    plans = list(wo.get("vendor_plans") or [])
+    idx = next((i for i, v in enumerate(plans) if str(v.get("vendor") or "").strip().lower() == company), -1)
+    if not company or idx < 0:
+        raise HTTPException(status_code=403, detail="ใบงานนี้ไม่ได้ส่งต่อให้บริษัทของคุณวางแผน")
+    if plans[idx].get("status") == "planned":
+        raise HTTPException(status_code=409, detail="บริษัทของคุณวางแผนใบงานนี้ไปแล้ว")
+
+    sched_start = (body.sched_start or "").strip()
+    sched_finish = (body.sched_finish or "").strip()
+    if not sched_start or not sched_finish:
+        raise HTTPException(status_code=400, detail="กรุณาระบุวันที่เริ่มและวันที่เสร็จตามแผน")
+    if sched_finish < sched_start:
+        raise HTTPException(status_code=400, detail="วันที่เสร็จตามแผนต้องไม่มาก่อนวันที่เริ่ม")
+
+    assignees = list(dict.fromkeys(str(x).strip() for x in body.assignees if str(x or "").strip()))
+    if not assignees:
+        raise HTTPException(status_code=400, detail="กรุณาเลือกช่างอย่างน้อย 1 คน")
+    options = await pm_assignee_options(current)
+    allowed = {
+        n.lower() for group in ("technicians", "vendors", "outsources") for n in options.get(group) or []
+    }
+    outside = [n for n in assignees if n.lower() not in allowed]
+    if outside:
+        raise HTTPException(status_code=400, detail=f"ไม่ใช่ผู้รับผิดชอบในบริษัทของคุณ: {', '.join(outside)}")
+
+    who = current.username or current.sub
+    plans[idx] = {
+        **plans[idx],
+        "status": "planned",
+        "planned_by": who,
+        "planned_at": (body.planned_at or datetime.now(timezone.utc).isoformat()).strip(),
+        "sched_start": sched_start,
+        "sched_finish": sched_finish,
+        "assignees": assignees,
+    }
+    await _open_coll().update_one({"_id": wo["_id"]}, {"$set": {"vendor_plans": plans}})
+    log.info(f"  ✅ vendor {plans[idx]['vendor']} วางแผนใบงาน {wonum}: {assignees} โดย {who}")
+    return {"ok": True, "wonum": wonum, "item": _serialize_open(await _find_open_wo(wonum) or wo)}
+
+
 @router.post("/maximo/pm/{wonum}/equipment")
 async def set_pm_equipment(
     wonum: str,
@@ -1473,6 +1618,10 @@ async def set_pm_equipment(
         "sched_start": sched_start_value,
         "sched_finish": sched_finish_value,
         "assignees": assignees,
+        # vendor ที่ถูกเลือกและมี planner ของตัวเอง → ส่งต่อให้วางแผนอีกรอบ
+        "vendor_plans": _merge_vendor_plans(
+            wo.get("vendor_plans"), _vendor_companies_with_planner(assignees, _company_of(current))
+        ),
     }
     if not keep_equipment:
         update["selected_equipment"] = items
@@ -1677,6 +1826,9 @@ async def create_pm_work_order(
         "sched_start": sched_start,
         "sched_finish": sched_finish,
         "assignees": assignees,
+        "vendor_plans": _merge_vendor_plans(
+            None, _vendor_companies_with_planner(assignees, _company_of(current))
+        ),
     }
 
     # กดพร้อมกันแล้วได้เลขซ้ำ — ลองเลขถัดไปไม่กี่รอบก่อนยอมแพ้
