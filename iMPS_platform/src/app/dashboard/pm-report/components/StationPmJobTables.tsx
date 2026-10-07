@@ -236,7 +236,6 @@ const T = {
   approve: { th: "อนุมัติทั้งใบ", en: "Approve document" },
   reject: { th: "ตีกลับ", en: "Send back" },
   rejectReason: { th: "เหตุผลที่ตีกลับ", en: "Reason" },
-  waitingApprove: { th: "รออนุมัติ — ตรวจครบแล้วกดอนุมัติได้เลย", en: "Waiting for approval" },
   rejected: { th: "ถูกตีกลับให้แก้:", en: "Sent back for fixes:" },
   approved: { th: "อนุมัติแล้วโดย", en: "Approved by" },
   rejectConfirm: {
@@ -1240,18 +1239,15 @@ export default function StationPmJobTables() {
           })}
         </div>
 
-        {/* แถบอนุมัติ — ทั้งใบพร้อมกัน */}
+        {/* ปุ่มอนุมัติ/ตีกลับ — ทั้งใบพร้อมกัน (มีแค่ปุ่ม ไม่มีแถบข้อความ) */}
         {waiting && canApprove && (
-          <div className="tw-mt-6 tw-flex tw-flex-wrap tw-items-center tw-gap-3 tw-rounded-xl tw-border tw-border-purple-200 tw-bg-purple-50 tw-px-4 tw-py-3">
-            <span className="tw-text-sm tw-text-purple-800">{t("waitingApprove", lang)}</span>
-            <div className="tw-ml-auto tw-flex tw-gap-2">
-              <Button size="sm" variant="outlined" disabled={acting} onClick={() => setRejectOpen(true)}>
-                {t("reject", lang)}
-              </Button>
-              <Button size="sm" disabled={acting} onClick={approveJob} className="tw-bg-green-600">
-                {t("approve", lang)}
-              </Button>
-            </div>
+          <div className="tw-mt-6 tw-flex tw-justify-end tw-gap-2">
+            <Button size="sm" variant="outlined" disabled={acting} onClick={() => setRejectOpen(true)}>
+              {t("reject", lang)}
+            </Button>
+            <Button size="sm" disabled={acting} onClick={approveJob} className="tw-bg-green-600">
+              {t("approve", lang)}
+            </Button>
           </div>
         )}
 

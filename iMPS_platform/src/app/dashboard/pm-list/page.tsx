@@ -345,11 +345,8 @@ export default function PMListPage() {
       searchPlaceholder: "ค้นหา station, WO, ชื่อเอกสาร, ช่าง, SN…",
       clearFilters: "ล้างตัวกรอง",
       originLabel: "ที่มาของใบงาน",
-      originAll: "ทั้งหมด",
       originMaximo: "ใบงาน Maximo",
       originManual: "ใบงานที่เปิดเอง",
-      manualBadge: "เปิดเอง",
-      manualBadgeTitle: "ใบงานที่เปิดเองใน iMPS — ไม่ได้มาจาก Maximo",
       addWorkOrder: "เพิ่มใบงาน",
       created: (wonum: string) => `เปิดใบงาน ${wonum} เรียบร้อยแล้ว`,
       pagination: (from: number, to: number, total: number) => `แสดง ${from}–${to} จาก ${total} รายการ`,
@@ -386,11 +383,8 @@ export default function PMListPage() {
       searchPlaceholder: "Search station, WO, document, technician, SN…",
       clearFilters: "Clear filters",
       originLabel: "Work order source",
-      originAll: "All",
       originMaximo: "Maximo work orders",
       originManual: "Created in iMPS",
-      manualBadge: "iMPS",
-      manualBadgeTitle: "Work order created in iMPS — not from Maximo",
       addWorkOrder: "Add work order",
       created: (wonum: string) => `Work order ${wonum} created`,
       pagination: (from: number, to: number, total: number) => `Showing ${from}–${to} of ${total}`,
@@ -577,7 +571,7 @@ export default function PMListPage() {
     base = applySearch(base);
     const counts: Record<WoOrigin, number> = { maximo: 0, manual: 0 };
     for (const r of base) counts[originOf(r)]++;
-    return { all: base.length, ...counts };
+    return counts;
   }, [periodRows, typeFilter, stageFilter, applySearch]);
 
   const sortValue = useCallback((r: PMRow, key: SortKey): string | number => {
@@ -740,36 +734,6 @@ export default function PMListPage() {
         </div>
       </div>
 
-      {/* ── แท็บที่มาของใบงาน: ใบงาน Maximo / ใบงานที่เปิดเองใน iMPS ── */}
-      <div
-        role="tablist"
-        aria-label={t.originLabel}
-        className="tw-mb-3 tw-inline-flex tw-max-w-full tw-overflow-x-auto tw-rounded-xl tw-border tw-border-gray-200 tw-bg-white tw-p-1 tw-shadow-sm"
-      >
-        {([
-          { key: null, label: t.originAll, count: originCounts.all },
-          { key: "maximo" as const, label: t.originMaximo, count: originCounts.maximo },
-          { key: "manual" as const, label: t.originManual, count: originCounts.manual },
-        ]).map((tab) => {
-          const active = originFilter === tab.key;
-          return (
-            <button
-              key={tab.key ?? "all"}
-              type="button"
-              role="tab"
-              aria-selected={active}
-              onClick={() => { setOriginFilter(tab.key); setPage(0); }}
-              className={`tw-whitespace-nowrap tw-rounded-lg tw-px-3.5 tw-py-1.5 tw-text-sm tw-font-semibold tw-transition-colors ${active ? "tw-bg-gray-900 tw-text-white tw-shadow-sm" : "tw-text-gray-600 hover:tw-bg-gray-100"}`}
-            >
-              {tab.label}
-              <span className={`tw-ml-1.5 tw-rounded-full tw-px-1.5 tw-py-0.5 tw-text-[11px] ${active ? "tw-bg-white/20 tw-text-white" : "tw-bg-gray-100 tw-text-gray-500"}`}>
-                {tab.count}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-
       {/* ── Toolbar ── */}
       <div className="tw-mb-3 tw-flex tw-flex-wrap tw-items-center tw-gap-3">
         <div className="tw-flex tw-items-center tw-gap-1.5">
@@ -809,6 +773,27 @@ export default function PMListPage() {
             <option value="all">{t.allTypes}</option>
             {PM_TYPES.map((ty) => <option key={ty} value={ty}>{ty}</option>)}
           </select>
+        </div>
+
+        {/* ที่มาของใบงาน — กดซ้ำเพื่อยกเลิก (เหมือนปุ่มสถานะข้าง ๆ) */}
+        <div className="tw-flex tw-items-center tw-gap-1.5" role="group" aria-label={t.originLabel}>
+          {([
+            { key: "maximo" as const, label: t.originMaximo },
+            { key: "manual" as const, label: t.originManual },
+          ]).map(({ key, label }) => {
+            const isActive = originFilter === key;
+            return (
+              <button
+                key={key}
+                type="button"
+                onClick={() => { setOriginFilter(isActive ? null : key); setPage(0); }}
+                aria-pressed={isActive}
+                className={`tw-whitespace-nowrap tw-rounded-full tw-px-3 tw-py-1 tw-text-xs tw-font-semibold tw-transition-all ${isActive ? "tw-bg-gray-800 tw-text-white tw-shadow-sm" : "tw-bg-gray-100 tw-text-gray-700 hover:tw-brightness-95"}`}
+              >
+                {`${label} (${originCounts[key]})`}
+              </button>
+            );
+          })}
         </div>
 
         <div className="tw-flex tw-items-center tw-gap-1.5" role="group" aria-label={t.statusFilterLabel}>
@@ -950,14 +935,6 @@ export default function PMListPage() {
                           <span className="tw-font-mono">{r.wonum}</span>
                         ) : (
                           <span className="tw-text-gray-300" title={t.noWonum}>—</span>
-                        )}
-                        {originOf(r) === "manual" && (
-                          <span
-                            title={t.manualBadgeTitle}
-                            className="tw-whitespace-nowrap tw-rounded tw-bg-sky-100 tw-px-1.5 tw-py-0.5 tw-text-[10px] tw-font-semibold tw-text-sky-700"
-                          >
-                            {t.manualBadge}
-                          </span>
                         )}
                         {/* เลขที่ Maximo ไม่รู้จัก — วางแผนไปก็ส่งสถานะกลับไม่ได้ */}
                         {r.exists_in_maximo === false && (
