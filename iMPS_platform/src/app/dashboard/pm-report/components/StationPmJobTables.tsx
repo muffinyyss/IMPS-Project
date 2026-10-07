@@ -239,6 +239,18 @@ const T = {
   waitingApprove: { th: "รออนุมัติ — ตรวจครบแล้วกดอนุมัติได้เลย", en: "Waiting for approval" },
   rejected: { th: "ถูกตีกลับให้แก้:", en: "Sent back for fixes:" },
   approved: { th: "อนุมัติแล้วโดย", en: "Approved by" },
+  approveShort: { th: "อนุมัติ", en: "Approve" },
+  approveConfirmTitle: { th: "อนุมัติใบงาน PM", en: "Approve PM document" },
+  approveConfirm: {
+    th: "อนุมัติทั้งใบ — ทุกส่วนในใบนี้จะถูกปิดพร้อมกัน ไม่ใช่เฉพาะส่วนที่เปิดดูอยู่",
+    en: "This approves the whole document — every section is closed together, not only the one you are viewing.",
+  },
+  rejectConfirm: {
+    th: "ตีกลับทั้งใบให้ช่างแก้ — ระบุเหตุผลให้ช่างรู้ว่าต้องแก้อะไร",
+    en: "Send the whole document back for fixes. Tell the technician what to change.",
+  },
+  approving: { th: "กำลังอนุมัติ…", en: "Approving…" },
+  rejecting: { th: "กำลังตีกลับ…", en: "Sending back…" },
 
   errLoad: { th: "โหลดใบ PM ไม่สำเร็จ", en: "Failed to load PM documents" },
   errCreate: { th: "เปิดใบใหม่ไม่สำเร็จ", en: "Failed to create document" },
@@ -443,6 +455,8 @@ export default function StationPmJobTables() {
 
   const [rejectOpen, setRejectOpen] = useState(false);
   const [rejectRemark, setRejectRemark] = useState("");
+  // ปุ่มอนุมัติในหน้าฟอร์ม — ถามยืนยันก่อน เพราะอนุมัติทั้งใบ ไม่ใช่แค่ส่วนที่เปิดอยู่
+  const [approveConfirmOpen, setApproveConfirmOpen] = useState(false);
 
   // ส่วนที่กำลังจะกด N/A — รอยืนยันใน pop-up
   const [naConfirm, setNaConfirm] = useState<{ job: Job; state: SectionState } | null>(null);
@@ -759,8 +773,9 @@ export default function StationPmJobTables() {
     }
   };
 
-  const approveJob = async () => {
-    if (!currentJob || acting) return;
+  /** คืน true เมื่อสำเร็จ — หน้าฟอร์มใช้พากลับหน้ารวมหลังอนุมัติ/ตีกลับ */
+  const approveJob = async (): Promise<boolean> => {
+    if (!currentJob || acting) return false;
     setActing(true);
     try {
       const res = await apiFetch(
@@ -770,15 +785,17 @@ export default function StationPmJobTables() {
       const json = await res.json().catch(() => ({} as any));
       if (!res.ok) throw new Error(json?.detail || t("errAction", lang));
       await loadJobs();
+      return true;
     } catch (err) {
       alert(err instanceof Error ? err.message : t("errAction", lang));
+      return false;
     } finally {
       setActing(false);
     }
   };
 
-  const rejectJob = async () => {
-    if (!currentJob || acting || !rejectRemark.trim()) return;
+  const rejectJob = async (): Promise<boolean> => {
+    if (!currentJob || acting || !rejectRemark.trim()) return false;
     setActing(true);
     try {
       const res = await apiFetch(
@@ -794,8 +811,10 @@ export default function StationPmJobTables() {
       setRejectOpen(false);
       setRejectRemark("");
       await loadJobs();
+      return true;
     } catch (err) {
       alert(err instanceof Error ? err.message : t("errAction", lang));
+      return false;
     } finally {
       setActing(false);
     }
@@ -839,17 +858,46 @@ export default function StationPmJobTables() {
     // เฉพาะ technician / planner / admin (super admin ได้ role admin) — ส่วนที่ปิดแล้ว / ใบที่ส่งอนุมัติแล้ว / หน้าอนุมัติ ดูได้อย่างเดียว
     const viewing = searchParams.get("review") === "1";
     const sectionStatus = String(openedSection?.status ?? "").trim().toLowerCase();
+    // ผู้อนุมัติ (planner/admin) เปิดดูส่วนหนึ่งของใบที่ช่างกดปิดใบงานแล้ว → ตีกลับ / แก้ไข / อนุมัติ ได้จากในฟอร์มเลย
+    // อนุมัติ/ตีกลับ ทำทั้งใบเหมือนปุ่มที่หน้ารวม (เอกสารใบเดียว อนุมัติครั้งเดียว)
+    const approving = viewing && canApprove && currentJob?.status === "Wait for approve"
+      && !!openedSection?.report_id && !["closed", "submitted"].includes(sectionStatus);
     const canEditSent = viewing && PM_EDIT_SENT_ROLES.includes(me?.role ?? "") && !!openedSection?.report_id
       && !["closed", "submitted"].includes(sectionStatus)
-      && currentJob?.status === "draft";
+      && (currentJob?.status === "draft" || approving);
     // ตัด review ออก = ฟอร์มเดิมในโหมดแก้ไข (key ใหม่ให้โหลดเอกสารใหม่ทั้งหมด พร้อมรูปเดิม)
     const startEdit = () => goto({ review: null, approve: null });
+    const backToHub = () => goto({ section: null, sn: null, edit_id: null, review: null, approve: null });
     // ฟอร์มวางปุ่มนี้ตรงตำแหน่งปุ่ม "บันทึก" ของหน้ากรอก (ผ่าน PmReviewActionContext) หน้าตาเดียวกับปุ่มบันทึก
     const editButton = canEditSent ? (
       <Button type="button" onClick={startEdit} className="tw-text-sm tw-py-2.5 tw-bg-gray-800 hover:tw-bg-gray-900 tw-w-full sm:tw-w-auto tw-flex tw-items-center tw-justify-center tw-gap-1.5">
         <PencilSquareIcon className="tw-h-4 tw-w-4" /> {t("edit", lang)}
       </Button>
     ) : null;
+    // ปุ่มชุดผู้อนุมัติ: ตีกลับ · แก้ไข · อนุมัติ (เรียงซ้าย→ขวา ปุ่มหลักอยู่ขวาสุด)
+    const reviewActions = approving ? (
+      <>
+        <Button
+          type="button"
+          variant="outlined"
+          color="red"
+          disabled={acting}
+          onClick={() => { setRejectRemark(""); setRejectOpen(true); }}
+          className="tw-text-sm tw-py-2.5 tw-w-full sm:tw-w-auto"
+        >
+          {t("reject", lang)}
+        </Button>
+        {editButton}
+        <Button
+          type="button"
+          disabled={acting}
+          onClick={() => setApproveConfirmOpen(true)}
+          className="tw-text-sm tw-py-2.5 tw-w-full sm:tw-w-auto tw-bg-green-600 hover:tw-bg-green-700 tw-flex tw-items-center tw-justify-center tw-gap-1.5"
+        >
+          <CheckCircleIcon className="tw-h-4 tw-w-4" /> {t("approveShort", lang)}
+        </Button>
+      </>
+    ) : editButton;
     // กำลังแก้ส่วนที่ส่งแล้ว (เข้ามาจากปุ่ม "แก้ไข") — ยกเลิกได้ ทิ้งสิ่งที่แก้ในเครื่องแล้วกลับหน้าดู
     // (ส่วนที่ยังเป็น draft เช่นโดนตีกลับ ไม่ได้มาจากปุ่มนี้ ใช้ปุ่มย้อนกลับตามเดิม)
     const editingSent = !viewing && !!openedSection?.report_id && sectionStatus === "wait for approve";
@@ -876,7 +924,7 @@ export default function StationPmJobTables() {
     );
     return (
       <div className="tw-mt-4 sm:tw-mt-6 lg:tw-mt-8">
-        <PmReviewActionContext.Provider value={editButton}>
+        <PmReviewActionContext.Provider value={reviewActions}>
           <PmCancelEditContext.Provider value={cancelButton}>
             <SectionForm key={viewing ? "view" : "edit"} />
           </PmCancelEditContext.Provider>
@@ -912,6 +960,92 @@ export default function StationPmJobTables() {
                   className="tw-bg-amber-500 hover:tw-bg-amber-600 tw-text-white tw-font-semibold disabled:tw-opacity-50 disabled:tw-cursor-not-allowed"
                 >
                   {t(cancellingEdit ? "cancellingEdit" : "confirmCancelEdit", lang)}
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ยืนยันอนุมัติทั้งใบ — pop-up แบบเดียวกับยืนยันยกเลิกการแก้ไข */}
+        {approveConfirmOpen && approving && (
+          <div
+            className="tw-fixed tw-inset-0 tw-z-[9999] tw-flex tw-items-center tw-justify-center tw-bg-black/50 tw-p-4"
+            onClick={() => { if (!acting) setApproveConfirmOpen(false); }}
+          >
+            <div role="dialog" aria-modal="true" className="tw-w-full tw-max-w-md tw-rounded-2xl tw-bg-white tw-p-6 tw-shadow-2xl" onClick={e => e.stopPropagation()}>
+              <h3 className="tw-flex tw-items-center tw-gap-2 tw-text-lg tw-font-bold tw-text-blue-gray-800 tw-mb-2">
+                <CheckCircleIcon className="tw-h-5 tw-w-5 tw-text-green-600" />
+                {t("approveConfirmTitle", lang)}
+              </h3>
+              <p className="tw-mb-1 tw-text-sm tw-font-semibold tw-text-blue-gray-800">
+                {currentJob?.doc_name || currentJob?.issue_id}
+              </p>
+              <p className="tw-text-sm tw-text-blue-gray-600">{t("approveConfirm", lang)}</p>
+              <div className="tw-flex tw-items-center tw-justify-end tw-gap-3 tw-mt-5">
+                <Button
+                  type="button"
+                  variant="outlined"
+                  disabled={acting}
+                  onClick={() => setApproveConfirmOpen(false)}
+                  className="tw-border-blue-gray-200 tw-text-blue-gray-700 hover:tw-border-blue-gray-300"
+                >
+                  {t("cancel", lang)}
+                </Button>
+                <Button
+                  type="button"
+                  disabled={acting}
+                  onClick={async () => {
+                    if (await approveJob()) { setApproveConfirmOpen(false); backToHub(); }
+                  }}
+                  className="tw-bg-green-600 hover:tw-bg-green-700 tw-text-white tw-font-semibold disabled:tw-opacity-50 disabled:tw-cursor-not-allowed"
+                >
+                  {t(acting ? "approving" : "approve", lang)}
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ตีกลับทั้งใบ — ต้องมีเหตุผล */}
+        {rejectOpen && approving && (
+          <div
+            className="tw-fixed tw-inset-0 tw-z-[9999] tw-flex tw-items-center tw-justify-center tw-bg-black/50 tw-p-4"
+            onClick={() => { if (!acting) setRejectOpen(false); }}
+          >
+            <div role="dialog" aria-modal="true" className="tw-w-full tw-max-w-md tw-rounded-2xl tw-bg-white tw-p-6 tw-shadow-2xl" onClick={e => e.stopPropagation()}>
+              <h3 className="tw-flex tw-items-center tw-gap-2 tw-text-lg tw-font-bold tw-text-blue-gray-800 tw-mb-2">
+                <XMarkIcon className="tw-h-5 tw-w-5 tw-text-red-600" />
+                {t("reject", lang)}
+              </h3>
+              <p className="tw-mb-3 tw-text-sm tw-text-blue-gray-600">{t("rejectConfirm", lang)}</p>
+              <label className="tw-mb-1 tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800">
+                {t("rejectReason", lang)} <span className="tw-text-red-500">*</span>
+              </label>
+              <textarea
+                rows={3}
+                value={rejectRemark}
+                autoFocus
+                onChange={(e) => setRejectRemark(e.target.value)}
+                className="tw-w-full tw-rounded-lg tw-border tw-border-blue-gray-200 tw-px-3 tw-py-2 tw-text-sm tw-text-blue-gray-800 focus:tw-border-blue-500 focus:tw-outline-none"
+              />
+              <div className="tw-flex tw-items-center tw-justify-end tw-gap-3 tw-mt-5">
+                <Button
+                  type="button"
+                  variant="outlined"
+                  disabled={acting}
+                  onClick={() => setRejectOpen(false)}
+                  className="tw-border-blue-gray-200 tw-text-blue-gray-700 hover:tw-border-blue-gray-300"
+                >
+                  {t("cancel", lang)}
+                </Button>
+                <Button
+                  type="button"
+                  color="red"
+                  disabled={acting || !rejectRemark.trim()}
+                  onClick={async () => { if (await rejectJob()) backToHub(); }}
+                  className="tw-font-semibold disabled:tw-opacity-50 disabled:tw-cursor-not-allowed"
+                >
+                  {t(acting ? "rejecting" : "reject", lang)}
                 </Button>
               </div>
             </div>

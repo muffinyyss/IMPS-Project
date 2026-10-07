@@ -764,7 +764,9 @@ async def delete_section_photo(
     job = await get_stationpmjob_collection_for(station_id).find_one({"_id": pm_flow.to_oid(job_id)})
     if not job:
         raise HTTPException(status_code=404, detail=f"ไม่พบใบ PM สถานี id={job_id}")
-    if _job_submitted(job):
+    # กดปิดใบงานแล้ว = อยู่ในมือผู้อนุมัติ — ช่างแก้ไม่ได้ แต่ผู้อนุมัติแก้ก่อนอนุมัติได้
+    # (ปุ่ม "แก้ไข" ในฟอร์มตอนตรวจ) ส่วนที่ปิดแล้วยังห้ามแก้ตามเดิม (เช็คด้านล่าง)
+    if _job_submitted(job) and (current.role or "").strip().lower() not in pm_flow.PM_APPROVE_ROLES:
         raise HTTPException(status_code=409, detail="ใบนี้กดปิดใบงานแล้ว แก้ไขไม่ได้")
 
     group = (body.group or "").strip()
