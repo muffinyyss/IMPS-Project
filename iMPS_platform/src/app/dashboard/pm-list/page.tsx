@@ -16,7 +16,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card } from "@material-tailwind/react";
-import { DocumentArrowDownIcon, PlusIcon } from "@heroicons/react/24/outline";
+import { DocumentArrowDownIcon, PlusIcon, TrashIcon } from "@heroicons/react/24/outline";
 import { apiFetch } from "@/utils/api";
 import useLanguage from "@/utils/useLanguage";
 import { PM_LIST_ROUTE, PM_ORIGIN_LIST } from "@/app/dashboard/pm-report/lib/origin";
@@ -116,6 +116,27 @@ function collapseJobRows(rows: PMRow[]): PMRow[] {
   return out;
 }
 
+// ชนิดเอกสารใบเดี่ยว → prefix ของ DELETE /<prefix>/{id} (backend/routers/pm_all_stations.py)
+const DELETE_PREFIX: Record<string, string> = {
+  CHARGER: "pmreport", MDB: "mdbpmreport", CCB: "ccbpmreport", "CB-BOX": "cbboxpmreport", STATION: "stationpmreport",
+};
+
+/**
+ * URL ลบของแถวนี้ (super admin เท่านั้น — backend เช็คซ้ำ)
+ *   ใบ PM สถานี (มี job_id) → ลบทั้งใบ: ทุกส่วน + ใบแม่ + ใบงานต้นทาง
+ *   แถวใบงานที่ยังไม่มีเอกสาร → ลบใบงาน (และใบ PM ที่เปิดค้างไว้แต่ยังไม่ได้กรอก)
+ *   เอกสารใบเดี่ยวแบบเก่า → ลบเอกสารใบนั้น
+ */
+function deleteUrlOf(r: PMRow): string {
+  if (r.kind === "wo") return `/maximo/pm/${encodeURIComponent(r.wonum || r.id)}`;
+  if (r.job_id) {
+    return `/stationpmjob/${encodeURIComponent(r.job_id)}?station_id=${encodeURIComponent(r.station_id)}`;
+  }
+  const prefix = DELETE_PREFIX[r.pm_type] ?? "pmreport";
+  const key = r.pm_type === "CHARGER" ? r.sn : r.station_id;
+  return `/${prefix}/${encodeURIComponent(r.id)}${key && key !== "-" ? `?key=${encodeURIComponent(key)}` : ""}`;
+}
+
 /** แถวนี้มีอุปกรณ์ชนิดนี้ไหม — แถวที่ยุบแล้วมีได้หลายชนิด */
 function hasPmType(r: PMRow, type: string): boolean {
   return r.pm_types ? r.pm_types.includes(type) : r.pm_type === type;
@@ -200,6 +221,10 @@ export default function PMListPage() {
   const [stageFilter, setStageFilter] = useState<PmStage | null>(null);
   // แท็บที่มาของใบงาน — null = ทั้งหมด
   const [originFilter, setOriginFilter] = useState<WoOrigin | null>(null);
+  // แถวที่กำลังจะลบ — รอยืนยันใน pop-up (super admin เท่านั้น)
+  const [deleteTarget, setDeleteTarget] = useState<PMRow | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
@@ -347,6 +372,13 @@ export default function PMListPage() {
       originLabel: "ที่มาของใบงาน",
       originMaximo: "ใบงาน Maximo",
       originManual: "ใบงานที่เปิดเอง",
+      deleteTitle: "ลบใบงาน PM",
+      deleteAction: "ลบ",
+      deleting: "กำลังลบ…",
+      cancel: "ยกเลิก",
+      deleteJobBody: "ลบทั้งใบ — เอกสารทุกส่วน (Station / MDB / CCB / CB_BOX / ตู้ชาร์จ) และใบงานต้นทาง จะถูกลบถาวร กู้คืนไม่ได้",
+      deleteWoBody: "ลบใบงานนี้ออกจาก iMPS ถาวร กู้คืนไม่ได้ — ใบงานจาก Maximo จะกลับมาอีกถ้า Maximo ยังส่งมาตอน sync",
+      deleteReportBody: "ลบเอกสาร PM ใบนี้ถาวร กู้คืนไม่ได้",
       addWorkOrder: "เพิ่มใบงาน",
       created: (wonum: string) => `เปิดใบงาน ${wonum} เรียบร้อยแล้ว`,
       pagination: (from: number, to: number, total: number) => `แสดง ${from}–${to} จาก ${total} รายการ`,
@@ -385,6 +417,13 @@ export default function PMListPage() {
       originLabel: "Work order source",
       originMaximo: "Maximo work orders",
       originManual: "Created in iMPS",
+      deleteTitle: "Delete PM work order",
+      deleteAction: "Delete",
+      deleting: "Deleting…",
+      cancel: "Cancel",
+      deleteJobBody: "Deletes the whole document — every section (Station / MDB / CCB / CB_BOX / chargers) and its work order. This cannot be undone.",
+      deleteWoBody: "Deletes this work order from iMPS permanently. A Maximo work order comes back if Maximo still sends it on sync.",
+      deleteReportBody: "Deletes this PM report permanently. This cannot be undone.",
       addWorkOrder: "Add work order",
       created: (wonum: string) => `Work order ${wonum} created`,
       pagination: (from: number, to: number, total: number) => `Showing ${from}–${to} of ${total}`,
@@ -472,6 +511,31 @@ export default function PMListPage() {
     else if (r.station_id) params.set("station_id", r.station_id);
     router.push(`/dashboard/pm-report?${params.toString()}`);
   }, [router, me]);
+
+  const confirmDelete = async () => {
+    const r = deleteTarget;
+    if (!r || deleting) return;
+    setDeleting(true);
+    setDeleteError("");
+    try {
+      const res = await apiFetch(deleteUrlOf(r), { method: "DELETE" });
+      const json = await res.json().catch(() => ({} as any));
+      if (!res.ok) throw new Error(json?.detail || `HTTP ${res.status}`);
+      // เอาออกจากตารางเลย ไม่ต้องโหลดทั้งหน้าใหม่ — ใบ PM สถานีลบใบงานต้นทางไปด้วย
+      const wonum = String(r.wonum || "").trim();
+      setRows((prev) => prev.filter((x) => {
+        if (x === r) return false;
+        if (r.job_id && x.job_id === r.job_id && x.station_id === r.station_id) return false;
+        if ((r.kind === "wo" || r.job_id) && wonum && x.kind === "wo" && String(x.wonum || "").trim() === wonum) return false;
+        return true;
+      }));
+      setDeleteTarget(null);
+    } catch (e) {
+      setDeleteError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const clearAll = () => {
     setTypeFilter(null);
@@ -901,12 +965,13 @@ export default function PMListPage() {
                   );
                 })}
                 <th className="tw-px-4 tw-py-3 tw-whitespace-nowrap">PDF</th>
+                {isSuperAdmin && <th className="tw-px-4 tw-py-3" aria-label={t.deleteTitle} />}
               </tr>
             </thead>
             <tbody>
               {tableRows.length === 0 ? (
                 <tr>
-                  <td colSpan={columns.length + 2} className="tw-p-8 tw-text-center tw-text-gray-400">
+                  <td colSpan={columns.length + (isSuperAdmin ? 3 : 2)} className="tw-p-8 tw-text-center tw-text-gray-400">
                     {t.noResults(search || undefined)}
                   </td>
                 </tr>
@@ -977,6 +1042,19 @@ export default function PMListPage() {
                         <span className="tw-text-gray-300">-</span>
                       )}
                     </td>
+                    {isSuperAdmin && (
+                      <td className="tw-px-2 tw-py-3 tw-text-center">
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); setDeleteError(""); setDeleteTarget(r); }}
+                          title={t.deleteTitle}
+                          aria-label={`${t.deleteTitle} · ${r.station_name || r.station_id} ${r.wonum || ""}`}
+                          className="tw-inline-flex tw-items-center tw-justify-center tw-rounded-lg tw-p-1.5 tw-text-gray-400 hover:tw-bg-red-50 hover:tw-text-red-600"
+                        >
+                          <TrashIcon className="tw-h-5 tw-w-5" />
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 );
               })}
@@ -1001,6 +1079,50 @@ export default function PMListPage() {
           </div>
         )}
       </Card>
+      {/* ยืนยันลบ — pop-up แบบเดียวกับแพลตฟอร์ม (overlay + กล่อง max-w-md) */}
+      {deleteTarget && (
+        <div
+          className="tw-fixed tw-inset-0 tw-z-[9999] tw-flex tw-items-center tw-justify-center tw-bg-black/50 tw-p-4"
+          onClick={() => { if (!deleting) setDeleteTarget(null); }}
+        >
+          <div role="dialog" aria-modal="true" className="tw-w-full tw-max-w-md tw-rounded-2xl tw-bg-white tw-p-6 tw-shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="tw-mb-2 tw-flex tw-items-center tw-gap-2 tw-text-lg tw-font-bold tw-text-blue-gray-800">
+              <TrashIcon className="tw-h-5 tw-w-5 tw-text-red-600" />
+              {t.deleteTitle}
+            </h3>
+            <p className="tw-mb-1 tw-text-sm tw-font-semibold tw-text-blue-gray-800">
+              {deleteTarget.station_name || deleteTarget.station_id}
+              {deleteTarget.wonum && <span className="tw-ml-2 tw-font-mono tw-font-normal tw-text-blue-gray-500">{deleteTarget.wonum}</span>}
+            </p>
+            <p className="tw-text-sm tw-text-blue-gray-600">
+              {deleteTarget.kind === "wo" ? t.deleteWoBody : deleteTarget.job_id ? t.deleteJobBody : t.deleteReportBody}
+            </p>
+            {deleteError && (
+              <div className="tw-mt-3 tw-rounded-lg tw-border tw-border-red-200 tw-bg-red-50 tw-px-3 tw-py-2 tw-text-sm tw-text-red-700">
+                {deleteError}
+              </div>
+            )}
+            <div className="tw-mt-5 tw-flex tw-items-center tw-justify-end tw-gap-3">
+              <button
+                type="button"
+                disabled={deleting}
+                onClick={() => setDeleteTarget(null)}
+                className="tw-rounded-lg tw-border tw-border-blue-gray-200 tw-px-4 tw-py-2 tw-text-sm tw-font-semibold tw-text-blue-gray-700 hover:tw-border-blue-gray-300 disabled:tw-opacity-50"
+              >
+                {t.cancel}
+              </button>
+              <button
+                type="button"
+                disabled={deleting}
+                onClick={() => { void confirmDelete(); }}
+                className="tw-rounded-lg tw-bg-red-600 tw-px-4 tw-py-2 tw-text-sm tw-font-semibold tw-text-white hover:tw-bg-red-700 disabled:tw-cursor-not-allowed disabled:tw-opacity-50"
+              >
+                {deleting ? t.deleting : t.deleteAction}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

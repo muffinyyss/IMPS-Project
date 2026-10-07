@@ -201,6 +201,7 @@ const T = {
   view: { th: "ดู", en: "View" },
   notFilled: { th: "ยังไม่กรอก", en: "Not filled" },
   downloadPdf: { th: "PDF ทั้งใบ", en: "Full PDF" },
+  pdfClosedOnly: { th: "โหลด PDF ได้หลังอนุมัติใบงานแล้ว (Closed)", en: "PDF is available once the document is approved (Closed)" },
   closeJob: { th: "ปิดใบงาน", en: "Close work order" },
   closingJob: { th: "กำลังปิดใบงาน…", en: "Closing…" },
   closeJobHint: {
@@ -1069,10 +1070,9 @@ export default function StationPmJobTables() {
           </Button>
           <div className="tw-flex tw-flex-wrap tw-items-center tw-justify-end tw-gap-2">
           {closeJobButton}
-          {/* PDF ทั้งใบ — โหลดได้เมื่อกรอกครบทุกอุปกรณ์ในแผนแล้ว
-              ใบที่ส่งอนุมัติ/ปิดแล้วครบแน่นอน (ปิดใบงานต้องครบก่อน) ส่วนใบที่ยังทำอยู่ดูจาก ready_to_submit
-              ยังไม่ครบ: ปุ่มจาง ชี้ค้างเห็นว่าขาดส่วนไหน (ข้อความเดียวกับปุ่มปิดใบงาน) */}
-          {job.status !== "draft" || job.ready_to_submit ? (
+          {/* PDF ทั้งใบ — โหลดได้เฉพาะใบที่อนุมัติแล้ว (Closed) เหมือนปุ่ม PDF ในหน้า PM List
+              ยังไม่ปิด: ปุ่มจาง ชี้ค้างเห็นเหตุผล */}
+          {toPmFlow({ status: job.status, reject_remark: job.reject_remark }) === "closed" ? (
             <a
               href={`${API_BASE}/stationpmjob/${encodeURIComponent(job.id)}/pdf?station_id=${encodeURIComponent(job.station_id)}&lang=${lang}`}
               target="_blank"
@@ -1083,7 +1083,7 @@ export default function StationPmJobTables() {
             </a>
           ) : (
             <span
-              title={closeJobHint}
+              title={t("pdfClosedOnly", lang)}
               aria-disabled="true"
               className="tw-inline-flex tw-cursor-not-allowed tw-items-center tw-gap-1.5 tw-rounded-lg tw-border tw-border-gray-300 tw-px-3 tw-py-2 tw-text-sm tw-font-semibold tw-text-gray-700 tw-opacity-50"
             >

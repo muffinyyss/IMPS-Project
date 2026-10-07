@@ -1363,6 +1363,39 @@ async def pm_equipment_choices(
     }
 
 
+@router.delete("/maximo/pm/{wonum}")
+async def delete_pm_wo(
+    wonum: str,
+    current: UserClaims = Depends(get_current_user),
+):
+    """
+    ลบใบงาน PM ออกจาก iMPS — super admin เท่านั้น
+    ใบ PM สถานีที่เปิดจากใบงานนี้ (ถ้ามี) ถูกลบพร้อมเอกสารทุกส่วนด้วย ไม่ให้ค้างเป็นใบกำพร้า
+    ใบงานจาก Maximo: ลบได้แค่ฝั่ง iMPS — ถ้า Maximo ยังส่งใบนี้มาตอน sync จะกลับมาอีก
+    """
+    from routers.pmreport_station_job import (
+        assert_super_admin, delete_job_cascade, delete_wo_doc,
+    )
+    from routers.pm_helpers import get_stationpmjob_collection_for
+
+    assert_super_admin(current)
+    wonum = (wonum or "").strip()
+    doc = await _open_coll().find_one({"wonum": wonum})
+    if not doc:
+        raise HTTPException(status_code=404, detail=f"ไม่พบใบงาน wonum={wonum}")
+
+    jobs_removed = 0
+    station_id = _station_id_of_wo(doc)
+    if station_id:
+        jobs = get_stationpmjob_collection_for(station_id)
+        async for job in jobs.find({"wonum": wonum}):
+            await delete_job_cascade(station_id, job)
+            jobs_removed += 1
+    removed = await delete_wo_doc(wonum)
+    log.info(f"  🗑️ ลบใบงาน PM {wonum} ({station_id or '-'}) ใบ PM={jobs_removed} โดย {current.username or current.sub}")
+    return {"ok": True, "deleted_wo": removed, "deleted_jobs": jobs_removed}
+
+
 @router.post("/maximo/pm/{wonum}/equipment")
 async def set_pm_equipment(
     wonum: str,

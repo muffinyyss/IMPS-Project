@@ -539,6 +539,75 @@ async def get_station_pm_job(
 
 
 # ══════════════════════════════════════════════════════════════════
+# ลบใบ PM ทั้งใบ — super admin เท่านั้น (เหมือนลบใบงาน CM)
+# ══════════════════════════════════════════════════════════════════
+
+def assert_super_admin(current: UserClaims) -> None:
+    """ลบถาวร = super admin เท่านั้น (admin ธรรมดาลบไม่ได้) — กติกาเดียวกับ DELETE /cmreport/{id}"""
+    if not getattr(current, "is_super_admin", False):
+        raise HTTPException(status_code=403, detail="เฉพาะ super admin ที่ลบใบงาน PM ได้")
+
+
+async def delete_job_cascade(station_id: str, job: dict) -> dict:
+    """
+    ลบใบแม่ + เอกสารของทุกส่วนที่ผูกอยู่ (Station/MDB/CCB/CB_BOX + ตู้ชาร์จทุกตู้)
+    คืนจำนวนเอกสารที่ลบของแต่ละส่วน — ไฟล์รูปในโฟลเดอร์ uploads ไม่ได้ลบตาม
+    """
+    job_id = str(job["_id"])
+    removed: dict[str, int] = {}
+    for section in SECTIONS:
+        sns = [str(c.get("SN") or "").strip() for c in station_chargers(station_id)] \
+            if section == CHARGER_SECTION else [""]
+        for sn in sns:
+            if section == CHARGER_SECTION and not sn:
+                continue
+            try:
+                res = await section_collection(section, station_id, sn).delete_many({"job_id": job_id})
+            except Exception as e:
+                log.warning(f"  ⚠️ ลบส่วน {section}{f'/{sn}' if sn else ''} ของใบ {job_id} ไม่สำเร็จ: {e}")
+                continue
+            if res.deleted_count:
+                key = f"{section}:{sn}" if sn else section
+                removed[key] = removed.get(key, 0) + res.deleted_count
+    await get_stationpmjob_collection_for(station_id).delete_one({"_id": job["_id"]})
+    return removed
+
+
+async def delete_wo_doc(wonum: str) -> int:
+    """ลบใบงานออกจาก iMPS.maximo_pm_open — ใบงานจาก Maximo จะกลับมาอีกถ้า Maximo ยังส่งมาตอน sync"""
+    from config import client
+
+    wonum = (wonum or "").strip()
+    if not wonum:
+        return 0
+    res = await client["iMPS"]["maximo_pm_open"].delete_many({"wonum": wonum})
+    return res.deleted_count
+
+
+@router.delete("/stationpmjob/{job_id}")
+async def delete_station_pm_job(
+    job_id: str,
+    station_id: str = Query(...),
+    with_wo: bool = Query(True, description="ลบใบงาน (maximo_pm_open) ของใบนี้ด้วย"),
+    current: UserClaims = Depends(get_current_user),
+):
+    """
+    ลบใบ PM สถานีทั้งใบ ทุกสถานะ — เอกสารทุกส่วน + ใบแม่ + ใบงานต้นทาง (ถ้ามี)
+    ไม่ลบใบงานด้วย ใบงานจะกลับไปขึ้นในหน้า PM List เป็นแถว Open/In Progress อีกครั้ง
+    """
+    assert_super_admin(current)
+    station_id = station_id.strip()
+    job = await get_stationpmjob_collection_for(station_id).find_one({"_id": pm_flow.to_oid(job_id)})
+    if not job:
+        raise HTTPException(status_code=404, detail=f"ไม่พบใบ PM สถานี id={job_id}")
+    removed = await delete_job_cascade(station_id, job)
+    wo_removed = await delete_wo_doc(str(job.get("wonum") or "")) if with_wo else 0
+    log.info(f"  🗑️ ลบใบ PM สถานี {job.get('issue_id') or job_id} ({station_id}) "
+             f"ส่วน={removed} ใบงาน={wo_removed} โดย {current.username or current.sub}")
+    return {"ok": True, "deleted_sections": removed, "deleted_wo": wo_removed}
+
+
+# ══════════════════════════════════════════════════════════════════
 # เลขที่เอกสารที่ใบลูกยืมไปใช้
 # ══════════════════════════════════════════════════════════════════
 
