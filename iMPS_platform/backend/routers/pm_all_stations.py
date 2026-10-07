@@ -228,6 +228,32 @@ async def _apply_job_status(reports: list[dict], chargers: list[dict]) -> None:
             r["status"] = job_status
 
 
+async def _apply_wo_origin(reports: list[dict]) -> None:
+    """
+    ที่มาของใบงาน → wo_origin: "maximo" (ใบงานจาก Maximo) | "manual" (เปิดเองใน iMPS)
+
+    ใบงานที่เปิดเองจากหน้า "เพิ่มใบงาน" ก็มีเลข wonum (PM<yymm><running>) เหมือนกัน
+    ดูจากเลขอย่างเดียวแยกไม่ได้ ต้องดู origin ของใบงานใน maximo_pm_open
+    เอกสารที่ไม่มีเลขใบงานเลย (เปิดใบเองจากหน้า PM report / ใบเก่า) = เปิดเอง
+    """
+    from config import client
+    from routers.pm_maximo import MANUAL_WO_ORIGIN
+
+    wonums = sorted({str(r.get("wonum") or "").strip() for r in reports} - {""})
+    manual: set[str] = set()
+    if wonums:
+        try:
+            cursor = client["iMPS"]["maximo_pm_open"].find(
+                {"wonum": {"$in": wonums}, "origin": MANUAL_WO_ORIGIN}, {"_id": 0, "wonum": 1}
+            )
+            manual = {str(d.get("wonum") or "") async for d in cursor}
+        except Exception:
+            traceback.print_exc()
+    for r in reports:
+        wonum = str(r.get("wonum") or "").strip()
+        r["wo_origin"] = "manual" if (not wonum or wonum in manual) else "maximo"
+
+
 async def _job_docs(keys) -> dict[tuple[str, str], dict]:
     """
     ใบแม่ (ใบ PM สถานี) ของแถวในหน้านี้ — ถามทีละสถานี เอาเฉพาะ field ที่ใช้
@@ -356,6 +382,8 @@ async def get_all_station_pm_reports(
     all_reports = [r for r in all_reports if r.get("side") not in ("pre", "Pre", "PRE")]
 
     await _apply_job_status(all_reports, chargers)
+    # หลัง _apply_job_status — ใบลูกของใบ PM สถานีเพิ่งได้ wonum จากใบแม่ตรงนั้น
+    await _apply_wo_origin(all_reports)
 
     if pm_type:
         all_reports = [r for r in all_reports if r.get("pm_type") == pm_type]

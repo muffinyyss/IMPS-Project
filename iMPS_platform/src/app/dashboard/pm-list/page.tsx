@@ -62,7 +62,19 @@ type PMRow = {
   job_id?: string;
   /** แถวที่ยุบจากหลายส่วนของใบเดียวกัน — ชนิดอุปกรณ์ทุกส่วนที่กรอกแล้ว (ใช้กรองตามชนิด) */
   pm_types?: string[];
+  /** ที่มาของใบงาน: ใบงานจาก Maximo หรือเปิดเองใน iMPS (ไม่มีเลข WO ก็นับเป็นเปิดเอง) */
+  wo_origin?: WoOrigin;
 };
+
+type WoOrigin = "maximo" | "manual";
+
+/** origin ของใบงานที่เปิดเองจากหน้า "เพิ่มใบงาน" — ตรงกับ MANUAL_WO_ORIGIN ใน backend/routers/pm_maximo.py */
+const MANUAL_WO_ORIGIN = "imps-manual";
+
+function originOf(r: PMRow): WoOrigin {
+  if (r.wo_origin) return r.wo_origin;
+  return r.wonum ? "maximo" : "manual";
+}
 
 // ลำดับส่วนในใบ PM สถานี — แถวที่ยุบแล้วใช้ส่วนแรกตามลำดับนี้เป็นตัวแทน
 const JOB_TYPE_ORDER = ["STATION", "MDB", "CCB", "CB-BOX", "CHARGER"];
@@ -186,6 +198,8 @@ export default function PMListPage() {
   const [companyFilter, setCompanyFilter] = useState<string | null>(null);
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
   const [stageFilter, setStageFilter] = useState<PmStage | null>(null);
+  // แท็บที่มาของใบงาน — null = ทั้งหมด
+  const [originFilter, setOriginFilter] = useState<WoOrigin | null>(null);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
@@ -297,6 +311,7 @@ export default function PMListPage() {
               created_at: String(w?.receivedAt || ""),
               file_url: "",
               exists_in_maximo: w?.exists_in_maximo ?? null,
+              wo_origin: String(w?.origin || "").trim().toLowerCase() === MANUAL_WO_ORIGIN ? "manual" as const : "maximo" as const,
             }));
         }
 
@@ -329,6 +344,12 @@ export default function PMListPage() {
       tableCount: (n: number, q?: string) => `${n} รายการ${q ? ` · "${q}"` : ""}`,
       searchPlaceholder: "ค้นหา station, WO, ชื่อเอกสาร, ช่าง, SN…",
       clearFilters: "ล้างตัวกรอง",
+      originLabel: "ที่มาของใบงาน",
+      originAll: "ทั้งหมด",
+      originMaximo: "ใบงาน Maximo",
+      originManual: "ใบงานที่เปิดเอง",
+      manualBadge: "เปิดเอง",
+      manualBadgeTitle: "ใบงานที่เปิดเองใน iMPS — ไม่ได้มาจาก Maximo",
       addWorkOrder: "เพิ่มใบงาน",
       created: (wonum: string) => `เปิดใบงาน ${wonum} เรียบร้อยแล้ว`,
       pagination: (from: number, to: number, total: number) => `แสดง ${from}–${to} จาก ${total} รายการ`,
@@ -364,6 +385,12 @@ export default function PMListPage() {
       tableCount: (n: number, q?: string) => `${n} record(s)${q ? ` · "${q}"` : ""}`,
       searchPlaceholder: "Search station, WO, document, technician, SN…",
       clearFilters: "Clear filters",
+      originLabel: "Work order source",
+      originAll: "All",
+      originMaximo: "Maximo work orders",
+      originManual: "Created in iMPS",
+      manualBadge: "iMPS",
+      manualBadgeTitle: "Work order created in iMPS — not from Maximo",
       addWorkOrder: "Add work order",
       created: (wonum: string) => `Work order ${wonum} created`,
       pagination: (from: number, to: number, total: number) => `Showing ${from}–${to} of ${total}`,
@@ -455,13 +482,14 @@ export default function PMListPage() {
   const clearAll = () => {
     setTypeFilter(null);
     setStageFilter(null);
+    setOriginFilter(null);
     setStationFilter("All");
     setCompanyFilter(null);
     setSearch("");
     setPage(0);
   };
   const activeFilterCount =
-    (typeFilter ? 1 : 0) + (stageFilter ? 1 : 0) + (stationFilter !== "All" ? 1 : 0) + (companyFilter ? 1 : 0);
+    (typeFilter ? 1 : 0) + (stageFilter ? 1 : 0) + (originFilter ? 1 : 0) + (stationFilter !== "All" ? 1 : 0) + (companyFilter ? 1 : 0);
 
   // ช่างเห็นเฉพาะงานที่ planner มอบหมายให้ตัวเอง — role อื่นเห็นทุกใบ
   const scopedRows = useMemo(() => {
@@ -524,20 +552,33 @@ export default function PMListPage() {
 
   const searchFiltered = useMemo(() => {
     let list = periodRows;
+    if (originFilter) list = list.filter((r) => originOf(r) === originFilter);
     if (typeFilter) list = list.filter((r) => hasPmType(r, typeFilter));
     if (stageFilter) list = list.filter((r) => stageOf(r) === stageFilter);
     return applySearch(list);
-  }, [periodRows, typeFilter, stageFilter, applySearch]);
+  }, [periodRows, originFilter, typeFilter, stageFilter, applySearch]);
 
   // ตัวนับบนปุ่มสถานะ — ไม่ขึ้นกับตัวกรองสถานะที่เลือกอยู่ (เหมือน CM List)
   const stageCounts = useMemo(() => {
     let base = periodRows;
+    if (originFilter) base = base.filter((r) => originOf(r) === originFilter);
     if (typeFilter) base = base.filter((r) => hasPmType(r, typeFilter));
     base = applySearch(base);
     const counts: Record<PmStage, number> = { open: 0, in_progress: 0, wait_approve: 0, closed: 0 };
     for (const r of base) counts[stageOf(r)]++;
     return counts;
-  }, [periodRows, typeFilter, applySearch]);
+  }, [periodRows, originFilter, typeFilter, applySearch]);
+
+  // ตัวนับบนแท็บที่มา — ไม่ขึ้นกับแท็บที่เลือกอยู่ แต่ตามตัวกรองอื่นทั้งหมด
+  const originCounts = useMemo(() => {
+    let base = periodRows;
+    if (typeFilter) base = base.filter((r) => hasPmType(r, typeFilter));
+    if (stageFilter) base = base.filter((r) => stageOf(r) === stageFilter);
+    base = applySearch(base);
+    const counts: Record<WoOrigin, number> = { maximo: 0, manual: 0 };
+    for (const r of base) counts[originOf(r)]++;
+    return { all: base.length, ...counts };
+  }, [periodRows, typeFilter, stageFilter, applySearch]);
 
   const sortValue = useCallback((r: PMRow, key: SortKey): string | number => {
     switch (key) {
@@ -602,6 +643,7 @@ export default function PMListPage() {
       { header: "#", value: (_r, i) => i + 1 },
       { header: t.headers.station, value: (r) => r.station_name || r.station_id },
       { header: t.headers.wo, value: (r) => r.wonum },
+      { header: t.originLabel, value: (r) => (originOf(r) === "manual" ? t.originManual : t.originMaximo) },
       { header: t.typeFilterLabel, value: (r) => r.pm_type },
       { header: t.csvDocument, value: (r) => (r.document_name === "-" ? "" : r.document_name) },
       { header: "SN", value: (r) => (r.sn === "-" ? "" : r.sn) },
@@ -696,6 +738,36 @@ export default function PMListPage() {
             </select>
           </div>
         </div>
+      </div>
+
+      {/* ── แท็บที่มาของใบงาน: ใบงาน Maximo / ใบงานที่เปิดเองใน iMPS ── */}
+      <div
+        role="tablist"
+        aria-label={t.originLabel}
+        className="tw-mb-3 tw-inline-flex tw-max-w-full tw-overflow-x-auto tw-rounded-xl tw-border tw-border-gray-200 tw-bg-white tw-p-1 tw-shadow-sm"
+      >
+        {([
+          { key: null, label: t.originAll, count: originCounts.all },
+          { key: "maximo" as const, label: t.originMaximo, count: originCounts.maximo },
+          { key: "manual" as const, label: t.originManual, count: originCounts.manual },
+        ]).map((tab) => {
+          const active = originFilter === tab.key;
+          return (
+            <button
+              key={tab.key ?? "all"}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              onClick={() => { setOriginFilter(tab.key); setPage(0); }}
+              className={`tw-whitespace-nowrap tw-rounded-lg tw-px-3.5 tw-py-1.5 tw-text-sm tw-font-semibold tw-transition-colors ${active ? "tw-bg-gray-900 tw-text-white tw-shadow-sm" : "tw-text-gray-600 hover:tw-bg-gray-100"}`}
+            >
+              {tab.label}
+              <span className={`tw-ml-1.5 tw-rounded-full tw-px-1.5 tw-py-0.5 tw-text-[11px] ${active ? "tw-bg-white/20 tw-text-white" : "tw-bg-gray-100 tw-text-gray-500"}`}>
+                {tab.count}
+              </span>
+            </button>
+          );
+        })}
       </div>
 
       {/* ── Toolbar ── */}
@@ -878,6 +950,14 @@ export default function PMListPage() {
                           <span className="tw-font-mono">{r.wonum}</span>
                         ) : (
                           <span className="tw-text-gray-300" title={t.noWonum}>—</span>
+                        )}
+                        {originOf(r) === "manual" && (
+                          <span
+                            title={t.manualBadgeTitle}
+                            className="tw-whitespace-nowrap tw-rounded tw-bg-sky-100 tw-px-1.5 tw-py-0.5 tw-text-[10px] tw-font-semibold tw-text-sky-700"
+                          >
+                            {t.manualBadge}
+                          </span>
                         )}
                         {/* เลขที่ Maximo ไม่รู้จัก — วางแผนไปก็ส่งสถานะกลับไม่ได้ */}
                         {r.exists_in_maximo === false && (
