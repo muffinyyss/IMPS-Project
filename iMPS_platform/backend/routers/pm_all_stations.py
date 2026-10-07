@@ -10,6 +10,7 @@ from bson import ObjectId
 
 from config import (
     charger_collection,
+    station_collection,
     PMReportDB, PMUrlDB,
     MDBPMReportDB, MDBPMUrlDB,
     CCBPMReportDB, CCBPMUrlDB,
@@ -602,69 +603,74 @@ async def get_pm_report_months(current: UserClaims = Depends(get_current_user)):
     return {"months": sorted(months, reverse=True)}
 
 
+# key = SN (เอกสารตู้ชาร์จ) หรือ station_id (MDB/CCB/CB_BOX/Station) — ส่งมาได้จะลบตรงที่เดียว
+# ไม่ส่งมา (หน้า PM All เดิม) ค่อยไล่หาทุก collection ของชนิดนั้น
 @router.delete("/pmreport/{report_id}")
 async def delete_pmreport(
     report_id: str,
+    key: Optional[str] = Query(None, description="SN ของตู้"),
     current: UserClaims = Depends(get_current_user),
 ):
-    return await _delete_report_by_id(report_id, get_pmreport_collection_for, current)
+    return await _delete_report_by_id(report_id, get_pmreport_collection_for, current, "sn", key)
 
 @router.delete("/mdbpmreport/{report_id}")
-async def delete_mdbpmreport(report_id: str, current: UserClaims = Depends(get_current_user)):
-    return await _delete_report_by_id(report_id, get_mdbpmreport_collection_for, current)
+async def delete_mdbpmreport(report_id: str, key: Optional[str] = Query(None), current: UserClaims = Depends(get_current_user)):
+    return await _delete_report_by_id(report_id, get_mdbpmreport_collection_for, current, "station", key)
 
 @router.delete("/ccbpmreport/{report_id}")
-async def delete_ccbpmreport(report_id: str, current: UserClaims = Depends(get_current_user)):
-    return await _delete_report_by_id(report_id, get_ccbpmreport_collection_for, current)
+async def delete_ccbpmreport(report_id: str, key: Optional[str] = Query(None), current: UserClaims = Depends(get_current_user)):
+    return await _delete_report_by_id(report_id, get_ccbpmreport_collection_for, current, "station", key)
 
 @router.delete("/cbboxpmreport/{report_id}")
-async def delete_cbboxpmreport(report_id: str, current: UserClaims = Depends(get_current_user)):
-    return await _delete_report_by_id(report_id, get_cbboxpmreport_collection_for, current)
+async def delete_cbboxpmreport(report_id: str, key: Optional[str] = Query(None), current: UserClaims = Depends(get_current_user)):
+    return await _delete_report_by_id(report_id, get_cbboxpmreport_collection_for, current, "station", key)
 
 @router.delete("/stationpmreport/{report_id}")
-async def delete_stationpmreport(report_id: str, current: UserClaims = Depends(get_current_user)):
-    return await _delete_report_by_id(report_id, get_stationpmreport_collection_for, current)
+async def delete_stationpmreport(report_id: str, key: Optional[str] = Query(None), current: UserClaims = Depends(get_current_user)):
+    return await _delete_report_by_id(report_id, get_stationpmreport_collection_for, current, "station", key)
 
 
-async def _delete_report_by_id(report_id: str, get_coll_fn, current) -> dict:
+async def _delete_report_by_id(report_id: str, get_coll_fn, current, mode: str, key: Optional[str] = None) -> dict:
     """
-    ค้นหา report จาก _id ใน all SN collections แล้วลบ
-    เนื่องจากไม่รู้ SN → scan ทุก collection ที่ได้จาก charger list
+    ลบเอกสาร PM ใบเดี่ยว 1 ใบ
+
+    เอกสารตู้ชาร์จเก็บแยก collection ตาม SN, อีก 4 ชนิดแยกตาม station_id
+    รู้ key = ลบที่ collection นั้นเลย, ไม่รู้ = ไล่หาทุก collection ของชนิดนั้น
+    (เดิมไล่หาด้วย SN อย่างเดียว เอกสารระดับสถานีจึงหาไม่เจอ และเรียก motor ผ่าน
+    run_in_executor ได้ coroutine กลับมา — ลบไม่ได้สักใบแต่ตอบ 404 เงียบ ๆ)
     """
+    from fastapi import HTTPException
+
     # ลบถาวร = สิทธิ์ super admin เท่านั้น (admin ธรรมดาลบใบงานไม่ได้) — เหมือน DELETE /cmreport/{id}
     if not getattr(current, "is_super_admin", False):
-        from fastapi import HTTPException
         raise HTTPException(status_code=403, detail="Not allowed to delete")
 
-    loop = asyncio.get_event_loop()
     try:
         oid = ObjectId(report_id)
     except Exception:
-        from fastapi import HTTPException
         raise HTTPException(status_code=400, detail="Invalid report_id")
 
-    # ดึง SN ทั้งหมด
-    try:
-        chargers = await loop.run_in_executor(
-            None,
-            lambda: list(charger_collection.find({}, {"_id": 0, "SN": 1}))
-        )
-    except Exception:
-        chargers = []
-
-    sn_list = [c["SN"] for c in chargers if c.get("SN") and c["SN"] not in ("-", "")]
-
-    for sn in sn_list:
+    key = (key or "").strip()
+    if key:
+        keys = [key]
+    else:
+        loop = asyncio.get_event_loop()
+        field = "SN" if mode == "sn" else "station_id"
         try:
-            coll = get_coll_fn(sn)
-            result = await loop.run_in_executor(
+            docs = await loop.run_in_executor(
                 None,
-                lambda c=coll: c.delete_one({"_id": oid})
+                lambda: list((charger_collection if mode == "sn" else station_collection).find({}, {"_id": 0, field: 1})),
             )
-            if result.deleted_count > 0:
-                return {"deleted": True, "id": report_id}
+        except Exception:
+            docs = []
+        keys = [d[field] for d in docs if d.get(field) and d[field] not in ("-", "")]
+
+    for k in keys:
+        try:
+            result = await get_coll_fn(k).delete_one({"_id": oid})
         except Exception:
             continue
+        if result.deleted_count > 0:
+            return {"deleted": True, "id": report_id}
 
-    from fastapi import HTTPException
     raise HTTPException(status_code=404, detail="Report not found")
