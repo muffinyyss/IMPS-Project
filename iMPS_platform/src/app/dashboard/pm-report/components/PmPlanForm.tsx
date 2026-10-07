@@ -390,14 +390,16 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
   // เริ่ม PM ได้ต่อเมื่อ planner เลือกอุปกรณ์ไว้แล้ว — อ่านจากแผนที่บันทึกแล้ว
   // ไม่ใช่ state ของ checkbox ที่ planner อาจกำลังแก้ค้างอยู่
   const plannedEquipment = wo?.selected_equipment ?? [];
-  // ช่างเห็นปุ่มเสมอ ส่วน planner/admin กรอกเองได้หลังวางแผนเสร็จแล้ว (ก่อนนั้นต้องกด Assign ก่อน)
-  const showStart = !!onStart && (!canPlan || (alreadyPlanned && PM_PLANNER_FILL_ROLES.includes(myRole)));
-  const canStart = !loading && !!wo && plannedEquipment.length > 0;
   // วางแผนเสร็จแล้ว = อ่านอย่างเดียวถาวร (PM ไม่มีแก้ไขแผน)
   const locked = !canPlan || alreadyPlanned;
   // ใบงานที่ส่งต่อมาให้บริษัทของคนที่ login วางแผนอีกรอบ และยังไม่ได้วางแผน
   const mine = myVendorPlan(wo, myCompany);
   const vendorTurn = canPlan && !!mine && mine.status !== "planned";
+  // ช่างเห็นปุ่มเสมอ ส่วน planner/admin กรอกเองได้หลังวางแผนเสร็จแล้ว (ก่อนนั้นต้องกด Assign ก่อน)
+  // planner ของ vendor ที่ใบงานส่งต่อมาให้: ต้องวางแผนของบริษัทตัวเองก่อน — แผนต้นทางเสร็จแล้วยังไม่พอ
+  const showStart = !!onStart && !vendorTurn
+    && (!canPlan || (alreadyPlanned && PM_PLANNER_FILL_ROLES.includes(myRole)));
+  const canStart = !loading && !!wo && plannedEquipment.length > 0;
   const vendorPlans: VendorPlan[] = wo?.vendor_plans ?? [];
 
   return (

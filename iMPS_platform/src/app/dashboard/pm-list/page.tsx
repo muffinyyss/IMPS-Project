@@ -467,6 +467,18 @@ export default function PMListPage() {
       localStorage.setItem("selected_station_name", r.station_name || r.station_id);
     }
 
+    // ใบงานที่ planner ต้นทางส่งต่อมาให้บริษัทเราวางแผนอีกรอบ และเรายังไม่ได้วางแผน
+    // → หน้าวางแผนของใบงานเสมอ (แม้ช่างต้นทางจะเริ่ม PM ไปแล้วก็ตาม) planner ของเราต้องวางแผนก่อน
+    if (r.vendor_pending_for_me && r.wonum && PM_PLANNING_ROLES.includes(me?.role ?? "")) {
+      window.dispatchEvent(new CustomEvent("station:selected"));
+      const params = new URLSearchParams({
+        tab, view: "form", wonum: r.wonum, from: PM_ORIGIN_LIST, planning: "1",
+        ...(r.station_id ? { station_id: r.station_id } : {}),
+      });
+      router.push(`/dashboard/pm-report?${params.toString()}`);
+      return;
+    }
+
     // ใบที่เป็นส่วนหนึ่งของใบ PM สถานี → เข้าหน้ารวม 5 ส่วนของใบนั้นเลย
     //   แถวเอกสาร: ใบลูกรู้ job_id ของใบแม่อยู่แล้ว — ทุกสถานะ เพราะสถานะที่โชว์คือของทั้งใบ
     //              และอนุมัติ/ตีกลับทำทั้งใบที่หน้ารวม ไม่ใช่รายส่วน
