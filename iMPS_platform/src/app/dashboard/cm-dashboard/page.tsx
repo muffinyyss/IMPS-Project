@@ -10,7 +10,7 @@ import useLanguage from "@/utils/useLanguage";
 import {
   CMRow, ActiveFilters, DateSel, STATUS_LABELS, WorkStatusFilter, EMPTY_FILTERS, CmOrigin,
   normalizeStatus, workStatusOf, filterByDate, listYears, listBrands, brandOf, matchesCompanyFilter, UNKNOWN_BRAND, UNKNOWN_COMPANY, listCompanyFilterOptions,
-  excludeCancelled, isCancelled,
+  excludeCancelled, isCancelled, isRejectedSr, cmSuccessRate,
   weeksInMonth, applyFilters as applyBaseFilters, groupCount, groupCountMulti, groupCountMultiByBrand, groupByMonth,
   causeLabelsOf, remedyCodesOf, remedyDescriptionsOf,
 } from "@/utils/cm-dashboard";
@@ -29,7 +29,7 @@ const Chart = dynamic(() => import("react-apexcharts"), { ssr: false });
 const DEFAULT_COMPANY_FILTER = "EGAT";
 
 function dashboardWorkStatusOf(row: CMRow): WorkStatusFilter | "rejected" {
-  if (workStatusOf(row) === "wait_cs_approve" && (row.reject_remark || "").trim()) return "rejected";
+  if (isRejectedSr(row)) return "rejected";
   return workStatusOf(row);
 }
 
@@ -342,19 +342,14 @@ export default function CMDashboardPage() {
   );
   const monthData = useMemo(() => groupByMonth(monthRows), [monthRows]);
 
-  // ── Success Rate: ignores its own status filter so donut shows context
-  const srRows = useMemo(() => applyDashboardFilters(activeRows, filters, "status"), [activeRows, filters]);
-  const srStats = useMemo(() => {
-    let completed = 0, inProgress = 0, open = 0;
-    for (const r of srRows) {
-      const s = normalizeStatus(r.status, r.stage, r.repair_result);
-      if (s === "completed") completed++;
-      else if (s === "in_progress") inProgress++;
-      else open++;
-    }
-    return { total: srRows.length, completed, inProgress, open };
-  }, [srRows]);
-  const successRate = srStats.total === 0 ? 0 : Math.round((srStats.completed / srStats.total) * 100);
+  // ── Success Rate = complete ÷ (total − รออะไหล่ − รอเข้าพื้นที่ − SR ตีกลับ − ยกเลิก) × 100
+  //    ไม่สนตัวกรองสถานะ/การ์ด KPI ของตัวเอง ให้ตรงกับโดนัทที่แสดงทุก bucket เสมอ
+  //    (ไม่งั้นคลิกการ์ด "รออะไหล่" แล้วตัวหารเหลือ 0)
+  const srRows = useMemo(
+    () => applyDashboardFilters(periodRows, { ...filters, status: null }, "workStatus"),
+    [periodRows, filters]
+  );
+  const successRate = useMemo(() => cmSuccessRate(srRows).rate, [srRows]);
 
   // ── Cause donut (« Count of Cause of Issue ») : compte les CAUSE CODE des fiches CM,
   //    une fiche à deux causes compte dans les deux tranches. Ignore son propre filtre.
@@ -382,7 +377,7 @@ export default function CMDashboardPage() {
     );
   }, [activeRows, filters, activeRemedy]);
 
-  // จำนวนใบที่ยกเลิก — ไม่ได้อยู่ใน srStats เพราะถูกตัดออกจากกราฟไปแล้ว
+  // จำนวนใบที่ยกเลิก — ไม่ได้อยู่ใน activeRows เพราะถูกตัดออกจากกราฟไปแล้ว
   // นับจาก periodRows เต็ม โดยยกเว้นตัวกรองเดียวกับที่ผู้ใช้ตัวนั้นใช้ (ปุ่มกรองสถานะ vs การ์ด KPI)
   const cancelledCount = useMemo(
     () => applyDashboardFilters(periodRows, filters, "status").filter(isCancelled).length,
@@ -419,12 +414,9 @@ export default function CMDashboardPage() {
       else if (s === "in_progress") counts.inProgress++;
       else if (s === "completed") counts.completed++;
     }
-    // Completion rate = WO completed ÷ (Total SR − wait spare part − wait site access) × 100
-    const denom = counts.total - counts.waitSparepart - counts.waitSiteAccess;
-    const completionRate = denom > 0 ? Math.round((counts.completed / denom) * 100) : 0;
     // « All work order » = toutes les fiches déjà devenues des WO
     const allWo = kpiRows.filter(dashboardIsWorkOrder).length;
-    return { ...counts, allWo, completionRate };
+    return { ...counts, allWo };
   }, [kpiRows]);
 
   // ── Translations ─────────────────────────────────────────────────────────

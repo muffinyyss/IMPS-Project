@@ -350,6 +350,26 @@ export function workStatusOf(r: CMRow): WorkStatus {
   return byStatus;
 }
 
+/** SR ที่ planner ตีกลับไปให้ CS แก้ (ด่าน cs_approval + มีเหตุผลตีกลับ) — ยังไม่เป็น WO */
+export function isRejectedSr(r: CMRow): boolean {
+  return workStatusOf(r) === "wait_cs_approve" && !!(r.reject_remark || "").trim();
+}
+
+/**
+ * CM Success Rate = complete ÷ (total − wait for material − wait for site condition − SR reject − cancelled) × 100
+ * ตัวหารไม่นับใบที่ติดปัจจัยนอกมือทีมช่าง (รออะไหล่/รอเข้าพื้นที่) และใบที่ไม่ใช่ภาระงานซ่อม (SR ตีกลับ/ยกเลิก)
+ */
+export function cmSuccessRate(rows: CMRow[]): { completed: number; base: number; rate: number } {
+  let completed = 0, excluded = 0;
+  for (const r of rows) {
+    const ws = workStatusOf(r);
+    if (ws === "completed") completed++;
+    else if (ws === "wait_sparepart" || ws === "wait_site_access" || ws === "cancelled" || isRejectedSr(r)) excluded++;
+  }
+  const base = rows.length - excluded;
+  return { completed, base, rate: base > 0 ? Math.round((completed / base) * 100) : 0 };
+}
+
 /** ใบงานที่ผ่านด่าน CS แล้วและเป็น WO จริง รวม WO ที่ถูกยกเลิก */
 export function isWorkOrder(r: CMRow): boolean {
   const ws = workStatusOf(r);
