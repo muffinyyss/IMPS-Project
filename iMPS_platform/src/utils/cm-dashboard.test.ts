@@ -6,6 +6,8 @@ import {
   excludeCancelled,
   workStatusOf,
   isWorkOrder,
+  isRejectedSr,
+  cmSuccessRate,
   filterByPeriod,
   applyFilters,
   applySearch,
@@ -339,6 +341,40 @@ describe("rejected SR", () => {
     expect(workStatusOf(rejected)).toBe("wait_cs_approve");
     expect(applyFilters([rejected], { ...noFilters, workStatus: "wait_cs_approve" })).toHaveLength(1);
     expect(applyFilters([rejected], { ...noFilters, workStatus: "wo_all" })).toHaveLength(0);
+  });
+});
+
+describe("cmSuccessRate", () => {
+  it("complete ÷ (total − รออะไหล่ − รอเข้าพื้นที่ − SR ตีกลับ − ยกเลิก)", () => {
+    const rows = [
+      makeRow({ status: "Closed" }),
+      makeRow({ status: "Complete" }),
+      makeRow({ status: "In Progress" }),
+      makeRow({ status: "Wait for schedule" }),
+      makeRow({ status: "In Progress", repair_result: "WO - wait for material" }),
+      makeRow({ status: "In Progress", repair_result: "WO - wait for site condition" }),
+      makeRow({ status: "Wait for approve", stage: "cs_approval", reject_remark: "ข้อมูลไม่ครบ" }),
+      makeRow({ status: "Cancelled" }),
+    ];
+    // ตัวหาร = 8 − 1 − 1 − 1 − 1 = 4 → 2/4 = 50%
+    expect(cmSuccessRate(rows)).toEqual({ completed: 2, base: 4, rate: 50 });
+  });
+
+  it("SR รออนุมัติที่ยังไม่ถูกตีกลับ ยังนับในตัวหาร", () => {
+    const pending = makeRow({ status: "Wait for approve", stage: "cs_approval" });
+    expect(isRejectedSr(pending)).toBe(false);
+    expect(cmSuccessRate([makeRow({ status: "Closed" }), pending])).toEqual({ completed: 1, base: 2, rate: 50 });
+  });
+
+  it("ใบที่ปิดแล้วแต่เคยถูกตีกลับ นับเป็น complete", () => {
+    const closed = makeRow({ status: "Closed", reject_remark: "เคยตีกลับ" });
+    expect(isRejectedSr(closed)).toBe(false);
+    expect(cmSuccessRate([closed]).rate).toBe(100);
+  });
+
+  it("ตัวหารเป็น 0 ได้ 0%", () => {
+    expect(cmSuccessRate([]).rate).toBe(0);
+    expect(cmSuccessRate([makeRow({ status: "Cancelled" })])).toEqual({ completed: 0, base: 0, rate: 0 });
   });
 });
 
