@@ -55,14 +55,23 @@ export type VendorPlan = {
   assignees?: string[];
 };
 
-/** แผนของ vendor ที่เป็นบริษัทของคนที่ login อยู่ (ไม่มี = ใบงานนี้ไม่ได้ส่งต่อมาให้) */
+/**
+ * แผนของ vendor ที่เป็นบริษัทของคนที่ login อยู่ (ไม่มี = ใบงานนี้ไม่ได้ส่งต่อมาให้)
+ *
+ * ใบงานที่ planner ต้นทางเลือกบริษัทเราเป็นผู้รับผิดชอบแต่ไม่มีใบส่งต่อเก็บไว้
+ * (Assign ก่อนมีฟีเจอร์ส่งต่อ / ตอนนั้นบริษัทเรายังไม่มีบัญชี planner) ถือว่าส่งต่อมาให้
+ * วางแผนเหมือนกัน — คืนแผนสถานะ pending ให้ (backend สร้างให้จริงตอนกด Assign)
+ */
 export function myVendorPlan(
-  wo: Pick<MaximoWorkOrder, "vendor_plans"> | null | undefined,
+  wo: Pick<MaximoWorkOrder, "vendor_plans" | "assignees"> | null | undefined,
   company: string | null | undefined,
 ): VendorPlan | null {
   const c = String(company ?? "").trim().toLowerCase();
   if (!c) return null;
-  return (wo?.vendor_plans ?? []).find((v) => String(v.vendor ?? "").trim().toLowerCase() === c) ?? null;
+  const stored = (wo?.vendor_plans ?? []).find((v) => String(v.vendor ?? "").trim().toLowerCase() === c);
+  if (stored) return stored;
+  const named = (wo?.assignees ?? []).find((n) => String(n ?? "").trim().toLowerCase() === c);
+  return named ? { vendor: String(named).trim(), status: "pending" } : null;
 }
 
 /**

@@ -43,3 +43,17 @@ describe("vendor plan (EGAT → EDS)", () => {
     expect(myVendorPlan(egatPlanned, "EGAT")).toBeNull();
   });
 });
+
+describe("ใบงานเก่าที่ไม่มีใบส่งต่อ (Assign ก่อนมีฟีเจอร์ / EDS ยังไม่มี planner ตอนนั้น)", () => {
+  const legacy = { wonum: "WO0", planning_status: "planned", assignees: ["Technician EGAT", "EDS"], vendor_plans: [] };
+
+  it("planner EDS ยังได้วางแผนของบริษัทตัวเอง", () => {
+    expect(myVendorPlan(legacy, "EDS")).toEqual({ vendor: "EDS", status: "pending" });
+    expect(myVendorPlan(legacy, "EGAT")).toBeNull();
+  });
+
+  it("ไม่ทำให้ใบเดิมเด้งกลับเป็น Open สำหรับคนอื่น", () => {
+    expect(pendingVendorPlans(legacy)).toEqual([]);
+    expect(toPmFlow(woToRow(legacy, "x"))).toBe("wo_planned");
+  });
+});

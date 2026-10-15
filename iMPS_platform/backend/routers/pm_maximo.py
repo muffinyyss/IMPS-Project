@@ -1533,6 +1533,16 @@ async def set_pm_vendor_plan(
     company = _company_of(current).lower()
     plans = list(wo.get("vendor_plans") or [])
     idx = next((i for i, v in enumerate(plans) if str(v.get("vendor") or "").strip().lower() == company), -1)
+    # ใบงานที่ planner ต้นทางเลือกบริษัทเราไว้ แต่ไม่มีใบส่งต่อเก็บไว้ (Assign ก่อนมีฟีเจอร์นี้
+    # หรือตอนนั้นบริษัทเรายังไม่มีบัญชี planner) — ยังเป็นงานของเรา สร้างใบส่งต่อให้ตอนนี้
+    if company and idx < 0 and str(wo.get("planning_status") or "").strip().lower() == "planned":
+        named = next(
+            (str(n).strip() for n in (wo.get("assignees") or []) if str(n or "").strip().lower() == company),
+            "",
+        )
+        if named:
+            plans.append({"vendor": named, "status": "pending"})
+            idx = len(plans) - 1
     if not company or idx < 0:
         raise HTTPException(status_code=403, detail="ใบงานนี้ไม่ได้ส่งต่อให้บริษัทของคุณวางแผน")
     if plans[idx].get("status") == "planned":

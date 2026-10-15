@@ -407,7 +407,10 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
   // ส่งต่อให้ vendor แล้วแต่ vendor ยังไม่ได้วางแผน = ยังไม่มีทีมเข้าหน้างาน เริ่มไม่ได้
   const waitingVendors = pendingVendorPlans(wo).map((v) => v.vendor).filter(Boolean);
   const canStart = !loading && !!wo && plannedEquipment.length > 0 && waitingVendors.length === 0;
-  const vendorPlans: VendorPlan[] = wo?.vendor_plans ?? [];
+  // แผนของบริษัทเราที่ยังไม่ได้เก็บไว้ (ใบงานเก่า) ต้องโผล่เป็นหัวข้อให้กรอกด้วย
+  const storedVendorPlans: VendorPlan[] = wo?.vendor_plans ?? [];
+  const vendorPlans: VendorPlan[] =
+    mine && !storedVendorPlans.includes(mine) ? [...storedVendorPlans, mine] : storedVendorPlans;
 
   return (
     <section className="tw-pb-24">
