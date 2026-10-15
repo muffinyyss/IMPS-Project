@@ -25,8 +25,8 @@ _named_logger("startup")
 _named_logger("unified")
 _named_logger("unified_migration")
 
-# ===== Auto CM Watcher =====
-from routers.auto_cm_watcher import start_watcher, stop_watcher
+# ===== Auto CM Watcher (ปิดไว้ชั่วคราว — ยังไม่ใช้งาน) =====
+# from routers.auto_cm_watcher import start_watcher, stop_watcher
 
 # ===== Background Email Watcher (ยกเลิกแล้ว) =====
 # เดิมส่งอีเมลตาม fault ดิบครบ threshold — ตอนนี้ย้ายไปส่งตอน "เปิดใบงาน CM" แทน
@@ -180,7 +180,7 @@ async def lifespan(app: FastAPI):
     else:
         log.info("  · bascule unifiee desactivee (UNIFIED_MIGRATION=off)")
 
-    start_watcher()
+    # start_watcher()  # Auto CM ปิดไว้ชั่วคราว
     await _warm_maximo_master_data()
     refresher = asyncio.create_task(_refresh_maximo_master_data())
     unified_task = asyncio.create_task(_keep_unified_fresh())
@@ -189,7 +189,7 @@ async def lifespan(app: FastAPI):
 
     unified_task.cancel()
     refresher.cancel()
-    await stop_watcher()
+    # await stop_watcher()  # Auto CM ปิดไว้ชั่วคราว
 
 
 app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
