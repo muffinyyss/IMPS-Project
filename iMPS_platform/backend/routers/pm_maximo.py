@@ -1156,6 +1156,31 @@ def _merge_vendor_plans(existing: list[dict] | None, vendors: list[str]) -> list
     return out
 
 
+def _pending_vendors(doc: dict) -> list[str]:
+    """
+    vendor ที่ถูกส่งต่อแต่ยังไม่ได้วางแผน = ยังไม่ได้ส่งทีม/ช่างเข้าหน้างาน
+    ตราบใดที่ยังเหลือ ใบงานยังไม่ถือว่าเริ่มงานจริง (ยังไม่ยิง INPRG เข้า Maximo)
+    """
+    return [
+        str(v.get("vendor") or "").strip()
+        for v in (doc.get("vendor_plans") or [])
+        if str(v.get("status") or "").strip().lower() != "planned"
+    ]
+
+
+def _all_assignees(doc: dict) -> list[str]:
+    """ผู้รับผิดชอบทั้งหมดของใบงาน = ของ planner ต้นทาง + ช่างที่ vendor มอบหมายเพิ่ม (ไม่ซ้ำ)"""
+    out: list[str] = []
+    names = list(doc.get("assignees") or [])
+    for v in doc.get("vendor_plans") or []:
+        names.extend(v.get("assignees") or [])
+    for n in names:
+        s = str(n or "").strip()
+        if s and s not in out:
+            out.append(s)
+    return out
+
+
 def _station_id_of_wo(wo: dict) -> str:
     """
     station_id ของใบงาน — ถ้าตอนรับเข้า reverse lookup ไม่ติด (สถานี/ตู้ยังไม่ได้ตั้ง
@@ -1224,13 +1249,15 @@ async def pm_wo_sync_status(
         inbound["at"] = inbound["at"].isoformat()
 
     # None = เช็คกับ Maximo ไม่ได้ (ไม่ใช่ "ไม่มี")
-    try:
-        found = await maximo_svc.workorders_exist([wonum])
-        exists = wonum in found
-        in_maximo = found.get(wonum) or None
-    except Exception as e:
-        log.warning(f"  ⚠️ เช็ค wonum {wonum} กับ Maximo ไม่สำเร็จ: {e}")
-        exists, in_maximo = None, None
+    # ใบงานเปิดเองใน iMPS ไม่มีใน Maximo อยู่แล้วโดยตั้งใจ — ไม่ต้องไปถาม
+    exists, in_maximo = None, None
+    if not _is_manual_wo(wo):
+        try:
+            found = await maximo_svc.workorders_exist([wonum])
+            exists = wonum in found
+            in_maximo = found.get(wonum) or None
+        except Exception as e:
+            log.warning(f"  ⚠️ เช็ค wonum {wonum} กับ Maximo ไม่สำเร็จ: {e}")
 
     # IN03/IN09/IN02(CLOSED) จดไว้บนเอกสาร PM ไม่ใช่บนใบงาน — ใบงานมีแต่ IN02(INPRG)
     # ถ้าอ่านแค่ใบงาน หน้านี้จะค้างอยู่ที่ INPRG ตลอดกาลทั้งที่ปิดงานไปแล้ว
@@ -1250,7 +1277,10 @@ async def pm_wo_sync_status(
         "location": wo.get("location") or "",
         "station_id": _station_id_of_wo(wo),
         "planning_status": wo.get("planning_status") or "pending",
-        "assignees": wo.get("assignees") or [],
+        # ช่างของ planner ต้นทาง + ช่างที่ vendor (เช่น EDS) ส่งเข้าหน้างาน
+        "assignees": _all_assignees(wo),
+        "vendor_plans": _serialize_open(wo)["vendor_plans"],
+        "pending_vendors": _pending_vendors(wo),
         # ขาเข้า: IN06 ที่ Maximo ยิงมา + response ที่เราตอบกลับ
         "inbound": inbound or None,
         # ขาออก: รวมของใบงาน (IN02 INPRG ตอน assign) กับของเอกสารทุกใบในใบงานนี้
@@ -1538,7 +1568,23 @@ async def set_pm_vendor_plan(
     }
     await _open_coll().update_one({"_id": wo["_id"]}, {"$set": {"vendor_plans": plans}})
     log.info(f"  ✅ vendor {plans[idx]['vendor']} วางแผนใบงาน {wonum}: {assignees} โดย {who}")
-    return {"ok": True, "wonum": wonum, "item": _serialize_open(await _find_open_wo(wonum) or wo)}
+
+    saved = await _find_open_wo(wonum) or {**wo, "vendor_plans": plans}
+
+    # vendor รายสุดท้ายส่งทีมแล้ว = งานเริ่มจริง → ขั้น 2 ของ sequencing (IN02 INPRG)
+    # ที่ถูกพักไว้ตอน planner ต้นทาง Assign (ดู set_pm_equipment)
+    maximo_result = None
+    if (
+        not _pending_vendors(saved)
+        and str(saved.get("planning_status") or "").strip().lower() == "planned"
+        and not _is_manual_wo(saved)
+    ):
+        from services import pm_maximo_out
+        maximo_result = await pm_maximo_out.safe_sync_in_progress(
+            wonum, memo=f"assigned by {who} ({plans[idx]['vendor']})"
+        )
+
+    return {"ok": True, "wonum": wonum, "item": _serialize_open(saved), "maximo": maximo_result}
 
 
 @router.post("/maximo/pm/{wonum}/equipment")
@@ -1635,12 +1681,18 @@ async def set_pm_equipment(
 
     # ── ขั้น 2 ของ sequencing: assign เสร็จ = ใบงานเข้าสถานะ In Progress ──
     # ยิงเฉพาะตอนวางแผนครบจริง ไม่ใช่ทุกครั้งที่กดบันทึก
+    # ส่งต่อให้ vendor (เช่น EDS) วางแผนอีกรอบ = ยังไม่มีทีมเข้าหน้างานจริง
+    # → พัก INPRG ไว้ก่อน ไปยิงตอน vendor รายสุดท้ายวางแผนเสร็จ (set_pm_vendor_plan)
     maximo_result = None
+    pending_vendors = _pending_vendors(doc or {})
     if planning_status == "planned" and not _is_manual_wo(wo):
-        from services import pm_maximo_out
-        maximo_result = await pm_maximo_out.safe_sync_in_progress(
-            wonum, memo=f"assigned by {current.username or current.sub}"
-        )
+        if pending_vendors:
+            maximo_result = {"skipped": f"รอ {', '.join(pending_vendors)} วางแผนส่งทีมก่อน"}
+        else:
+            from services import pm_maximo_out
+            maximo_result = await pm_maximo_out.safe_sync_in_progress(
+                wonum, memo=f"assigned by {current.username or current.sub}"
+            )
 
     return {"ok": True, "wonum": wonum, "item": _serialize_open(doc), "maximo": maximo_result}
 
@@ -1651,7 +1703,7 @@ async def set_pm_equipment(
 #    เก็บลง collection เดียวกับใบงาน IN06 (iMPS.maximo_pm_open) เพื่อให้ทุกหน้า
 #    ที่อ่านใบงาน PM อยู่แล้วเห็นใบนี้ทันทีโดยไม่ต้องแก้ — ต่างกันแค่ field origin
 # ══════════════════════════════════════════════════════════════════
-MANUAL_WO_ORIGIN = "imps-manual"
+MANUAL_WO_ORIGIN = "imps-manual"  # ต้องตรงกับ services/pm_maximo_out.MANUAL_WO_ORIGIN
 
 
 def _is_manual_wo(doc: dict) -> bool:

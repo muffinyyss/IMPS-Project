@@ -20,7 +20,7 @@ import { DocumentArrowDownIcon, PlusIcon, TrashIcon } from "@heroicons/react/24/
 import { apiFetch } from "@/utils/api";
 import useLanguage from "@/utils/useLanguage";
 import { PM_LIST_ROUTE, PM_ORIGIN_LIST } from "@/app/dashboard/pm-report/lib/origin";
-import { PM_PLANNING_ROLES, allAssignees, myVendorPlan, type VendorPlan } from "@/app/dashboard/pm-report/components/planning";
+import { PM_PLANNING_ROLES, allAssignees, myVendorPlan, pendingVendorPlans, type VendorPlan } from "@/app/dashboard/pm-report/components/planning";
 import { PM_APPROVE_ROLES } from "@/app/dashboard/pm-report/components/flow";
 import { COMPANY_FILTER_OPTIONS, matchesCompanyFilter } from "@/utils/pm-dashboard";
 import { csvDate, csvFilename, downloadCsv, toCsv } from "@/utils/csv";
@@ -153,7 +153,8 @@ type PmStage = "open" | "in_progress" | "wait_approve" | "closed";
 function stageOf(row: PMRow): PmStage {
   // ใบงาน Maximo: assign แล้ว = In Progress เหมือนในตารางของแต่ละ tab
   if (row.kind === "wo") {
-    if (row.vendor_pending_for_me) return "open";
+    // vendor (เช่น EDS) ยังไม่ได้วางแผนส่งทีม = ยังไม่เริ่มงานจริง ทุกบริษัทเห็นเป็น Open
+    if (row.vendor_pending_for_me || pendingVendorPlans(row).length > 0) return "open";
     return String(row.planning_status ?? "pending").trim().toLowerCase() === "planned"
       ? "in_progress"
       : "open";

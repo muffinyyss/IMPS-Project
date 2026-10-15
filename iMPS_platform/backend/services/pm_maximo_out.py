@@ -122,6 +122,22 @@ def _skip(reason: str) -> dict:
     return {"ok": False, "skipped": True, "reason": reason}
 
 
+# ใบงานที่เปิดเองใน iMPS (หน้า PM List → "เพิ่มใบงาน") — ไม่มีเลขนี้อยู่ใน Maximo
+# ยิงอะไรไปก็โดนตีกลับ (BMXAA1496E) จึงไม่ส่ง API ไปหา Maximo เลยทุกเส้น
+# ต้องตรงกับ MANUAL_WO_ORIGIN ใน routers/pm_maximo.py (import ตรงไม่ได้ — วนกัน)
+MANUAL_WO_ORIGIN = "imps-manual"
+MANUAL_SKIP_REASON = "ใบงานเปิดเองใน iMPS — ไม่ส่งเข้า Maximo"
+
+
+async def is_manual_wonum(wonum: str) -> bool:
+    """ใบงานเลขนี้เปิดเองใน iMPS หรือไม่ (ดู origin ใน maximo_pm_open)"""
+    wonum = (wonum or "").strip()
+    if not wonum:
+        return False
+    wo = await _open_coll().find_one({"wonum": wonum}, {"origin": 1}) or {}
+    return str(wo.get("origin") or "").strip().lower() == MANUAL_WO_ORIGIN
+
+
 def _fail(e: Exception) -> dict:
     detail: dict[str, Any] = {"ok": False, "error": str(e)}
     if isinstance(e, MaximoError) and e.body:
@@ -258,7 +274,9 @@ async def push_labor_time(coll, report_id, report: dict) -> dict:
     if not start:
         return _skip("ยังไม่มีวันเวลาเริ่มงาน")
 
-    wo = await _open_coll().find_one({"wonum": wonum}, {"assignees": 1, "location": 1}) or {}
+    wo = await _open_coll().find_one(
+        {"wonum": wonum}, {"assignees": 1, "vendor_plans": 1, "location": 1}
+    ) or {}
     location = wo.get("location") or None
 
     # ช่างเลือก laborcode เองในฟอร์ม = ใช้ตรง ๆ ไม่ต้อง map จาก username
@@ -288,7 +306,11 @@ async def push_labor_time(coll, report_id, report: dict) -> dict:
             return {"ok": True, "wonum": wonum, "sent": sent}
         return {"ok": False, "wonum": wonum, "sent": sent, "total": len(picked), "errors": errors}
 
-    assignees = [str(a).strip() for a in (wo.get("assignees") or []) if str(a or "").strip()]
+    # ช่างของ planner ต้นทาง + ช่างที่ vendor (เช่น EDS) ส่งเข้าหน้างานในแผนรอบ 2
+    names = list(wo.get("assignees") or [])
+    for vp in wo.get("vendor_plans") or []:
+        names.extend(vp.get("assignees") or [])
+    assignees = list(dict.fromkeys(str(a).strip() for a in names if str(a or "").strip()))
     if not assignees:
         inspector = str(report.get("inspector") or "").strip()
         assignees = [inspector] if inspector else []
@@ -344,6 +366,8 @@ async def sync_in_progress(wonum: str, *, memo: str = "") -> dict:
     wo = await coll.find_one({"wonum": wonum}) or {}
     if not wo:
         return _skip(f"ไม่พบใบงาน wonum={wonum}")
+    if str(wo.get("origin") or "").strip().lower() == MANUAL_WO_ORIGIN:
+        return _skip(MANUAL_SKIP_REASON)
 
     return await push_status(
         coll, wo["_id"], {**wo, "wonum": wonum},
@@ -381,6 +405,11 @@ async def sync_closed(coll, report_id, report: dict, *, memo: str = "", kind: st
     """
     if not PM_MAXIMO_ENABLED:
         return {"skipped": "PM_MAXIMO_ENABLED=false"}
+
+    # ใบงานเปิดเอง = ไม่มีใน Maximo → ปิดงานฝั่ง iMPS อย่างเดียว ไม่ยิง IN03/IN09/IN02
+    if await is_manual_wonum(report.get("wonum") or ""):
+        log.info(f"  ⏭️  ข้าม Maximo — {report.get('wonum')} เป็นใบงานที่เปิดเองใน iMPS")
+        return {"skipped": MANUAL_SKIP_REASON}
 
     out: dict[str, Any] = {}
 
