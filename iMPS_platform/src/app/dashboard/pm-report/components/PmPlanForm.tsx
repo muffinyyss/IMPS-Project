@@ -25,6 +25,7 @@ import {
   equipLabel,
   fetchPmAssigneeOptions,
   myVendorPlan,
+  pendingVendorPlans,
   formatDate,
   planningChipClass,
   PM_DEFAULT_SPAN_DAYS,
@@ -116,6 +117,10 @@ const T = {
   save: { th: "Assign", en: "Assign" },
 
   vendorSection: { th: "แผนของ", en: "Plan by" },
+  waitVendor: {
+    th: "รอ {v} วางแผนส่งทีม/ช่างเข้าหน้างานก่อน — ใบงานยังเป็น Open และยังเริ่ม PM ไม่ได้",
+    en: "Waiting for {v} to plan and dispatch its team — the work order stays Open and PM cannot start yet",
+  },
   vendorPending: {
     th: "รอ planner ของบริษัทนี้วางแผน (เลือกช่างและกำหนดการของตัวเอง)",
     en: "Waiting for this company's planner to plan (pick its own technicians and schedule)",
@@ -399,7 +404,9 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
   // planner ของ vendor ที่ใบงานส่งต่อมาให้: ต้องวางแผนของบริษัทตัวเองก่อน — แผนต้นทางเสร็จแล้วยังไม่พอ
   const showStart = !!onStart && !vendorTurn
     && (!canPlan || (alreadyPlanned && PM_PLANNER_FILL_ROLES.includes(myRole)));
-  const canStart = !loading && !!wo && plannedEquipment.length > 0;
+  // ส่งต่อให้ vendor แล้วแต่ vendor ยังไม่ได้วางแผน = ยังไม่มีทีมเข้าหน้างาน เริ่มไม่ได้
+  const waitingVendors = pendingVendorPlans(wo).map((v) => v.vendor).filter(Boolean);
+  const canStart = !loading && !!wo && plannedEquipment.length > 0 && waitingVendors.length === 0;
   const vendorPlans: VendorPlan[] = wo?.vendor_plans ?? [];
 
   return (
@@ -476,6 +483,14 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
             <div className="tw-mb-4 tw-flex tw-items-start tw-gap-3 tw-px-4 tw-py-3 tw-rounded-lg tw-bg-blue-50 tw-border tw-border-blue-200">
               <ExclamationTriangleIcon className="tw-w-5 tw-h-5 tw-text-blue-500 tw-mt-0.5 tw-flex-shrink-0" />
               <p className="tw-text-sm tw-text-blue-800">{t("plannedNotice", lang)}</p>
+            </div>
+          )}
+
+          {/* planner ต้นทาง/ช่างเห็นว่ายังรอ vendor ส่งทีมอยู่ — ไม่ใช่ปุ่มจางเฉย ๆ */}
+          {!loading && !vendorTurn && alreadyPlanned && waitingVendors.length > 0 && (
+            <div className="tw-mb-4 tw-flex tw-items-start tw-gap-3 tw-px-4 tw-py-3 tw-rounded-lg tw-bg-amber-50 tw-border tw-border-amber-200">
+              <ExclamationTriangleIcon className="tw-w-5 tw-h-5 tw-text-amber-500 tw-mt-0.5 tw-flex-shrink-0" />
+              <p className="tw-text-sm tw-text-amber-800">{t("waitVendor", lang).replace("{v}", waitingVendors.join(", "))}</p>
             </div>
           )}
 

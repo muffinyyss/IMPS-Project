@@ -31,6 +31,7 @@ import {
   matchesCompanyFilter, originOf, weeksInMonth,
 } from "@/utils/pm-dashboard";
 import { PM_LIST_ROUTE } from "@/app/dashboard/pm-report/lib/origin";
+import { allAssignees } from "@/app/dashboard/pm-report/components/planning";
 
 const Chart = dynamic(() => import("react-apexcharts"), { ssr: false });
 
@@ -222,7 +223,9 @@ export default function PMDashboardPage() {
               status: String(w?.status || ""),
               planning_status: String(w?.planning_status || "pending"),
               technician: "",
-              assignees: Array.isArray(w?.assignees) ? w.assignees.filter(Boolean) : [],
+              // ช่างของ planner ต้นทาง + ช่างที่ vendor (เช่น EDS) ส่งเข้าหน้างาน
+              assignees: allAssignees(w),
+              vendor_plans: Array.isArray(w?.vendor_plans) ? w.vendor_plans : [],
               sn: String(w?.sn || ""),
               station_id: String(w?.station_id || ""),
               station_name: String(w?.station_id || w?.location || ""),

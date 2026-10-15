@@ -18,9 +18,11 @@ import { useLanguage, type Lang } from "@/utils/useLanguage";
 import {
   equipLabel,
   formatDate,
+  pendingVendorPlans,
   toDateTimeLocalValue,
   type MaximoSource,
   type MaximoWorkOrder,
+  type VendorPlan,
 } from "./planning";
 
 const LOGO_SRC = "/img/logo_egat.png";
@@ -61,6 +63,17 @@ const T = {
   noEquipment: { th: "ยังไม่ได้เลือกอุปกรณ์", en: "No equipment selected" },
 
   startPm: { th: "เริ่ม PM", en: "Start PM" },
+  vendorSection: { th: "แผนของ", en: "Plan by" },
+  vendorPlanned: { th: "วางแผนแล้ว", en: "Planned" },
+  vendorWaiting: { th: "รอวางแผน", en: "Pending" },
+  vendorPending: {
+    th: "รอ planner ของบริษัทนี้วางแผน (เลือกช่างและกำหนดการของตัวเอง)",
+    en: "Waiting for this company's planner to plan (pick its own technicians and schedule)",
+  },
+  waitVendor: {
+    th: "รอ {v} วางแผนส่งทีม/ช่างเข้าหน้างานก่อน จึงเริ่ม PM ได้",
+    en: "Waiting for {v} to plan and dispatch its team before PM can start",
+  },
   pickCharger: { th: "เลือกตู้ที่จะเริ่ม PM", en: "Pick a charger to start" },
   waitPlanner: {
     th: "ผู้วางแผนยังไม่ได้เลือกอุปกรณ์ที่ต้อง PM — รอให้วางแผนเสร็จก่อนจึงเริ่มได้",
@@ -116,6 +129,9 @@ export default function PmWorkOrderInfo({ source, identifier, wonum, onStart, on
 
   const assignees = (wo?.assignees ?? []).filter(Boolean);
   const equipment = wo?.selected_equipment ?? [];
+  // แผนรอบ 2 ของ vendor (เช่น EDS) — ช่างของ vendor ต้องเห็นกำหนดการ/ทีมของบริษัทตัวเอง
+  const vendorPlans: VendorPlan[] = wo?.vendor_plans ?? [];
+  const waitingVendors = pendingVendorPlans(wo).map((v) => v.vendor).filter(Boolean);
   // ฟอร์ม charger ผูกกับ sn ของตู้ ถ้าเข้ามาทางหน้า PM List จะไม่มี sn ติดมาใน URL
   // (หน้านั้นล้าง selected_sn ทิ้งด้วย) ต้องหยิบจากอุปกรณ์ที่ planner เลือกไว้ในใบงาน
   const chargers = source === "charger"
@@ -227,10 +243,54 @@ export default function PmWorkOrderInfo({ source, identifier, wonum, onStart, on
               </div>
             </div>
 
+            {/* แผนของ vendor ที่ planner ต้นทางส่งต่อให้วางแผนอีกรอบ — 1 หัวข้อต่อ 1 บริษัท */}
+            {vendorPlans.map((vp, i) => {
+              const planned = String(vp.status ?? "").toLowerCase() === "planned";
+              return (
+                <div key={vp.vendor || i} className="tw-mb-6 tw-rounded-lg tw-overflow-hidden tw-border tw-border-blue-gray-100 tw-bg-white tw-shadow-sm">
+                  <div className="tw-flex tw-items-center tw-gap-3 tw-bg-gray-700 tw-px-4 tw-py-3 tw-text-white">
+                    <div className="tw-w-8 tw-h-8 tw-rounded-full tw-bg-white tw-text-gray-700 tw-flex tw-items-center tw-justify-center tw-font-bold tw-text-sm">{2 + i}</div>
+                    <span className="tw-font-semibold tw-text-base">{t("vendorSection", lang)} {vp.vendor}</span>
+                    <span className={`tw-ml-auto tw-rounded-full tw-px-2.5 tw-py-0.5 tw-text-[11px] tw-font-semibold ${planned ? "tw-bg-white tw-text-gray-700" : "tw-bg-amber-100 tw-text-amber-800"}`}>
+                      {planned ? t("vendorPlanned", lang) : t("vendorWaiting", lang)}
+                    </span>
+                  </div>
+                  <div className="tw-p-4">
+                    {!planned ? (
+                      <p className="tw-text-sm tw-text-amber-700">{t("vendorPending", lang)}</p>
+                    ) : (
+                      <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-4">
+                        <div>
+                          <label className={LABEL}>{t("plannedAt", lang)}</label>
+                          <div className={RO}>{toDateTimeLocalValue(vp.planned_at).replace("T", " ") || "-"}</div>
+                        </div>
+                        <div>
+                          <label className={LABEL}>{t("plannedBy", lang)}</label>
+                          <div className={RO}>{vp.planned_by || "-"}</div>
+                        </div>
+                        <div>
+                          <label className={LABEL}>{t("schedStart", lang)}</label>
+                          <div className={RO}>{toDateTimeLocalValue(vp.sched_start).replace("T", " ") || "-"}</div>
+                        </div>
+                        <div>
+                          <label className={LABEL}>{t("schedFinish", lang)}</label>
+                          <div className={RO}>{toDateTimeLocalValue(vp.sched_finish).replace("T", " ") || "-"}</div>
+                        </div>
+                        <div>
+                          <label className={LABEL}>{t("technician", lang)}</label>
+                          <div className={RO}>{(vp.assignees ?? []).filter(Boolean).join(", ") || t("noTechnician", lang)}</div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+
             {/* อุปกรณ์ที่ต้อง PM */}
             <div className="tw-mb-6 tw-rounded-lg tw-overflow-hidden tw-border tw-border-blue-gray-100 tw-bg-white tw-shadow-sm">
               <div className="tw-flex tw-items-center tw-gap-3 tw-bg-gray-700 tw-px-4 tw-py-3 tw-text-white">
-                <div className="tw-w-8 tw-h-8 tw-rounded-full tw-bg-white tw-text-gray-700 tw-flex tw-items-center tw-justify-center tw-font-bold tw-text-sm">2</div>
+                <div className="tw-w-8 tw-h-8 tw-rounded-full tw-bg-white tw-text-gray-700 tw-flex tw-items-center tw-justify-center tw-font-bold tw-text-sm">{2 + vendorPlans.length}</div>
                 <span className="tw-font-semibold tw-text-base">{t("equipSection", lang)}</span>
                 <span className="tw-ml-auto tw-text-xs tw-font-medium tw-text-white/90">{equipment.length}</span>
               </div>
@@ -260,6 +320,11 @@ export default function PmWorkOrderInfo({ source, identifier, wonum, onStart, on
                 <p className="tw-text-sm tw-text-amber-800">{t("waitPlanner", lang)}</p>
               </div>
             )}
+            {equipment.length > 0 && waitingVendors.length > 0 && (
+              <div className="tw-rounded-xl tw-border tw-border-amber-200 tw-bg-amber-50 tw-px-5 tw-py-4 tw-text-center">
+                <p className="tw-text-sm tw-text-amber-800">{t("waitVendor", lang).replace("{v}", waitingVendors.join(", "))}</p>
+              </div>
+            )}
           </>
         )}
       </div>
@@ -276,7 +341,7 @@ export default function PmWorkOrderInfo({ source, identifier, wonum, onStart, on
             key={c?.sn ?? `start-${i}`}
             type="button"
             onClick={() => onStart(c?.sn ?? chargers[0]?.sn ?? undefined)}
-            disabled={loading || !wo || equipment.length === 0}
+            disabled={loading || !wo || equipment.length === 0 || waitingVendors.length > 0}
             className="tw-bg-amber-500 hover:tw-bg-amber-600 tw-text-white tw-font-semibold tw-text-base tw-px-8 tw-py-3 tw-rounded-xl hover:tw-shadow-lg hover:tw-shadow-amber-500/30 tw-transition-all disabled:tw-opacity-50 disabled:tw-shadow-none"
           >
             {c ? `${t("startPm", lang)} · ${equipLabel(c)}` : t("startPm", lang)}

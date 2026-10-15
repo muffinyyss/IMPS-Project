@@ -16,11 +16,14 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "@/utils/api";
 import type { Lang } from "@/utils/useLanguage";
 import {
+  allAssignees,
   derivePlanningStatus,
   equipLabel,
+  pendingVendorPlans,
   PM_PLANNING_ROLES,
   type MaximoSource,
   type MaximoWorkOrder,
+  type VendorPlan,
 } from "./planning";
 
 export const PM_APPROVE_ROLES = ["admin", "planner"];
@@ -42,10 +45,14 @@ export type FlowRow = {
   status?: string;
   reject_remark?: string;
   planning_status?: string;
+  /** แผนรอบ 2 ของ vendor (เช่น EDS) — ยังมีรายที่ไม่ได้วางแผน = ยังไม่ส่งทีมเข้าหน้างาน */
+  vendor_plans?: VendorPlan[] | null;
 };
 
 export function toPmFlow(row: FlowRow): PmFlow {
   if (row.kind === "wo") {
+    // planner ต้นทาง (EGAT) วางแผนแล้ว แต่ vendor ยังไม่ได้ส่งทีม → ยังเป็น Open
+    if (pendingVendorPlans(row).length > 0) return "wo_pending";
     return derivePlanningStatus(0, row.planning_status ?? "pending") === "planned"
       ? "wo_planned"
       : "wo_pending";
@@ -208,8 +215,9 @@ export function woToRow(w: MaximoWorkOrder, fallbackName: string) {
     // Inspector = คนที่กรอกเอกสารจริง — ใบงานที่ยังไม่มีเอกสารจึงเว้นว่างไว้
     // ช่างที่ planner มอบหมายเก็บแยกไว้ที่ assignees_label สำหรับโชว์ใน tooltip
     inspector: "",
-    assignees_label: (w.assignees ?? []).filter(Boolean).join(", "),
+    assignees_label: allAssignees(w).join(", "),
     planning_status: w.planning_status ?? "pending",
+    vendor_plans: w.vendor_plans ?? [],
     selected_equipment_label: selected.map((e) => equipLabel(e)).join(", "),
   };
 }

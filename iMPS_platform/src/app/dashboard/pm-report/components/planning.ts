@@ -65,6 +65,17 @@ export function myVendorPlan(
   return (wo?.vendor_plans ?? []).find((v) => String(v.vendor ?? "").trim().toLowerCase() === c) ?? null;
 }
 
+/**
+ * vendor ที่ถูกส่งต่อแต่ยังไม่ได้วางแผน = ยังไม่ได้ส่งทีม/ช่างเข้าหน้างาน
+ * ใบงานที่ยังเหลือรายการนี้ถือว่ายัง "Open" ทุกหน้าจอ และยังเริ่ม PM ไม่ได้
+ * (backend ก็พัก INPRG ไว้จนกว่า vendor รายสุดท้ายจะวางแผนเสร็จ)
+ */
+export function pendingVendorPlans(
+  wo: Pick<MaximoWorkOrder, "vendor_plans"> | null | undefined,
+): VendorPlan[] {
+  return (wo?.vendor_plans ?? []).filter((v) => String(v.status ?? "").trim().toLowerCase() !== "planned");
+}
+
 /** ช่างทั้งหมดของใบงาน = ของ planner ต้นทาง + ที่ vendor มอบหมายเพิ่ม (ไม่ซ้ำ) */
 export function allAssignees(wo: Pick<MaximoWorkOrder, "assignees" | "vendor_plans"> | null | undefined): string[] {
   const out: string[] = [];

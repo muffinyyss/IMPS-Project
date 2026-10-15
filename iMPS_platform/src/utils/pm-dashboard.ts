@@ -30,6 +30,8 @@ export type PmRow = {
   /** ยี่ห้อของตู้ — ว่าง = ระบุไม่ได้ (backend เติมให้จาก iMPS.charger) */
   charger_brand?: string;
   assignees?: string[];
+  /** แผนรอบ 2 ของ vendor (เช่น EDS) — มีรายที่ยังไม่วางแผน = ยังไม่ส่งทีม นับเป็น open */
+  vendor_plans?: { vendor?: string; status?: string }[];
   created_at?: string;
   file_url?: string;
 };
@@ -136,6 +138,10 @@ export function stageOf(r: PmRow): PmStage {
 
   if (r.kind === "wo") {
     if (WO_CLOSED_STATUSES.has(status.trim().toUpperCase())) return "closed";
+    // เกณฑ์เดียวกับ PM List: vendor ยังไม่ได้วางแผนส่งทีม = ยัง open
+    if ((r.vendor_plans ?? []).some((v) => String(v.status ?? "").trim().toLowerCase() !== "planned")) {
+      return "open";
+    }
     return String(r.planning_status ?? "pending").trim().toLowerCase() === "planned"
       ? "in_progress"
       : "open";
