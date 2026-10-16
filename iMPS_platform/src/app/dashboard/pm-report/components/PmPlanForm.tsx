@@ -584,36 +584,43 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
                     </div>
                     <div>
                       <label className={LABEL}>
-                        {t("schedStart", lang)} <span className="tw-text-red-500">*</span>
+                        {t("schedStart", lang)} {!locked && <span className="tw-text-red-500">*</span>}
                       </label>
-                      <input
-                        type="datetime-local"
-                        value={schedStart}
-                        disabled={locked}
-                        onChange={(e) => setSchedStart(e.target.value)}
-                        className={FIELD}
-                      />
+                      {/* แก้ไม่ได้ = ช่องอ่านอย่างเดียวสีเทา แพทเทิร์นเดียวกับช่องอื่น ไม่ใช่ input ที่กดไม่ได้ */}
+                      {locked ? (
+                        <input type="text" readOnly className={FIELD_RO} value={schedStart ? schedStart.replace("T", " ") : "-"} />
+                      ) : (
+                        <input
+                          type="datetime-local"
+                          value={schedStart}
+                          onChange={(e) => setSchedStart(e.target.value)}
+                          className={FIELD}
+                        />
+                      )}
                     </div>
                     <div>
                       <label className={LABEL}>
-                        {t("schedFinish", lang)} <span className="tw-text-red-500">*</span>
+                        {t("schedFinish", lang)} {!locked && <span className="tw-text-red-500">*</span>}
                       </label>
                       {/* min = ปิดวันก่อนวันเริ่มใน picker — validation ยังต้องมีเพราะพิมพ์มือเลี่ยง min ได้ */}
-                      <input
-                        type="datetime-local"
-                        value={schedFinish}
-                        min={schedStart || undefined}
-                        disabled={locked}
-                        onChange={(e) => setSchedFinish(e.target.value)}
-                        className={`tw-w-full tw-rounded-lg tw-border tw-bg-white tw-px-3 tw-py-2.5 tw-text-sm tw-text-blue-gray-800 focus:tw-outline-none ${schedRangeInvalid ? "tw-border-red-400 focus:tw-border-red-500" : "tw-border-blue-gray-200 focus:tw-border-blue-500"}`}
-                      />
-                      {schedRangeInvalid && (
+                      {locked ? (
+                        <input type="text" readOnly className={FIELD_RO} value={schedFinish ? schedFinish.replace("T", " ") : "-"} />
+                      ) : (
+                        <input
+                          type="datetime-local"
+                          value={schedFinish}
+                          min={schedStart || undefined}
+                          onChange={(e) => setSchedFinish(e.target.value)}
+                          className={`tw-w-full tw-rounded-lg tw-border tw-bg-white tw-px-3 tw-py-2.5 tw-text-sm tw-text-blue-gray-800 focus:tw-outline-none ${schedRangeInvalid ? "tw-border-red-400 focus:tw-border-red-500" : "tw-border-blue-gray-200 focus:tw-border-blue-500"}`}
+                        />
+                      )}
+                      {!locked && schedRangeInvalid && (
                         <p className="tw-mt-1.5 tw-text-xs tw-text-red-600">{t("schedRangeError", lang)}</p>
                       )}
                     </div>
                     <div>
                       <label className={LABEL}>
-                        {t("technician", lang)} <span className="tw-text-red-500">*</span>
+                        {t("technician", lang)} {!locked && <span className="tw-text-red-500">*</span>}
                       </label>
                       {/* คนที่วางแผนไม่ได้ (เช่นช่าง) เรียก /companies/pm-options ไม่ได้ — ได้ 403
                           แล้ว list ว่าง ทำให้ขึ้น "ไม่พบ..." ซึ่งไม่จริง
@@ -733,7 +740,21 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
                   />
                   <div className="tw-p-4">
                     {/* รวมตู้ชาร์จกับอุปกรณ์ระดับสถานีเป็นลิสต์เดียว — ผู้ใช้ติ๊กจากที่เดียวจบ */}
-                    {equipmentOptions.length === 0 ? (
+                    {locked ? (
+                      // แก้ไม่ได้ = โชว์เฉพาะอุปกรณ์ที่เลือกไว้ ในกล่องสีเทาแบบเดียวกับช่องอ่านอย่างเดียว
+                      plannedEquipment.length === 0 ? (
+                        <div className={FIELD_RO}>{t("noEquipment", lang)}</div>
+                      ) : (
+                        <div className="tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-gray-100 tw-divide-y tw-divide-blue-gray-200/60 tw-max-h-72 tw-overflow-y-auto">
+                          {plannedEquipment.map((e) => (
+                            <div key={equipKey(e)} className="tw-flex tw-items-center tw-gap-2.5 tw-px-3 tw-py-2.5">
+                              <span className="tw-min-w-0 tw-truncate tw-text-sm tw-text-blue-gray-700">{equipLabel(e)}</span>
+                              {e.sn && <span className="tw-ml-auto tw-text-xs tw-text-blue-gray-400">{e.sn}</span>}
+                            </div>
+                          ))}
+                        </div>
+                      )
+                    ) : equipmentOptions.length === 0 ? (
                       <p className="tw-text-xs tw-text-orange-600">{t("noEquipment", lang)}</p>
                     ) : (
                       <div className="tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-divide-y tw-divide-blue-gray-50 tw-max-h-72 tw-overflow-y-auto">
