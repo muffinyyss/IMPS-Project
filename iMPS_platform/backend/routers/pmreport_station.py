@@ -18,6 +18,7 @@ from config import (
     station_collection, _validate_station_id_th, th_tz, _ensure_utc_iso,
 )
 from deps import UserClaims, get_current_user
+from routers import pm_scope
 from routers import pm_flow
 from services import pm_maximo_out, pm_pdf
 from uploads_access import assert_station_access, assert_sn_access
@@ -389,6 +390,8 @@ async def stationpmreport_post_submit(
     """Post mode submission"""
     station_id = body.station_id.strip()
     coll = get_stationpmreport_collection_for(station_id)
+    # ใบ PM สถานีที่แบ่งงานกับ vendor — กรอกได้เฉพาะส่วนของบริษัทตัวเอง (routers/pm_scope.py)
+    await pm_scope.guard(current, "station", coll, report_id=body.report_id, job_id=body.job_id, station_id=station_id)
 
     if body.report_id:
         try:
@@ -511,6 +514,8 @@ async def stationpmreport_upload_post_photos(
         raise HTTPException(status_code=400, detail="Bad group key")
 
     coll = get_stationpmreport_collection_for(station_id)
+    # ใบ PM สถานีที่แบ่งงานกับ vendor — กรอกได้เฉพาะส่วนของบริษัทตัวเอง (routers/pm_scope.py)
+    await pm_scope.guard(current, "station", coll, report_id=report_id, station_id=station_id)
     try:
         oid = ObjectId(report_id)
     except Exception:
@@ -594,6 +599,8 @@ async def stationpmreport_finalize(
     current: UserClaims = Depends(get_current_user),
 ):
     coll = get_stationpmreport_collection_for(station_id)
+    # ใบ PM สถานีที่แบ่งงานกับ vendor — กรอกได้เฉพาะส่วนของบริษัทตัวเอง (routers/pm_scope.py)
+    await pm_scope.guard(current, "station", coll, report_id=report_id, station_id=station_id)
     try:
         oid = ObjectId(report_id)
     except Exception:

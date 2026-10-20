@@ -22,6 +22,7 @@ import {
   derivePlanningStatus,
   EMPTY_PM_ASSIGNEE_OPTIONS,
   equipKey,
+  chargerVendorMap,
   equipLabel,
   fetchPmAssigneeOptions,
   myVendorPlan,
@@ -172,6 +173,15 @@ function SectionHeader({ no, title, right }: { no: number; title: string; right?
       <span className="tw-font-semibold tw-text-base">{title}</span>
       {right && <div className="tw-ml-auto">{right}</div>}
     </div>
+  );
+}
+
+/** ป้ายชื่อ vendor ที่ดูแลตู้ — ตู้ของ vendor ที่มี planner จะถูกส่งต่อเป็นงานของ vendor ตอนบันทึกแผน */
+function VendorTag({ name }: { name: string }) {
+  return (
+    <span className="tw-shrink-0 tw-rounded-full tw-bg-amber-100 tw-px-2 tw-py-0.5 tw-text-[10px] tw-font-semibold tw-text-amber-800">
+      {name}
+    </span>
   );
 }
 
@@ -395,6 +405,8 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
   // เริ่ม PM ได้ต่อเมื่อ planner เลือกอุปกรณ์ไว้แล้ว — อ่านจากแผนที่บันทึกแล้ว
   // ไม่ใช่ state ของ checkbox ที่ planner อาจกำลังแก้ค้างอยู่
   const plannedEquipment = wo?.selected_equipment ?? [];
+  // ตู้ที่ส่งต่อเป็นงานของ vendor แล้ว (ตามช่อง Vendor ของตู้) — โชว์ป้ายชื่อ vendor ข้างตู้
+  const vendorOf = chargerVendorMap(wo);
   // วางแผนเสร็จแล้ว = อ่านอย่างเดียวถาวร (PM ไม่มีแก้ไขแผน)
   const locked = !canPlan || alreadyPlanned;
   // ใบงานที่ส่งต่อมาให้บริษัทของคนที่ login วางแผนอีกรอบ และยังไม่ได้วางแผน
@@ -749,6 +761,7 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
                           {plannedEquipment.map((e) => (
                             <div key={equipKey(e)} className="tw-flex tw-items-center tw-gap-2.5 tw-px-3 tw-py-2.5">
                               <span className="tw-min-w-0 tw-truncate tw-text-sm tw-text-blue-gray-700">{equipLabel(e)}</span>
+                              {e.sn && vendorOf[e.sn.toLowerCase()] && <VendorTag name={vendorOf[e.sn.toLowerCase()]} />}
                               {e.sn && <span className="tw-ml-auto tw-text-xs tw-text-blue-gray-400">{e.sn}</span>}
                             </div>
                           ))}
@@ -787,6 +800,7 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
                               <span className="tw-min-w-0 tw-truncate tw-text-sm tw-text-blue-gray-800">
                                 {equipLabel(e)}
                               </span>
+                              {e.type === "charger" && e.vendor && <VendorTag name={e.vendor} />}
                               {e.sn && (
                                 <span className="tw-ml-auto tw-text-xs tw-text-blue-gray-400">{e.sn}</span>
                               )}

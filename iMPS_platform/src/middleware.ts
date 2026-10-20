@@ -7,7 +7,9 @@ import type { NextRequest } from "next/server";
 // ตรวจแค่ว่ามี token ที่ยังไม่หมดอายุ ไม่ตรวจลายเซ็น: secret ของ JWT อยู่ที่ backend เท่านั้น
 // และหน้าเว็บไม่มีข้อมูลในตัว — ข้อมูลทุกชิ้นมาจาก API ซึ่ง backend ตรวจ session + สิทธิ์ทุกครั้ง
 // คุกกี้ถูกตั้งโดย backend: prod อยู่ origin เดียวกัน (nginx), dev คือ localhost ต่างพอร์ต (คุกกี้ไม่แยกพอร์ต)
+// access token หมดอายุ = หลุดทันที ไม่ต่ออายุด้วย refresh token
 const ACCESS_COOKIE = "access_token";
+// ใช้แค่เป็นสัญญาณว่า "เคย login ไว้" (คุกกี้อยู่ 7 วัน, logout ลบทิ้ง) เพื่อแจ้งผู้ใช้ว่าเซสชันหมดอายุ
 const REFRESH_COOKIE = "refresh_token";
 
 function unexpired(token: string | undefined): boolean {
@@ -23,13 +25,13 @@ function unexpired(token: string | undefined): boolean {
 }
 
 export function middleware(request: NextRequest) {
-  // access หมดอายุแต่ refresh ยังอยู่ → ปล่อยผ่าน แล้ว apiFetch จะ refresh ให้เองที่ 401 แรก
-  if (unexpired(request.cookies.get(ACCESS_COOKIE)?.value) || unexpired(request.cookies.get(REFRESH_COOKIE)?.value)) {
+  if (unexpired(request.cookies.get(ACCESS_COOKIE)?.value)) {
     return NextResponse.next();
   }
-  const login = new URL("/auth/signin/basic", request.url);
-  login.searchParams.set("next", request.nextUrl.pathname + request.nextUrl.search);
-  return NextResponse.redirect(login);
+  const hadSession = request.cookies.has(ACCESS_COOKIE) || request.cookies.has(REFRESH_COOKIE);
+  const target = new URL(hadSession ? "/auth/session-expired" : "/auth/signin/basic", request.url);
+  target.searchParams.set("next", request.nextUrl.pathname + request.nextUrl.search);
+  return NextResponse.redirect(target);
 }
 
 export const config = {

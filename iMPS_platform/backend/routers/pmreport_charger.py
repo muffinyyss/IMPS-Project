@@ -21,6 +21,7 @@ from config import (
     CBBOXPMReportDB, CBBOXPMUrlDB, normalize_pm_date, _ensure_utc_iso,
 )
 from deps import UserClaims, get_current_user
+from routers import pm_scope
 from routers import pm_flow
 from services import pm_maximo_out, pm_pdf
 from uploads_access import assert_station_access, assert_sn_access
@@ -419,6 +420,8 @@ async def pmreport_post_submit(
     """Submit Post-PM report for a charger"""
     sn = body.sn.strip()
     coll = get_pmreport_collection_for(sn)
+    # ใบ PM สถานีที่แบ่งงานกับ vendor — กรอกได้เฉพาะส่วนของบริษัทตัวเอง (routers/pm_scope.py)
+    await pm_scope.guard(current, "charger", coll, report_id=body.report_id, job_id=body.job_id, sn=sn)
     db = coll.database
     url_coll = get_pmurl_coll_upload(sn)
 
@@ -544,6 +547,8 @@ async def pmreport_upload_post_photos(
         raise HTTPException(status_code=400, detail="Bad group key")
 
     coll = get_pmreport_collection_for(sn)
+    # ใบ PM สถานีที่แบ่งงานกับ vendor — กรอกได้เฉพาะส่วนของบริษัทตัวเอง (routers/pm_scope.py)
+    await pm_scope.guard(current, "charger", coll, report_id=report_id, sn=sn)
     try:
         oid = ObjectId(report_id)
     except Exception:
@@ -616,6 +621,8 @@ async def pmreport_upload_post_photos(
 @router.post("/pmreport/{report_id}/finalize")
 async def pmreport_finalize(report_id: str, sn: str = Form(...), current: UserClaims = Depends(get_current_user)):
     coll = get_pmreport_collection_for(sn)
+    # ใบ PM สถานีที่แบ่งงานกับ vendor — กรอกได้เฉพาะส่วนของบริษัทตัวเอง (routers/pm_scope.py)
+    await pm_scope.guard(current, "charger", coll, report_id=report_id, sn=sn)
     try:
         oid = ObjectId(report_id)
     except Exception:

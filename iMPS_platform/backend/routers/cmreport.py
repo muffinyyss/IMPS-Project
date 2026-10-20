@@ -1036,12 +1036,20 @@ async def cmreport_load_draft(
     await _assert_can_edit_cm(coll, oid, station_id, current)
     doc = await coll.find_one(
         {"_id": oid, "station_id": station_id},
-        {"cm_draft": 1},
+        {"cm_draft": 1, "cm_draft_saved_at": 1},
     )
     if not doc:
         raise HTTPException(status_code=404, detail="Report not found")
     draft = doc.get("cm_draft")
-    return {"ok": True, "draft": draft, "hasDraft": isinstance(draft, dict) and bool(draft)}
+    # เวลาที่ร่างนี้ถึง server — frontend ใช้เทียบกับร่างในเครื่อง (ที่เซฟตอนส่ง server ไม่ผ่าน) แล้วเลือกตัวที่ใหม่กว่า
+    saved_at = doc.get("cm_draft_saved_at")
+    if isinstance(saved_at, datetime):
+        if saved_at.tzinfo is None:
+            saved_at = saved_at.replace(tzinfo=timezone.utc)
+        saved_at = saved_at.isoformat()
+    else:
+        saved_at = None
+    return {"ok": True, "draft": draft, "hasDraft": isinstance(draft, dict) and bool(draft), "savedAt": saved_at}
 
 
 @router.delete("/cmreport/{report_id}/draft")

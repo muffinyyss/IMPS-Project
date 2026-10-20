@@ -874,11 +874,14 @@ def _serialize_open(doc: dict) -> dict:
                 "sched_start": v.get("sched_start") or "",
                 "sched_finish": v.get("sched_finish") or "",
                 "assignees": v.get("assignees") or [],
+                # ตู้ชาร์จที่เป็นงานของ vendor รายนี้ (ตามช่อง Vendor ของตู้) — ว่าง = ส่งต่อทั้งใบแบบเดิม
+                "chargers": v.get("chargers") or [],
             }
             for v in (doc.get("vendor_plans") or [])
         ],
         "planned_at": doc.get("planned_at"),
         "planned_by": doc.get("planned_by"),
+        "planner_company": doc.get("planner_company") or "",
         "sched_start": doc.get("sched_start"),
         "sched_finish": doc.get("sched_finish"),
         "planning_status": doc.get("planning_status") or "pending",
@@ -1156,6 +1159,32 @@ def _merge_vendor_plans(existing: list[dict] | None, vendors: list[str]) -> list
     return out
 
 
+def _build_vendor_plans(
+    existing: list[dict] | None,
+    assignees: list[str],
+    planner_company: str,
+    station_id: str,
+    items: list[dict],
+) -> list[dict]:
+    """
+    ใบส่งต่อ vendor ของแผนรอบนี้ + ตู้ที่ส่งต่อให้แต่ละราย (field chargers)
+
+    vendor ที่ได้ใบส่งต่อ = vendor ที่ planner ต้นทางเลือกเป็นผู้รับผิดชอบ
+    และ vendor ตามช่อง Vendor ของตู้ที่อยู่ในแผน — เฉพาะรายที่มี planner ของตัวเองในระบบ
+    (ไม่มี planner = ไม่มีคนรับไปวางแผนต่อ ทีมต้นทางทำเองทั้งหมดเหมือนเดิม)
+    ตู้ของ vendor รายนั้นจะกลายเป็นงานของ vendor — ดูกติกาที่ routers/pm_scope.py
+    """
+    from routers import pm_scope
+
+    by_vendor = pm_scope.chargers_by_vendor(station_id, items or [])
+    names = list(assignees) + [name for name, _sns in by_vendor.values()]
+    vendors = _vendor_companies_with_planner(names, planner_company)
+    plans = _merge_vendor_plans(existing, vendors)
+    for p in plans:
+        p["chargers"] = list(by_vendor.get(str(p.get("vendor") or "").strip().lower(), ("", []))[1])
+    return plans
+
+
 def _pending_vendors(doc: dict) -> list[str]:
     """
     vendor ที่ถูกส่งต่อแต่ยังไม่ได้วางแผน = ยังไม่ได้ส่งทีม/ช่างเข้าหน้างาน
@@ -1358,7 +1387,7 @@ def _station_equipment_choices(station_id: str) -> tuple[list[dict], list[dict]]
         cursor = charger_collection.find(
             {"station_id": station_id},
             {"_id": 0, "SN": 1, "chargeBoxID": 1, "name": 1, "charger_name": 1,
-             "maximo_location": 1, "chargerNo": 1},
+             "maximo_location": 1, "chargerNo": 1, "vendor": 1},
         ).sort([("chargerNo", 1), ("SN", 1)])
         for idx, c in enumerate(cursor, start=1):
             # ตู้ที่ไม่มี SN เลือกไปก็บันทึกไม่ผ่าน (type charger บังคับ sn) — ไม่ต้องเสนอ
@@ -1372,6 +1401,9 @@ def _station_equipment_choices(station_id: str) -> tuple[list[dict], list[dict]]
                 "sn": c.get("SN"),
                 "label": f"Charger {charger_no}",
                 "location": c.get("maximo_location"),
+                # vendor ที่ดูแลตู้ (ช่อง Vendor ในหน้า EV Stations) — ตู้ที่มี vendor ที่มี planner
+                # จะถูกส่งต่อเป็นงานของ vendor นั้นตอนบันทึกแผน (routers/pm_scope.py)
+                "vendor": str(c.get("vendor") or "").strip(),
             })
 
     fixed = [{"type": t} for t in ("mdb", "ccb", "cbbox", "station")]
@@ -1541,7 +1573,12 @@ async def set_pm_vendor_plan(
             "",
         )
         if named:
-            plans.append({"vendor": named, "status": "pending"})
+            from routers import pm_scope
+            by_vendor = pm_scope.chargers_by_vendor(_station_id_of_wo(wo), wo.get("selected_equipment") or [])
+            plans.append({
+                "vendor": named, "status": "pending",
+                "chargers": list(by_vendor.get(named.lower(), ("", []))[1]),
+            })
             idx = len(plans) - 1
     if not company or idx < 0:
         raise HTTPException(status_code=403, detail="ใบงานนี้ไม่ได้ส่งต่อให้บริษัทของคุณวางแผน")
@@ -1655,6 +1692,7 @@ async def set_pm_equipment(
     sched_start_value = (body.sched_start or "").strip()
     sched_finish_value = (body.sched_finish or "").strip()
     assignees = [str(x).strip() for x in body.assignees if str(x or "").strip()]
+    planner_company = _company_of(current)
 
     # ไม่ส่ง equipment มา = คงรายการเดิมไว้ (ผู้เรียกที่ยังมี picker ส่ง list มาเหมือนเดิม)
     keep_equipment = body.equipment is None
@@ -1674,9 +1712,12 @@ async def set_pm_equipment(
         "sched_start": sched_start_value,
         "sched_finish": sched_finish_value,
         "assignees": assignees,
-        # vendor ที่ถูกเลือกและมี planner ของตัวเอง → ส่งต่อให้วางแผนอีกรอบ
-        "vendor_plans": _merge_vendor_plans(
-            wo.get("vendor_plans"), _vendor_companies_with_planner(assignees, _company_of(current))
+        "planner_company": planner_company,
+        # vendor ที่ถูกเลือก / vendor ของตู้ในแผน ที่มี planner ของตัวเอง → ส่งต่อให้วางแผนอีกรอบ
+        # พร้อมตู้ที่เป็นงานของ vendor รายนั้น
+        "vendor_plans": _build_vendor_plans(
+            wo.get("vendor_plans"), assignees, planner_company,
+            _station_id_of_wo(wo), effective_items,
         ),
     }
     if not keep_equipment:
@@ -1888,9 +1929,8 @@ async def create_pm_work_order(
         "sched_start": sched_start,
         "sched_finish": sched_finish,
         "assignees": assignees,
-        "vendor_plans": _merge_vendor_plans(
-            None, _vendor_companies_with_planner(assignees, _company_of(current))
-        ),
+        "planner_company": _company_of(current),
+        "vendor_plans": _build_vendor_plans(None, assignees, _company_of(current), sid, items),
     }
 
     # กดพร้อมกันแล้วได้เลขซ้ำ — ลองเลขถัดไปไม่กี่รอบก่อนยอมแพ้

@@ -107,9 +107,6 @@ if (typeof window !== "undefined") {
   });
 }
 
-// ✅ ล็อค refresh ให้ยิงแค่ครั้งเดียว
-let refreshPromise: Promise<boolean> | null = null;
-
 // ✅ debounce network toast — ป้องกัน toast ซ้ำรัวๆ
 let _networkToastActive = false;
 function notifyNetworkError() {
@@ -119,39 +116,6 @@ function notifyNetworkError() {
   setTimeout(() => {
     _networkToastActive = false;
   }, 5000);
-}
-
-async function doRefresh(): Promise<boolean> {
-  try {
-    // refresh token มากับคุกกี้เอง — backend ตั้งคุกกี้ access ใหม่กลับมา body ไม่มี token
-    const r = await fetch(`${API_BASE}/refresh`, {
-      method: "POST",
-      credentials: "include",
-    });
-
-    if (!r.ok) {
-      let detail = "";
-      try {
-        const body = await r.json();
-        detail = body?.detail || "";
-      } catch { }
-      console.warn("[apiFetch] refresh failed:", detail || r.status);
-      return false;
-    }
-    return true;
-  } catch (err) {
-    console.error("[apiFetch] refresh network error:", err);
-    return false;
-  }
-}
-
-function refreshOnce(): Promise<boolean> {
-  if (!refreshPromise) {
-    refreshPromise = doRefresh().finally(() => {
-      refreshPromise = null;
-    });
-  }
-  return refreshPromise;
 }
 
 // ✅ จำนวนครั้ง retry เมื่อ network error
@@ -206,13 +170,7 @@ export async function apiFetch(input: string | URL, init: RequestInit = {}) {
 
   console.warn("[apiFetch] 401 →", detail);
 
-  // ลอง refresh ครั้งเดียวเสมอ — มี refresh token ไหมรู้ได้เฉพาะ backend (คุกกี้ HttpOnly)
-  if (await refreshOnce()) {
-    const retry = await fetch(url, baseInit);
-    if (retry.status !== 401) return retry;
-  }
-
-  // ---------- refresh ไม่รอด → แจ้งเตือน + เด้ง login ----------
+  // ---------- token หมดอายุ/ไม่ถูกต้อง → แจ้งเตือน + เด้ง login ทันที (ไม่ refresh) ----------
   clearSessionProfile();
   redirectToLogin(detail || "expired");
   throw new Error("UNAUTHENTICATED");

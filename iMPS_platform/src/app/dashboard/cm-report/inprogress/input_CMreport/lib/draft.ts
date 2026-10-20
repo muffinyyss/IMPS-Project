@@ -54,6 +54,7 @@ export interface DraftResponse {
     ok: boolean;
     draft: DraftData | null;
     hasDraft: boolean;
+    savedAt?: string | null;   // เวลาที่ร่างถึง server (ISO)
 }
 
 export interface SaveDraftResponse {
@@ -137,16 +138,57 @@ const DRAFT_STORAGE_PREFIX = "cm_draft_";
  * บันทึก draft ลง localStorage (fallback เมื่อ offline)
  */
 export function saveDraftLocal(reportId: string, draftData: DraftData): void {
+    const key = `${DRAFT_STORAGE_PREFIX}${reportId}`;
+    const dataWithTimestamp = {
+        ...draftData,
+        savedAt: new Date().toISOString(),
+    };
     try {
-        const key = `${DRAFT_STORAGE_PREFIX}${reportId}`;
-        const dataWithTimestamp = {
-            ...draftData,
-            savedAt: new Date().toISOString(),
-        };
         localStorage.setItem(key, JSON.stringify(dataWithTimestamp));
     } catch (e) {
-        console.error("Failed to save draft to localStorage:", e);
+        // รูป/ไฟล์เป็น base64 → localStorage (~5MB) เต็มง่าย เดิมพลาดแล้วไม่ได้เก็บอะไรเลย
+        // ถอยมาเก็บเฉพาะข้อความ — อย่างน้อยสิ่งที่ช่างพิมพ์ไว้ไม่หาย
+        console.error("Failed to save draft to localStorage, retrying without images:", e);
+        try {
+            localStorage.setItem(key, JSON.stringify(stripDraftBinaries(dataWithTimestamp)));
+        } catch (e2) {
+            console.error("Failed to save text-only draft to localStorage:", e2);
+        }
     }
+}
+
+function stripActionBinaries(actions: DraftCorrectiveAction[] | undefined): DraftCorrectiveAction[] {
+    return (actions ?? []).map((a) => ({ ...a, beforeImages: [], afterImages: [], files: [] }));
+}
+
+/** ตัดรูป/ไฟล์แนบ (base64) ออกจากร่าง เหลือแต่ข้อความ */
+export function stripDraftBinaries(d: DraftData): DraftData {
+    return {
+        ...d,
+        corrective_actions: stripActionBinaries(d.corrective_actions),
+        extra_groups: d.extra_groups?.map((g) => ({ ...g, corrective_actions: stripActionBinaries(g.corrective_actions) })),
+    };
+}
+
+/**
+ * เลือกร่างที่ใหม่กว่าระหว่าง server กับในเครื่อง
+ *
+ * ร่างในเครื่องมีอยู่ได้เฉพาะตอนส่ง server ไม่ผ่าน (ส่งผ่านเมื่อไรจะถูกลบ) เช่น token หมดอายุ/เน็ตหลุด
+ * จึงใหม่กว่าร่างบน server เว้นแต่มีคนบันทึกร่างจากอีกเครื่องทีหลัง — เทียบเวลาเพื่อกันกรณีนั้น
+ * เดิมเลือก server ก่อนเสมอ → สิ่งที่กรอกหลังส่งไม่ผ่านถูกข้าม แล้วโดนลบตอนเซฟรอบถัดไป
+ */
+export function pickNewerDraft(
+    server: { draft: DraftData | null; savedAt?: string | null } | null,
+    local: DraftData | null,
+): DraftData | null {
+    const serverDraft = server?.draft ?? null;
+    if (!local) return serverDraft;
+    if (!serverDraft) return local;
+    const serverTime = Date.parse(server?.savedAt ?? "");
+    const localTime = Date.parse(local.savedAt ?? "");
+    if (Number.isNaN(serverTime)) return local;   // server รุ่นเก่าไม่ส่งเวลา → ร่างในเครื่องมาทีหลังแน่
+    if (Number.isNaN(localTime)) return serverDraft;
+    return localTime >= serverTime ? local : serverDraft;
 }
 
 /**
@@ -272,18 +314,15 @@ export class DraftManager {
      * โหลด draft (ลอง server ก่อน แล้ว fallback ไป local)
      */
     async load(): Promise<DraftData | null> {
+        let server: DraftResponse | null = null;
         try {
-            // ลอง server ก่อน
-            const response = await loadDraft(this.reportId, this.stationId);
-            if (response.hasDraft && response.draft) {
-                return response.draft;
-            }
+            server = await loadDraft(this.reportId, this.stationId);
+            if (!server.hasDraft) server = { ...server, draft: null };
         } catch (e) {
             console.error("Server draft load failed:", e);
         }
-
-        // Fallback ไป localStorage
-        return loadDraftLocal(this.reportId);
+        // ใช้ร่างที่ใหม่กว่า — ร่างในเครื่องคือสิ่งที่กรอกหลังส่ง server ไม่ผ่าน (เช่นตอน token หมดอายุ)
+        return pickNewerDraft(server, loadDraftLocal(this.reportId));
     }
 
     /**

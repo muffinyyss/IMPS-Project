@@ -55,29 +55,15 @@ describe("apiFetch — session par cookie uniquement", () => {
     expect(headers.get("X-Other")).toBe("1");
   });
 
-  it("401 → un seul /refresh (cookie), puis rejoue la requête", async () => {
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce(json(401, { detail: "token_expired" }))
-      .mockResolvedValueOnce(json(200, { ok: true }))   // /refresh
-      .mockResolvedValueOnce(json(200, { data: 1 }));   // rejeu
+  it("401 → aucun /refresh : profil effacé et retour au login avec la page courante", async () => {
+    store.set("user", JSON.stringify({ role: "admin" }));
+    const fetchMock = vi.fn().mockResolvedValueOnce(json(401, { detail: "token_expired" }));
     vi.stubGlobal("fetch", fetchMock);
     const { apiFetch } = await import("./api");
-    const res = await apiFetch("/me");
-    expect(res.status).toBe(200);
-    const [refreshUrl, refreshInit] = fetchMock.mock.calls[1];
-    expect(String(refreshUrl)).toMatch(/\/refresh$/);
-    expect((refreshInit as RequestInit).credentials).toBe("include");
-    expect((refreshInit as RequestInit).body).toBeUndefined();
-  });
-
-  it("refresh refusé → profil effacé et retour au login avec la page courante", async () => {
-    store.set("user", JSON.stringify({ role: "admin" }));
-    vi.stubGlobal("fetch", vi.fn()
-      .mockResolvedValueOnce(json(401, { detail: "token_expired" }))
-      .mockResolvedValueOnce(json(401, { detail: "refresh_token_expired" })));
-    const { apiFetch } = await import("./api");
     await expect(apiFetch("/me")).rejects.toThrow("UNAUTHENTICATED");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(store.has("user")).toBe(false);
+    expect(replace).toHaveBeenCalledWith(expect.stringContaining("reason=token_expired"));
     expect(replace).toHaveBeenCalledWith(expect.stringContaining("next=%2Fdashboard%2Fstations"));
   });
 });

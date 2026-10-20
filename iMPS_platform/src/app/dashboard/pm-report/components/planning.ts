@@ -15,6 +15,8 @@ export type EquipmentItem = {
   sn?: string | null;        // เฉพาะ charger
   location?: string | null;
   label?: string | null;
+  /** vendor ที่ดูแลตู้ (ช่อง Vendor ของตู้) — มีเฉพาะในรายการตัวเลือกตอนวางแผน */
+  vendor?: string | null;
 };
 
 /** ใบงาน PM ที่ Maximo เปิดแล้วยิงเข้ามาทาง IN06 (POST /maximo/pm/open) */
@@ -36,6 +38,8 @@ export type MaximoWorkOrder = {
   assignees?: string[] | null;
   planned_at?: string | null;
   planned_by?: string | null;
+  /** บริษัทของ planner ต้นทาง — เจ้าของงานทุกส่วนที่ไม่ได้ส่งต่อให้ vendor */
+  planner_company?: string | null;
   sched_start?: string | null;
   sched_finish?: string | null;
   planning_status?: string | null;
@@ -53,7 +57,26 @@ export type VendorPlan = {
   sched_start?: string;
   sched_finish?: string;
   assignees?: string[];
+  /** SN ของตู้ที่เป็นงานของ vendor รายนี้ (ตามช่อง Vendor ของตู้) — ว่าง = ส่งต่อทั้งใบแบบเดิม */
+  chargers?: string[];
 };
+
+/**
+ * SN ของตู้ (ตัวพิมพ์เล็ก) → ชื่อ vendor ที่รับตู้นั้นไปทำ ตามใบส่งต่อของใบงาน
+ * ตู้ที่ไม่อยู่ในผล = งานของทีมต้นทาง (backend เป็นคนตัดสินจริง — routers/pm_scope.py)
+ */
+export function chargerVendorMap(
+  wo: Pick<MaximoWorkOrder, "vendor_plans"> | null | undefined,
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const v of wo?.vendor_plans ?? []) {
+    for (const sn of v.chargers ?? []) {
+      const k = String(sn ?? "").trim().toLowerCase();
+      if (k) out[k] = String(v.vendor ?? "").trim();
+    }
+  }
+  return out;
+}
 
 /**
  * แผนของ vendor ที่เป็นบริษัทของคนที่ login อยู่ (ไม่มี = ใบงานนี้ไม่ได้ส่งต่อมาให้)

@@ -14,7 +14,6 @@ from urllib.parse import quote
 
 from config import (
     SECRET_KEY, ALGORITHM, ACCESS_COOKIE_NAME, FRONTEND_BASE_URL,
-    ACCESS_TOKEN_EXPIRE_MINUTES_TECHNICIAN, ACCESS_TOKEN_EXPIRE_MINUTES_DEFAULT,
     SESSION_IDLE_MINUTES_TECHNICIAN, SESSION_IDLE_MINUTES_DEFAULT,
     REFRESH_TOKEN_EXPIRE_DAYS, STAFF_ROLES,
     users_collection, station_collection, charger_collection,
@@ -22,6 +21,7 @@ from config import (
     SUPER_ADMIN_ROLE, SUPER_ADMIN_USERNAME, SWITCHABLE_ROLES,
 )
 from deps import UserClaims, get_current_user
+from session_expiry import access_token_ttl
 from brand_scope import assert_charger_in_scope, brand_regex, brand_scope_of
 from session_cookies import (
     REFRESH_COOKIE_NAME, as_utc, clear_session_cookies, set_session_cookies,
@@ -89,13 +89,10 @@ def login(body: LoginRequest, request: Request, response: Response):
     now = datetime.now(timezone.utc)
     sid = str(uuid.uuid4())
     
-    # กำหนด token expire time ตามบทบาท
     # user เก่าที่ยังเป็น "engineer" ใน DB → normalize เป็น "planner" ก่อนอบลง JWT
     user_role = canonical_role(user.get("role", "user")) or "user"
-    if user_role in STAFF_ROLES:
-        token_expire_minutes = ACCESS_TOKEN_EXPIRE_MINUTES_TECHNICIAN  # 24 ชั่วโมง
-    else:
-        token_expire_minutes = ACCESS_TOKEN_EXPIRE_MINUTES_DEFAULT  # 15 นาที
+    # access token หมดอายุตอนตี 3 (เวลาไทย) ครั้งถัดไป — ทุกบทบาท ดู session_expiry.py
+    access_ttl = access_token_ttl(now)
 
     # ไม่แนบ station_ids ลง JWT: เป็นข้อมูล legacy และอาจทำให้ token/คุกกี้ใหญ่จน
     # response header เกิน proxy_buffer_size ของ nginx → 502 (หน้า HTML) → frontend login พัง
@@ -107,7 +104,7 @@ def login(body: LoginRequest, request: Request, response: Response):
         "role": user_role,
         "company": user.get("company"),
         "sid": sid,  # ⬅️ แนบ session id ไว้ใน access token
-    }, expires_delta=timedelta(minutes=token_expire_minutes))
+    }, expires_delta=access_ttl)
 
     refresh_token = create_access_token({"sub": user["email"]}, expires_delta=timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS))
 
@@ -128,7 +125,7 @@ def login(body: LoginRequest, request: Request, response: Response):
     # token อยู่ในคุกกี้ HttpOnly เท่านั้น — body มีแค่โปรไฟล์ (ไม่ใช่ความลับ) ให้ frontend แสดงเมนูตาม role
     set_session_cookies(
         response, request,
-        jwt_token, int(timedelta(minutes=token_expire_minutes).total_seconds()),
+        jwt_token, int(access_ttl.total_seconds()),
         refresh_token, int(timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS).total_seconds()),
     )
 
@@ -300,7 +297,7 @@ def switch_role(body: SwitchRoleIn, request: Request, response: Response, curren
     email = u.get("email") or current.sub
     now = datetime.now(timezone.utc)
     sid = str(uuid.uuid4())
-    expires_min = ACCESS_TOKEN_EXPIRE_MINUTES_TECHNICIAN
+    access_ttl = access_token_ttl(now)   # ตี 3 ครั้งถัดไป เหมือน /login
     new_token = create_access_token({
         "sub": email,
         "user_id": current.user_id,
@@ -308,7 +305,7 @@ def switch_role(body: SwitchRoleIn, request: Request, response: Response, curren
         "role": target,
         "company": u.get("company"),
         "sid": sid,
-    }, expires_delta=timedelta(minutes=expires_min))
+    }, expires_delta=access_ttl)
     refresh_token = create_access_token({"sub": email}, expires_delta=timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS))
 
     # แทนที่ session เดิมด้วย session ใหม่ (ผูก sid ใหม่) — ให้ /refresh ทำงานได้ต่อ
@@ -325,7 +322,7 @@ def switch_role(body: SwitchRoleIn, request: Request, response: Response, curren
 
     set_session_cookies(
         response, request,
-        new_token, int(timedelta(minutes=expires_min).total_seconds()),
+        new_token, int(access_ttl.total_seconds()),
         refresh_token, int(timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS).total_seconds()),
     )
     # ส่ง user กลับเหมือน /login ให้ frontend อัปเดตโปรไฟล์แบบเดียวกันเป๊ะ (token อยู่ในคุกกี้แล้ว)
@@ -609,18 +606,15 @@ def refresh(request: Request, response: Response, body: Optional[RefreshIn] = No
     if user_role in STAFF_ROLES:
         idle_timeout = SESSION_IDLE_MINUTES_TECHNICIAN  # None = ไม่มี idle timeout
     else:
-        idle_timeout = SESSION_IDLE_MINUTES_DEFAULT  # 15 นาที
+        idle_timeout = SESSION_IDLE_MINUTES_DEFAULT  # None = ไม่มี idle timeout
 
     # ตรวจสอบ idle timeout
     idle_at = as_utc(entry.get("lastActiveAt"))
     if idle_timeout is not None and idle_at and (now - idle_at) > timedelta(minutes=idle_timeout):
         return _refresh_denied(request, "session_idle_timeout")
 
-    # กำหนด token expire time ตามบทบาท
-    if user_role in STAFF_ROLES:
-        token_expire_minutes = ACCESS_TOKEN_EXPIRE_MINUTES_TECHNICIAN  # 24 ชั่วโมง
-    else:
-        token_expire_minutes = ACCESS_TOKEN_EXPIRE_MINUTES_DEFAULT  # 15 นาที
+    # หน้าเว็บไม่เรียก /refresh แล้ว (token หมดอายุ = เด้งไป login) — ถ้ามีใครเรียก ก็ไม่ให้ token เลยตี 3
+    access_ttl = access_token_ttl(now)
 
     # สร้าง access ใหม่ (คง sid เดิม) — ไม่แนบ station_ids ลง token เช่นเดียวกับตอน login
     # (กัน token/คุกกี้ใหญ่เกิน proxy_buffer_size; สิทธิ์สถานีใช้กฎกลางตาม role)
@@ -631,7 +625,7 @@ def refresh(request: Request, response: Response, body: Optional[RefreshIn] = No
         "role": user_role,
         "company": user.get("company"),
         "sid": entry.get("sid"),
-    }, expires_delta=timedelta(minutes=token_expire_minutes))
+    }, expires_delta=access_ttl)
 
     # อัปเดต lastActiveAt
     users_collection.update_one(
@@ -644,7 +638,7 @@ def refresh(request: Request, response: Response, body: Optional[RefreshIn] = No
         timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS).total_seconds())
     set_session_cookies(
         response, request,
-        new_access, int(timedelta(minutes=token_expire_minutes).total_seconds()),
+        new_access, int(access_ttl.total_seconds()),
         token, refresh_left,
     )
     return {"ok": True}

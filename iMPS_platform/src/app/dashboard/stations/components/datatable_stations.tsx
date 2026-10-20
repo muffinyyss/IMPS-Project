@@ -18,7 +18,7 @@ import {
 } from "@heroicons/react/24/solid";
 import { useRouter } from "next/navigation";
 import AddStation, { type NewStationPayload, MaximoLocationSelect, type MaximoLocation } from "@/app/dashboard/stations/components/addstations";
-import { WARRANTY_STATUS_OPTIONS, INVESTMENT_SCOPE_OPTIONS, MultiSelectDropdown } from "@/app/dashboard/stations/components/stationOptions";
+import { WARRANTY_STATUS_OPTIONS, INVESTMENT_SCOPE_OPTIONS, MultiSelectDropdown, VendorSelect } from "@/app/dashboard/stations/components/stationOptions";
 import { apiFetch, getSessionProfile } from "@/utils/api";
 import { isStaffRole, staffChargerPath } from "@/utils/roles";
 import { startVisiblePoll } from "@/utils/visible-poll";
@@ -1400,7 +1400,7 @@ export function SearchDataTables() {
                   <div className="tw-relative"><Input label={`${t.chargerNo} (${t.auto})`} type="number" value={editChargerForm.chargerNo} readOnly className="!tw-bg-gray-50" crossOrigin={undefined} /><span className="tw-absolute tw-right-3 tw-top-1/2 tw--translate-y-1/2 tw-text-[9px] tw-text-blue-gray-300 tw-font-medium">({t.auto})</span></div>
                   <Select label={t.chargerType} value={editChargerForm.chargerType} onChange={(v) => setEditChargerForm(s => ({ ...s, chargerType: v ?? "DC" }))}><Option value="DC">DC</Option><Option value="AC">AC</Option><Option value="DC & AC">DC & AC</Option></Select>
                    <Input label={t.brand} required value={editChargerForm.brand} onChange={(e) => setEditChargerForm(s => ({ ...s, brand: e.target.value }))} crossOrigin={undefined} />
-                   <Input label={t.vendor} value={editChargerForm.vendor} onChange={(e) => setEditChargerForm(s => ({ ...s, vendor: e.target.value }))} crossOrigin={undefined} />
+                   <VendorSelect label={t.vendor} value={editChargerForm.vendor} onChange={(v) => setEditChargerForm(s => ({ ...s, vendor: v }))} lang={lang} />
                    <Input label={t.model} required value={editChargerForm.model} onChange={(e) => setEditChargerForm(s => ({ ...s, model: e.target.value }))} crossOrigin={undefined} />
                   <Input label={t.serialNumber} required value={editChargerForm.SN} onChange={(e) => setEditChargerForm(s => ({ ...s, SN: e.target.value }))} crossOrigin={undefined} />
                   <Input label={`${t.power} (kW)`} required value={editChargerForm.power} onChange={(e) => setEditChargerForm(s => ({ ...s, power: e.target.value }))} crossOrigin={undefined} />
@@ -1488,7 +1488,7 @@ export function SearchDataTables() {
                   <div className="tw-relative"><Input label={`${t.chargerNo} (${t.auto})`} type="number" value={addChargerForm.chargerNo} readOnly className="!tw-bg-gray-50 !tw-cursor-not-allowed" crossOrigin={undefined} /><span className="tw-absolute tw-right-3 tw-top-1/2 tw--translate-y-1/2 tw-text-[9px] tw-text-blue-gray-300 tw-font-medium">({t.auto})</span></div>
                   <Select label={t.chargerType} value={addChargerForm.chargerType} onChange={(v) => setAddChargerForm(s => ({ ...s, chargerType: v ?? "DC" }))}><Option value="DC">DC</Option><Option value="AC">AC</Option></Select>
                    <Input label={t.brand} required value={addChargerForm.brand} onChange={(e) => setAddChargerForm(s => ({ ...s, brand: e.target.value }))} crossOrigin={undefined} />
-                   <Input label={t.vendor} value={addChargerForm.vendor} onChange={(e) => setAddChargerForm(s => ({ ...s, vendor: e.target.value }))} crossOrigin={undefined} />
+                   <VendorSelect label={t.vendor} value={addChargerForm.vendor} onChange={(v) => setAddChargerForm(s => ({ ...s, vendor: v }))} lang={lang} />
                    <Input label={t.model} required value={addChargerForm.model} onChange={(e) => setAddChargerForm(s => ({ ...s, model: e.target.value }))} crossOrigin={undefined} />
                   <Input label={t.serialNumber} required value={addChargerForm.SN} onChange={(e) => setAddChargerForm(s => ({ ...s, SN: e.target.value }))} crossOrigin={undefined} />
                   <Input label={`${t.power} (kW)`} required value={addChargerForm.power} onChange={(e) => setAddChargerForm(s => ({ ...s, power: e.target.value }))} crossOrigin={undefined} />
