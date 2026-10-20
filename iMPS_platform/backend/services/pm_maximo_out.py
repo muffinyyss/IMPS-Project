@@ -189,6 +189,94 @@ def report_url(report: dict, report_id: Any, kind: str = "charger", coll_key: st
     return f"{PUBLIC_BASE_URL}/pdf/{template}/{report_id}/export?{qs}"
 
 
+async def push_labor_entries(coll, report_id, report: dict) -> dict:
+    """
+    IN09 ของใบ PM สถานี — ลงเวลาแยกตามแต่ละฝ่ายที่ส่งงาน (work_entries ของใบ)
+
+    ใบเดียวมีหลายฝ่ายทำงานคนละช่วงเวลาได้ (เช่น EGAT ทำ Station/MDB, EDS ทำตู้ชาร์จ)
+    แต่ละฝ่ายกรอกเวลา + laborcode ของตัวเองตอนกด "ส่งงาน" → ยิง labtrans แยกต่อฝ่าย
+    (Maximo รับ IN09 หลายครั้งต่อ WO ได้)
+
+    ยิงซ้ำได้ปลอดภัย: laborcode ที่ลงไปแล้วของแต่ละฝ่ายจดไว้ที่ work_entries.N.maximo.sent_codes
+    รอบถัดไปข้ามตัวที่ลงแล้ว — labtrans เป็น POST create ยิงซ้ำ = ชั่วโมงถูกนับซ้ำ
+    """
+    wonum = (report.get("wonum") or "").strip()
+    if not wonum:
+        return _skip("เอกสารนี้ไม่ได้ผูกกับใบงาน Maximo")
+
+    wo = await _open_coll().find_one({"wonum": wonum}, {"location": 1}) or {}
+    location = wo.get("location") or None
+    issue = str(report.get("issue_id") or "").strip()
+
+    results: list[dict] = []
+    trace: dict = {}
+    all_ok, any_sent, any_entry = True, 0, False
+    for idx, entry in enumerate(report.get("work_entries") or []):
+        if not isinstance(entry, dict) or not entry.get("submitted"):
+            continue
+        party = str(entry.get("party") or "").strip()
+        codes = [str(c).strip() for c in (entry.get("maximo_labor") or []) if str(c or "").strip()]
+        start = str(entry.get("work_start") or "").strip()
+        finish = str(entry.get("work_finish") or "").strip()
+        if not codes or not start:
+            # ฝ่ายนี้ไม่ได้เลือก laborcode (เช่นโหลดรายชื่อไม่ได้ตอนส่ง) — ไม่มีอะไรให้ลง ไม่บล็อกการปิด WO
+            results.append({"party": party, "skipped": True, "reason": "ไม่มี laborcode / เวลาเริ่มงาน"})
+            continue
+        any_entry = True
+        prev = entry.get("maximo") or {}
+        done = {str(c).upper() for c in (prev.get("sent_codes") or [])}
+        contractor = str(entry.get("maximo_contractor") or "").strip()
+        sent_codes = list(prev.get("sent_codes") or [])
+        errors: list[str] = []
+        for labor in codes:
+            if labor.upper() in done:
+                continue
+            memo = f"iMPS PM {issue}" + (f" — {party}" if party else "")
+            if labor.upper() == CONTRACTOR_LABOR_CODE and contractor:
+                memo = f"{memo} — {contractor}"
+            try:
+                await maximo.create_labtrans(
+                    wonum, labor, start=start, finish=finish or None,
+                    location=location, memo=memo, trace=trace,
+                )
+                sent_codes.append(labor)
+                any_sent += 1
+            except MaximoError as e:
+                log.warning(f"  ⚠️ IN09 labtrans failed (WO {wonum} / {party} / {labor}): {_err_detail(e)}")
+                errors.append(f"{labor}: {_err_detail(e)}")
+        ok = not errors
+        all_ok = all_ok and ok
+        state = {"ok": ok, "sent_codes": sent_codes, "errors": errors or None,
+                 "at": datetime.now(timezone.utc)}
+        try:
+            await coll.update_one({"_id": report_id}, {"$set": {f"work_entries.{idx}.maximo": state}})
+        except Exception as e:
+            log.warning(f"  ⚠️ record work_entries.{idx}.maximo failed: {e}")
+        results.append({"party": party, "ok": ok, "sent": len(sent_codes), "total": len(codes),
+                        **({"errors": errors} if errors else {})})
+
+    if not any_entry:
+        result = _skip("ยังไม่มีฝ่ายไหนเลือก laborcode ไว้")
+        await _record(coll, report_id, "IN09", False, wonum=wonum, **_no_ok(result))
+        return result
+    errors_all = [f"{r['party']}: {err}" for r in results for err in r.get("errors") or []]
+    await _record(coll, report_id, "IN09", all_ok, wonum=wonum, source="work_entries",
+                  entries=results, errors=errors_all or None, **_trace(trace))
+    return {"ok": all_ok, "wonum": wonum, "sent": any_sent, "entries": results}
+
+
+def job_pdf_url(job: dict, station_id: str) -> str:
+    """
+    ลิงก์ PDF ของใบ PM สถานี (รวมทุกส่วน + ตู้ทุกตู้เป็นไฟล์เดียว) — ใช้แนบเข้า Maximo (IN03)
+    เปิดได้โดยไม่ต้องล็อกอินผ่าน /pdf/stationpmjob/... (pdf_routes1) เฉพาะใบที่อนุมัติแล้ว
+    """
+    if not PUBLIC_BASE_URL or not station_id:
+        return ""
+    qs = f"station_id={quote(station_id, safe='')}&lang={PDF_LANG}&dl=true"
+    issue_id = str(job.get("issue_id") or "").strip() or str(job.get("_id"))
+    return f"{PUBLIC_BASE_URL}/pdf/stationpmjob/{job.get('_id')}/{quote(issue_id.replace('/', '-'), safe='')}.pdf?{qs}"
+
+
 async def push_status(
     coll, report_id, report: dict, *, status: str = "", memo: str = ""
 ) -> dict:
@@ -398,7 +486,10 @@ def _blocking_failures(results: dict) -> list[str]:
     ]
 
 
-async def sync_closed(coll, report_id, report: dict, *, memo: str = "", kind: str = "charger") -> dict:
+async def sync_closed(
+    coll, report_id, report: dict, *, memo: str = "", kind: str = "charger", link: str = "",
+    per_party_labor: bool = False,
+) -> dict:
     """
     ขั้น 3–5 ของ sequencing — ยิงทีละเส้นเรียงกัน เรียกซ้ำได้ปลอดภัย
     (IN02 กันยิงซ้ำสถานะเดิม, IN03 แนบครั้งเดียวพอ)
@@ -415,12 +506,17 @@ async def sync_closed(coll, report_id, report: dict, *, memo: str = "", kind: st
 
     # ── 3. IN03 แนบลิงก์เอกสาร (ครั้งเดียวพอ) ──
     if not (report.get("maximo_sync") or {}).get("IN03", {}).get("ok"):
-        link = report_url(report, report_id, kind, coll_key=getattr(coll, "name", "") or "")
+        # link ส่งมาเอง = ใบ PM สถานี (PDF รวมทุกส่วน) — ไม่ส่ง = เอกสารใบเดี่ยวตามชนิด
+        link = link or report_url(report, report_id, kind, coll_key=getattr(coll, "name", "") or "")
         out["IN03"] = await push_attachment(coll, report_id, report, link)
 
     # ── 4. IN09 เวลาทำงานจริงของช่าง ──
+    # ใบ PM สถานีที่แต่ละฝ่ายส่งเวลาของตัวเอง — ลงแยกต่อฝ่าย (กันซ้ำรายฝ่ายอยู่ในตัว)
+    if per_party_labor:
+        await _settle()
+        out["IN09"] = await push_labor_entries(coll, report_id, report)
     # ยิงครั้งเดียวพอ — labtrans เป็น POST create ยิงซ้ำ = ชั่วโมงถูกนับซ้ำ
-    if (report.get("maximo_sync") or {}).get("IN09", {}).get("ok"):
+    elif (report.get("maximo_sync") or {}).get("IN09", {}).get("ok"):
         out["IN09"] = {"ok": True, "skipped": True, "reason": "ลงเวลาไปแล้ว ไม่ยิงซ้ำ"}
     else:
         await _settle()
@@ -443,10 +539,14 @@ async def sync_closed(coll, report_id, report: dict, *, memo: str = "", kind: st
     return out
 
 
-async def safe_sync_closed(coll, report_id, report: dict, *, memo: str = "", kind: str = "charger") -> dict:
+async def safe_sync_closed(
+    coll, report_id, report: dict, *, memo: str = "", kind: str = "charger", link: str = "",
+    per_party_labor: bool = False,
+) -> dict:
     """sync_closed แบบกลืนทุก exception — Maximo ล่มต้องไม่ทำให้ปิดใบงานล้ม"""
     try:
-        return await sync_closed(coll, report_id, report, memo=memo, kind=kind)
+        return await sync_closed(coll, report_id, report, memo=memo, kind=kind, link=link,
+                                 per_party_labor=per_party_labor)
     except Exception as e:
         log.warning(f"  ⚠️ PM Maximo sync error ({report.get('issue_id')}): {e}")
         return {"error": str(e)}

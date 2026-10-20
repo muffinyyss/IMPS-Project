@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  chargerHandoffs,
+  commonBy,
   filterPmAssigneeGroups,
   needsOwnAssignee,
   ownPlanAssignees,
   pmAssigneeGroups,
+  handoffGroups,
   pmAssigneeNames,
   togglePmAssigneeBatch,
   vendorOnlyNames,
@@ -83,6 +84,14 @@ describe("ownPlanAssignees — เปิดแผนเดิมมาแก้"
     expect(ownPlanAssignees(wo)).toEqual(["Technician2 EGAT"]);
   });
 
+  it("vendor ที่ได้ส่วนระดับสถานี (จ้างทั้งสถานี) ก็ไม่ติ๊กค้าง", () => {
+    const wo = {
+      assignees: ["EDS"],
+      selected_equipment: [{ type: "station", by: "EDS" }, { type: "mdb", by: "EDS" }],
+    };
+    expect(ownPlanAssignees(wo)).toEqual([]);
+  });
+
   it("outsource ที่ติ๊กเองโดยไม่ได้ให้ทำตู้ อยู่ครบ", () => {
     const wo = { assignees: ["Technician2 EGAT", "หจก.ช่างไทยบริการ"], selected_equipment: [] };
     expect(ownPlanAssignees(wo)).toEqual(["Technician2 EGAT", "หจก.ช่างไทยบริการ"]);
@@ -90,10 +99,10 @@ describe("ownPlanAssignees — เปิดแผนเดิมมาแก้"
   });
 });
 
-describe("chargerHandoffs", () => {
-  it("จัดกลุ่มตู้ตามผู้ทำ PM ข้ามตู้ของทีมเรา", () => {
+describe("handoffGroups", () => {
+  it("จัดกลุ่มอุปกรณ์ตามผู้ทำ PM ข้ามชิ้นของทีมเรา", () => {
     expect(
-      chargerHandoffs([
+      handoffGroups([
         { label: "Charger 1", by: "EDS" },
         { label: "Charger 2", by: "" },
         { label: "Charger 3", by: "eds" },
@@ -107,14 +116,31 @@ describe("chargerHandoffs", () => {
 });
 
 describe("needsOwnAssignee", () => {
-  it("มีส่วนสถานี / ตู้ของทีมเรา / ไม่ได้เลือกอุปกรณ์ = ต้องมีคนของเรา", () => {
-    expect(needsOwnAssignee([{ type: "station" }, { type: "charger", by: "EDS" }])).toBe(true);
-    expect(needsOwnAssignee([{ type: "charger", by: "EDS" }, { type: "charger", by: "" }])).toBe(true);
+  it("มีอุปกรณ์ที่ทีมเราทำ / ไม่ได้เลือกอุปกรณ์ = ต้องมีคนของเรา", () => {
+    expect(needsOwnAssignee([{ by: "" }, { by: "EDS" }])).toBe(true);
+    expect(needsOwnAssignee([{ by: "EDS" }, { by: null }])).toBe(true);
     expect(needsOwnAssignee([])).toBe(true);
   });
 
-  it("ทุกอุปกรณ์เป็นตู้ที่ให้คนอื่นทำ = ไม่ต้อง", () => {
-    expect(needsOwnAssignee([{ type: "charger", by: "EDS" }, { type: "charger", by: "OS Co" }])).toBe(false);
+  it("ทุกอุปกรณ์ให้คนอื่นทำ (จ้างทั้งสถานี / แบ่ง vendor กับ outsource) = ไม่ต้อง", () => {
+    expect(needsOwnAssignee([{ by: "EDS" }, { by: "EDS" }])).toBe(false);
+    expect(needsOwnAssignee([{ by: "EDS" }, { by: "OS Co" }])).toBe(false);
+  });
+});
+
+describe("commonBy — ตัวเลือก \"ผู้ทำ PM ทุกรายการ\" ของแถวทั้งหมด", () => {
+  it("ตรงกันทุกชิ้น = ชื่อนั้น (ไม่สนตัวพิมพ์)", () => {
+    expect(commonBy(["EDS", "eds", " EDS "])).toBe("EDS");
+    expect(commonBy(["", undefined, null])).toBe("");
+  });
+
+  it("ไม่ตรงกัน = null (โชว์ หลายราย)", () => {
+    expect(commonBy(["EDS", ""])).toBeNull();
+    expect(commonBy(["EDS", "OS Co"])).toBeNull();
+  });
+
+  it("ยังไม่ได้เลือกอุปกรณ์ = ทีมเรา", () => {
+    expect(commonBy([])).toBe("");
   });
 });
 

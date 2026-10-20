@@ -143,6 +143,27 @@ def _delete_report_photos(template: str, coll_key: str, report_id: str, coll) ->
         pass
 
 
+@router.head("/stationpmjob/{job_id}/{filename}")
+async def export_station_pm_job_head(job_id: str, filename: str, station_id: str = Query(...)):
+    """
+    HEAD ของลิงก์ PDF ใบ PM สถานี — Maximo/ตัวเช็คลิงก์ยิง HEAD ก่อน GET (ดู export_pdf_head)
+    ต้องประกาศก่อน /{template}/... ไม่งั้นโดนจับเป็น template แล้วตอบ 400 เหมือนลิงก์เสีย
+    """
+    from routers.pm_helpers import get_stationpmjob_collection_for
+    from routers.pmreport_station_job import _is_closed
+
+    try:
+        oid = ObjectId(job_id)
+    except InvalidId:
+        raise HTTPException(status_code=400, detail="รูปแบบ id ไม่ถูกต้อง")
+    job = await get_stationpmjob_collection_for((station_id or "").strip()).find_one(
+        {"_id": oid}, {"_id": 1, "status": 1}
+    )
+    if not job or not _is_closed(str(job.get("status") or "")):
+        raise HTTPException(status_code=404, detail="ไม่พบเอกสารนี้")
+    return Response(status_code=200, media_type="application/pdf")
+
+
 @router.head("/{template}/{id}/export")
 @router.head("/{template}/{id}/{filename}")
 async def export_pdf_head(
@@ -182,6 +203,45 @@ async def export_pdf_head(
         raise HTTPException(status_code=404, detail="ไม่พบข้อมูลเอกสารนี้")
 
     return Response(status_code=200, media_type="application/pdf")
+
+
+@router.get("/stationpmjob/{job_id}/{filename}")
+async def export_station_pm_job_public(
+    job_id: str,
+    filename: str,
+    station_id: str = Query(...),
+    lang: str = Query("th", description="Language: 'th' or 'en'"),
+    dl: bool = Query(False),
+):
+    """
+    PDF รวมทั้งใบของใบ PM สถานี (ทุกส่วน + ตู้ทุกตู้) — ลิงก์ที่แนบเข้า Maximo (IN03)
+    เปิดได้โดยไม่ต้องล็อกอิน เหมือน PDF เอกสารใบเดี่ยวด้านล่าง แต่เปิดให้เฉพาะใบที่อนุมัติแล้ว
+    (ใบที่ยังแก้ได้ดูผ่าน /stationpmjob/{job_id}/pdf ที่ต้องล็อกอิน)
+
+    ต้องประกาศก่อน /{template}/{id}/... ไม่งั้น "stationpmjob" โดนจับเป็นชื่อ template
+    """
+    # import ตรงนี้ กัน import วน (routers → pdf_routes1 → main)
+    from routers.pm_helpers import get_stationpmjob_collection_for
+    from routers.pmreport_station_job import _is_closed, build_job_pdf
+
+    try:
+        oid = ObjectId(job_id)
+    except InvalidId:
+        raise HTTPException(status_code=400, detail="รูปแบบ id ไม่ถูกต้อง")
+    station_id = (station_id or "").strip()
+    jobs = get_stationpmjob_collection_for(station_id)   # ตรวจรูปแบบ station_id ให้ด้วย
+    job = await jobs.find_one({"_id": oid})
+    if not job or not _is_closed(str(job.get("status") or "")):
+        raise HTTPException(status_code=404, detail="ไม่พบเอกสารนี้")
+
+    lang = lang if lang in ("th", "en") else "th"
+    data, _ = await build_job_pdf(job, station_id, lang)
+    name = f"{(job.get('issue_id') or job_id)}.pdf".replace("/", "-")
+    return Response(
+        content=data,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'{"attachment" if dl else "inline"}; filename="{name}"'},
+    )
 
 
 @router.get("/{template}/{id}/export")

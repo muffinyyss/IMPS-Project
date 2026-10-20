@@ -17,7 +17,10 @@ export type EquipmentItem = {
   label?: string | null;
   /** vendor ที่ดูแลตู้ (ช่อง Vendor ของตู้) — มีเฉพาะในรายการตัวเลือกตอนวางแผน ใช้เป็นคำใบ้เท่านั้น */
   vendor?: string | null;
-  /** ตู้ชาร์จ: ผู้ทำ PM ตู้นี้ในใบงานนี้ (vendor / outsource) — ว่าง = ทีมของ planner เอง */
+  /**
+   * ผู้ทำ PM อุปกรณ์ชิ้นนี้ในใบงานนี้ (vendor / outsource) — ว่าง = ทีมของ planner เอง
+   * เลือกได้ทุกชนิด รวม Station/MDB/CCB/CB_BOX (จ้าง vendor ทำทั้งสถานี = เลือก vendor ทุกชิ้น)
+   */
   by?: string | null;
 };
 
@@ -64,29 +67,44 @@ export type VendorPlan = {
   assignees?: string[];
   edited_by?: string;
   edited_at?: string;
-  /** SN ของตู้ที่เป็นงานของ vendor รายนี้ (ตามช่อง Vendor ของตู้) — ว่าง = ส่งต่อทั้งใบแบบเดิม */
+  /** SN ของตู้ที่เป็นงานของ vendor รายนี้ — ว่างทั้ง chargers และ sections = ส่งต่อทั้งใบแบบเดิม */
   chargers?: string[];
+  /** ส่วนระดับสถานีที่เป็นงานของ vendor รายนี้ เช่น ["station", "mdb"] */
+  sections?: string[];
 };
 
 /**
- * SN ของตู้ (ตัวพิมพ์เล็ก) → ผู้ทำ PM ที่ planner เลือกให้ตู้นั้น (vendor / outsource)
- * ตู้ที่ไม่อยู่ในผล = ทีมของ planner เอง (backend เป็นคนตัดสินสิทธิ์จริง — routers/pm_scope.py)
+ * key ของอุปกรณ์ 1 ชิ้นสำหรับเทียบผู้ทำ PM — ตู้ชาร์จ "charger:<sn ตัวพิมพ์เล็ก>" ที่เหลือใช้ type
+ * ต้องตรงกับ item_key() ใน backend/routers/pm_scope.py
  */
-export function chargerByMap(
+export function byKey(e: Pick<EquipmentItem, "type" | "sn">): string {
+  const type = String(e.type ?? "").trim().toLowerCase();
+  return type === "charger" ? `charger:${String(e.sn ?? "").trim().toLowerCase()}` : type;
+}
+
+/**
+ * byKey ของอุปกรณ์ → ผู้ทำ PM ที่ planner เลือกให้ชิ้นนั้น (vendor / outsource)
+ * ชิ้นที่ไม่อยู่ในผล = ทีมของ planner เอง (backend เป็นคนตัดสินสิทธิ์จริง — routers/pm_scope.py)
+ */
+export function equipmentByMap(
   wo: Pick<MaximoWorkOrder, "vendor_plans" | "selected_equipment"> | null | undefined,
 ): Record<string, string> {
   const out: Record<string, string> = {};
-  // ใบส่งต่อที่ผูกตู้ไว้ (ข้อมูลรุ่นก่อนที่ยังไม่มีผู้ทำ PM รายตู้)
+  // ใบส่งต่อที่ผูกอุปกรณ์ไว้ (ข้อมูลรุ่นก่อนที่ยังไม่มีผู้ทำ PM รายชิ้น)
   for (const v of wo?.vendor_plans ?? []) {
+    const name = String(v.vendor ?? "").trim();
     for (const sn of v.chargers ?? []) {
-      const k = String(sn ?? "").trim().toLowerCase();
-      if (k) out[k] = String(v.vendor ?? "").trim();
+      if (String(sn ?? "").trim()) out[byKey({ type: "charger", sn })] = name;
+    }
+    for (const sec of v.sections ?? []) {
+      if (String(sec ?? "").trim()) out[byKey({ type: sec })] = name;
     }
   }
   for (const e of wo?.selected_equipment ?? []) {
-    const k = String(e.sn ?? "").trim().toLowerCase();
     const by = String(e.by ?? "").trim();
-    if (e.type === "charger" && k && by) out[k] = by;
+    if (!by) continue;
+    if (e.type === "charger" && !String(e.sn ?? "").trim()) continue;
+    out[byKey(e)] = by;
   }
   return out;
 }
@@ -208,8 +226,8 @@ export async function fetchPmAssigneeOptions(): Promise<PmAssigneeOptions> {
  * กลุ่มที่มีคนอยู่จริงเท่านั้น — กันหัวข้อลอยที่ไม่มีรายการอยู่ข้างใต้
  *
  * vendors: false = ลิสต์ผู้รับผิดชอบของแผนต้นทาง — vendor เลือกได้ทางเดียวคือ "ผู้ทำ PM"
- * ของแต่ละตู้ (ติ๊กในลิสต์ด้วยก็ซ้ำกัน และถ้าติ๊กโดยไม่ได้ให้ทำตู้ไหน vendor จะได้ใบส่งต่อ
- * แบบไม่ผูกตู้ = กรอกได้ทั้งใบ รวมส่วนสถานีที่ต้องเป็นของทีมต้นทาง)
+ * ของอุปกรณ์ (ติ๊กในลิสต์ด้วยก็ซ้ำกัน และถ้าติ๊กโดยไม่ได้ให้ทำอะไร vendor จะได้ใบส่งต่อ
+ * แบบไม่ผูกอุปกรณ์ = ไม่ล็อกส่วนไหนเลย) — จ้างทำทั้งสถานีก็เลือก vendor ให้ทุกชิ้น
  */
 export function pmAssigneeGroups(
   options: PmAssigneeOptions,
@@ -245,23 +263,23 @@ export function vendorOnlyNames(options: PmAssigneeOptions): string[] {
 /**
  * ผู้รับผิดชอบที่ planner ต้นทางติ๊กเองในลิสต์ — ใช้ตั้งต้นฟอร์มตอนเปิดแผนเดิมมาแก้
  *
- * ตอนบันทึก backend เติมผู้ทำ PM ของแต่ละตู้เข้าไปในผู้รับผิดชอบให้ด้วย ถ้าไม่ตัดออก
- * เปลี่ยนตู้กลับเป็นทีมเราแล้วชื่อนั้นยังค้างติ๊กอยู่ — vendor ได้ใบส่งต่อแบบไม่ผูกตู้ (ทั้งใบ)
- * ส่วนใบงานที่ยังมีตู้ให้รายนั้นทำ backend ก็เติมกลับให้เองตอนบันทึก
+ * ตอนบันทึก backend เติมผู้ทำ PM ของอุปกรณ์แต่ละชิ้นเข้าไปในผู้รับผิดชอบให้ด้วย ถ้าไม่ตัดออก
+ * เปลี่ยนอุปกรณ์กลับเป็นทีมเราแล้วชื่อนั้นยังค้างติ๊กอยู่
+ * ส่วนใบงานที่ยังมีอุปกรณ์ให้รายนั้นทำ backend ก็เติมกลับให้เองตอนบันทึก
  */
 export function ownPlanAssignees(
   wo: Pick<MaximoWorkOrder, "assignees" | "vendor_plans" | "selected_equipment"> | null | undefined,
 ): string[] {
   const parties = [
-    ...Object.values(chargerByMap(wo)),
+    ...Object.values(equipmentByMap(wo)),
     ...(wo?.vendor_plans ?? []).map((v) => v.vendor),
   ];
   const mine = (wo?.assignees ?? []).map((n) => String(n ?? "").trim()).filter(Boolean);
   return withoutNames(mine, parties);
 }
 
-/** ตู้ชาร์จที่ให้คนอื่นทำ PM จัดกลุ่มตามผู้ทำ (เรียงตามลำดับที่เจอ) — ไว้โชว์สรุปใต้ลิสต์ผู้รับผิดชอบ */
-export function chargerHandoffs(
+/** อุปกรณ์ที่ให้คนอื่นทำ PM จัดกลุ่มตามผู้ทำ (เรียงตามลำดับที่เจอ) — ไว้โชว์สรุปใต้ลิสต์ผู้รับผิดชอบ */
+export function handoffGroups(
   items: Array<{ label: string; by?: string | null }>,
 ): Array<{ name: string; labels: string[] }> {
   const out: Array<{ name: string; labels: string[] }> = [];
@@ -277,11 +295,22 @@ export function chargerHandoffs(
 
 /**
  * ต้องเลือกผู้รับผิดชอบฝั่งเราอย่างน้อย 1 รายไหม
- * ไม่ต้อง เมื่อทุกอุปกรณ์ที่เลือกเป็นตู้ชาร์จที่ให้คนอื่นทำ — อุปกรณ์ระดับสถานี / ตู้ของทีมเรา /
+ * ไม่ต้อง เมื่อทุกอุปกรณ์ที่เลือกให้คนอื่นทำ (เช่นจ้าง vendor ทำทั้งสถานี) — อุปกรณ์ที่ทีมเราทำ /
  * แผนที่ไม่ได้เลือกอุปกรณ์ ต้องมีคนของเราไปทำ
  */
-export function needsOwnAssignee(items: Array<Pick<EquipmentItem, "type" | "by">>): boolean {
-  return items.length === 0 || items.some((e) => !(e.type === "charger" && String(e.by ?? "").trim()));
+export function needsOwnAssignee(items: Array<Pick<EquipmentItem, "by">>): boolean {
+  return items.length === 0 || items.some((e) => !String(e.by ?? "").trim());
+}
+
+/**
+ * ผู้ทำ PM ที่อุปกรณ์ทุกชิ้นตรงกัน — ไว้โชว์ในตัวเลือก "ตั้งทุกรายการ" ของแถว "ทั้งหมด"
+ * "" = ทีมเราทุกชิ้น (หรือยังไม่ได้เลือกอุปกรณ์), null = แต่ละชิ้นไม่ตรงกัน
+ */
+export function commonBy(values: Array<string | null | undefined>): string | null {
+  const names = values.map((v) => String(v ?? "").trim());
+  if (names.length === 0) return "";
+  const first = names[0];
+  return names.every((n) => n.toLowerCase() === first.toLowerCase()) ? first : null;
 }
 
 /**

@@ -876,8 +876,10 @@ def _serialize_open(doc: dict) -> dict:
                 "assignees": v.get("assignees") or [],
                 "edited_by": v.get("edited_by") or "",
                 "edited_at": v.get("edited_at") or "",
-                # ตู้ชาร์จที่เป็นงานของ vendor รายนี้ (ตามช่อง Vendor ของตู้) — ว่าง = ส่งต่อทั้งใบแบบเดิม
+                # อุปกรณ์ที่เป็นงานของ vendor รายนี้ (ผู้ทำ PM ที่ planner เลือก)
+                # chargers = SN ของตู้, sections = ส่วนระดับสถานี — ว่างทั้งคู่ = ส่งต่อทั้งใบแบบเดิม
                 "chargers": v.get("chargers") or [],
+                "sections": v.get("sections") or [],
             }
             for v in (doc.get("vendor_plans") or [])
         ],
@@ -1091,8 +1093,9 @@ class EquipmentItem(BaseModel):
     sn: Optional[str] = None           # สำหรับ charger (ระบุตู้)
     location: Optional[str] = None     # maximo location ของอุปกรณ์ (ถ้ามี)
     label: Optional[str] = None        # ชื่อไว้โชว์
-    # ตู้ชาร์จเท่านั้น: ผู้ทำ PM ตู้นี้ในใบงานนี้ — ชื่อ vendor / outsource จากหน้า Company
-    # ว่าง = ทีมของ planner เอง (เช่น EGAT) — planner เลือกทุกใบงาน ไม่ได้อิงช่อง Vendor ของตู้
+    # ผู้ทำ PM อุปกรณ์ชิ้นนี้ในใบงานนี้ (ทุกชนิด รวม Station/MDB/CCB/CB_BOX) — ชื่อ vendor /
+    # outsource จากหน้า Company; ว่าง = ทีมของ planner เอง (เช่น EGAT)
+    # planner เลือกทุกใบงาน ไม่ได้อิงช่อง Vendor ของตู้
     by: Optional[str] = None
 
 
@@ -1112,11 +1115,12 @@ async def _find_open_wo(wonum: str) -> dict | None:
 
 # ══════════════════════════════════════════════════════════════════
 # ส่งต่อให้ vendor วางแผนอีกรอบ
-#   planner (เช่น EGAT) เลือก vendor (เช่น EDS) เป็น "ผู้ทำ PM" ของตู้ชาร์จ และ vendor นั้นมี
+#   planner (เช่น EGAT) เลือก vendor (เช่น EDS) เป็น "ผู้ทำ PM" ของอุปกรณ์ และ vendor นั้นมี
 #   planner ของตัวเองในระบบ → ใบงานไปขึ้นที่หน้า PM List ของ vendor ให้ planner ของ
 #   vendor วางแผนอีกรอบ (เลือกช่างของตัวเอง + กำหนดการ) แผนของ planner ต้นทางยังอยู่ครบ
-#   ส่งต่อได้ทางเดียวคือผ่านผู้ทำ PM ของตู้ — ติ๊ก vendor ในลิสต์ผู้รับผิดชอบไม่ได้แล้ว
-#   (เดิมติ๊กแล้วได้ใบส่งต่อแบบไม่ผูกตู้ = vendor กรอกได้ทั้งใบ รวมส่วนสถานี)
+#   ส่งต่อได้ทางเดียวคือผ่านผู้ทำ PM ของอุปกรณ์ — ติ๊ก vendor ในลิสต์ผู้รับผิดชอบไม่ได้แล้ว
+#   (เดิมติ๊กแล้วได้ใบส่งต่อแบบไม่ผูกอุปกรณ์ = ไม่ได้ล็อกส่วนไหนเลย ใครก็กรอกได้ทั้งใบ)
+#   จ้าง vendor ทำทั้งสถานี = เลือก vendor เป็นผู้ทำ PM ทุกชิ้น (รวม Station/MDB/CCB/CB_BOX)
 #   เก็บที่ใบงาน: vendor_plans = [{vendor, status: pending|planned, planned_by, planned_at,
 #   sched_start, sched_finish, assignees}]
 # ══════════════════════════════════════════════════════════════════
@@ -1260,8 +1264,8 @@ async def _plan_edit_state(wo: dict, current: UserClaims, *, started: Optional[b
     }
 
 
-async def _validate_charger_by(items: list[dict], current: UserClaims) -> None:
-    """ผู้ทำ PM ของตู้ต้องเป็น vendor / outsource ของบริษัทคนวางแผน (ชุดเดียวกับ /companies/pm-options)"""
+async def _validate_equipment_by(items: list[dict], current: UserClaims) -> None:
+    """ผู้ทำ PM ของอุปกรณ์ต้องเป็น vendor / outsource ของบริษัทคนวางแผน (ชุดเดียวกับ /companies/pm-options)"""
     names = {str(i.get("by") or "").strip() for i in items if str(i.get("by") or "").strip()}
     if not names:
         return
@@ -1273,12 +1277,12 @@ async def _validate_charger_by(items: list[dict], current: UserClaims) -> None:
     if outside:
         raise HTTPException(
             status_code=400,
-            detail=f"ผู้ทำ PM ของตู้ต้องเป็น vendor / outsource ของบริษัทคุณ (ตั้งที่หน้า Company): {', '.join(outside)}",
+            detail=f"ผู้ทำ PM ต้องเป็น vendor / outsource ของบริษัทคุณ (ตั้งที่หน้า Company): {', '.join(outside)}",
         )
 
 
-def _with_charger_parties(assignees: list[str], items: list[dict]) -> list[str]:
-    """เติมผู้ทำ PM ของแต่ละตู้เข้าไปในผู้รับผิดชอบของใบงาน (ไม่ซ้ำ ไม่สนตัวพิมพ์)"""
+def _with_equipment_parties(assignees: list[str], items: list[dict]) -> list[str]:
+    """เติมผู้ทำ PM ของอุปกรณ์แต่ละชิ้นเข้าไปในผู้รับผิดชอบของใบงาน (ไม่ซ้ำ ไม่สนตัวพิมพ์)"""
     out = list(assignees)
     seen = {a.lower() for a in out}
     for i in items:
@@ -1291,22 +1295,22 @@ def _with_charger_parties(assignees: list[str], items: list[dict]) -> list[str]:
 
 async def _plan_assignees(raw: list[str], items: list[dict], current: UserClaims) -> list[str]:
     """
-    ผู้รับผิดชอบของแผนต้นทาง = ช่าง / outsource ที่ planner ติ๊กมา + ผู้ทำ PM ของแต่ละตู้
+    ผู้รับผิดชอบของแผนต้นทาง = ช่าง / outsource ที่ planner ติ๊กมา + ผู้ทำ PM ของอุปกรณ์แต่ละชิ้น
 
-    vendor เลือกได้ทางเดียวคือ "ผู้ทำ PM" ของตู้ ชื่อ vendor ที่ติ๊กมาในลิสต์ (client รุ่นเก่า /
-    ค้างจากแผนเดิม) ถูกตัดทิ้ง — ไม่งั้นเปลี่ยนตู้กลับเป็นทีมเราแล้ว vendor ยังเป็นผู้รับผิดชอบ
-    ทั้งใบอยู่ ถ้ายังมีตู้ให้รายนั้นทำ _with_charger_parties เติมกลับให้เอง
+    vendor เลือกได้ทางเดียวคือ "ผู้ทำ PM" ของอุปกรณ์ ชื่อ vendor ที่ติ๊กมาในลิสต์ (client รุ่นเก่า /
+    ค้างจากแผนเดิม) ถูกตัดทิ้ง — ไม่งั้นเปลี่ยนอุปกรณ์กลับเป็นทีมเราแล้ว vendor ยังเป็นผู้รับผิดชอบ
+    ทั้งใบอยู่ ถ้ายังมีอุปกรณ์ให้รายนั้นทำ _with_equipment_parties เติมกลับให้เอง
     ชื่อที่เป็นทั้ง vendor และ technician / outsource ไม่ตัด (ฝั่งหน้าเว็บ: vendorOnlyNames)
     """
     from routers.company import pm_assignee_options
 
     if not raw:
-        return _with_charger_parties([], items)
+        return _with_equipment_parties([], items)
     options = await pm_assignee_options(current)
     keep = {n.lower() for group in ("technicians", "outsources") for n in options.get(group) or []}
     vendor_only = {n.lower() for n in options.get("vendors") or []} - keep
     picked = [a for a in raw if a.lower() not in vendor_only]
-    return _with_charger_parties(picked, items)
+    return _with_equipment_parties(picked, items)
 
 
 def _build_vendor_plans(
@@ -1316,24 +1320,28 @@ def _build_vendor_plans(
     items: list[dict],
 ) -> list[dict]:
     """
-    ใบส่งต่อ vendor ของแผนรอบนี้ + ตู้ที่ส่งต่อให้แต่ละราย (field chargers)
+    ใบส่งต่อ vendor ของแผนรอบนี้ + อุปกรณ์ที่ส่งต่อให้แต่ละราย
+    (field chargers = SN ของตู้, sections = ส่วนระดับสถานี เช่น ["station", "mdb"])
 
-    vendor ที่ได้ใบส่งต่อ = ผู้ทำ PM ที่ planner เลือกให้แต่ละตู้ (item.by) เท่านั้น
-    — เฉพาะรายที่มี planner ของตัวเองในระบบ ใบส่งต่อจึงผูกตู้เสมอ
-    (ผู้รับผิดชอบที่ติ๊กในลิสต์ไม่ทำให้เกิดใบส่งต่อ — ไม่งั้นได้ใบไม่ผูกตู้ = ทำได้ทั้งใบ)
+    vendor ที่ได้ใบส่งต่อ = ผู้ทำ PM ที่ planner เลือกให้อุปกรณ์แต่ละชิ้น (item.by) เท่านั้น
+    — เฉพาะรายที่มี planner ของตัวเองในระบบ ใบส่งต่อจึงผูกอุปกรณ์เสมอ
+    (ผู้รับผิดชอบที่ติ๊กในลิสต์ไม่ทำให้เกิดใบส่งต่อ — ไม่งั้นได้ใบไม่ผูกอุปกรณ์ = ไม่ล็อกส่วนไหนเลย)
     (outsource ปกติไม่มี planner จึงไม่ได้ใบส่งต่อ — planner ต้นทางมอบหมายตรง)
     (ไม่มี planner = ไม่มีคนรับไปวางแผนต่อ ทีมต้นทางทำเองทั้งหมดเหมือนเดิม)
-    ใบส่งต่อเดิมที่ vendor วางแผนไปแล้วเก็บไว้เป็นประวัติ (_merge_vendor_plans)
-    ตู้ของ vendor รายนั้นจะกลายเป็นงานของ vendor — ดูกติกาที่ routers/pm_scope.py
+    ใบส่งต่อเดิมที่ vendor วางแผนไปแล้วเก็บไว้เป็นประวัติพร้อมอุปกรณ์เดิม (_merge_vendor_plans)
+    อุปกรณ์ของ vendor รายนั้นจะกลายเป็นงานของ vendor — ดูกติกาที่ routers/pm_scope.py
     """
     from routers import pm_scope
 
-    by_vendor = pm_scope.chargers_by_party(items or [])
-    names = [name for name, _sns in by_vendor.values()]
+    by_vendor = pm_scope.items_by_party(items or [])
+    names = [name for name, _sns, _secs in by_vendor.values()]
     vendors = _vendor_companies_with_planner(names, planner_company)
     plans = _merge_vendor_plans(existing, vendors)
     for p in plans:
-        p["chargers"] = list(by_vendor.get(str(p.get("vendor") or "").strip().lower(), ("", []))[1])
+        mine = by_vendor.get(str(p.get("vendor") or "").strip().lower())
+        if mine:
+            p["chargers"] = list(mine[1])
+            p["sections"] = list(mine[2])
     return plans
 
 
@@ -1450,6 +1458,26 @@ async def pm_wo_sync_status(
         rep.pop("maximo_sync", None)
         # เอกสารเป็นตัวยิงจริง ทับของใบงานได้เลยเมื่อชนกัน (IN02 CLOSED มาทีหลัง INPRG)
         merged.update(rep["interfaces"])
+
+    # ใบ PM สถานี (รวมทุกส่วนเป็นใบเดียว) ยิงชุดปิดงานจากตัวใบเอง — ผลจดอยู่บนใบ ไม่ใช่บนเอกสารรายส่วน
+    station_id = _station_id_of_wo(wo)
+    if station_id:
+        try:
+            from routers.pm_helpers import get_stationpmjob_collection_for
+            job = await get_stationpmjob_collection_for(station_id).find_one({"wonum": wonum})
+        except Exception:
+            job = None
+        if job:
+            job_sync = _serialize_sync(job)
+            reports.append({
+                "equipment": "ใบ PM สถานี",
+                "type": "station_job",
+                "report_id": str(job["_id"]),
+                "issue_id": job.get("issue_id") or "",
+                "status": job.get("status") or "",
+                "interfaces": job_sync,
+            })
+            merged.update(job_sync)
 
     return {
         "wonum": wonum,
@@ -1568,7 +1596,7 @@ def _build_equipment_items(station_id: str, equipment: list["EquipmentItem"]) ->
 
     ใช้ทั้งตอนวางแผนใบงานที่ Maximo เปิดมา และตอนเปิดใบงานเองในหน้า PM List
     กติกาเดียวกัน: type ต้องอยู่ใน EQUIP_TYPES, charger ต้องมี sn ของตู้ที่อยู่ในสถานีนั้นจริง
-    และห้ามเลือกอุปกรณ์ตัวเดิมซ้ำในใบเดียว
+    และห้ามเลือกอุปกรณ์ตัวเดิมซ้ำในใบเดียว — by (ผู้ทำ PM) ตรวจแยกที่ _validate_equipment_by
     """
     items: list[dict] = []
     seen: set[str] = set()
@@ -1613,14 +1641,15 @@ def _build_equipment_items(station_id: str, equipment: list["EquipmentItem"]) ->
                 or charger.get("chargeBoxID")
                 or sn
             )
-            by = (e.by or "").strip()
-            if by:
-                item["by"] = by
         else:
             if e.location:
                 item["location"] = e.location.strip()
             if e.label:
                 item["label"] = e.label
+        # ผู้ทำ PM ของอุปกรณ์ชิ้นนี้ (ทุกชนิด) — ว่าง = ทีมของ planner เอง
+        by = (e.by or "").strip()
+        if by:
+            item["by"] = by
         items.append(item)
     return items
 
@@ -1731,11 +1760,10 @@ async def set_pm_vendor_plan(
         )
         if named:
             from routers import pm_scope
-            by_vendor = pm_scope.chargers_by_party(wo.get("selected_equipment") or [])
-            plans.append({
-                "vendor": named, "status": "pending",
-                "chargers": list(by_vendor.get(named.lower(), ("", []))[1]),
-            })
+            _name, sns, secs = pm_scope.items_by_party(wo.get("selected_equipment") or []).get(
+                named.lower(), ("", [], [])
+            )
+            plans.append({"vendor": named, "status": "pending", "chargers": list(sns), "sections": list(secs)})
             idx = len(plans) - 1
     if not company or idx < 0:
         raise HTTPException(status_code=403, detail="ใบงานนี้ไม่ได้ส่งต่อให้บริษัทของคุณวางแผน")
@@ -1857,7 +1885,7 @@ async def set_pm_equipment(
         )
 
     items = _build_equipment_items(_station_id_of_wo(wo), body.equipment or [])
-    await _validate_charger_by(items, current)
+    await _validate_equipment_by(items, current)
 
     now = datetime.now(timezone.utc)
     planned_at_value = (body.planned_at or now.isoformat()).strip()
@@ -1869,8 +1897,8 @@ async def set_pm_equipment(
     # ไม่ส่ง equipment มา = คงรายการเดิมไว้ (ผู้เรียกที่ยังมี picker ส่ง list มาเหมือนเดิม)
     keep_equipment = body.equipment is None
     effective_items = (wo.get("selected_equipment") or []) if keep_equipment else items
-    # ผู้ทำ PM ของแต่ละตู้เป็นผู้รับผิดชอบใบงานด้วย (เห็นใบงานในคิวของตัวเองเหมือนเลือกจากลิสต์)
-    # vendor ที่ติ๊กมาในลิสต์ตรง ๆ ถูกตัด — ส่งต่อได้ผ่านผู้ทำ PM ของตู้เท่านั้น
+    # ผู้ทำ PM ของอุปกรณ์แต่ละชิ้นเป็นผู้รับผิดชอบใบงานด้วย (เห็นใบงานในคิวของตัวเองเหมือนเลือกจากลิสต์)
+    # vendor ที่ติ๊กมาในลิสต์ตรง ๆ ถูกตัด — ส่งต่อได้ผ่านผู้ทำ PM ของอุปกรณ์เท่านั้น
     assignees = await _plan_assignees(assignees, effective_items, current)
 
     # วางแผนเสร็จเมื่อเลือกอุปกรณ์แล้ว "หรือ" มีกำหนดการ + ช่างครบ
@@ -1889,8 +1917,8 @@ async def set_pm_equipment(
         "assignees": assignees,
         # คนแก้แผนอาจเป็น admin/owner — บริษัทเจ้าของแผนคงเดิม
         "planner_company": (str(wo.get("planner_company") or "").strip() if is_edit else "") or planner_company,
-        # ผู้ทำ PM ของตู้ในแผนที่มี planner ของตัวเอง → ส่งต่อให้วางแผนอีกรอบ
-        # พร้อมตู้ที่เป็นงานของ vendor รายนั้น
+        # ผู้ทำ PM ของอุปกรณ์ในแผนที่มี planner ของตัวเอง → ส่งต่อให้วางแผนอีกรอบ
+        # พร้อมอุปกรณ์ที่เป็นงานของ vendor รายนั้น
         "vendor_plans": _build_vendor_plans(
             wo.get("vendor_plans"), planner_company,
             _station_id_of_wo(wo), effective_items,
@@ -2078,7 +2106,7 @@ async def create_pm_work_order(
         )
 
     items = _build_equipment_items(sid, body.equipment or [])
-    await _validate_charger_by(items, current)
+    await _validate_equipment_by(items, current)
     assignees = await _plan_assignees(
         [str(x).strip() for x in body.assignees if str(x or "").strip()], items, current
     )

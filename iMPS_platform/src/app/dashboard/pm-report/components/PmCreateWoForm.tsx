@@ -17,6 +17,7 @@ import { useLanguage, type Lang } from "@/utils/useLanguage";
 import PmAssigneePicker from "./PmAssigneePicker";
 import { ChargerBySelect, ChargerHandoffNote, ownTeamLabel } from "./PmChargerBy";
 import {
+  commonBy,
   dateTimeLocalFromNow,
   EMPTY_PM_ASSIGNEE_OPTIONS,
   equipKey,
@@ -82,6 +83,7 @@ const T = {
 
   equipSection: { th: "อุปกรณ์ที่จะ PM", en: "Equipment to maintain" },
   allEquipment: { th: "ทั้งหมด", en: "All" },
+  doneByAll: { th: "ผู้ทำ PM ทุกรายการ", en: "PM by (all)" },
   selectedCount: { th: "เลือกแล้ว", en: "Selected" },
   items: { th: "รายการ", en: "item(s)" },
   noEquipment: { th: "ไม่พบอุปกรณ์ในสถานีนี้", en: "No equipment in this station" },
@@ -166,8 +168,8 @@ export default function PmCreateWoForm({ onSaved, onCancel }: Props) {
   const [stationMenuOpen, setStationMenuOpen] = useState(false);
   const stationPickerRef = useRef<HTMLDivElement>(null);
   const [checked, setChecked] = useState<Record<string, boolean>>({});
-  // ผู้ทำ PM ของแต่ละตู้ (key = equipKey) — ว่าง = ทีมเรา
-  const [chargerBy, setChargerBy] = useState<Record<string, string>>({});
+  // ผู้ทำ PM ของอุปกรณ์แต่ละชิ้น (key = equipKey) — ว่าง = ทีมเรา
+  const [itemBy, setItemBy] = useState<Record<string, string>>({});
   const [myCompany, setMyCompany] = useState("");
   const [plannedAt] = useState(() => dateTimeLocalFromNow());
   // ตั้งต้นเป็นช่วง วันนี้ → อีก 7 วัน — แก้ทับได้ แต่ส่วนใหญ่กดบันทึกได้เลย
@@ -241,14 +243,14 @@ export default function PmCreateWoForm({ onSaved, onCancel }: Props) {
     if (!stationId) {
       setChoices(null);
       setChecked({});
-      setChargerBy({});
+      setItemBy({});
       return;
     }
     let alive = true;
     (async () => {
       setLoadingChoices(true);
       setChecked({});
-      setChargerBy({});
+      setItemBy({});
       try {
         const res = await apiFetch(
           `/maximo/pm/equipment-choices?station_id=${encodeURIComponent(stationId)}`
@@ -307,7 +309,18 @@ export default function PmCreateWoForm({ onSaved, onCancel }: Props) {
     setChecked(next);
   };
 
-  // ไม่มีกลุ่ม Vendor — vendor เลือกได้ที่ "ผู้ทำ PM" ของแต่ละตู้ที่เดียว (ดู pmAssigneeGroups)
+  // แถว "ทั้งหมด": ตั้งผู้ทำ PM ทุกรายการที่ติ๊กไว้ทีเดียว (เช่นจ้าง vendor ทำทั้งสถานี)
+  // ตรงกันทุกชิ้นโชว์ชื่อนั้น ไม่ตรงกันโชว์ "หลายราย"
+  const checkedKeys = equipmentOptions.map(equipKey).filter((k) => checked[k]);
+  const allBy = commonBy(checkedKeys.map((k) => itemBy[k]));
+  const setByForChecked = (v: string) =>
+    setItemBy((prev) => {
+      const next = { ...prev };
+      checkedKeys.forEach((k) => { next[k] = v; });
+      return next;
+    });
+
+  // ไม่มีกลุ่ม Vendor — vendor เลือกได้ที่ "ผู้ทำ PM" ของอุปกรณ์ที่เดียว (ดู pmAssigneeGroups)
   const assigneeGroups = useMemo(
     () => pmAssigneeGroups(assigneeOptions, { vendors: false }),
     [assigneeOptions]
@@ -331,7 +344,7 @@ export default function PmCreateWoForm({ onSaved, onCancel }: Props) {
         ...(e.sn ? { sn: e.sn } : {}),
         ...(e.location ? { location: e.location } : {}),
         ...(e.label ? { label: e.label } : {}),
-        ...(e.type === "charger" && chargerBy[equipKey(e)] ? { by: chargerBy[equipKey(e)] } : {}),
+        ...(itemBy[equipKey(e)] ? { by: itemBy[equipKey(e)] } : {}),
       }));
 
     // vendor ส่งผ่าน "ผู้ทำ PM" ของตู้เท่านั้น (backend ก็ตัดซ้ำ — routers/pm_maximo.py _plan_assignees)
@@ -370,7 +383,7 @@ export default function PmCreateWoForm({ onSaved, onCancel }: Props) {
     }
   }, [
     saving, stationId, schedStart, schedFinish, schedRangeInvalid, assignees, assigneeOptions,
-    equipmentOptions, checked, chargerBy, plannedAt, lang, onSaved,
+    equipmentOptions, checked, itemBy, plannedAt, lang, onSaved,
   ]);
   const ownLabel = ownTeamLabel(myCompany, lang);
 
@@ -580,8 +593,8 @@ export default function PmCreateWoForm({ onSaved, onCancel }: Props) {
                       )}
                       <ChargerHandoffNote
                         items={equipmentOptions
-                          .filter((e) => e.type === "charger" && checked[equipKey(e)])
-                          .map((e) => ({ label: equipLabel(e), by: chargerBy[equipKey(e)] }))}
+                          .filter((e) => checked[equipKey(e)])
+                          .map((e) => ({ label: equipLabel(e), by: itemBy[equipKey(e)] }))}
                         showVendorHint={!locked && assigneeOptions.vendors.length > 0}
                         lang={lang}
                       />
@@ -613,21 +626,36 @@ export default function PmCreateWoForm({ onSaved, onCancel }: Props) {
                     <p className="tw-text-xs tw-text-orange-600">{t("noEquipment", lang)}</p>
                   ) : (
                     <div className="tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-divide-y tw-divide-blue-gray-50 tw-max-h-72 tw-overflow-y-auto">
-                      <label className="tw-flex tw-items-center tw-gap-2.5 tw-px-3 tw-py-2.5 tw-cursor-pointer hover:tw-bg-blue-gray-50/60 tw-transition-colors">
-                        <input
-                          type="checkbox"
-                          checked={allEquipChecked}
-                          disabled={locked}
-                          onChange={toggleAllEquipment}
-                          className="tw-h-4 tw-w-4 tw-shrink-0 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500 tw-cursor-pointer"
-                        />
-                        <span className="tw-text-sm tw-font-semibold tw-text-blue-gray-800">
-                          {t("allEquipment", lang)}
-                        </span>
-                        <span className="tw-ml-auto tw-text-xs tw-text-blue-gray-400">
-                          {selectedCount}/{equipmentOptions.length}
-                        </span>
-                      </label>
+                      <div className="tw-flex tw-flex-wrap tw-items-center tw-gap-x-2.5 tw-gap-y-1.5 tw-px-3 tw-py-2.5 hover:tw-bg-blue-gray-50/60 tw-transition-colors">
+                        <label className="tw-flex tw-min-w-0 tw-flex-1 tw-items-center tw-gap-2.5 tw-cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={allEquipChecked}
+                            disabled={locked}
+                            onChange={toggleAllEquipment}
+                            className="tw-h-4 tw-w-4 tw-shrink-0 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500 tw-cursor-pointer"
+                          />
+                          <span className="tw-text-sm tw-font-semibold tw-text-blue-gray-800">
+                            {t("allEquipment", lang)}
+                          </span>
+                          <span className="tw-ml-auto tw-text-xs tw-text-blue-gray-400">
+                            {selectedCount}/{equipmentOptions.length}
+                          </span>
+                        </label>
+                        {/* ตั้งผู้ทำ PM ทุกรายการที่ติ๊กไว้ทีเดียว — จ้าง vendor ทำทั้งสถานีเลือกตรงนี้ครั้งเดียวจบ */}
+                        {selectedCount > 0 && (
+                          <ChargerBySelect
+                            label={t("doneByAll", lang)}
+                            value={allBy ?? ""}
+                            mixed={allBy === null}
+                            onChange={setByForChecked}
+                            options={assigneeOptions}
+                            ownLabel={ownLabel}
+                            lang={lang}
+                            disabled={locked}
+                          />
+                        )}
+                      </div>
                       {equipmentOptions.map((e) => {
                         const k = equipKey(e);
                         return (
@@ -645,11 +673,11 @@ export default function PmCreateWoForm({ onSaved, onCancel }: Props) {
                               </span>
                               {e.sn && <span className="tw-text-xs tw-text-blue-gray-400">{e.sn}</span>}
                             </label>
-                            {/* ตู้ที่ติ๊กแล้วต้องบอกว่าใครทำ PM — ทีมเรา / vendor / outsource */}
-                            {e.type === "charger" && checked[k] && (
+                            {/* อุปกรณ์ที่ติ๊กแล้วต้องบอกว่าใครทำ PM — ทีมเรา / vendor / outsource */}
+                            {checked[k] && (
                               <ChargerBySelect
-                                value={chargerBy[k] ?? ""}
-                                onChange={(v) => setChargerBy((prev) => ({ ...prev, [k]: v }))}
+                                value={itemBy[k] ?? ""}
+                                onChange={(v) => setItemBy((prev) => ({ ...prev, [k]: v }))}
                                 options={assigneeOptions}
                                 ownLabel={ownLabel}
                                 chargerVendor={e.vendor}

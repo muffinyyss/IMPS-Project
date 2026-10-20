@@ -1,5 +1,5 @@
 """
-ทดสอบการแบ่งงานในใบ PM สถานีระหว่างทีมต้นทาง (EGAT) กับผู้ทำ PM ที่ planner เลือกรายตู้
+ทดสอบการแบ่งงานในใบ PM สถานีระหว่างทีมต้นทาง (EGAT) กับผู้ทำ PM ที่ planner เลือกรายอุปกรณ์
 (vendor เช่น EDS / outsource) — routers/pm_scope.py (ฟังก์ชันล้วน ไม่ต้องมี MongoDB)
 
     python test_pm_scope.py
@@ -70,6 +70,67 @@ def main() -> int:
             or pm_scope.section_owner(WO, "station") != "EGAT"):
         failed += 1
         print("FAIL section_owner")
+
+    # จ้าง EDS ทำทั้งสถานี (ผู้ทำ PM = EDS ทุกชิ้น) — ทีมต้นทางกรอกไม่ได้เลย เหลือ planner ตรวจ/อนุมัติ
+    whole = {
+        "planner_company": "EGAT",
+        "selected_equipment": [
+            {"type": "station", "by": "EDS"}, {"type": "mdb", "by": "EDS"},
+            {"type": "ccb", "by": "EDS"}, {"type": "cbbox", "by": "EDS"},
+            {"type": "charger", "sn": "SN1", "by": "EDS"},
+        ],
+        "vendor_plans": [{"vendor": "EDS", "status": "planned", "assignees": ["eds_tech"]}],
+    }
+    # ผสม: EDS ทำ Station + ตู้ SN1, ทีมเราทำ MDB
+    mixed = {
+        "planner_company": "EGAT",
+        "selected_equipment": [
+            {"type": "station", "by": "EDS"}, {"type": "mdb"},
+            {"type": "charger", "sn": "SN1", "by": "EDS"},
+        ],
+    }
+    # ใบส่งต่อที่เก็บส่วนระดับสถานีไว้ (sections) แต่ไม่มี by ในรายการอุปกรณ์ ก็อ่านได้
+    stored = {
+        "planner_company": "EGAT",
+        "selected_equipment": [{"type": "station"}, {"type": "mdb"}],
+        "vendor_plans": [{"vendor": "EDS", "status": "planned", "chargers": [], "sections": ["station"]}],
+    }
+    more = [
+        (whole, "technician", "eds_tech", "EDS", "station", "", True),
+        (whole, "technician", "eds_tech", "EDS", "cbbox", "", True),
+        (whole, "technician", "eds_tech", "EDS", "charger", "SN1", True),
+        (whole, "technician", "egat_tech", "EGAT", "station", "", False),
+        (whole, "technician", "egat_tech", "EGAT", "mdb", "", False),
+        (whole, "technician", "egat_tech", "EGAT", "charger", "SN1", False),
+        (whole, "planner", "egat_pl", "EGAT", "mdb", "", True),
+        (mixed, "technician", "eds_tech", "EDS", "station", "", True),
+        (mixed, "technician", "eds_tech", "EDS", "mdb", "", False),
+        (mixed, "technician", "egat_tech", "EGAT", "station", "", False),
+        (mixed, "technician", "egat_tech", "EGAT", "mdb", "", True),
+        (stored, "technician", "eds_tech", "EDS", "station", "", True),
+        (stored, "technician", "eds_tech", "EDS", "mdb", "", False),
+        (stored, "technician", "egat_tech", "EGAT", "station", "", False),
+        (stored, "technician", "egat_tech", "EGAT", "mdb", "", True),
+    ]
+    for wo, role, user, company, section, sn, expected in more:
+        got = pm_scope.can_edit_section(wo, role, user, company, section, sn)
+        if got != expected:
+            failed += 1
+            print(f"FAIL [{wo is whole and 'whole' or wo is mixed and 'mixed' or 'stored'}] "
+                  f"{role}/{user}@{company} {section}{'/' + sn if sn else ''}: got {got}, want {expected}")
+
+    if pm_scope.section_owner(whole, "mdb") != "EDS" or pm_scope.section_owner(mixed, "mdb") != "EGAT":
+        failed += 1
+        print("FAIL section_owner (ส่วนระดับสถานี)")
+
+    by_party = pm_scope.items_by_party(whole["selected_equipment"])
+    if by_party != {"eds": ("EDS", ["SN1"], ["station", "mdb", "ccb", "cbbox"])}:
+        failed += 1
+        print(f"FAIL items_by_party: {by_party}")
+    # ตู้ที่ไม่มี SN ไม่ทำให้เกิดรายการว่าง (ใบส่งต่อว่าง = ไม่ล็อกส่วนไหนเลย)
+    if pm_scope.items_by_party([{"type": "charger", "by": "EDS"}, {"type": "", "by": "EDS"}]) != {}:
+        failed += 1
+        print("FAIL items_by_party ต้องข้ามอุปกรณ์ที่ระบุไม่ได้")
 
     print("ผ่านทั้งหมด" if not failed else f"ไม่ผ่าน {failed} ข้อ")
     return 1 if failed else 0

@@ -48,6 +48,9 @@ UNGUARDED_BY_DESIGN = {
     # ลิงก์ PDF ถูกแนบเข้าใบงาน Maximo (IN03) และเปิดจากฝั่ง Maximo ที่ไม่มี session iMPS
     "/pdf/{template}/{id}/export",
     "/pdf/{template}/{id}/{filename}",
+    # PDF รวมของใบ PM สถานีที่อนุมัติแล้ว — แนบเข้า Maximo (IN03) เหมือนกัน
+    # เปิดให้เฉพาะใบที่ Closed (ใบที่ยังแก้ได้ต้องดูผ่าน /stationpmjob/{job_id}/pdf ที่มีด่าน)
+    "/pdf/stationpmjob/{job_id}/{filename}",
     # ตรวจ session + สิทธิ์สถานีเองใน main.py (uploads_access.assert_upload_access)
     "/uploads/{rel_path:path}",
 }
