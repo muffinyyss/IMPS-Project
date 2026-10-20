@@ -39,3 +39,11 @@ def test_lifetime_bounds_and_utc_input():
 
 def test_naive_datetime_is_treated_as_utc():
     assert access_token_ttl(datetime(2026, 10, 20, 2, 0)) == timedelta(hours=18)
+
+
+if __name__ == "__main__":
+    _tests = [(n, f) for n, f in list(globals().items()) if n.startswith("test_") and callable(f)]
+    for _name, _fn in _tests:
+        _fn()
+        print("[PASS]", _name)
+    print(f"{len(_tests)} passed")

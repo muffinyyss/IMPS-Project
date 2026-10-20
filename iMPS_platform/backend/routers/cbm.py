@@ -5,7 +5,7 @@ import json, re, asyncio
 from typing import Optional
 
 from config import CBM_DB, charger_coll_async, to_json
-from deps import UserClaims, get_current_user
+from deps import UserClaims, get_current_user, session_expired
 
 router = APIRouter()
 
@@ -93,7 +93,7 @@ async def cbm_query(
             yield "retry: 3000\n\n"
 
         while True:
-            if await request.is_disconnected():
+            if await request.is_disconnected() or session_expired(current):
                 break
 
             doc = await find_latest()

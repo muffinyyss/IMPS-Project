@@ -874,6 +874,8 @@ def _serialize_open(doc: dict) -> dict:
                 "sched_start": v.get("sched_start") or "",
                 "sched_finish": v.get("sched_finish") or "",
                 "assignees": v.get("assignees") or [],
+                "edited_by": v.get("edited_by") or "",
+                "edited_at": v.get("edited_at") or "",
                 # ตู้ชาร์จที่เป็นงานของ vendor รายนี้ (ตามช่อง Vendor ของตู้) — ว่าง = ส่งต่อทั้งใบแบบเดิม
                 "chargers": v.get("chargers") or [],
             }
@@ -881,6 +883,12 @@ def _serialize_open(doc: dict) -> dict:
         ],
         "planned_at": doc.get("planned_at"),
         "planned_by": doc.get("planned_by"),
+        # แก้แผนหลังวางแผนครั้งแรก (แก้ได้จนกว่าช่างจะกดเริ่ม PM)
+        "plan_edited_at": (
+            doc["plan_edited_at"].isoformat() if isinstance(doc.get("plan_edited_at"), datetime)
+            else doc.get("plan_edited_at")
+        ),
+        "plan_edited_by": doc.get("plan_edited_by"),
         "planner_company": doc.get("planner_company") or "",
         "sched_start": doc.get("sched_start"),
         "sched_finish": doc.get("sched_finish"),
@@ -1160,6 +1168,94 @@ def _merge_vendor_plans(existing: list[dict] | None, vendors: list[str]) -> list
         out.append(by_key.pop(key, None) or {"vendor": name.strip(), "status": "pending"})
     out.extend(v for v in by_key.values() if v.get("status") == "planned")
     return out
+
+
+# ══════════════════════════════════════════════════════════════════
+# แก้แผนหลังวางแผนแล้ว
+#   planner ต้นทาง (เช่น EGAT) แก้แผนได้ตราบใดที่ช่างยังไม่กดเริ่ม PM
+#     และ vendor ที่ส่งต่อไป (เช่น EDS) ยังไม่ได้วางแผนของตัวเอง
+#     (vendor วางแผนตามแผนต้นทางไปแล้ว — แก้ทีหลังจะทำให้แผนของ vendor ไม่ตรง)
+#   planner ของ vendor แก้แผนของบริษัทตัวเองได้ตราบใดที่ช่างยังไม่กดเริ่ม PM
+#   "เริ่ม PM" = มีใบ PM สถานีของใบงานนี้แล้ว (หรือเอกสาร PM ใบเดี่ยวรุ่นเก่าที่ผูก wonum)
+# ══════════════════════════════════════════════════════════════════
+PLAN_BYPASS_ROLES = {"admin", "owner"}
+
+
+async def _wo_started(wo: dict) -> bool:
+    """ช่างกดเริ่ม PM ใบงานนี้แล้วหรือยัง"""
+    wonum = str(wo.get("wonum") or "").strip()
+    if not wonum:
+        return False
+    station_id = _station_id_of_wo(wo)
+    if station_id:
+        try:
+            from routers.pm_helpers import get_stationpmjob_collection_for
+            if await get_stationpmjob_collection_for(station_id).find_one({"wonum": wonum}, {"_id": 1}):
+                return True
+        except Exception as e:
+            log.warning(f"  ⚠️ เช็คใบ PM ของ {wonum} ไม่สำเร็จ: {e}")
+    try:
+        return bool(await pm_flow.wo_reports(wonum))
+    except Exception as e:
+        log.warning(f"  ⚠️ เช็คเอกสาร PM ของ {wonum} ไม่สำเร็จ: {e}")
+        return False
+
+
+def _planned_vendors(wo: dict) -> list[str]:
+    return [
+        str(v.get("vendor") or "").strip()
+        for v in (wo.get("vendor_plans") or [])
+        if str(v.get("status") or "").strip().lower() == "planned"
+    ]
+
+
+async def _plan_edit_state(wo: dict, current: UserClaims, *, started: Optional[bool] = None) -> dict:
+    """
+    ใครแก้แผนอะไรได้บ้างตอนนี้ — หน้าวางแผนใช้ตัดสินว่าจะโชว์ปุ่ม "แก้ไขแผน" หรือไม่
+    และ endpoint บันทึกแผนใช้ตัวเดียวกันตรวจซ้ำ (reason = เหตุผลที่แก้ไม่ได้ ไว้โชว์ผู้ใช้)
+    """
+    role = (current.role or "").strip().lower()
+    company = _company_of(current)
+    if started is None:
+        started = await _wo_started(wo)
+    planned = str(wo.get("planning_status") or "").strip().lower() == "planned"
+    planner_company = str(wo.get("planner_company") or "").strip()
+    vendors_done = _planned_vendors(wo)
+
+    plan_reason = ""
+    if role not in PM_PLANNING_ROLES:
+        plan_reason = "เฉพาะ planner ที่วางแผนใบงานได้"
+    elif planned and started:
+        plan_reason = "ช่างกดเริ่ม PM แล้ว แก้แผนไม่ได้"
+    elif planned and vendors_done:
+        plan_reason = f"{', '.join(vendors_done)} วางแผนตามแผนนี้ไปแล้ว แก้แผนไม่ได้"
+    elif (planned and planner_company and role not in PLAN_BYPASS_ROLES
+          and company.strip().lower() != planner_company.lower()):
+        plan_reason = f"แผนนี้เป็นของ {planner_company} — แก้ได้เฉพาะ planner ของบริษัทนั้น"
+
+    mine = next(
+        (v for v in (wo.get("vendor_plans") or [])
+         if company and str(v.get("vendor") or "").strip().lower() == company.strip().lower()),
+        None,
+    )
+    vendor_reason = ""
+    if role not in PM_PLANNING_ROLES:
+        vendor_reason = "เฉพาะ planner ที่วางแผนใบงานได้"
+    elif not mine or str(mine.get("status") or "").strip().lower() != "planned":
+        vendor_reason = "ยังไม่ได้วางแผนของบริษัทคุณ"
+    elif started:
+        vendor_reason = "ช่างกดเริ่ม PM แล้ว แก้แผนไม่ได้"
+
+    return {
+        "started": started,
+        "planned": planned,
+        # planner ต้นทางแก้แผนที่บันทึกแล้วได้ไหม (ยังไม่วางแผน = วางแผนครั้งแรก ไม่ใช่การแก้)
+        "can_edit_plan": planned and not plan_reason,
+        "plan_reason": plan_reason,
+        # planner ของ vendor แก้แผนของบริษัทตัวเองที่บันทึกแล้วได้ไหม
+        "can_edit_vendor_plan": not vendor_reason,
+        "vendor_plan_reason": vendor_reason,
+    }
 
 
 async def _validate_charger_by(items: list[dict], current: UserClaims) -> None:
@@ -1531,6 +1627,8 @@ async def pm_equipment_choices(
         "chargers": chargers,          # เลือกได้หลายตู้
         "fixed": fixed,                # อุปกรณ์ระดับสถานี
         "selected_equipment": doc.get("selected_equipment") or [],
+        # ใครแก้แผนได้ตอนนี้ — หน้าวางแผนใช้โชว์ปุ่ม "แก้ไขแผน"
+        "plan_state": await _plan_edit_state(doc, current),
     }
 
 
@@ -1585,7 +1683,7 @@ async def set_pm_vendor_plan(
     planner ของ vendor วางแผนใบงานที่ planner ต้นทางส่งมาให้ (vendor_plans ของบริษัทตัวเอง)
 
     ช่างที่เลือกต้องเป็นตัวเลือกของบริษัทตัวเอง (ชุดเดียวกับ /companies/pm-options)
-    วางแผนแล้วแก้ไม่ได้ — เหมือนแผนของ planner ต้นทาง
+    วางแผนแล้วแก้ได้จนกว่าช่างจะกดเริ่ม PM (ดู _plan_edit_state)
     """
     from routers.company import pm_assignee_options
 
@@ -1618,8 +1716,11 @@ async def set_pm_vendor_plan(
             idx = len(plans) - 1
     if not company or idx < 0:
         raise HTTPException(status_code=403, detail="ใบงานนี้ไม่ได้ส่งต่อให้บริษัทของคุณวางแผน")
-    if plans[idx].get("status") == "planned":
-        raise HTTPException(status_code=409, detail="บริษัทของคุณวางแผนใบงานนี้ไปแล้ว")
+    is_edit = plans[idx].get("status") == "planned"
+    if is_edit:
+        state = await _plan_edit_state(wo, current)
+        if not state["can_edit_vendor_plan"]:
+            raise HTTPException(status_code=409, detail=state["vendor_plan_reason"])
 
     sched_start = (body.sched_start or "").strip()
     sched_finish = (body.sched_finish or "").strip()
@@ -1643,12 +1744,16 @@ async def set_pm_vendor_plan(
     plans[idx] = {
         **plans[idx],
         "status": "planned",
-        "planned_by": who,
-        "planned_at": (body.planned_at or datetime.now(timezone.utc).isoformat()).strip(),
         "sched_start": sched_start,
         "sched_finish": sched_finish,
         "assignees": assignees,
     }
+    if is_edit:
+        plans[idx]["edited_by"] = who
+        plans[idx]["edited_at"] = datetime.now(timezone.utc).isoformat()
+    else:
+        plans[idx]["planned_by"] = who
+        plans[idx]["planned_at"] = (body.planned_at or datetime.now(timezone.utc).isoformat()).strip()
     await _open_coll().update_one({"_id": wo["_id"]}, {"$set": {"vendor_plans": plans}})
     log.info(f"  ✅ vendor {plans[idx]['vendor']} วางแผนใบงาน {wonum}: {assignees} โดย {who}")
 
@@ -1694,6 +1799,13 @@ async def set_pm_equipment(
     wo = await _find_open_wo(wonum)
     if not wo:
         raise HTTPException(status_code=404, detail=f"PM work order not found: {wonum}")
+
+    # วางแผนไปแล้ว = เป็นการแก้แผน — แก้ได้จนกว่าช่างจะกดเริ่ม PM / vendor จะวางแผนตาม
+    is_edit = str(wo.get("planning_status") or "").strip().lower() == "planned"
+    if is_edit:
+        state = await _plan_edit_state(wo, current)
+        if not state["can_edit_plan"]:
+            raise HTTPException(status_code=409, detail=state["plan_reason"])
 
     # ใบที่เลขไม่มีอยู่จริงใน Maximo วางแผนไปก็ยิงสถานะกลับไม่ได้ (BMXAA1496E)
     # เตือนตั้งแต่ตอนกด Assign ดีกว่าไปพังตอนปิดงาน
@@ -1751,7 +1863,8 @@ async def set_pm_equipment(
         "sched_start": sched_start_value,
         "sched_finish": sched_finish_value,
         "assignees": assignees,
-        "planner_company": planner_company,
+        # คนแก้แผนอาจเป็น admin/owner — บริษัทเจ้าของแผนคงเดิม
+        "planner_company": (str(wo.get("planner_company") or "").strip() if is_edit else "") or planner_company,
         # vendor ที่ถูกเลือก / vendor ของตู้ในแผน ที่มี planner ของตัวเอง → ส่งต่อให้วางแผนอีกรอบ
         # พร้อมตู้ที่เป็นงานของ vendor รายนั้น
         "vendor_plans": _build_vendor_plans(
@@ -1761,6 +1874,12 @@ async def set_pm_equipment(
     }
     if not keep_equipment:
         update["selected_equipment"] = items
+    if is_edit:
+        # วางแผนครั้งแรกเก็บไว้ที่ planned_at/planned_by — การแก้จดแยกไว้
+        update.pop("planned_at", None)
+        update.pop("planned_by", None)
+        update["plan_edited_at"] = now
+        update["plan_edited_by"] = current.username or current.sub
 
     res = await _open_coll().update_one({"wonum": wonum}, {"$set": update})
     if res.matched_count == 0:

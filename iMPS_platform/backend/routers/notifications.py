@@ -8,7 +8,7 @@ from config import SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SENDER_EMAIL
 from fastapi import APIRouter, Request, Query, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 from typing import Optional, List
-from deps import UserClaims, get_current_user
+from deps import UserClaims, get_current_user, session_expired
 from routers.stations import load_station_scope, station_match_query
 from datetime import datetime, timezone
 from bson import ObjectId
@@ -653,7 +653,7 @@ async def notifications_stream(request: Request, current: UserClaims = Depends(g
 
         # ----- Watch for updates -----
         while True:
-            if await request.is_disconnected():
+            if await request.is_disconnected() or session_expired(current):
                 break
 
             collection_names = await errorDB.list_collection_names()

@@ -1,7 +1,7 @@
 import { API_BASE, handleUnauthorized } from "./api";
 
 /**
- * ดัก 401 จาก backend ทุก request ทั้งเว็บ — ไม่ใช่แค่ที่เรียกผ่าน apiFetch
+ * ดัก 401 จาก backend ทุก request ทั้งเว็บ — ไม่ใช่แค่ที่เรียกผ่าน apiFetch — รวมถึง SSE (EventSource)
  *
  * หลายหน้า (CM inprogress/closed, notifications, navbar, setting, MDB ฯลฯ) เรียก fetch ตรง ๆ
  * พอ token หมดอายุจึงเห็นแค่ error/ตารางว่าง ไม่ถูกพาไป login ตัวนี้ทำให้ทุกหน้าเด้งแบบเดียวกัน
@@ -47,6 +47,49 @@ async function detailOf(res: Response): Promise<string> {
   }
 }
 
+// ---------- SSE (EventSource) ----------
+// EventSource ไม่ได้วิ่งผ่าน fetch และไม่บอก status code ตอนต่อไม่ติด — รู้แค่ว่า "error"
+// พอเกิด error จึงถาม /me หนึ่งครั้ง (ผ่าน fetch ที่ถูกดักแล้ว) ถ้า 401 ก็เด้งไป login แบบเดียวกับหน้าอื่น
+// backend ปิด stream เองเมื่อ token หมดอายุ (deps.session_expired) → เบราว์เซอร์ต่อใหม่ → 401 → error → มาถึงตรงนี้
+
+const PROBE_MIN_INTERVAL_MS = 10_000;   // stream หลุดเพราะเน็ต/backend restart จะ error ทุก ~3 วิ — ไม่ต้องถามถี่ขนาดนั้น
+let probing: Promise<void> | null = null;
+let lastProbeAt = 0;
+
+/** ถาม backend ว่า session ยังใช้ได้ไหม — 401 จะถูกตัวดัก fetch พาไป login เอง */
+export function probeSession(): Promise<void> {
+  if (typeof window === "undefined") return Promise.resolve();
+  if (probing) return probing;
+  if (Date.now() - lastProbeAt < PROBE_MIN_INTERVAL_MS) return Promise.resolve();
+  lastProbeAt = Date.now();
+  const url = `${API_BASE}/me`;
+  if (!shouldHandle401(url)) return Promise.resolve();
+  probing = window
+    .fetch(url, { credentials: "include", cache: "no-store" })
+    .then(() => undefined, () => undefined)   // เน็ตหลุด/backend ล่ม ไม่ใช่เรื่อง session — ปล่อยให้หน้าเดิม retry ต่อ
+    .finally(() => {
+      probing = null;
+    });
+  return probing;
+}
+
+function installEventSourceGuard() {
+  const Original = (window as any).EventSource as typeof EventSource | undefined;
+  if (typeof Original !== "function") return;
+
+  class GuardedEventSource extends Original {
+    constructor(url: string | URL, init?: EventSourceInit) {
+      super(url, init);
+      if (shouldHandle401(url)) {
+        this.addEventListener("error", () => {
+          void probeSession();
+        });
+      }
+    }
+  }
+  (window as any).EventSource = GuardedEventSource;
+}
+
 export function installSessionGuard() {
   if (installed) return;
   if (typeof window === "undefined" || typeof window.fetch !== "function") return;
@@ -60,4 +103,6 @@ export function installSessionGuard() {
     }
     return res;
   };
+
+  installEventSourceGuard();
 }

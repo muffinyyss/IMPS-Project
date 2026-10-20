@@ -80,6 +80,11 @@ const T = {
   duplicateOwner: { th: "Owner นี้มีข้อมูลอยู่แล้ว กรุณาใช้ปุ่มแก้ไขที่รายการเดิม", en: "This owner already has a record — use Edit on the existing row" },
   saveFailed: { th: "บันทึกไม่สำเร็จ กรุณาลองใหม่", en: "Save failed, please try again" },
   loadFailed: { th: "โหลดข้อมูลไม่สำเร็จ", en: "Failed to load companies" },
+  scopeHint: { th: "เฉพาะของ", en: "Only for" },
+  noMyCompany: {
+    th: "บัญชีของคุณยังไม่ได้ระบุบริษัท จึงเพิ่ม Vendor / Outsource ไม่ได้ — กรุณาติดต่อ admin",
+    en: "Your account has no company set, so you can't add vendors / outsources — please contact an admin",
+  },
 } as const;
 
 const t = (k: keyof typeof T, lang: Lang) => T[k][lang];
@@ -230,6 +235,31 @@ export default function CompanyPage() {
   const searchParams = useSearchParams();
   const { lang } = useLanguage();
 
+  // planner เข้าหน้านี้ได้เฉพาะแท็บ Vendor / Outsource และเฉพาะของบริษัทตัวเอง (backend บังคับซ้ำ)
+  // null = ยังโหลด /me ไม่เสร็จ — รอก่อนค่อยโหลดรายการ กันแท็บ Owner ยิงไปโดน 403
+  const [me, setMe] = useState<{ role: string; company: string } | null>(null);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const res = await apiFetch("/me", { credentials: "include" });
+        const data = res.ok ? await res.json() : {};
+        if (alive) {
+          setMe({
+            role: String(data?.role ?? "").trim().toLowerCase(),
+            company: String(data?.company ?? "").trim(),
+          });
+        }
+      } catch {
+        if (alive) setMe({ role: "", company: "" });
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
+  const isPlanner = me?.role === "planner";
+  const myCompany = isPlanner ? me?.company || "" : "";
+  const visibleTabs = useMemo(() => (isPlanner ? TABS.filter(tb => tb.id !== "Owner") : TABS), [isPlanner]);
+
   const [active, setActive] = useState<TabId>(() => slugToTab(searchParams.get("tab")));
 
   // 🔄 Sync active tab กับ URL params
@@ -248,6 +278,14 @@ export default function CompanyPage() {
     }
   }, [pathname, router, searchParams, active]);
 
+  useEffect(() => {
+    if (!isPlanner || active !== "Owner") return;
+    setActive("Vendor");
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("tab", tabToSlug("Vendor"));
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  }, [isPlanner, active, pathname, router, searchParams]);
+
   const go = (next: TabId) => {
     setActive(next);
     const params = new URLSearchParams(searchParams.toString());
@@ -263,8 +301,17 @@ export default function CompanyPage() {
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const [reloadKey, setReloadKey] = useState(0); // เพิ่มค่าเพื่อบังคับโหลดใหม่หลังบันทึก
+  // planner ที่ไม่มี company ในโปรไฟล์ — ไม่รู้ว่าเป็นของใคร backend จะตอบ 403 จึงไม่โหลดเลย
+  const plannerWithoutCompany = isPlanner && !myCompany;
 
   useEffect(() => {
+    if (!me) return;
+    if (isPlanner && (activeType === "owner" || !myCompany)) {
+      setCompanies([]);
+      setLoading(false);
+      setLoadError(false);
+      return;
+    }
     let alive = true;
     (async () => {
       setLoading(true);
@@ -286,13 +333,15 @@ export default function CompanyPage() {
       }
     })();
     return () => { alive = false; };
-  }, [activeType, reloadKey]);
+  }, [activeType, reloadKey, me, isPlanner, myCompany]);
 
   // ─── รายชื่อสำหรับ dropdown: แท็บ Vendor ใช้ Owner, แท็บ Outsource ใช้ทั้ง Owner และ Vendor ───
   const [ownerOptions, setOwnerOptions] = useState<string[]>([]);
   const [vendorOptions, setVendorOptions] = useState<string[]>([]);
 
   useEffect(() => {
+    // planner ไม่ได้เลือก owner / company เอง (ล็อกเป็นบริษัทตัวเอง) และอ่านแท็บ Owner ไม่ได้
+    if (!me || isPlanner) return;
     if (!isVendorTab && !isOutsourceTab) return;
     let alive = true;
     (async () => {
@@ -326,7 +375,7 @@ export default function CompanyPage() {
       }
     })();
     return () => { alive = false; };
-  }, [isVendorTab, isOutsourceTab, reloadKey]);
+  }, [isVendorTab, isOutsourceTab, reloadKey, me, isPlanner]);
 
   // ─── Dialog เพิ่ม / แก้ไขบริษัท ───
   const [addOpen, setAddOpen] = useState(false);
@@ -338,27 +387,45 @@ export default function CompanyPage() {
   const [formError, setFormError] = useState("");
 
   // owner ที่ผูกไว้อาจถูกลบออกจากแท็บ Owner ไปแล้ว — คงไว้ใน dropdown ไม่ให้ค่าหาย
-  const ownerChoices = useMemo(
-    () => (form.name && !ownerOptions.includes(form.name) ? [form.name, ...ownerOptions] : ownerOptions),
-    [form.name, ownerOptions]
-  );
+  const ownerChoices = useMemo(() => {
+    // planner ไม่ได้เลือก owner เอง — ล็อกเป็นบริษัทตัวเอง
+    const ownerList = isPlanner ? (myCompany ? [myCompany] : []) : ownerOptions;
+    return form.name && !ownerList.includes(form.name) ? [form.name, ...ownerList] : ownerList;
+  }, [form.name, isPlanner, myCompany, ownerOptions]);
 
   // แท็บ Outsource เลือก company ได้ทั้งฝั่ง Owner และ Vendor — เช่นเดียวกัน ค่าเดิมต้องไม่หาย
   const companyGroups = useMemo(() => {
-    const groups = [
-      { label: t("owner", lang), options: ownerOptions },
-      { label: t("vendor", lang), options: vendorOptions },
-    ].filter(g => g.options.length);
-    const known = [...ownerOptions, ...vendorOptions];
+    const groups = isPlanner
+      ? [{ label: t("company", lang), options: myCompany ? [myCompany] : [] }]
+      : [
+          { label: t("owner", lang), options: ownerOptions },
+          { label: t("vendor", lang), options: vendorOptions },
+        ];
+    const known = groups.flatMap(g => g.options);
     if (form.company && !known.includes(form.company)) {
       groups.unshift({ label: t("company", lang), options: [form.company] });
     }
-    return groups;
-  }, [ownerOptions, vendorOptions, form.company, lang]);
+    return groups.filter(g => g.options.length);
+  }, [isPlanner, myCompany, ownerOptions, vendorOptions, form.company, lang]);
 
   const hasCompanyChoice = companyGroups.some(g => g.options.length);
 
   const openAdd = () => {
+    if (isPlanner) {
+      // owner 1 รายมีได้ record เดียว — planner มีบริษัทเดียว ถ้ามีแล้วก็เปิดของเดิมพร้อมช่อง vendor ใหม่
+      if (isVendorTab && companies.length) {
+        openEdit(companies[0]);
+        setVendors(list => [...list.filter(v => v.name || v.brands.length), emptyVendor()]);
+        return;
+      }
+      setEditId(null);
+      setForm({ ...EMPTY_FORM, name: isVendorTab ? myCompany : "", company: isOutsourceTab ? myCompany : "" });
+      setVendors([emptyVendor()]);
+      setOutsourceNames([""]);
+      setFormError("");
+      setAddOpen(true);
+      return;
+    }
     setEditId(null);
     setForm({ ...EMPTY_FORM });
     setVendors([emptyVendor()]);
@@ -546,7 +613,8 @@ export default function CompanyPage() {
     ));
 
   const renderBody = () => {
-    if (loading) return messageRow(t("loading", lang));
+    if (!me || loading) return messageRow(t("loading", lang));
+    if (plannerWithoutCompany) return messageRow(t("noMyCompany", lang), true);
     if (loadError) return messageRow(t("loadFailed", lang), true);
     if (!companies.length) return messageRow(t("empty", lang));
     return isVendorTab ? vendorRows() : plainRows();
@@ -557,7 +625,7 @@ export default function CompanyPage() {
       {/* Custom Tabs — สไตล์เดียวกับหน้า CM report */}
       <div className="tw-w-full tw-flex tw-justify-start tw-overflow-x-auto tw-scrollbar-hide">
         <div className="tw-inline-flex tw-items-center tw-gap-1 tw-p-1 tw-bg-gray-100 tw-rounded-xl tw-border tw-border-gray-200">
-          {TABS.map((tab) => {
+          {visibleTabs.map((tab) => {
             const isActive = active === tab.id;
             return (
               <button
@@ -590,15 +658,17 @@ export default function CompanyPage() {
           <div className="tw-flex tw-items-center tw-justify-between tw-gap-3 tw-border-b tw-border-gray-100 tw-px-4 tw-py-3.5">
             <div>
               <h2 className="tw-text-base tw-font-bold tw-text-gray-800">{active}</h2>
-              {!loading && !loadError && (
+              {!loading && !loadError && !plannerWithoutCompany && (
                 <p className="tw-mt-0.5 tw-text-xs tw-text-gray-500">
                   {companies.length} {t("count", lang)}
+                  {isPlanner && myCompany && ` · ${t("scopeHint", lang)} ${myCompany}`}
                 </p>
               )}
             </div>
             <Button
               size="sm"
               onClick={openAdd}
+              disabled={!me || plannerWithoutCompany}
               className="tw-shrink-0 tw-rounded-xl tw-bg-gray-900 tw-px-4 tw-py-2 tw-text-xs tw-font-semibold tw-normal-case tw-shadow-lg tw-shadow-gray-900/20 tw-transition-all hover:tw-bg-black hover:tw-shadow-xl"
             >
               + {t("add", lang)}
@@ -677,7 +747,8 @@ export default function CompanyPage() {
                       required
                       value={form.name}
                       onChange={(e) => setForm(f => ({ ...f, name: e.target.value }))}
-                      className="tw-peer tw-h-full tw-w-full tw-cursor-pointer tw-appearance-none tw-rounded-[7px] tw-border tw-border-blue-gray-200 tw-bg-transparent tw-px-3 tw-py-2.5 tw-font-sans tw-text-sm tw-font-normal tw-text-blue-gray-700 tw-outline-none focus:tw-border-2 focus:tw-border-gray-900"
+                      disabled={isPlanner}
+                      className="tw-peer tw-h-full tw-w-full tw-cursor-pointer tw-appearance-none tw-rounded-[7px] tw-border tw-border-blue-gray-200 tw-bg-transparent tw-px-3 tw-py-2.5 tw-font-sans tw-text-sm tw-font-normal tw-text-blue-gray-700 tw-outline-none focus:tw-border-2 focus:tw-border-gray-900 disabled:tw-cursor-not-allowed disabled:tw-bg-blue-gray-50"
                     >
                       <option value="" disabled>{t("selectOwner", lang)}</option>
                       {ownerChoices.map(name => (
@@ -781,7 +852,8 @@ export default function CompanyPage() {
                     required
                     value={form.company}
                     onChange={(e) => setForm(f => ({ ...f, company: e.target.value }))}
-                    className="tw-peer tw-h-full tw-w-full tw-cursor-pointer tw-appearance-none tw-rounded-[7px] tw-border tw-border-blue-gray-200 tw-bg-transparent tw-px-3 tw-py-2.5 tw-font-sans tw-text-sm tw-font-normal tw-text-blue-gray-700 tw-outline-none focus:tw-border-2 focus:tw-border-gray-900"
+                    disabled={isPlanner}
+                    className="tw-peer tw-h-full tw-w-full tw-cursor-pointer tw-appearance-none tw-rounded-[7px] tw-border tw-border-blue-gray-200 tw-bg-transparent tw-px-3 tw-py-2.5 tw-font-sans tw-text-sm tw-font-normal tw-text-blue-gray-700 tw-outline-none focus:tw-border-2 focus:tw-border-gray-900 disabled:tw-cursor-not-allowed disabled:tw-bg-blue-gray-50"
                   >
                     <option value="" disabled>{t("selectCompany", lang)}</option>
                     {companyGroups.map(group => (

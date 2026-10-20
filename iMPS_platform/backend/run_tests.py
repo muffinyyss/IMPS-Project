@@ -17,6 +17,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 
 SUITES = [
     "test_session_cookies.py",           # คุกกี้ HttpOnly: login / refresh / logout
+    "test_session_expiry.py",            # access token หมดอายุตี 3 (เวลาไทย)
+    "test_sse_session.py",               # SSE ปิดเองเมื่อ access token หมดอายุ
     "test_route_guard.py",               # ด่านสิทธิ์กลาง + ตัวกรองสถานีของ /pm-reports/*
     "test_request_budget.py",            # N+1 ที่ระดับ MongoDB ของ endpoint หลัก
     "test_uploads_access.py",            # สิทธิ์ไฟล์ /uploads

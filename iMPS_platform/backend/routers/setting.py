@@ -7,7 +7,7 @@ from typing import Literal, Optional
 import json, re, asyncio, logging
 
 from config import settingDB, _ensure_utc_iso, to_json, mqtt_client, MQTT_TOPIC, BROKER_HOST, BROKER_PORT, charger_collection, charger_coll_async
-from deps import UserClaims, get_current_user
+from deps import UserClaims, get_current_user, session_expired
 # SN มากับ body → ด่านกลาง (access_guard.enforce_access) มองไม่เห็น ต้องตรวจเองในทุก endpoint ที่สั่งงานตู้
 from access_guard import assert_scope_sn
 
@@ -75,7 +75,7 @@ async def setting_stream(
         try:
             async with coll.watch(full_document="updateLookup") as stream:
                 async for change in stream:
-                    if await request.is_disconnected():
+                    if await request.is_disconnected() or session_expired(current):
                         break
                     doc = change.get("fullDocument")
                     if not doc:
@@ -85,7 +85,7 @@ async def setting_stream(
                     yield f"data: {json.dumps(doc)}\n\n"
         except Exception:
             last_id = latest.get("_id") if latest else None
-            while not await request.is_disconnected():
+            while not await request.is_disconnected() and not session_expired(current):
                 doc = await coll.find_one({}, sort=[("timestamp", -1), ("_id", -1)])
                 if doc and str(doc["_id"]) != str(last_id):
                     last_id = str(doc["_id"])
@@ -126,7 +126,7 @@ async def setting_query(
             yield "retry: 3000\n\n"
 
         while True:
-            if await request.is_disconnected():
+            if await request.is_disconnected() or session_expired(current):
                 break
             doc = await coll.find_one({}, sort=[("_id", -1)])
             if doc and doc.get("_id") != last_id:
