@@ -40,6 +40,7 @@ import {
   type EquipmentItem,
   type MaximoSource,
   type MaximoWorkOrder,
+  type PlanEditState,
   type PmAssigneeOptions,
   type VendorPlan,
 } from "./planning";
@@ -116,6 +117,23 @@ const T = {
     th: "ใบงานนี้วางแผนเรียบร้อยแล้ว — ข้อมูลเป็นแบบอ่านอย่างเดียว",
     en: "This work order is already planned — fields are read-only",
   },
+  plannedEditableNotice: {
+    th: "ใบงานนี้วางแผนแล้ว — ยังแก้ไขได้จนกว่าช่างจะกดเริ่ม PM และ vendor ที่ส่งต่อไปยังไม่ได้วางแผน (กด \"แก้ไขแผน\")",
+    en: "This work order is planned — you can still edit it until a technician starts PM and any handed-off vendor has planned (press \"Edit plan\")",
+  },
+  editingNotice: {
+    th: "กำลังแก้ไขแผน — กด \"บันทึกการแก้ไข\" เพื่อยืนยัน หรือ \"ยกเลิก\" เพื่อกลับไปใช้แผนเดิม",
+    en: "Editing the plan — press \"Save changes\" to confirm or \"Cancel\" to keep the current plan",
+  },
+  vendorEditableNotice: {
+    th: "แผนของบริษัทคุณยังแก้ไขได้จนกว่าช่างจะกดเริ่ม PM",
+    en: "Your company's plan can still be edited until a technician starts PM",
+  },
+  editPlan: { th: "แก้ไขแผน", en: "Edit plan" },
+  editVendorPlan: { th: "แก้ไขแผนของบริษัทคุณ", en: "Edit your company's plan" },
+  saveEdit: { th: "บันทึกการแก้ไข", en: "Save changes" },
+  cancelEdit: { th: "ยกเลิก", en: "Cancel" },
+  editedBy: { th: "แก้ไขล่าสุดโดย", en: "Last edited by" },
   save: { th: "Assign", en: "Assign" },
 
   vendorSection: { th: "แผนของ", en: "Plan by" },
@@ -195,6 +213,11 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
+  // แก้แผนที่บันทึกแล้ว — ต้องกดปุ่ม "แก้ไขแผน" ก่อน กันแก้โดยไม่ตั้งใจ
+  const [planState, setPlanState] = useState<PlanEditState | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [vEditing, setVEditing] = useState(false);
+
   const [checked, setChecked] = useState<Record<string, boolean>>({});
   // ผู้ทำ PM ของแต่ละตู้ (key = equipKey) — ว่าง = ทีมเรา
   const [chargerBy, setChargerBy] = useState<Record<string, string>>({});
@@ -212,6 +235,8 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
     if (!wonum) return;
     setLoading(true);
     setError("");
+    setEditing(false);
+    setVEditing(false);
     try {
       const [meRes, woRes, choicesRes] = await Promise.all([
         apiFetch("/me"),
@@ -269,6 +294,7 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
           selected_equipment: Array.isArray(cJson?.selected_equipment) ? cJson.selected_equipment : [],
         };
         setChoices(data);
+        setPlanState(cJson?.plan_state ?? null);
         const preset: Record<string, boolean> = {};
         const presetBy: Record<string, string> = {};
         data.selected_equipment.forEach((e) => {
@@ -408,14 +434,19 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
   // ผู้ทำ PM ของแต่ละตู้ที่บันทึกไว้แล้ว — โชว์ป้ายข้างตู้ตอนอ่านอย่างเดียว
   const byOf = chargerByMap(wo);
   const ownLabel = ownTeamLabel(wo?.planner_company || myCompany, lang);
-  // วางแผนเสร็จแล้ว = อ่านอย่างเดียวถาวร (PM ไม่มีแก้ไขแผน)
-  const locked = !canPlan || alreadyPlanned;
+  // วางแผนเสร็จแล้ว = อ่านอย่างเดียว จนกว่าจะกด "แก้ไขแผน" (แก้ได้จนกว่าช่างจะกดเริ่ม PM
+  // และ vendor ที่ส่งต่อไปยังไม่ได้วางแผน — backend ตรวจซ้ำตอนบันทึก)
+  const locked = !canPlan || (alreadyPlanned && !editing);
+  const canEditPlan = canPlan && alreadyPlanned && !!planState?.can_edit_plan;
   // ใบงานที่ส่งต่อมาให้บริษัทของคนที่ login วางแผนอีกรอบ และยังไม่ได้วางแผน
   const mine = myVendorPlan(wo, myCompany);
   const vendorTurn = canPlan && !!mine && mine.status !== "planned";
+  // planner ของ vendor แก้แผนของบริษัทตัวเองที่บันทึกแล้ว (จนกว่าช่างจะกดเริ่ม PM)
+  const canEditVendorPlan = canPlan && !!mine && mine.status === "planned" && !!planState?.can_edit_vendor_plan;
+  const vendorFormOpen = vendorTurn || vEditing;
   // ช่างเห็นปุ่มเสมอ ส่วน planner/admin กรอกเองได้หลังวางแผนเสร็จแล้ว (ก่อนนั้นต้องกด Assign ก่อน)
   // planner ของ vendor ที่ใบงานส่งต่อมาให้: ต้องวางแผนของบริษัทตัวเองก่อน — แผนต้นทางเสร็จแล้วยังไม่พอ
-  const showStart = !!onStart && !vendorTurn
+  const showStart = !!onStart && !vendorTurn && !editing && !vEditing
     && (!canPlan || (alreadyPlanned && PM_PLANNER_FILL_ROLES.includes(myRole)));
   // ส่งต่อให้ vendor แล้วแต่ vendor ยังไม่ได้วางแผน = ยังไม่มีทีมเข้าหน้างาน เริ่มไม่ได้
   const waitingVendors = pendingVendorPlans(wo).map((v) => v.vendor).filter(Boolean);
@@ -494,11 +525,25 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
             </div>
           )}
 
-          {/* วางแผนแล้ว — อ่านอย่างเดียว */}
+          {/* วางแผนแล้ว — อ่านอย่างเดียว / ยังแก้ได้ / กำลังแก้ */}
           {!loading && canPlan && alreadyPlanned && !vendorTurn && (
-            <div className="tw-mb-4 tw-flex tw-items-start tw-gap-3 tw-px-4 tw-py-3 tw-rounded-lg tw-bg-blue-50 tw-border tw-border-blue-200">
-              <ExclamationTriangleIcon className="tw-w-5 tw-h-5 tw-text-blue-500 tw-mt-0.5 tw-flex-shrink-0" />
-              <p className="tw-text-sm tw-text-blue-800">{t("plannedNotice", lang)}</p>
+            <div className={`tw-mb-4 tw-flex tw-items-start tw-gap-3 tw-px-4 tw-py-3 tw-rounded-lg tw-border ${editing ? "tw-bg-amber-50 tw-border-amber-200" : "tw-bg-blue-50 tw-border-blue-200"}`}>
+              <ExclamationTriangleIcon className={`tw-w-5 tw-h-5 tw-mt-0.5 tw-flex-shrink-0 ${editing ? "tw-text-amber-500" : "tw-text-blue-500"}`} />
+              <div className={`tw-text-sm ${editing ? "tw-text-amber-800" : "tw-text-blue-800"}`}>
+                <p>
+                  {editing
+                    ? t("editingNotice", lang)
+                    : canEditPlan
+                      ? t("plannedEditableNotice", lang)
+                      : `${t("plannedNotice", lang)}${planState?.plan_reason ? ` (${planState.plan_reason})` : ""}`}
+                </p>
+                {canEditVendorPlan && !vEditing && <p className="tw-mt-1">{t("vendorEditableNotice", lang)}</p>}
+                {wo?.plan_edited_by && (
+                  <p className="tw-mt-1 tw-text-xs tw-opacity-80">
+                    {t("editedBy", lang)} {wo.plan_edited_by} · {toDateTimeLocalValue(wo.plan_edited_at).replace("T", " ")}
+                  </p>
+                )}
+              </div>
             </div>
           )}
 
@@ -660,7 +705,7 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
 
               {/* ═══ แผนของ vendor (ส่งต่อมาให้วางแผนอีกรอบ) — 1 หัวข้อต่อ 1 บริษัท ═══ */}
               {vendorPlans.map((vp, i) => {
-                const editable = vendorTurn && mine === vp;
+                const editable = vendorFormOpen && mine === vp;
                 const planned = vp.status === "planned";
                 return (
                   <div key={vp.vendor} className="tw-mb-6 tw-rounded-lg tw-overflow-hidden tw-border tw-border-blue-gray-100 tw-bg-white tw-shadow-sm">
@@ -836,6 +881,57 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
                   >
                     {t("backToList", lang)}
                   </Button>
+                  {/* แก้แผนที่บันทึกแล้ว — กดเปิดก่อน แล้วค่อยบันทึก/ยกเลิก */}
+                  {canEditPlan && !editing && !vEditing && !vendorTurn && (
+                    <Button
+                      type="button"
+                      variant="outlined"
+                      onClick={() => { setError(""); setEditing(true); }}
+                      className="tw-border-gray-800 tw-text-gray-800 hover:tw-bg-gray-50"
+                    >
+                      {t("editPlan", lang)}
+                    </Button>
+                  )}
+                  {canEditVendorPlan && !vEditing && !editing && (
+                    <Button
+                      type="button"
+                      variant="outlined"
+                      onClick={() => { setError(""); setVEditing(true); }}
+                      className="tw-border-gray-800 tw-text-gray-800 hover:tw-bg-gray-50"
+                    >
+                      {t("editVendorPlan", lang)}
+                    </Button>
+                  )}
+                  {(editing || vEditing) && (
+                    <Button
+                      type="button"
+                      variant="outlined"
+                      disabled={saving}
+                      onClick={() => { void load(); }}
+                      className="tw-border-blue-gray-200 tw-text-blue-gray-700 hover:tw-border-blue-gray-300"
+                    >
+                      {t("cancelEdit", lang)}
+                    </Button>
+                  )}
+                  {editing && (
+                    <Button
+                      onClick={onSave}
+                      disabled={locked || saving || !wo}
+                      className="tw-bg-gray-800 hover:!tw-bg-blue-600 tw-text-white hover:tw-shadow-lg hover:!tw-shadow-blue-500/30 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed disabled:tw-shadow-none"
+                    >
+                      {saving ? t("saving", lang) : t("saveEdit", lang)}
+                    </Button>
+                  )}
+                  {vEditing && (
+                    <Button
+                      onClick={onSaveVendor}
+                      disabled={saving || !wo}
+                      className="tw-bg-gray-800 hover:!tw-bg-blue-600 tw-text-white hover:tw-shadow-lg hover:!tw-shadow-blue-500/30 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed disabled:tw-shadow-none"
+                    >
+                      {saving ? t("saving", lang) : t("saveEdit", lang)}
+                    </Button>
+                  )}
+
                   {/* วางแผนแล้วไม่ต้องมีปุ่ม Assign ให้กดทับ — ช่างก็ไม่ต้องเห็นปุ่มจาง */}
                   {canPlan && !alreadyPlanned && (
                     <Button

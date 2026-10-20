@@ -1,4 +1,7 @@
-"""Company CRUD — รายชื่อบริษัทแยกประเภท owner / vendor / outsource (เมนู Company, เฉพาะ admin/super_admin)
+"""Company CRUD — รายชื่อบริษัทแยกประเภท owner / vendor / outsource (เมนู Company)
+
+สิทธิ์: admin/super_admin จัดการได้ทุกประเภท — planner เพิ่ม/แก้ได้เฉพาะ vendor และ outsource
+ของบริษัทตัวเอง (ขอบเขตเดียวกับที่ /pm-options ส่งให้ฟอร์ม PM) ส่วนแท็บ Owner ยังเป็นของ admin
 
 โครงของ type=vendor ต่างจากอีกสองประเภท: 1 document = owner 1 ราย ที่ถือรายการ vendor ไว้ข้างใน
 (owner 1 ราย → หลาย vendor → vendor แต่ละรายดูแลได้หลายยี่ห้อ) ส่วน owner/outsource เก็บแบน ๆ
@@ -22,12 +25,43 @@ router = APIRouter(prefix="/companies", tags=["companies"])
 COMPANY_TYPES = {"owner", "vendor", "outsource"}
 # role ที่มอบหมายงาน PM ได้ — ต้องตรงกับ PM_PLANNING_ROLES ใน routers/pm_maximo.py
 PM_ASSIGNER_ROLES = {"admin", "owner", "planner"}
+# role ที่เพิ่ม/แก้ vendor และ outsource ของบริษัทตัวเองได้ในเมนู Company (แท็บ Owner ยังเป็นของ admin)
+COMPANY_SELF_SERVICE_ROLES = {"planner"}
+SELF_SERVICE_TYPES = {"vendor", "outsource"}
 
 
-def _require_admin(current: UserClaims):
+def _is_admin(current: UserClaims) -> bool:
     # super_admin ถูก normalize เป็น admin ที่ deps.get_current_user แล้ว — เช็ค admin ที่เดียวครอบทั้งคู่
-    if (current.role or "").lower() != "admin":
+    return (current.role or "").lower() == "admin"
+
+
+def _require_company_editor(current: UserClaims):
+    if not _is_admin(current) and (current.role or "").lower() not in COMPANY_SELF_SERVICE_ROLES:
         raise HTTPException(status_code=403, detail="admin only")
+
+
+def _owner_field(company_type: str) -> str:
+    """ฟิลด์ที่บอกว่า record เป็นของบริษัทไหน — vendor ผูก owner ไว้ที่ name, outsource ไว้ที่ company"""
+    return "name" if company_type == "vendor" else "company"
+
+
+async def _editor_scope(current: UserClaims, company_type: Optional[str]) -> Optional[str]:
+    """ตรวจสิทธิ์เมนู Company แล้วคืนบริษัทที่ผู้ใช้ถูกจำกัดไว้
+
+    - admin   → None (ไม่จำกัด ทุกประเภท)
+    - planner → ชื่อ company ของตัวเอง; ใช้ได้เฉพาะ type vendor / outsource
+                vendor = record ที่ owner คือบริษัทตัวเอง, outsource = ที่สังกัดบริษัทตัวเองตรง ๆ
+    """
+    _require_company_editor(current)
+    if _is_admin(current):
+        return None
+    if company_type not in SELF_SERVICE_TYPES:
+        raise HTTPException(status_code=403, detail="planner can manage vendor / outsource only")
+    company = await _my_company(current)
+    if not company:
+        # ไม่มี company = ไม่รู้ว่าเพิ่มให้ใคร — กันไม่ให้สร้าง record ลอยที่ไม่ผูกกับบริษัทไหน
+        raise HTTPException(status_code=403, detail="no company on your profile")
+    return company
 
 
 class VendorEntry(BaseModel):
@@ -153,12 +187,15 @@ async def list_companies(
     type: Optional[str] = Query(None, description="owner | vendor | outsource"),
     current: UserClaims = Depends(get_current_user),
 ):
-    _require_admin(current)
     query: dict = {}
     if type:
         if type not in COMPANY_TYPES:
             raise HTTPException(status_code=400, detail="type must be owner, vendor or outsource")
         query["type"] = type
+    # planner ต้องระบุ type (vendor / outsource) และเห็นเฉพาะของบริษัทตัวเอง
+    scope = await _editor_scope(current, type)
+    if scope is not None:
+        query[_owner_field(type)] = _ci(scope)
     docs = await companies_coll_async.find(query).sort("name", 1).to_list(length=None)
     return {"companies": [_serialize(d) for d in docs]}
 
@@ -275,12 +312,19 @@ async def pm_assignee_options(current: UserClaims = Depends(get_current_user)):
 
 @router.post("/")
 async def create_company(payload: CompanyCreate, current: UserClaims = Depends(get_current_user)):
-    _require_admin(current)
+    scope = await _editor_scope(current, payload.type)
     name = payload.name.strip()
+    company = payload.company.strip()
+    if scope is not None:
+        # planner เพิ่มได้เฉพาะของบริษัทตัวเอง — ไม่เชื่อค่า owner / company ที่ส่งมา
+        if payload.type == "vendor":
+            name = scope
+        else:
+            company = scope
+
     if not name:
         raise HTTPException(status_code=400, detail="name is required")
 
-    company = payload.company.strip()
     if payload.type == "outsource" and not company:
         raise HTTPException(status_code=400, detail="company is required")
 
@@ -321,13 +365,21 @@ async def update_company(
     current: UserClaims = Depends(get_current_user),
 ):
     """แก้ไขได้ — owner 1 รายมี record เดียว การเพิ่ม vendor รายถัดไปจึงต้องมาทางนี้"""
-    _require_admin(current)
+    _require_company_editor(current)
     oid = _to_object_id(company_id)
     doc = await companies_coll_async.find_one({"_id": oid})
     if not doc:
         raise HTTPException(status_code=404, detail="company not found")
 
     company_type = doc.get("type", "")
+    scope = await _editor_scope(current, company_type)
+    if scope is not None:
+        owner_value = str(doc.get(_owner_field(company_type)) or "").strip()
+        if owner_value.lower() != scope.lower():
+            raise HTTPException(status_code=403, detail="not your company")
+        # owner ของ record vendor / company ของ outsource ล็อกไว้ที่บริษัทตัวเอง — planner ย้ายออกไม่ได้
+        locked = {"name": None} if company_type == "vendor" else {"company": None}
+        payload = payload.model_copy(update=locked)
     is_outsource = company_type == "outsource"
     updates: Dict[str, Any] = {}
 

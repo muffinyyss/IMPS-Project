@@ -16,6 +16,23 @@ const replace = vi.fn();
 let backendFetch: ReturnType<typeof vi.fn>;
 const win: any = {};
 
+// EventSource ปลอม — จำ listener ไว้ให้เทสต์สั่งยิง error เองได้
+class FakeEventSource {
+  static instances: FakeEventSource[] = [];
+  url: string;
+  listeners: Record<string, Array<() => void>> = {};
+  constructor(url: string | URL) {
+    this.url = String(url);
+    FakeEventSource.instances.push(this);
+  }
+  addEventListener(type: string, fn: () => void) {
+    (this.listeners[type] ||= []).push(fn);
+  }
+  emit(type: string) {
+    (this.listeners[type] || []).forEach((fn) => fn());
+  }
+}
+
 async function setup(pathname = "/dashboard/cm-report") {
   store.clear();
   replace.mockReset();
@@ -25,7 +42,9 @@ async function setup(pathname = "/dashboard/cm-report") {
     dispatchEvent: () => true,
     location: { pathname, search: "", href: `http://localhost:3001${pathname}`, replace },
     fetch: backendFetch,
+    EventSource: FakeEventSource,
   });
+  FakeEventSource.instances = [];
   vi.stubGlobal("window", win);
   vi.stubGlobal("localStorage", {
     getItem: (k: string) => (store.has(k) ? store.get(k)! : null),
@@ -99,5 +118,64 @@ describe("session guard", () => {
     expect((await win.fetch("http://localhost:8000/x")).status).toBe(500);
     await flush();
     expect(replace).not.toHaveBeenCalled();
+  });
+});
+
+describe("session guard — SSE (EventSource)", () => {
+  it("stream ไป backend error แล้ว /me ตอบ 401 → พาไป login", async () => {
+    await setup("/dashboard/cbm");
+    backendFetch.mockResolvedValueOnce(json(401, { detail: "token_expired" }));
+    const es = new win.EventSource("http://localhost:8000/CBM?SN=abc", { withCredentials: true });
+    es.emit("error");
+    await flush();
+    await flush();
+    expect(backendFetch).toHaveBeenCalledTimes(1);
+    expect(String(backendFetch.mock.calls[0][0])).toMatch(/\/me$/);
+    expect(replace).toHaveBeenCalledTimes(1);
+    expect(replace.mock.calls[0][0]).toContain("next=%2Fdashboard%2Fcbm");
+  });
+
+  it("stream error แต่ /me ยังตอบ 200 (เน็ตหลุดชั่วคราว) → ไม่เด้ง", async () => {
+    await setup();
+    backendFetch.mockResolvedValueOnce(json(200, { id: "u1" }));
+    new win.EventSource("http://localhost:8000/setting?SN=abc").emit("error");
+    await flush();
+    await flush();
+    expect(replace).not.toHaveBeenCalled();
+  });
+
+  it("backend ล่ม (/me เชื่อมต่อไม่ได้) → ไม่เด้ง ไม่ throw", async () => {
+    await setup();
+    backendFetch.mockRejectedValueOnce(new TypeError("network"));
+    new win.EventSource("http://localhost:8000/setting?SN=abc").emit("error");
+    await flush();
+    await flush();
+    expect(replace).not.toHaveBeenCalled();
+  });
+
+  it("error รัว ๆ (EventSource retry ทุก 3 วิ) → ถาม /me ไม่ถี่เกิน 1 ครั้งต่อ 10 วิ", async () => {
+    await setup();
+    backendFetch.mockResolvedValue(json(200));
+    const es = new win.EventSource("http://localhost:8000/MDB/st1");
+    es.emit("error");
+    es.emit("error");
+    await flush();
+    es.emit("error");
+    await flush();
+    expect(backendFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("stream ไปเว็บอื่น → ไม่ถาม /me", async () => {
+    await setup();
+    new win.EventSource("https://other.example.com/stream").emit("error");
+    await flush();
+    expect(backendFetch).not.toHaveBeenCalled();
+  });
+
+  it("ยังเป็น EventSource ตัวเดิม (หน้าเดิมใช้งานได้ตามปกติ)", async () => {
+    await setup();
+    const es = new win.EventSource("http://localhost:8000/CBM?SN=x");
+    expect(es).toBeInstanceOf(FakeEventSource);
+    expect(es.url).toBe("http://localhost:8000/CBM?SN=x");
   });
 });

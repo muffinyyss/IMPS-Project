@@ -49,6 +49,11 @@ const WO_PM_TYPE_LABEL: Record<string, string> = {
   CG: "CHARGER", MB: "MDB", CC: "CCB", CB: "CB-BOX", ST: "STATION",
 };
 
+/** ชื่อ brand มาจากฐานข้อมูล — escape ก่อนใส่ลง HTML ของ tooltip ApexCharts */
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] as string));
+}
+
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
 /**
@@ -386,6 +391,10 @@ export default function PMDashboardPage() {
       loading: "กำลังโหลด",
       errorPrefix: "โหลดข้อมูลไม่สำเร็จ",
       taskUnit: "งาน",
+      successLabel: "สำเร็จ",
+      vendorRateHint: "% บนแท่ง = อัตราสำเร็จของ vendor ในเดือนนั้น (Complete ÷ งานทั้งหมดรวมยกเลิก — สูตรเดียวกับ PM Success Rate) · % ข้างชื่อ vendor = รวมทุกเดือนในกราฟ",
+      vendorRateChipTitle: (brand: string, done: number, total: number) =>
+        `${brand}: Complete ${done} จาก ${total} งาน (รวมยกเลิก) — รวมทุกเดือนในกราฟ`,
       volumeWarning: (limit: number) => `ใบงาน Maximo แสดงผลได้สูงสุด ${limit.toLocaleString()} ใบ — กราฟอาจไม่ครบทั้งหมด`,
     },
     en: {
@@ -431,6 +440,10 @@ export default function PMDashboardPage() {
       loading: "Loading",
       errorPrefix: "Failed to load",
       taskUnit: "jobs",
+      successLabel: "Success",
+      vendorRateHint: "% on each bar = the vendor's success rate that month (Complete ÷ all jobs incl. cancelled — same formula as PM Success Rate) · % next to the vendor name = all months shown",
+      vendorRateChipTitle: (brand: string, done: number, total: number) =>
+        `${brand}: ${done} of ${total} jobs complete (incl. cancelled) — all months shown`,
       volumeWarning: (limit: number) => `Maximo work orders are capped at ${limit.toLocaleString()} — charts may be incomplete`,
     },
   }[lang]), [lang]);
@@ -541,7 +554,7 @@ export default function PMDashboardPage() {
   const vendorMonthlySeries = useMemo(() => vendorMonthData.series, [vendorMonthData]);
   const displayedVendorMonthlySeries = useMemo(
     () => selectedVendorLegend
-      ? vendorMonthlySeries.filter((series) => series.name.split(" • ")[0] === selectedVendorLegend)
+      ? vendorMonthlySeries.filter((series) => series.brand === selectedVendorLegend)
       : vendorMonthlySeries,
     [selectedVendorLegend, vendorMonthlySeries]
   );
@@ -553,6 +566,34 @@ export default function PMDashboardPage() {
     return map;
   }, [vendorMonthData.brands]);
 
+  // ── ป้าย % success rate ของแต่ละ vendor บนแท่ง ──────────────────────────
+  // vendor หนึ่งราย = 3 ชุด (Open / In Progress / Complete) สีเดียวกัน ซ้อนเป็นก้อนเดียวในแท่งของเดือน
+  // ป้ายติดบนชุดที่สูงที่สุดของก้อน (มีที่ว่างมากสุด) ชุดอื่นของ vendor เดียวกันคืนค่าว่าง
+  // key `${brand}|${month}` → index ของ series ใน displayedVendorMonthlySeries ที่ถือป้าย
+  const vendorLabelCarrier = useMemo(() => {
+    const carrier = new Map<string, number>();
+    displayedVendorMonthlySeries.forEach((s, i) => {
+      s.data.forEach((v, m) => {
+        if (v <= 0) return;
+        const key = `${s.brand}|${m}`;
+        const cur = carrier.get(key);
+        if (cur === undefined || v > displayedVendorMonthlySeries[cur].data[m]) carrier.set(key, i);
+      });
+    });
+    return carrier;
+  }, [displayedVendorMonthlySeries]);
+
+  // react-apexcharts เทียบ options ด้วย JSON.stringify (ฟังก์ชันหายไป) — ถ้าเปลี่ยนแค่ series จะเรียก
+  // updateSeries โดยไม่รับ formatter/tooltip ตัวใหม่ ป้าย % จะค้างค่าเก่า และถ้าเปลี่ยนแค่จำนวนใบยกเลิก
+  // (ไม่มีแท่ง) กราฟจะไม่อัปเดตเลย → remount ทุกครั้งที่ข้อมูลเปลี่ยน (แบบเดียวกับโดนัท)
+  const vendorChartKey = useMemo(
+    () => JSON.stringify([
+      displayedVendorMonthlySeries.map((s) => [s.name, s.data]),
+      Array.from(vendorMonthData.stats, ([brand, st]) => [brand, st.months.map((x) => x.total)]),
+    ]),
+    [displayedVendorMonthlySeries, vendorMonthData.stats]
+  );
+
   const vendorMonthlyBarOptions = useMemo<ApexCharts.ApexOptions>(() => ({
     chart: {
       type: "bar", stacked: true, toolbar: { show: false },
@@ -560,18 +601,53 @@ export default function PMDashboardPage() {
         // ไม่ใช้การกรองจาก chart ในโหมด vendor — เป็นกราฟอ่านแนวโน้มตาม vendor + status เท่านั้น
       },
     },
-    colors: displayedVendorMonthlySeries.map((s) => {
-      const vendor = s.name.split(" • ")[0] ?? "Unknown";
-      return vendorColorMap[vendor] ?? "#94a3b8";
-    }),
+    colors: displayedVendorMonthlySeries.map((s) => vendorColorMap[s.brand] ?? "#94a3b8"),
     xaxis: { categories: t.monthsShort, labels: { rotate: 0, style: { fontSize: "12px" } } },
     yaxis: { labels: { formatter: (v: number) => String(Math.round(v)) } },
     legend: { show: false },
-    dataLabels: { enabled: false },
+    dataLabels: {
+      enabled: true,
+      formatter: (val: number, opts: any) => {
+        const i = opts?.seriesIndex as number;
+        const m = opts?.dataPointIndex as number;
+        const s = displayedVendorMonthlySeries[i];
+        if (!s || !(Number(val) > 0) || vendorLabelCarrier.get(`${s.brand}|${m}`) !== i) return "";
+        const rate = vendorMonthData.stats.get(s.brand)?.months[m]?.rate;
+        return rate == null ? "" : `${Math.round(rate)}%`;
+      },
+      style: { fontSize: "10px", fontWeight: 700, colors: ["#ffffff"] },
+      // เงาบาง ๆ ให้ตัวขาวอ่านออกบนสีอ่อน (เหลือง/เทาของ Unknown)
+      dropShadow: { enabled: true, top: 0, left: 0, blur: 1.5, color: "#0f172a", opacity: 0.55 },
+    },
     grid: { borderColor: "#f1f5f9" },
-    plotOptions: { bar: { borderRadius: 3, columnWidth: "45%" } },
-    tooltip: { y: { formatter: (v: number) => `${v} ${t.taskUnit}` } },
-  }), [displayedVendorMonthlySeries, t, vendorColorMap]);
+    // ก้อนที่เตี้ยเกินกว่าตัวอักษร Apex ซ่อนป้ายเอง — ยังอ่าน % ได้จาก tooltip
+    plotOptions: { bar: { borderRadius: 3, columnWidth: "45%", dataLabels: { hideOverflowingLabels: true } } },
+    tooltip: {
+      // tooltip ต่อก้อน vendor: % สำเร็จ + จำนวนทุกสถานะ รวมใบยกเลิกที่ไม่มีแท่ง (ตัวหารของ %)
+      custom: ({ seriesIndex, dataPointIndex }: { seriesIndex: number; dataPointIndex: number }) => {
+        const s = displayedVendorMonthlySeries[seriesIndex];
+        const st = s ? vendorMonthData.stats.get(s.brand)?.months[dataPointIndex] : undefined;
+        if (!s || !st) return "";
+        const pct = st.rate == null ? "–" : `${Math.round(st.rate)}%`;
+        const row = (label: string, value: number, active: boolean) =>
+          `<div style="display:flex;justify-content:space-between;gap:16px;${active ? "font-weight:700;color:#0f172a" : "color:#64748b"}">` +
+          `<span>${escapeHtml(label)}</span><span>${value} ${escapeHtml(t.taskUnit)}</span></div>`;
+        return (
+          `<div style="padding:8px 10px;font-size:12px;line-height:1.6;min-width:190px">` +
+          `<div style="display:flex;align-items:center;gap:6px;font-weight:700;color:#0f172a">` +
+          `<span style="width:8px;height:8px;border-radius:9999px;background:${vendorColorMap[s.brand] ?? "#94a3b8"}"></span>` +
+          `${escapeHtml(s.brand)} · ${escapeHtml(t.monthsShort[dataPointIndex] ?? "")}</div>` +
+          `<div style="margin:2px 0 4px;font-weight:700;color:#0f172a">${escapeHtml(t.successLabel)} ${pct} ` +
+          `<span style="font-weight:400;color:#64748b">(${st.completed}/${st.total})</span></div>` +
+          row(t.stageLabel.open, st.open, s.stage === "open") +
+          row(t.stageLabel.in_progress, st.inProgress, s.stage === "in_progress") +
+          row(t.stageLabel.completed, st.completed, s.stage === "closed") +
+          row(t.cardCancelled, st.cancelled, false) +
+          `</div>`
+        );
+      },
+    },
+  }), [displayedVendorMonthlySeries, t, vendorColorMap, vendorLabelCarrier, vendorMonthData.stats]);
   const vendorMonthlyHasData = useMemo(
     () => displayedVendorMonthlySeries.some((s) => s.data.some((v) => v > 0)),
     [displayedVendorMonthlySeries]
@@ -902,23 +978,36 @@ export default function PMDashboardPage() {
                   {vendorMonthData.brands.map((brand, index) => {
                     const isActive = selectedVendorLegend === brand;
                     const color = BRAND_COLORS[index % BRAND_COLORS.length];
+                    const overall = vendorMonthData.stats.get(brand)?.overall;
                     return (
                       <button
                         key={brand}
                         type="button"
                         onClick={() => setSelectedVendorLegend((prev) => (prev === brand ? null : brand))}
                         aria-pressed={isActive}
+                        title={overall ? t.vendorRateChipTitle(brand, overall.completed, overall.total) : undefined}
                         className={`tw-inline-flex tw-items-center tw-gap-2 tw-rounded-full tw-px-2.5 tw-py-1 tw-text-[11px] tw-font-semibold tw-transition-all ${
                           isActive ? "tw-bg-blue-100 tw-text-blue-700 tw-ring-1 tw-ring-blue-200" : "tw-bg-gray-100 tw-text-gray-700 hover:tw-bg-gray-200"
                         }`}
                       >
                         <span aria-hidden="true" className="tw-h-2.5 tw-w-2.5 tw-rounded-full" style={{ background: color }} />
                         {brand}
+                        {overall?.rate != null && (
+                          <span className="tw-font-bold tw-text-gray-900">{`${Math.round(overall.rate)}%`}</span>
+                        )}
                       </button>
                     );
                   })}
                 </div>
-                <Chart type="bar" options={vendorMonthlyBarOptions} series={displayedVendorMonthlySeries} width="100%" height={360} />
+                <Chart
+                  key={vendorChartKey}
+                  type="bar"
+                  options={vendorMonthlyBarOptions}
+                  series={displayedVendorMonthlySeries}
+                  width="100%"
+                  height={360}
+                />
+                <p className="tw-mt-1 tw-text-center tw-text-[11px] tw-leading-snug tw-text-blue-gray-400">{t.vendorRateHint}</p>
               </>
             ) : (
               <EmptyChart message={t.noChartData} height={360} />

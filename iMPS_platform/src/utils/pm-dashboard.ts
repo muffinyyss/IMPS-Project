@@ -295,13 +295,51 @@ export function groupByMonth(rows: PmRow[]): { open: number[]; inProgress: numbe
 }
 
 /**
+ * อัตราสำเร็จ (%) = Complete ÷ งานทั้งหมดรวมใบยกเลิก/เลื่อนแผน
+ * สูตรเดียวกับโดนัท « PM Success Rate » — กรอง Brand + เดือนเดียวกันแล้วตัวเลขต้องตรงกัน
+ * ไม่มีงานเลย = null (ไม่ใช่ 0%)
+ */
+export function successRate(completed: number, total: number): number | null {
+  return total > 0 ? (completed / total) * 100 : null;
+}
+
+export type VendorStageKey = "open" | "in_progress" | "closed";
+
+/** จำนวนงานของ vendor หนึ่งราย (ในเดือนหนึ่ง หรือรวมทุกเดือน) */
+export type VendorStat = {
+  open: number;
+  inProgress: number;
+  completed: number;
+  cancelled: number;
+  /** รวมใบยกเลิกด้วย = ตัวหารของ rate */
+  total: number;
+  rate: number | null;
+};
+
+export type VendorMonthSeries = { name: string; data: number[]; brand: string; stage: VendorStageKey };
+
+export type VendorMonthData = {
+  brands: string[];
+  series: VendorMonthSeries[];
+  /** brand → สถิติรายเดือน (ม.ค.–ธ.ค.) + รวมทุกเดือน — ใช้ทำป้าย % บนแท่ง และ % ข้างชื่อ vendor */
+  stats: Map<string, { months: VendorStat[]; overall: VendorStat }>;
+};
+
+function makeVendorStat(open: number, inProgress: number, completed: number, cancelled: number): VendorStat {
+  const total = open + inProgress + completed + cancelled;
+  return { open, inProgress, completed, cancelled, total, rate: successRate(completed, total) };
+}
+
+/**
  * Ventilation des 3 étapes par marque de chargeur, alignée sur le même modèle
  * de 12 mois que les cartes de status global. Les séries gardent le même format
  * que le graphe principal (Open / In Progress / Complete), mais le côté visuel
  * du legend masque le suffixe status pour n'afficher que le vendor.
+ *
+ * ใบยกเลิกไม่มีแท่ง (เหมือนกราฟหลัก) แต่ถูกนับไว้ใน `stats` เพื่อเป็นตัวหารของ success rate
  */
-export function groupByMonthByBrand(rows: PmRow[]): { brands: string[]; series: { name: string; data: number[] }[] } {
-  const perBrand = new Map<string, { open: number[]; inProgress: number[]; completed: number[] }>();
+export function groupByMonthByBrand(rows: PmRow[]): VendorMonthData {
+  const perBrand = new Map<string, { open: number[]; inProgress: number[]; completed: number[]; cancelled: number[] }>();
   const totals = new Map<string, number>();
 
   for (const r of rows) {
@@ -313,14 +351,18 @@ export function groupByMonthByBrand(rows: PmRow[]): { brands: string[]; series: 
         open: Array(12).fill(0),
         inProgress: Array(12).fill(0),
         completed: Array(12).fill(0),
+        cancelled: Array(12).fill(0),
       });
     }
 
     const month = d.getMonth();
     const stage = stageOf(r);
-    if (stage === "cancelled") continue;
-
     const bucket = perBrand.get(brand)!;
+    if (stage === "cancelled") {
+      bucket.cancelled[month]++;
+      continue;
+    }
+
     if (stage === "closed") bucket.completed[month]++;
     else if (stage === "in_progress" || stage === "wait_approve") bucket.inProgress[month]++;
     else bucket.open[month]++;
@@ -334,19 +376,27 @@ export function groupByMonthByBrand(rows: PmRow[]): { brands: string[]; series: 
     return (totals.get(b) ?? 0) - (totals.get(a) ?? 0) || a.localeCompare(b);
   });
 
-  const stageLabels: Record<"open" | "in_progress" | "closed", string> = {
+  const stageLabels: Record<VendorStageKey, string> = {
     open: "Open",
     in_progress: "In Progress",
     closed: "Complete",
   };
 
-  const series: { name: string; data: number[] }[] = [];
+  const series: VendorMonthSeries[] = [];
+  const stats: VendorMonthData["stats"] = new Map();
+  const sum = (xs: number[]) => xs.reduce((s, v) => s + v, 0);
   for (const brand of brands) {
     const counts = perBrand.get(brand)!;
-    series.push({ name: `${brand} • ${stageLabels.open}`, data: counts.open });
-    series.push({ name: `${brand} • ${stageLabels.in_progress}`, data: counts.inProgress });
-    series.push({ name: `${brand} • ${stageLabels.closed}`, data: counts.completed });
+    series.push({ name: `${brand} • ${stageLabels.open}`, data: counts.open, brand, stage: "open" });
+    series.push({ name: `${brand} • ${stageLabels.in_progress}`, data: counts.inProgress, brand, stage: "in_progress" });
+    series.push({ name: `${brand} • ${stageLabels.closed}`, data: counts.completed, brand, stage: "closed" });
+    stats.set(brand, {
+      months: counts.open.map((_, m) =>
+        makeVendorStat(counts.open[m], counts.inProgress[m], counts.completed[m], counts.cancelled[m])
+      ),
+      overall: makeVendorStat(sum(counts.open), sum(counts.inProgress), sum(counts.completed), sum(counts.cancelled)),
+    });
   }
 
-  return { brands, series };
+  return { brands, series, stats };
 }

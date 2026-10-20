@@ -659,7 +659,7 @@ from config import (
     stations_coll_async, users_coll_async, email_log_coll, charger_coll_async,
     SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SENDER_EMAIL,
 )
-from deps import UserClaims, get_current_user
+from deps import UserClaims, get_current_user, session_expired
 
 router = APIRouter()
 
@@ -713,7 +713,7 @@ async def mdb_query(request: Request, station_id: str = Query(...), current: Use
             yield "retry: 3000\n\n"
 
         while True:
-            if await request.is_disconnected():
+            if await request.is_disconnected() or session_expired(current):
                 break
             doc = await coll.find_one({}, sort=[("timestamp_utc", -1)])
             if doc:
@@ -855,7 +855,7 @@ async def stream_history(
 
             sent = 0
             async for doc in cursor:
-                if await request.is_disconnected():
+                if await request.is_disconnected() or session_expired(current):
                     break
                 ts_val = doc.get("timestamp")
                 if ts_val is not None:
@@ -921,7 +921,7 @@ async def mdb(request: Request, station_id: str, current: UserClaims = Depends(g
         try:
             async with coll.watch(pipeline, full_document="whenAvailable") as stream:
                 async for change in stream:
-                    if await request.is_disconnected():
+                    if await request.is_disconnected() or session_expired(current):
                         break
                     doc = change.get("fullDocument")
                     if not doc:
@@ -936,7 +936,7 @@ async def mdb(request: Request, station_id: str, current: UserClaims = Depends(g
             print(f"Change stream error: {e}, falling back to polling")
 
             while True:
-                if await request.is_disconnected():
+                if await request.is_disconnected() or session_expired(current):
                     break
                 doc = await coll.find_one({}, sort=[("timestamp_utc", -1)])
                 if doc:
@@ -1088,7 +1088,7 @@ async def error_stream(request: Request, station_id: str, current: UserClaims = 
             yield ": keep-alive\n\n"
 
         while True:
-            if await request.is_disconnected():
+            if await request.is_disconnected() or session_expired(current):
                 break
             doc = await coll.find_one({}, sort=[("_id", -1)])
             if doc and doc.get("_id") != last_id and ("error" in doc):

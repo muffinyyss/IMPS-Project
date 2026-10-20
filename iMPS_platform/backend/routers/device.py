@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 import json, re, asyncio
 
 from config import deviceDB, _ensure_utc_iso
-from deps import UserClaims, get_current_user
+from deps import UserClaims, get_current_user, session_expired
 
 router = APIRouter()
 
@@ -78,7 +78,7 @@ async def utilization_stream(
         try:
             async with coll.watch(full_document="updateLookup") as stream:
                 async for change in stream:
-                    if await request.is_disconnected():
+                    if await request.is_disconnected() or session_expired(current):
                         break
                     doc = change.get("fullDocument")
                     if not doc:
@@ -88,7 +88,7 @@ async def utilization_stream(
                     yield f"data: {json.dumps(doc)}\n\n"
         except Exception:
             last_id = latest.get("_id") if latest else None
-            while not await request.is_disconnected():
+            while not await request.is_disconnected() and not session_expired(current):
                 doc = await coll.find_one({}, sort=[("timestamp_utc", -1), ("_id", -1)])
                 if doc and str(doc["_id"]) != str(last_id):
                     last_id = str(doc["_id"])

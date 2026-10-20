@@ -40,6 +40,9 @@ export type MaximoWorkOrder = {
   assignees?: string[] | null;
   planned_at?: string | null;
   planned_by?: string | null;
+  /** แก้แผนหลังวางแผนครั้งแรก */
+  plan_edited_at?: string | null;
+  plan_edited_by?: string | null;
   /** บริษัทของ planner ต้นทาง — เจ้าของงานทุกส่วนที่ไม่ได้ส่งต่อให้ vendor */
   planner_company?: string | null;
   sched_start?: string | null;
@@ -59,6 +62,8 @@ export type VendorPlan = {
   sched_start?: string;
   sched_finish?: string;
   assignees?: string[];
+  edited_by?: string;
+  edited_at?: string;
   /** SN ของตู้ที่เป็นงานของ vendor รายนี้ (ตามช่อง Vendor ของตู้) — ว่าง = ส่งต่อทั้งใบแบบเดิม */
   chargers?: string[];
 };
@@ -135,6 +140,21 @@ export type EquipmentChoices = {
   chargers: EquipmentItem[];
   fixed: EquipmentItem[];
   selected_equipment: EquipmentItem[];
+  plan_state?: PlanEditState | null;
+};
+
+/**
+ * ใครแก้แผนที่บันทึกแล้วได้ตอนนี้ (backend: _plan_edit_state ใน routers/pm_maximo.py)
+ *   - planner ต้นทาง: จนกว่าช่างจะกดเริ่ม PM และ vendor ที่ส่งต่อไปยังไม่ได้วางแผน
+ *   - planner ของ vendor: แผนของบริษัทตัวเอง จนกว่าช่างจะกดเริ่ม PM
+ */
+export type PlanEditState = {
+  started: boolean;
+  planned: boolean;
+  can_edit_plan: boolean;
+  plan_reason: string;
+  can_edit_vendor_plan: boolean;
+  vendor_plan_reason: string;
 };
 
 export type TechnicianOption = {

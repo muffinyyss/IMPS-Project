@@ -1,3 +1,4 @@
+import time
 from bson.objectid import ObjectId
 from fastapi import Request, HTTPException
 from pydantic import BaseModel
@@ -18,6 +19,17 @@ class UserClaims(BaseModel):
     is_super_admin: bool = False       # กำลังสวมสิทธิ์ super_admin อยู่หรือไม่ (ใช้ gate function พิเศษ)
     company: Optional[str] = None
     station_ids: List[str] = []
+    exp: Optional[int] = None          # เวลาหมดอายุของ access token (epoch วินาที) — SSE ใช้ตัด stream เมื่อเลยเวลา
+
+
+def session_expired(current: UserClaims) -> bool:
+    """token ของ request นี้หมดอายุไปแล้วหรือยัง
+
+    get_current_user ตรวจแค่ตอนเริ่ม request — SSE ที่เปิดค้างไว้จะส่งข้อมูลต่อไปเรื่อย ๆ แม้เลยตี 3
+    loop ของ stream ต้องเรียกตัวนี้แล้วปิด stream เอง เบราว์เซอร์จะต่อใหม่ → ได้ 401 → หน้าเว็บพาไป login
+    """
+    return current.exp is not None and time.time() >= current.exp
+
 
 def get_current_user(request: Request) -> UserClaims:
     token = request.cookies.get(ACCESS_COOKIE_NAME)
@@ -50,6 +62,7 @@ def get_current_user(request: Request) -> UserClaims:
             is_super_admin=is_super_admin,
             company=payload.get("company"),
             station_ids=station_ids,
+            exp=int(payload["exp"]) if isinstance(payload.get("exp"), (int, float)) else None,
         )
     except ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="token_expired")
