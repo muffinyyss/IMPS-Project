@@ -216,19 +216,21 @@ describe("groupByMonthByBrand", () => {
       report({ pm_date: "2026-02-20", charger_brand: "", status: "Closed" }),
     ];
 
-    const { brands, series } = groupByMonthByBrand(rows);
+    const { brands, series, stats } = groupByMonthByBrand(rows);
     expect(brands).toEqual(["Delta", FLEXXFAST_BRAND, UNKNOWN_BRAND]);
 
-    const deltaOpen = series.find((s) => s.name === `${"Delta"} • Open`)!.data;
-    const deltaDone = series.find((s) => s.name === `${"Delta"} • Complete`)!.data;
-    const flexOpen = series.find((s) => s.name === `${FLEXXFAST_BRAND} • Open`)!.data;
-    const flexInProgress = series.find((s) => s.name === `${FLEXXFAST_BRAND} • In Progress`)!.data;
+    // 1 ชุดต่อ vendor (ก้อนเดียวในแท่ง) = Open + In Progress + Complete
+    expect(series.map((s) => s.name)).toEqual(["Delta", FLEXXFAST_BRAND, UNKNOWN_BRAND]);
+    const delta = series.find((s) => s.brand === "Delta")!.data;
+    const flex = series.find((s) => s.brand === FLEXXFAST_BRAND)!.data;
+    expect(delta[0]).toBe(2);
+    expect(delta[1]).toBe(0); // ใบยกเลิกไม่มีแท่ง
+    expect(flex[0]).toBe(1);
+    expect(flex[1]).toBe(1);
 
-    expect(deltaOpen[0]).toBe(1);
-    expect(deltaDone[0]).toBe(1);
-    expect(flexOpen[0]).toBe(1);
-    expect(flexInProgress[1]).toBe(1);
-    expect(series.some((s) => s.name.startsWith(`${UNKNOWN_BRAND} • `))).toBe(true);
+    // รายละเอียดสถานะยังอยู่ใน stats (ใช้ใน tooltip)
+    expect(stats.get("Delta")!.months[0]).toMatchObject({ open: 1, inProgress: 0, completed: 1 });
+    expect(stats.get(FLEXXFAST_BRAND)!.months[1]).toMatchObject({ inProgress: 1 });
     expect(series.flatMap((s) => s.data).reduce((sum, v) => sum + v, 0)).toBe(5);
   });
 
@@ -254,11 +256,10 @@ describe("groupByMonthByBrand", () => {
     expect(delta.overall).toMatchObject({ completed: 2, total: 5, rate: 40 });
 
     expect(stats.get(FLEXXFAST_BRAND)!.overall.rate).toBe(0);
-    // แต่ละ series รู้ว่าเป็นของ vendor + stage ไหน
-    expect(series.map((s) => `${s.brand}/${s.stage}`)).toEqual([
-      "Delta/open", "Delta/in_progress", "Delta/closed",
-      `${FLEXXFAST_BRAND}/open`, `${FLEXXFAST_BRAND}/in_progress`, `${FLEXXFAST_BRAND}/closed`,
-    ]);
+    // แท่งของ Delta ม.ค. = 3 (ไม่รวมใบยกเลิก) · ก.พ. = 0 (มีแต่ใบยกเลิก)
+    const deltaBar = series.find((s) => s.brand === "Delta")!.data;
+    expect(deltaBar[0]).toBe(3);
+    expect(deltaBar[1]).toBe(0);
   });
 });
 

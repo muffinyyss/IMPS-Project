@@ -204,13 +204,84 @@ export async function fetchPmAssigneeOptions(): Promise<PmAssigneeOptions> {
   };
 }
 
-/** กลุ่มที่มีคนอยู่จริงเท่านั้น — กันหัวข้อลอยที่ไม่มีรายการอยู่ข้างใต้ */
-export function pmAssigneeGroups(options: PmAssigneeOptions): PmAssigneeGroup[] {
+/**
+ * กลุ่มที่มีคนอยู่จริงเท่านั้น — กันหัวข้อลอยที่ไม่มีรายการอยู่ข้างใต้
+ *
+ * vendors: false = ลิสต์ผู้รับผิดชอบของแผนต้นทาง — vendor เลือกได้ทางเดียวคือ "ผู้ทำ PM"
+ * ของแต่ละตู้ (ติ๊กในลิสต์ด้วยก็ซ้ำกัน และถ้าติ๊กโดยไม่ได้ให้ทำตู้ไหน vendor จะได้ใบส่งต่อ
+ * แบบไม่ผูกตู้ = กรอกได้ทั้งใบ รวมส่วนสถานีที่ต้องเป็นของทีมต้นทาง)
+ */
+export function pmAssigneeGroups(
+  options: PmAssigneeOptions,
+  { vendors = true }: { vendors?: boolean } = {},
+): PmAssigneeGroup[] {
   return [
     { key: "technician" as const, label: "Technician", names: options.technicians },
-    { key: "vendor" as const, label: "Vendor", names: options.vendors },
+    { key: "vendor" as const, label: "Vendor", names: vendors ? options.vendors : [] },
     { key: "outsource" as const, label: "Outsource", names: options.outsources },
   ].filter((group) => group.names.length > 0);
+}
+
+/** ตัดชื่อออกจากลิสต์ (ไม่สนตัวพิมพ์เล็ก-ใหญ่ / ช่องว่างหัวท้าย) */
+export function withoutNames(
+  names: string[],
+  remove: Iterable<string | null | undefined>,
+): string[] {
+  const drop = new Set(
+    Array.from(remove, (n) => String(n ?? "").trim().toLowerCase()).filter(Boolean),
+  );
+  return names.filter((n) => !drop.has(String(n ?? "").trim().toLowerCase()));
+}
+
+/**
+ * vendor ที่ไม่ได้อยู่กลุ่มอื่นด้วย = ชื่อที่ลิสต์ผู้รับผิดชอบของแผนต้นทางไม่แสดง
+ * (ชื่อเดียวกันที่เป็น outsource ด้วยยังติ๊กได้ในกลุ่ม Outsource)
+ * ต้องตรงกับ _plan_assignees() ใน backend/routers/pm_maximo.py
+ */
+export function vendorOnlyNames(options: PmAssigneeOptions): string[] {
+  return withoutNames(options.vendors, [...options.technicians, ...options.outsources]);
+}
+
+/**
+ * ผู้รับผิดชอบที่ planner ต้นทางติ๊กเองในลิสต์ — ใช้ตั้งต้นฟอร์มตอนเปิดแผนเดิมมาแก้
+ *
+ * ตอนบันทึก backend เติมผู้ทำ PM ของแต่ละตู้เข้าไปในผู้รับผิดชอบให้ด้วย ถ้าไม่ตัดออก
+ * เปลี่ยนตู้กลับเป็นทีมเราแล้วชื่อนั้นยังค้างติ๊กอยู่ — vendor ได้ใบส่งต่อแบบไม่ผูกตู้ (ทั้งใบ)
+ * ส่วนใบงานที่ยังมีตู้ให้รายนั้นทำ backend ก็เติมกลับให้เองตอนบันทึก
+ */
+export function ownPlanAssignees(
+  wo: Pick<MaximoWorkOrder, "assignees" | "vendor_plans" | "selected_equipment"> | null | undefined,
+): string[] {
+  const parties = [
+    ...Object.values(chargerByMap(wo)),
+    ...(wo?.vendor_plans ?? []).map((v) => v.vendor),
+  ];
+  const mine = (wo?.assignees ?? []).map((n) => String(n ?? "").trim()).filter(Boolean);
+  return withoutNames(mine, parties);
+}
+
+/** ตู้ชาร์จที่ให้คนอื่นทำ PM จัดกลุ่มตามผู้ทำ (เรียงตามลำดับที่เจอ) — ไว้โชว์สรุปใต้ลิสต์ผู้รับผิดชอบ */
+export function chargerHandoffs(
+  items: Array<{ label: string; by?: string | null }>,
+): Array<{ name: string; labels: string[] }> {
+  const out: Array<{ name: string; labels: string[] }> = [];
+  for (const it of items) {
+    const name = String(it.by ?? "").trim();
+    if (!name) continue;
+    const group = out.find((g) => g.name.toLowerCase() === name.toLowerCase());
+    if (group) group.labels.push(it.label);
+    else out.push({ name, labels: [it.label] });
+  }
+  return out;
+}
+
+/**
+ * ต้องเลือกผู้รับผิดชอบฝั่งเราอย่างน้อย 1 รายไหม
+ * ไม่ต้อง เมื่อทุกอุปกรณ์ที่เลือกเป็นตู้ชาร์จที่ให้คนอื่นทำ — อุปกรณ์ระดับสถานี / ตู้ของทีมเรา /
+ * แผนที่ไม่ได้เลือกอุปกรณ์ ต้องมีคนของเราไปทำ
+ */
+export function needsOwnAssignee(items: Array<Pick<EquipmentItem, "type" | "by">>): boolean {
+  return items.length === 0 || items.some((e) => !(e.type === "charger" && String(e.by ?? "").trim()));
 }
 
 /**

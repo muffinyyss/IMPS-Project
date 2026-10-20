@@ -8,7 +8,7 @@ from bson.objectid import ObjectId
 from pymongo.errors import DuplicateKeyError
 from jose import jwt, ExpiredSignatureError, JWTError
 from typing import List, Optional, Union
-import bcrypt, uuid, json, secrets
+import bcrypt, uuid, json, secrets, re
 from typing import Literal
 from urllib.parse import quote
 
@@ -16,7 +16,7 @@ from config import (
     SECRET_KEY, ALGORITHM, ACCESS_COOKIE_NAME, FRONTEND_BASE_URL,
     SESSION_IDLE_MINUTES_TECHNICIAN, SESSION_IDLE_MINUTES_DEFAULT,
     REFRESH_TOKEN_EXPIRE_DAYS, STAFF_ROLES,
-    users_collection, station_collection, charger_collection,
+    users_collection, station_collection, charger_collection, companies_collection,
     create_access_token, canonical_role,
     SUPER_ADMIN_ROLE, SUPER_ADMIN_USERNAME, SWITCHABLE_ROLES,
 )
@@ -674,6 +674,77 @@ async def users():
     return {"username": usernames}
 
 
+# ─── planner จัดการ account ในขอบเขตของตัวเอง ───────────────────────────────
+# planner เพิ่ม/แก้ account ได้เฉพาะ role สายปฏิบัติงาน (admin / owner ยังเป็นของ admin เท่านั้น)
+# และเฉพาะบริษัทตัวเอง + outsource ที่สังกัดบริษัทตัวเองตรง ๆ (ชุดเดียวกับ /companies/pm-options)
+# ช่างของ outsource login ด้วย company = ชื่อ outsource (ดู routers/pm_scope.py) จึงต้องสร้างให้ได้ด้วย
+# ลบ account ยังเป็นของ admin เท่านั้น
+PLANNER_MANAGED_ROLES = frozenset(STAFF_ROLES)
+PLANNER_EDIT_FIELDS = {"username", "email", "password", "tel", "company", "role", "station_id"}
+
+
+def _is_planner(current: UserClaims) -> bool:
+    return (current.role or "").lower() == "planner"
+
+
+def _ci(value: str) -> re.Pattern:
+    """match ชื่อแบบไม่สนตัวพิมพ์ — ชื่อ company ใน users/companies พิมพ์ไม่ตรงกันได้"""
+    return re.compile(f"^{re.escape(value)}$", re.IGNORECASE)
+
+
+def _current_company(current: UserClaims) -> str:
+    """company ของคนที่ login — อ่านสดจาก DB เพราะ JWT อาจเก่ากว่า profile ที่เพิ่งแก้"""
+    company = (current.company or "").strip()
+    if current.user_id:
+        try:
+            me_doc = users_collection.find_one({"_id": ObjectId(current.user_id)}, {"company": 1})
+            company = str((me_doc or {}).get("company") or company).strip()
+        except Exception:
+            pass  # user_id ใน token ไม่ใช่ ObjectId — ใช้ค่าจาก claims ต่อ
+    return company
+
+
+def _planner_companies(current: UserClaims) -> List[str]:
+    """บริษัทที่ planner จัดการ account ได้ — ตัวแรกคือบริษัทตัวเองเสมอ, ไม่มี company = []"""
+    company = _current_company(current)
+    if not company:
+        return []
+    names = [company]
+    outsources = companies_collection.find(
+        {"type": "outsource", "company": _ci(company)}, {"name": 1}
+    ).sort("name", 1)
+    for doc in outsources:
+        name = str(doc.get("name") or "").strip()
+        if name and name.lower() not in {n.lower() for n in names}:
+            names.append(name)
+    return names
+
+
+def _match_company(value, scope: List[str]) -> Optional[str]:
+    """ชื่อใน scope ที่ตรงกับ value (ไม่สนตัวพิมพ์) — None ถ้าว่างหรืออยู่นอก scope"""
+    v = str(value or "").strip().lower()
+    if not v:
+        return None
+    return next((c for c in scope if c.lower() == v), None)
+
+
+def _planner_can_manage(doc: dict, scope: List[str]) -> bool:
+    return (
+        canonical_role(doc.get("role")) in PLANNER_MANAGED_ROLES
+        and _match_company(doc.get("company"), scope) is not None
+    )
+
+
+@router.get("/users/manageable-companies")
+def manageable_companies(current: UserClaims = Depends(get_current_user)):
+    """ตัวเลือกช่อง Company ตอน planner เพิ่ม/แก้ account ในหน้า Users (admin พิมพ์เองได้อิสระ → ลิสต์ว่าง)"""
+    if current.role == "admin":
+        return {"companies": [], "roles": []}
+    if not _is_planner(current):
+        raise HTTPException(status_code=403, detail="forbidden")
+    return {"companies": _planner_companies(current), "roles": list(STAFF_ROLES)}
+
+
 # ผู้ที่วางแผนงาน CM ได้ (เลือกช่างในขั้น Planning) — planner ตาม flow, admin/owner คุมภาพรวม
 ASSIGNER_ROLES: set[str] = {"admin", "owner", "planner"}
 
@@ -766,12 +837,23 @@ async def create_users(users: register, current: UserClaims = Depends(get_curren
 
 @router.get("/all-users/")
 def all_users(current: UserClaims = Depends(get_current_user)):
-    # อนุญาตเฉพาะ admin (super_admin ผ่านด้วยเพราะ normalize เป็น admin)
-    if current.role != "admin":
+    # admin เห็นทุกคน (super_admin ผ่านด้วยเพราะ normalize เป็น admin)
+    # planner เห็นเฉพาะ account ที่ตัวเองจัดการได้ — role สายปฏิบัติงานในบริษัทตัวเอง + outsource ของตัวเอง
+    is_admin = current.role == "admin"
+    if not is_admin and not _is_planner(current):
         raise HTTPException(status_code=403, detail="forbidden")
 
-    cursor = users_collection.find({}, {"password": 0, "refreshTokens": 0})
+    query: dict = {}
+    if not is_admin:
+        scope = _planner_companies(current)
+        if not scope:
+            return {"users": []}
+        query["company"] = {"$in": [_ci(c) for c in scope]}
+
+    cursor = users_collection.find(query, {"password": 0, "refreshTokens": 0})
     docs = list(cursor)
+    if not is_admin:
+        docs = [d for d in docs if canonical_role(d.get("role")) in PLANNER_MANAGED_ROLES]
     for d in docs:
         if "_id" in d:
             d["_id"] = str(d["_id"])
@@ -801,8 +883,23 @@ class UserOut(BaseModel):
 
 @router.post("/add_users/", response_model=UserOut, status_code=201)
 def insert_users(body: addUsers, current: UserClaims = Depends(get_current_user)):
-    if current.role != "admin":
+    is_admin = current.role == "admin"
+    if not is_admin and not _is_planner(current):
         raise HTTPException(status_code=403, detail="forbidden")
+
+    company = (body.company_name or "").strip() or None
+    ai_package = body.ai_package.model_dump() if body.ai_package else {"enabled": False}
+    if not is_admin:
+        # planner: role สายปฏิบัติงานเท่านั้น และ company ต้องเป็นบริษัทตัวเอง / outsource ของตัวเอง
+        if body.role not in PLANNER_MANAGED_ROLES:
+            raise HTTPException(status_code=403, detail="planner can create technician / cs / planner only")
+        scope = _planner_companies(current)
+        if not scope:
+            raise HTTPException(status_code=403, detail="no company on your profile")
+        company = _match_company(company or scope[0], scope)
+        if company is None:
+            raise HTTPException(status_code=403, detail="company is outside your scope")
+        ai_package = {"enabled": False}  # AI package เป็นของ owner — admin เท่านั้นที่เปิดให้
 
     email = normalize_email(body.email)
     hashed = bcrypt.hashpw(body.password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
@@ -819,12 +916,12 @@ def insert_users(body: addUsers, current: UserClaims = Depends(get_current_user)
         "email": email,
         "password": hashed,
         "role": body.role,
-        "company": (body.company_name or "").strip() or None,
+        "company": company,
         "tel": (body.tel or "").strip() or None,
         "station_id": station_ids,
         "refreshTokens": [],
         "createdAt": datetime.now(timezone.utc),
-        "ai_package": body.ai_package.model_dump() if body.ai_package else {"enabled": False},
+        "ai_package": ai_package,
     }
 
     try:
@@ -845,8 +942,8 @@ def insert_users(body: addUsers, current: UserClaims = Depends(get_current_user)
 
 @router.delete("/delete_users/{user_id}", status_code=204)
 def delete_user(user_id: str, current: UserClaims = Depends(get_current_user)):
-    # (ทางเลือก) บังคับสิทธิ์เฉพาะ admin/owner
-    if current.role not in ("admin", "owner"):
+    # admin เท่านั้น — เดิมเปิดให้ owner ด้วย ซึ่งทำให้ owner ลบ user คนไหนก็ได้ (รวมถึง admin)
+    if current.role != "admin":
         raise HTTPException(status_code=403, detail="Forbidden")
 
     try:
@@ -888,15 +985,20 @@ def update_user(id: str, body: UserUpdate, current: UserClaims = Depends(get_cur
     if not doc:
         raise HTTPException(status_code=404, detail="user not found")
 
-    # ── Permission: admin ทำได้ทั้งหมด, owner ได้เฉพาะของตัวเอง, อื่น ๆ ห้าม
-    # if current.role == "admin":
-    #     pass  # ผ่าน
-    # elif current.role == "owner":
-    #     if current.user_id != str(oid):
-    #         raise HTTPException(status_code=403, detail="forbidden")
-    # else:
-    #     # กันบทบาทอื่น ๆ (เช่น user) ไม่ให้เข้ามาอัปเดต
-    #     raise HTTPException(status_code=403, detail="forbidden")
+    # ── Permission
+    #   admin   → ทุกคน ทุกฟิลด์
+    #   ตัวเอง  → profile ตัวเอง (ฟิลด์ชุด SELF) — แก้ตัวเองถือกติกานี้เสมอ แม้เป็น planner
+    #   planner → account สายปฏิบัติงานในบริษัทตัวเอง / outsource ของตัวเอง (PLANNER_EDIT_FIELDS)
+    #   อื่น ๆ  → ห้าม (เดิมไม่ได้เช็คเลย ทุก role แก้ username/email/password ของใครก็ได้)
+    is_admin = current.role == "admin"
+    is_self = bool(current.user_id) and current.user_id == str(oid)
+    planner_scope: Optional[List[str]] = None
+    if not is_admin and not is_self and _is_planner(current):
+        scope = _planner_companies(current)
+        if _planner_can_manage(doc, scope):
+            planner_scope = scope
+    if not (is_admin or is_self or planner_scope is not None):
+        raise HTTPException(status_code=403, detail="forbidden")
 
     # ── เตรียม incoming fields
     incoming = {
@@ -910,15 +1012,27 @@ def update_user(id: str, body: UserUpdate, current: UserClaims = Depends(get_cur
     # แนะนำให้ประกาศสองชุดนี้ไว้ด้านบนไฟล์หรือไฟล์ settings:
     ALLOW_FIELDS_ADMIN_USER = {"username","email","password","role","company","tel","is_active","station_id","ai_package"}
     ALLOW_FIELDS_SELF_OWNER = {"username", "email", "password", "tel"}   # ปรับตามที่อยากให้แก้เองได้
-    if current.role == "admin":
+    if is_admin:
         allowed = ALLOW_FIELDS_ADMIN_USER
-    else:  # owner
+    elif planner_scope is not None:
+        allowed = PLANNER_EDIT_FIELDS
+    else:  # แก้ profile ตัวเอง
         allowed = ALLOW_FIELDS_SELF_OWNER
 
     payload = {k: v for k, v in incoming.items() if k in allowed}
     if not payload:
         # raise HTTPException(status_code=400, detailฟแ="no permitted fields to update")
         raise HTTPException(status_code=400, detail="no permitted fields to update")
+
+    # ── planner: ย้าย role / company ได้แค่ภายในขอบเขตของตัวเอง
+    if planner_scope is not None:
+        if "role" in payload and payload["role"] not in PLANNER_MANAGED_ROLES:
+            raise HTTPException(status_code=403, detail="planner can assign technician / cs / planner only")
+        if "company" in payload:
+            matched = _match_company(payload["company"], planner_scope)
+            if matched is None:
+                raise HTTPException(status_code=403, detail="company is outside your scope")
+            payload["company"] = matched
 
     # ── normalize email ให้ตรงกับตอนสร้าง user (ไม่งั้นแก้อีเมลเป็นตัวใหญ่แล้ว login ไม่ได้)
     if "email" in payload:

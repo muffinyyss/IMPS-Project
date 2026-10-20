@@ -30,6 +30,15 @@ const T = {
 
 const t = (k: keyof typeof T, lang: Lang) => T[k][lang];
 
+const ALL_ROLES: UserRole[] = ["owner", "admin", "technician", "cs", "planner"];
+const ROLE_LABEL: Record<UserRole, keyof typeof T> = {
+    owner: "roleOwner",
+    admin: "roleAdmin",
+    technician: "roleTechnician",
+    cs: "roleCS",
+    planner: "rolePlanner",
+};
+
 export type NewUserPayload = {
     username: string;
     password: string;
@@ -57,15 +66,21 @@ type Props = {
     onClose: () => void;
     onSubmit: (payload: NewUserPayload) => Promise<void> | void;
     loading?: boolean;
+    /** จำกัด role ที่เลือกได้ (planner = technician / cs / planner) — ไม่ส่ง = ทุก role */
+    allowedRoles?: UserRole[];
+    /** มีค่า = ช่อง Company เป็น dropdown จากลิสต์นี้ (planner: บริษัทตัวเอง + outsource ของตัวเอง) */
+    companyOptions?: string[];
 };
 
-export default function AddUserModal({ open, onClose, onSubmit, loading }: Props) {
+export default function AddUserModal({ open, onClose, onSubmit, loading, allowedRoles, companyOptions }: Props) {
     const { lang } = useLanguage();
+    const roles = allowedRoles?.length ? ALL_ROLES.filter((r) => allowedRoles.includes(r)) : ALL_ROLES;
+    const defaultRole = roles[0];
     const [form, setForm] = useState<NewUserPayload>({
         username: "",
         password: "",
         email: "",
-        role: "owner",
+        role: defaultRole,
         company_name: "",
         payment: "y",
         tel: "",
@@ -80,6 +95,20 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
 
     const onChange = (k: keyof NewUserPayload, v: any) =>
         setForm((s) => ({ ...s, [k]: v }));
+
+    // role / company ที่เลือกได้รู้ทีหลัง (หลังเช็ค session) — ตอนเปิดฟอร์มดึงค่าให้อยู่ในตัวเลือกเสมอ
+    useEffect(() => {
+        if (!open) return;
+        setForm((s) => ({
+            ...s,
+            role: roles.includes(s.role) ? s.role : defaultRole,
+            company_name:
+                companyOptions && !companyOptions.includes(s.company_name ?? "")
+                    ? companyOptions[0] ?? ""
+                    : s.company_name,
+        }));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [open, allowedRoles, companyOptions]);
 
     // โหลด stations เมื่อ modal เปิด
     useEffect(() => {
@@ -128,7 +157,7 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
             username: "",
             password: "",
             email: "",
-            role: "owner",
+            role: defaultRole,
             tel: "",
             company_name: "",
             payment: "y",
@@ -185,13 +214,31 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
                             onChange={(e) => onChange("tel", e.target.value)}
                             crossOrigin={undefined}
                         />
-                        <Input
-                            label="Company"
-                            required
-                            value={form.company_name}
-                            onChange={(e) => onChange("company_name", e.target.value)}
-                            crossOrigin={undefined}
-                        />
+                        {companyOptions ? (
+                            <div className="tw-relative tw-h-10 tw-w-full">
+                                <select
+                                    required
+                                    value={form.company_name ?? ""}
+                                    onChange={(e) => onChange("company_name", e.target.value)}
+                                    className="tw-h-full tw-w-full tw-cursor-pointer tw-appearance-none tw-rounded-[7px] tw-border tw-border-blue-gray-200 tw-bg-transparent tw-px-3 tw-py-2.5 tw-font-sans tw-text-sm tw-font-normal tw-text-blue-gray-700 tw-outline-none focus:tw-border-2 focus:tw-border-gray-900"
+                                >
+                                    {companyOptions.map((c) => (
+                                        <option key={c} value={c}>{c}</option>
+                                    ))}
+                                </select>
+                                <label className="tw-pointer-events-none tw-absolute tw-left-3 tw--top-1.5 tw-bg-white tw-px-1 tw-text-[11px] tw-font-normal tw-text-blue-gray-400">
+                                    Company *
+                                </label>
+                            </div>
+                        ) : (
+                            <Input
+                                label="Company"
+                                required
+                                value={form.company_name}
+                                onChange={(e) => onChange("company_name", e.target.value)}
+                                crossOrigin={undefined}
+                            />
+                        )}
                         <div>
                             <div className="tw-flex tw-items-center tw-gap-1">
                                 <Select
@@ -204,11 +251,9 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
                                     }}
                                     label="Role"
                                 >
-                                    <Option value="owner">{t("roleOwner", lang)}</Option>
-                                    <Option value="admin">{t("roleAdmin", lang)}</Option>
-                                    <Option value="technician">{t("roleTechnician", lang)}</Option>
-                                    <Option value="cs">{t("roleCS", lang)}</Option>
-                                    <Option value="planner">{t("rolePlanner", lang)}</Option>
+                                    {roles.map((r) => (
+                                        <Option key={r} value={r}>{t(ROLE_LABEL[r], lang)}</Option>
+                                    ))}
 
                                 </Select>
 

@@ -566,23 +566,8 @@ export default function PMDashboardPage() {
     return map;
   }, [vendorMonthData.brands]);
 
-  // ── ป้าย % success rate ของแต่ละ vendor บนแท่ง ──────────────────────────
-  // vendor หนึ่งราย = 3 ชุด (Open / In Progress / Complete) สีเดียวกัน ซ้อนเป็นก้อนเดียวในแท่งของเดือน
-  // ป้ายติดบนชุดที่สูงที่สุดของก้อน (มีที่ว่างมากสุด) ชุดอื่นของ vendor เดียวกันคืนค่าว่าง
-  // key `${brand}|${month}` → index ของ series ใน displayedVendorMonthlySeries ที่ถือป้าย
-  const vendorLabelCarrier = useMemo(() => {
-    const carrier = new Map<string, number>();
-    displayedVendorMonthlySeries.forEach((s, i) => {
-      s.data.forEach((v, m) => {
-        if (v <= 0) return;
-        const key = `${s.brand}|${m}`;
-        const cur = carrier.get(key);
-        if (cur === undefined || v > displayedVendorMonthlySeries[cur].data[m]) carrier.set(key, i);
-      });
-    });
-    return carrier;
-  }, [displayedVendorMonthlySeries]);
-
+  // ── กราฟ vendor: 1 vendor = 1 ก้อนในแท่งซ้อนของเดือน (ไม่แตกก้อนย่อยตามสถานะ)
+  //    ป้ายในก้อน = % success rate ของ vendor เดือนนั้น · รายละเอียดสถานะอยู่ใน tooltip
   // react-apexcharts เทียบ options ด้วย JSON.stringify (ฟังก์ชันหายไป) — ถ้าเปลี่ยนแค่ series จะเรียก
   // updateSeries โดยไม่รับ formatter/tooltip ตัวใหม่ ป้าย % จะค้างค่าเก่า และถ้าเปลี่ยนแค่จำนวนใบยกเลิก
   // (ไม่มีแท่ง) กราฟจะไม่อัปเดตเลย → remount ทุกครั้งที่ข้อมูลเปลี่ยน (แบบเดียวกับโดนัท)
@@ -608,10 +593,9 @@ export default function PMDashboardPage() {
     dataLabels: {
       enabled: true,
       formatter: (val: number, opts: any) => {
-        const i = opts?.seriesIndex as number;
+        const s = displayedVendorMonthlySeries[opts?.seriesIndex as number];
         const m = opts?.dataPointIndex as number;
-        const s = displayedVendorMonthlySeries[i];
-        if (!s || !(Number(val) > 0) || vendorLabelCarrier.get(`${s.brand}|${m}`) !== i) return "";
+        if (!s || !(Number(val) > 0)) return "";
         const rate = vendorMonthData.stats.get(s.brand)?.months[m]?.rate;
         return rate == null ? "" : `${Math.round(rate)}%`;
       },
@@ -623,14 +607,14 @@ export default function PMDashboardPage() {
     // ก้อนที่เตี้ยเกินกว่าตัวอักษร Apex ซ่อนป้ายเอง — ยังอ่าน % ได้จาก tooltip
     plotOptions: { bar: { borderRadius: 3, columnWidth: "45%", dataLabels: { hideOverflowingLabels: true } } },
     tooltip: {
-      // tooltip ต่อก้อน vendor: % สำเร็จ + จำนวนทุกสถานะ รวมใบยกเลิกที่ไม่มีแท่ง (ตัวหารของ %)
+      // tooltip ต่อก้อน vendor: % สำเร็จ + แยกจำนวนทุกสถานะ รวมใบยกเลิกที่ไม่มีแท่ง (ตัวหารของ %)
       custom: ({ seriesIndex, dataPointIndex }: { seriesIndex: number; dataPointIndex: number }) => {
         const s = displayedVendorMonthlySeries[seriesIndex];
         const st = s ? vendorMonthData.stats.get(s.brand)?.months[dataPointIndex] : undefined;
         if (!s || !st) return "";
         const pct = st.rate == null ? "–" : `${Math.round(st.rate)}%`;
-        const row = (label: string, value: number, active: boolean) =>
-          `<div style="display:flex;justify-content:space-between;gap:16px;${active ? "font-weight:700;color:#0f172a" : "color:#64748b"}">` +
+        const row = (label: string, value: number) =>
+          `<div style="display:flex;justify-content:space-between;gap:16px;color:#475569">` +
           `<span>${escapeHtml(label)}</span><span>${value} ${escapeHtml(t.taskUnit)}</span></div>`;
         return (
           `<div style="padding:8px 10px;font-size:12px;line-height:1.6;min-width:190px">` +
@@ -639,15 +623,15 @@ export default function PMDashboardPage() {
           `${escapeHtml(s.brand)} · ${escapeHtml(t.monthsShort[dataPointIndex] ?? "")}</div>` +
           `<div style="margin:2px 0 4px;font-weight:700;color:#0f172a">${escapeHtml(t.successLabel)} ${pct} ` +
           `<span style="font-weight:400;color:#64748b">(${st.completed}/${st.total})</span></div>` +
-          row(t.stageLabel.open, st.open, s.stage === "open") +
-          row(t.stageLabel.in_progress, st.inProgress, s.stage === "in_progress") +
-          row(t.stageLabel.completed, st.completed, s.stage === "closed") +
-          row(t.cardCancelled, st.cancelled, false) +
+          row(t.stageLabel.open, st.open) +
+          row(t.stageLabel.in_progress, st.inProgress) +
+          row(t.stageLabel.completed, st.completed) +
+          row(t.cardCancelled, st.cancelled) +
           `</div>`
         );
       },
     },
-  }), [displayedVendorMonthlySeries, t, vendorColorMap, vendorLabelCarrier, vendorMonthData.stats]);
+  }), [displayedVendorMonthlySeries, t, vendorColorMap, vendorMonthData.stats]);
   const vendorMonthlyHasData = useMemo(
     () => displayedVendorMonthlySeries.some((s) => s.data.some((v) => v > 0)),
     [displayedVendorMonthlySeries]
