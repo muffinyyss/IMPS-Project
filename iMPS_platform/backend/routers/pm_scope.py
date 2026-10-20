@@ -2,26 +2,27 @@
 routers/pm_scope.py
 ===================
 แบ่งงานในใบ PM สถานีใบเดียวระหว่าง "ทีมต้นทาง" (planner ที่วางแผนใบงาน เช่น EGAT)
-กับ vendor ที่ดูแลตู้ชาร์จบางตู้ (เช่น EDS)
+กับผู้ทำ PM ตู้ชาร์จที่ planner เลือกให้รายตู้ (vendor เช่น EDS หรือ outsource)
 
-ที่มา: planner ต้นทางเลือกอุปกรณ์ครบทุกชิ้นของสถานี แต่ตู้ชาร์จบางตู้มี vendor
-ดูแลอยู่ (ช่อง Vendor ของตู้ในหน้า EV Stations) → ตู้พวกนั้นเป็นงานของ vendor
-ส่วนที่เหลือ (Station/MDB/CCB/CB_BOX + ตู้ที่ไม่มี vendor) เป็นงานของทีมต้นทาง
+ที่มา: ตู้ชาร์จแต่ละตู้ใครทำ PM ไม่ตายตัว — บางตู้ vendor ทำเอง บางตู้ EGAT ทำเอง
+บางตู้ outsource ทำ planner ต้นทางจึงเลือก "ผู้ทำ PM" ให้ทุกตู้ทุกใบงาน
+(selected_equipment[].by — ว่าง = ทีมของ planner เอง) ส่วนอุปกรณ์ระดับสถานี
+(Station/MDB/CCB/CB_BOX) เป็นของทีมต้นทางเสมอ
 ทุกคนยังกรอกในเอกสารใบเดียวกัน (1 เลขที่ / 1 PDF / อนุมัติครั้งเดียว)
 
 ข้อมูลที่ใช้ (ใบงาน iMPS.maximo_pm_open):
-  vendor_plans[].chargers = [SN ...]   ตู้ที่ส่งต่อให้ vendor รายนั้น
-                                        (คิดให้ตอน planner ต้นทางบันทึกแผน — ดู pm_maximo.set_pm_equipment)
-  planner_company                       บริษัทของ planner ต้นทาง (ไว้แสดง "งานของ ...")
+  selected_equipment[].by   ผู้ทำ PM ของตู้นั้น (ชื่อ vendor / outsource จากหน้า Company)
+  vendor_plans[]            ใบส่งต่อให้ vendor ที่มี planner ของตัวเอง (assignees = ทีมที่ vendor ส่ง)
+  planner_company           บริษัทของ planner ต้นทาง (ไว้แสดง "งานของ ...")
 
 กติกาสิทธิ์กรอก:
   - admin / owner (และ super_admin) กรอกได้ทุกส่วน
   - planner ของบริษัทต้นทาง (planner_company) ดูแลทั้งใบ แก้ได้ทุกส่วน
-  - คนของ vendor (company = vendor หรือชื่ออยู่ในทีมที่ vendor มอบหมาย)
-      → กรอกได้เฉพาะตู้ที่ส่งต่อให้ vendor ตัวเอง
-      (vendor ที่ถูกส่งต่อแบบไม่มีตู้ผูก = ใบส่งต่อแบบเดิม กรอกได้ทุกส่วน)
-  - คนอื่น (ทีมต้นทางและ outsource ของทีมต้นทาง) → ทุกส่วนยกเว้นตู้ของ vendor
-  - ใบที่ไม่มีตู้ส่งต่อเลย / ไม่ได้ผูกใบงาน → ไม่จำกัด (เหมือนเดิมทุกอย่าง)
+  - คนของผู้ทำ PM รายใดรายหนึ่ง (company = ชื่อนั้น หรืออยู่ในทีมที่ vendor รายนั้นมอบหมาย)
+      → กรอกได้เฉพาะตู้ที่ planner เลือกให้รายนั้น
+      (ผู้รับผิดชอบที่ไม่ได้ถูกเลือกให้ตู้ไหนเลย = นับเป็นทีมต้นทาง)
+  - คนอื่น (ทีมต้นทาง) → ทุกส่วนยกเว้นตู้ที่เลือกให้คนอื่นทำ
+  - ใบที่ไม่มีตู้ไหนเลือกผู้ทำ PM เป็นคนอื่น / ไม่ได้ผูกใบงาน → ไม่จำกัด (เหมือนเดิม)
 """
 from __future__ import annotations
 
@@ -46,40 +47,22 @@ def _norm(v: Any) -> str:
 
 
 # ──────────────────────────────────────────────────────────────────
-# ตู้ → vendor (ใช้ตอนวางแผน)
+# ตู้ → ผู้ทำ PM (ใช้ตอนวางแผน)
 # ──────────────────────────────────────────────────────────────────
 
-def charger_vendors(station_id: str, sns: Iterable[str]) -> dict[str, str]:
-    """SN ของตู้ → ชื่อ vendor ตามช่อง Vendor ของตู้ (ตู้ที่ไม่ได้ระบุ vendor ไม่อยู่ในผล)"""
-    from config import charger_collection
-
-    wanted = [str(s).strip() for s in sns if str(s or "").strip()]
-    if not wanted:
-        return {}
-    query: dict = {"SN": {"$in": wanted}}
-    if station_id:
-        query["station_id"] = station_id
-    out: dict[str, str] = {}
-    try:
-        for ch in charger_collection.find(query, {"_id": 0, "SN": 1, "vendor": 1}):
-            vendor = str(ch.get("vendor") or "").strip()
-            if vendor and vendor not in ("-",):
-                out[str(ch.get("SN") or "").strip()] = vendor
-    except Exception as e:
-        log.warning(f"  ⚠️ อ่าน vendor ของตู้ {wanted} ไม่สำเร็จ: {e}")
-    return out
-
-
-def chargers_by_vendor(station_id: str, items: list[dict]) -> dict[str, tuple[str, list[str]]]:
+def chargers_by_party(items: list[dict]) -> dict[str, tuple[str, list[str]]]:
     """
-    อุปกรณ์ที่เลือกในแผน → {vendor ตัวพิมพ์เล็ก: (ชื่อ vendor, [SN ...])}
-    นับเฉพาะตู้ชาร์จที่มี vendor ระบุไว้
+    อุปกรณ์ในแผน → {ผู้ทำ PM ตัวพิมพ์เล็ก: (ชื่อ, [SN ...])}
+    นับเฉพาะตู้ชาร์จที่ planner เลือกผู้ทำ PM เป็นคนอื่น (by ไม่ว่าง)
     """
-    sns = [str(i.get("sn") or "").strip() for i in items if _norm(i.get("type")) == CHARGER_SECTION]
     out: dict[str, tuple[str, list[str]]] = {}
-    for sn, vendor in charger_vendors(station_id, sns).items():
-        name, lst = out.setdefault(vendor.lower(), (vendor, []))
-        lst.append(sn)
+    for i in items or []:
+        if _norm(i.get("type")) != CHARGER_SECTION:
+            continue
+        by = str(i.get("by") or "").strip()
+        sn = str(i.get("sn") or "").strip()
+        if by and sn:
+            out.setdefault(by.lower(), (by, []))[1].append(sn)
     return out
 
 
@@ -88,26 +71,37 @@ def chargers_by_vendor(station_id: str, items: list[dict]) -> dict[str, tuple[st
 # ──────────────────────────────────────────────────────────────────
 
 def scoped_chargers(wo: dict | None) -> dict[str, str]:
-    """SN ตัวพิมพ์เล็ก → ชื่อ vendor ที่รับตู้นั้น"""
+    """SN ตัวพิมพ์เล็ก → ผู้ทำ PM ที่ไม่ใช่ทีมต้นทาง"""
     out: dict[str, str] = {}
+    # ใบส่งต่อที่ผูกตู้ไว้ (ข้อมูลรุ่นก่อนที่ยังไม่มี by รายตู้)
     for v in (wo or {}).get("vendor_plans") or []:
         name = str(v.get("vendor") or "").strip()
         for sn in v.get("chargers") or []:
             if str(sn or "").strip():
                 out[_norm(sn)] = name
+    for _key, (name, sns) in chargers_by_party((wo or {}).get("selected_equipment") or []).items():
+        for sn in sns:
+            out[_norm(sn)] = name
     return out
 
 
-def user_vendor_plan(wo: dict | None, username: str, company: str) -> Optional[dict]:
-    """ใบส่งต่อของ vendor ที่ผู้ใช้คนนี้สังกัด (บริษัทตรง หรืออยู่ในทีมที่ vendor มอบหมาย)"""
+def user_party(wo: dict | None, username: str, company: str) -> Optional[str]:
+    """
+    ผู้ทำ PM รายที่ผู้ใช้คนนี้สังกัด — ชื่อบริษัทตรงกับผู้ทำ PM ของตู้ไหนสักตู้
+    หรืออยู่ในทีมที่ vendor รายนั้นมอบหมาย (แผนรอบ 2) ไม่ใช่ใครเลย = None (ทีมต้นทาง)
+    """
     u, c = _norm(username), _norm(company)
+    parties = {_norm(p): p for p in scoped_chargers(wo).values()}
     for v in (wo or {}).get("vendor_plans") or []:
-        if c and _norm(v.get("vendor")) == c:
-            return v
+        name = str(v.get("vendor") or "").strip()
+        if name:
+            parties.setdefault(_norm(name), name)
+    if c and c in parties:
+        return parties[c]
     for v in (wo or {}).get("vendor_plans") or []:
         team = {_norm(x) for x in (v.get("assignees") or [])}
         if (u and u in team) or (c and c in team):
-            return v
+            return str(v.get("vendor") or "").strip() or None
     return None
 
 
@@ -128,14 +122,14 @@ def can_edit_section(wo: dict | None, role: str, username: str, company: str, se
         return True
     scope = scoped_chargers(wo)
     if not scope:
-        return True  # ไม่มีตู้ส่งต่อ = ไม่จำกัด
-    mine = user_vendor_plan(wo, username, company)
-    vendor_of_section = scope.get(_norm(sn)) if _norm(section) == CHARGER_SECTION else None
-    if mine is not None:
-        if not (mine.get("chargers") or []):
+        return True  # ไม่มีตู้ที่ให้คนอื่นทำ = ไม่จำกัด
+    party = user_party(wo, username, company)
+    party_of_section = scope.get(_norm(sn)) if _norm(section) == CHARGER_SECTION else None
+    if party is not None:
+        if _norm(party) not in {_norm(p) for p in scope.values()}:
             return True  # ส่งต่อแบบเดิม (ไม่ได้ผูกตู้) — ทำได้ทั้งใบ
-        return bool(vendor_of_section) and _norm(vendor_of_section) == _norm(mine.get("vendor"))
-    return not vendor_of_section
+        return bool(party_of_section) and _norm(party_of_section) == _norm(party)
+    return not party_of_section
 
 
 def annotate_sections(sections: list[dict], wo: dict | None, current: UserClaims, company: str) -> None:
@@ -161,7 +155,7 @@ async def wos_by_wonum(wonums: Iterable[str]) -> dict[str, dict]:
     try:
         cursor = client["iMPS"]["maximo_pm_open"].find(
             {"wonum": {"$in": wanted}},
-            {"_id": 0, "wonum": 1, "vendor_plans": 1, "planner_company": 1},
+            {"_id": 0, "wonum": 1, "vendor_plans": 1, "planner_company": 1, "selected_equipment": 1},
         )
         async for wo in cursor:
             out[str(wo.get("wonum") or "")] = wo

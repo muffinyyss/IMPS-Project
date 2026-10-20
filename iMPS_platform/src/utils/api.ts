@@ -1,6 +1,6 @@
 import { showSessionToast, detailToProblem, showNetworkError } from "./session-toast";
 
-const API_BASE =
+export const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE?.replace(/\/+$/, "") ?? "http://localhost:8000";
 
 // ✅ session อยู่ในคุกกี้ HttpOnly ที่ backend ตั้ง (access_token + refresh_token)
@@ -101,6 +101,15 @@ function redirectToLogin(reason = "expired") {
   });
 }
 
+/**
+ * session ใช้ไม่ได้แล้ว (401) → ล้างโปรไฟล์ แสดง toast แล้วพาไปหน้า login
+ * ใช้ทั้ง apiFetch และตัวดัก window.fetch (utils/session-guard.ts) — เรียกซ้ำได้ เด้งแค่ครั้งเดียว
+ */
+export function handleUnauthorized(detail = "") {
+  clearSessionProfile();
+  redirectToLogin(detail || "expired");
+}
+
 if (typeof window !== "undefined") {
   window.addEventListener("pageshow", () => {
     isRedirecting = false;
@@ -171,7 +180,6 @@ export async function apiFetch(input: string | URL, init: RequestInit = {}) {
   console.warn("[apiFetch] 401 →", detail);
 
   // ---------- token หมดอายุ/ไม่ถูกต้อง → แจ้งเตือน + เด้ง login ทันที (ไม่ refresh) ----------
-  clearSessionProfile();
-  redirectToLogin(detail || "expired");
+  handleUnauthorized(detail);
   throw new Error("UNAUTHENTICATED");
 }

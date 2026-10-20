@@ -7,6 +7,11 @@ import Sidenav from "@/widgets/layout/sidenav";
 import { usePathname } from "next/navigation";
 import { installDomSafetyPatch } from "@/utils/dom-safety";
 import { installUploadSafetyPatch } from "@/utils/upload-safety";
+import { installSessionGuard } from "@/utils/session-guard";
+
+// ติดตั้งตอนโหลดโมดูล ไม่ใช่ใน useEffect: effect ของหน้าลูกทำงานก่อน effect ของ layout
+// ถ้าติดตั้งใน effect, request แรกของหน้าจะหลุดไม่ถูกดัก 401
+if (typeof window !== "undefined") installSessionGuard();
 
 
 export default function InnerContent({ children }: { children: React.ReactNode }) {

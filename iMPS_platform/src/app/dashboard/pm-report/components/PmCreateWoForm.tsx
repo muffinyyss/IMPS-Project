@@ -15,6 +15,7 @@ import { ArrowLeftIcon, CheckIcon, ChevronDownIcon, ExclamationTriangleIcon, Mag
 import { apiFetch } from "@/utils/api";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
 import PmAssigneePicker from "./PmAssigneePicker";
+import { ChargerBySelect, ownTeamLabel } from "./PmChargerBy";
 import {
   dateTimeLocalFromNow,
   EMPTY_PM_ASSIGNEE_OPTIONS,
@@ -162,6 +163,9 @@ export default function PmCreateWoForm({ onSaved, onCancel }: Props) {
   const [stationMenuOpen, setStationMenuOpen] = useState(false);
   const stationPickerRef = useRef<HTMLDivElement>(null);
   const [checked, setChecked] = useState<Record<string, boolean>>({});
+  // ผู้ทำ PM ของแต่ละตู้ (key = equipKey) — ว่าง = ทีมเรา
+  const [chargerBy, setChargerBy] = useState<Record<string, string>>({});
+  const [myCompany, setMyCompany] = useState("");
   const [plannedAt] = useState(() => dateTimeLocalFromNow());
   // ตั้งต้นเป็นช่วง วันนี้ → อีก 7 วัน — แก้ทับได้ แต่ส่วนใหญ่กดบันทึกได้เลย
   const [schedStart, setSchedStart] = useState(() => dateTimeLocalFromNow());
@@ -212,6 +216,7 @@ export default function PmCreateWoForm({ onSaved, onCancel }: Props) {
 
         const me = await meRes.json().catch(() => ({} as any));
         setCanPlan(PM_PLANNING_ROLES.includes(String(me?.role ?? "").trim().toLowerCase()));
+        setMyCompany(String(me?.company ?? ""));
 
         const stJson = await stRes.json().catch(() => ({} as any));
         if (!stRes.ok) setError(String(stJson?.detail || t("errStations", lang)));
@@ -233,12 +238,14 @@ export default function PmCreateWoForm({ onSaved, onCancel }: Props) {
     if (!stationId) {
       setChoices(null);
       setChecked({});
+      setChargerBy({});
       return;
     }
     let alive = true;
     (async () => {
       setLoadingChoices(true);
       setChecked({});
+      setChargerBy({});
       try {
         const res = await apiFetch(
           `/maximo/pm/equipment-choices?station_id=${encodeURIComponent(stationId)}`
@@ -319,6 +326,7 @@ export default function PmCreateWoForm({ onSaved, onCancel }: Props) {
         ...(e.sn ? { sn: e.sn } : {}),
         ...(e.location ? { location: e.location } : {}),
         ...(e.label ? { label: e.label } : {}),
+        ...(e.type === "charger" && chargerBy[equipKey(e)] ? { by: chargerBy[equipKey(e)] } : {}),
       }));
 
     setSaving(true);
@@ -352,8 +360,9 @@ export default function PmCreateWoForm({ onSaved, onCancel }: Props) {
     }
   }, [
     saving, stationId, schedStart, schedFinish, schedRangeInvalid, assignees,
-    equipmentOptions, checked, plannedAt, lang, onSaved,
+    equipmentOptions, checked, chargerBy, plannedAt, lang, onSaved,
   ]);
+  const ownLabel = ownTeamLabel(myCompany, lang);
 
   return (
     <section className="tw-pb-24">
@@ -605,21 +614,33 @@ export default function PmCreateWoForm({ onSaved, onCancel }: Props) {
                       {equipmentOptions.map((e) => {
                         const k = equipKey(e);
                         return (
-                          <label key={k} className="tw-flex tw-items-center tw-gap-2.5 tw-px-3 tw-py-2.5 tw-cursor-pointer hover:tw-bg-blue-gray-50/60 tw-transition-colors">
-                            <input
-                              type="checkbox"
-                              checked={!!checked[k]}
-                              disabled={locked}
-                              onChange={() => toggle(k)}
-                              className="tw-h-4 tw-w-4 tw-shrink-0 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500 tw-cursor-pointer"
-                            />
-                            <span className="tw-min-w-0 tw-truncate tw-text-sm tw-text-blue-gray-800">
-                              {equipLabel(e)}
-                            </span>
-                            {e.sn && (
-                              <span className="tw-ml-auto tw-text-xs tw-text-blue-gray-400">{e.sn}</span>
+                          <div key={k} className="tw-flex tw-flex-wrap tw-items-center tw-gap-x-2.5 tw-gap-y-1.5 tw-px-3 tw-py-2.5 hover:tw-bg-blue-gray-50/60 tw-transition-colors">
+                            <label className="tw-flex tw-min-w-0 tw-flex-1 tw-items-center tw-gap-2.5 tw-cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={!!checked[k]}
+                                disabled={locked}
+                                onChange={() => toggle(k)}
+                                className="tw-h-4 tw-w-4 tw-shrink-0 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500 tw-cursor-pointer"
+                              />
+                              <span className="tw-min-w-0 tw-truncate tw-text-sm tw-text-blue-gray-800">
+                                {equipLabel(e)}
+                              </span>
+                              {e.sn && <span className="tw-text-xs tw-text-blue-gray-400">{e.sn}</span>}
+                            </label>
+                            {/* ตู้ที่ติ๊กแล้วต้องบอกว่าใครทำ PM — ทีมเรา / vendor / outsource */}
+                            {e.type === "charger" && checked[k] && (
+                              <ChargerBySelect
+                                value={chargerBy[k] ?? ""}
+                                onChange={(v) => setChargerBy((prev) => ({ ...prev, [k]: v }))}
+                                options={assigneeOptions}
+                                ownLabel={ownLabel}
+                                chargerVendor={e.vendor}
+                                lang={lang}
+                                disabled={locked}
+                              />
                             )}
-                          </label>
+                          </div>
                         );
                       })}
                     </div>
