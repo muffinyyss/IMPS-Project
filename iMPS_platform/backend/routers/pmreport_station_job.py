@@ -400,6 +400,23 @@ def _serialize_job(job: dict, sections: list[dict], required: set[SectionKey] | 
     }
 
 
+async def _with_ownership(jobs: list[dict], current: UserClaims) -> list[dict]:
+    """
+    เติม owner / editable ให้ทุกส่วนของใบ (in-place) ตามการแบ่งงานกับ vendor
+    — ตู้ที่เป็นงานของ vendor (เช่น EDS) ทีมต้นทางกรอกไม่ได้ และกลับกัน (routers/pm_scope.py)
+    """
+    from routers import pm_scope
+
+    if not jobs:
+        return jobs
+    wos = await pm_scope.wos_by_wonum(j.get("wonum") or "" for j in jobs)
+    company = pm_scope.company_of(current)
+    for j in jobs:
+        wo = wos.get(str(j.get("wonum") or "").strip())
+        pm_scope.annotate_sections(j.get("sections") or [], wo, current, company)
+    return jobs
+
+
 # ══════════════════════════════════════════════════════════════════
 # เปิดใบใหม่ / หาใบเดิมของรอบนั้น
 # ══════════════════════════════════════════════════════════════════
@@ -440,8 +457,9 @@ async def open_station_pm_job(
         {"wonum": wonum} if wonum else {"pm_date": pm_date, "wonum": {"$in": ["", None]}}
     )
     if existing:
-        return {"ok": True, "created": False,
-                "job": _serialize_job(existing, await _section_states(existing), await job_planned_keys(existing))}
+        job_out = _serialize_job(existing, await _section_states(existing), await job_planned_keys(existing))
+        await _with_ownership([job_out], current)
+        return {"ok": True, "created": False, "job": job_out}
 
     station = station_collection.find_one({"station_id": station_id}, {"_id": 0, "station_name": 1}) or {}
 
@@ -481,8 +499,9 @@ async def open_station_pm_job(
     res = await jobs.insert_one(doc)
     saved = await jobs.find_one({"_id": res.inserted_id}) or {**doc, "_id": res.inserted_id}
     log.info(f"  ✅ เปิดใบ PM สถานี {issue_id} ({station_id}, wonum={wonum or '-'})")
-    return {"ok": True, "created": True,
-            "job": _serialize_job(saved, await _section_states(saved), await job_planned_keys(saved))}
+    job_out = _serialize_job(saved, await _section_states(saved), await job_planned_keys(saved))
+    await _with_ownership([job_out], current)
+    return {"ok": True, "created": True, "job": job_out}
 
 
 @router.get("/stationpmjob/list")
@@ -501,6 +520,7 @@ async def list_station_pm_jobs(
         _serialize_job(j, await _section_states(j, chargers), plans.get(str(j.get("wonum") or "").strip()))
         for j in docs
     ]
+    await _with_ownership(items, current)
     return {"items": items, "total": len(items)}
 
 
@@ -535,7 +555,9 @@ async def get_station_pm_job(
     job = await jobs.find_one({"_id": pm_flow.to_oid(job_id)})
     if not job:
         raise HTTPException(status_code=404, detail=f"ไม่พบใบ PM สถานี id={job_id}")
-    return {"job": _serialize_job(job, await _section_states(job), await job_planned_keys(job))}
+    job_out = _serialize_job(job, await _section_states(job), await job_planned_keys(job))
+    await _with_ownership([job_out], current)
+    return {"job": job_out}
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -782,6 +804,9 @@ async def set_section_na(
         raise HTTPException(status_code=404, detail="ไม่พบส่วนนี้ในใบ")
     if body.na and state["report_id"]:
         raise HTTPException(status_code=409, detail="ส่วนนี้กรอกไปแล้ว จึงกด N/A ไม่ได้")
+    # N/A ได้เฉพาะส่วนที่เป็นงานของบริษัทตัวเอง (ตู้ของ vendor ให้ vendor ตัดสินเอง)
+    from routers import pm_scope
+    await pm_scope.guard(current, section, None, job_id=job_id, station_id=station_id, sn=sn)
 
     entry = {"section": section, "sn": sn}
     await jobs.update_one(
@@ -792,7 +817,9 @@ async def set_section_na(
     fresh = await jobs.find_one({"_id": job["_id"]}) or job
     log.info(f"  {'⛔ N/A' if body.na else '↩️ ยกเลิก N/A'} ส่วน {section}{f'/{sn}' if sn else ''} "
              f"ของใบ {fresh.get('issue_id') or job_id} ({current.username or current.sub})")
-    return {"ok": True, "job": _serialize_job(fresh, await _section_states(fresh), await job_planned_keys(fresh))}
+    job_out = _serialize_job(fresh, await _section_states(fresh), await job_planned_keys(fresh))
+    await _with_ownership([job_out], current)
+    return {"ok": True, "job": job_out}
 
 
 # ══════════════════════════════════════════════════════════════════

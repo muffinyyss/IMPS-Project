@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { allAssignees, myVendorPlan, pendingVendorPlans } from "./planning";
+import { allAssignees, chargerVendorMap, myVendorPlan, pendingVendorPlans } from "./planning";
 import { toPmFlow, woToRow } from "./flow";
 import { stageOf } from "@/utils/pm-dashboard";
 
@@ -55,5 +55,22 @@ describe("ใบงานเก่าที่ไม่มีใบส่งต�
   it("ไม่ทำให้ใบเดิมเด้งกลับเป็น Open สำหรับคนอื่น", () => {
     expect(pendingVendorPlans(legacy)).toEqual([]);
     expect(toPmFlow(woToRow(legacy, "x"))).toBe("wo_planned");
+  });
+});
+
+describe("ตู้ที่เป็นงานของ vendor (ตามช่อง Vendor ของตู้)", () => {
+  it("map SN → vendor จากใบส่งต่อ ไม่สนตัวพิมพ์", () => {
+    const wo = {
+      vendor_plans: [
+        { vendor: "EDS", status: "pending", chargers: ["SN-A", "sn-b"] },
+        { vendor: "XYZ", status: "planned" },
+      ],
+    };
+    expect(chargerVendorMap(wo)).toEqual({ "sn-a": "EDS", "sn-b": "EDS" });
+  });
+
+  it("ใบที่ไม่มีใบส่งต่อ = ไม่มีตู้ของ vendor", () => {
+    expect(chargerVendorMap({ vendor_plans: [] })).toEqual({});
+    expect(chargerVendorMap(null)).toEqual({});
   });
 });

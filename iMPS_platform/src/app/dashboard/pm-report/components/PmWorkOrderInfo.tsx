@@ -16,6 +16,7 @@ import { ArrowLeftIcon, ExclamationTriangleIcon } from "@heroicons/react/24/outl
 import { apiFetch } from "@/utils/api";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
 import {
+  chargerVendorMap,
   equipLabel,
   formatDate,
   pendingVendorPlans,
@@ -63,6 +64,8 @@ const T = {
   noEquipment: { th: "ยังไม่ได้เลือกอุปกรณ์", en: "No equipment selected" },
 
   startPm: { th: "เริ่ม PM", en: "Start PM" },
+  vendorChargers: { th: "ตู้ที่รับผิดชอบ", en: "Assigned chargers" },
+  vendorAllJob: { th: "ทั้งใบงาน", en: "Whole work order" },
   vendorSection: { th: "แผนของ", en: "Plan by" },
   vendorPlanned: { th: "วางแผนแล้ว", en: "Planned" },
   vendorWaiting: { th: "รอวางแผน", en: "Pending" },
@@ -129,6 +132,11 @@ export default function PmWorkOrderInfo({ source, identifier, wonum, onStart, on
 
   const assignees = (wo?.assignees ?? []).filter(Boolean);
   const equipment = wo?.selected_equipment ?? [];
+  // ตู้ที่เป็นงานของ vendor (ตามช่อง Vendor ของตู้) — โชว์ป้ายบอกว่าใครรับตู้ไหน
+  const vendorOf = chargerVendorMap(wo);
+  const chargerLabel = (sn: string) =>
+    equipLabel(equipment.find((e) => e.type === "charger" && String(e.sn ?? "").toLowerCase() === sn.toLowerCase())
+      ?? { type: "charger", sn });
   // แผนรอบ 2 ของ vendor (เช่น EDS) — ช่างของ vendor ต้องเห็นกำหนดการ/ทีมของบริษัทตัวเอง
   const vendorPlans: VendorPlan[] = wo?.vendor_plans ?? [];
   const waitingVendors = pendingVendorPlans(wo).map((v) => v.vendor).filter(Boolean);
@@ -256,6 +264,14 @@ export default function PmWorkOrderInfo({ source, identifier, wonum, onStart, on
                     </span>
                   </div>
                   <div className="tw-p-4">
+                    <div className="tw-mb-4">
+                      <label className={LABEL}>{t("vendorChargers", lang)}</label>
+                      <div className={RO}>
+                        {(vp.chargers ?? []).length > 0
+                          ? (vp.chargers ?? []).map(chargerLabel).join(", ")
+                          : t("vendorAllJob", lang)}
+                      </div>
+                    </div>
                     {!planned ? (
                       <p className="tw-text-sm tw-text-amber-700">{t("vendorPending", lang)}</p>
                     ) : (
@@ -306,6 +322,11 @@ export default function PmWorkOrderInfo({ source, identifier, wonum, onStart, on
                         {/* มีแต่ตู้ชาร์จที่มี SN — อุปกรณ์ระดับสถานีผูกกับ station_id */}
                         {e.type === "charger" && e.sn && (
                           <span className="tw-font-mono tw-text-[11px] tw-text-indigo-400">{e.sn}</span>
+                        )}
+                        {e.type === "charger" && e.sn && vendorOf[e.sn.toLowerCase()] && (
+                          <span className="tw-rounded-full tw-bg-amber-100 tw-px-2 tw-py-0.5 tw-text-[10px] tw-text-amber-800">
+                            {vendorOf[e.sn.toLowerCase()]}
+                          </span>
                         )}
                       </span>
                     ))}

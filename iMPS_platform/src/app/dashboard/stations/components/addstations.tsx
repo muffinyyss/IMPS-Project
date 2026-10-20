@@ -3,7 +3,7 @@ import LoadingOverlay from "../../components/Loadingoverlay";
 import { ensureViewableImage, looksLikeImageFile } from "@/utils/heic";
 import { useEffect, useState, useMemo, useRef } from "react";
 import { apiFetch } from "@/utils/api";
-import { WARRANTY_STATUS_OPTIONS, INVESTMENT_SCOPE_OPTIONS, MultiSelectDropdown } from "./stationOptions";
+import { WARRANTY_STATUS_OPTIONS, INVESTMENT_SCOPE_OPTIONS, MultiSelectDropdown, VendorSelect } from "./stationOptions";
 import {
     Dialog,
     DialogHeader,
@@ -996,7 +996,7 @@ export default function AddStationModal({
                                                 <Option value="AC">AC</Option>
                                             </Select>
                                              <Input label={t.brand} required value={charger.brand} onChange={(e) => onChargerChange(charger.id, "brand", e.target.value)} crossOrigin={undefined} />
-                                             <Input label={t.vendor} value={charger.vendor} onChange={(e) => onChargerChange(charger.id, "vendor", e.target.value)} crossOrigin={undefined} />
+                                             <VendorSelect label={t.vendor} value={charger.vendor} onChange={(v) => onChargerChange(charger.id, "vendor", v)} lang={lang} />
                                              <Input label={t.model} required value={charger.model} onChange={(e) => onChargerChange(charger.id, "model", e.target.value)} crossOrigin={undefined} />
                                             <Input label={t.serialNumber} required value={charger.SN} onChange={(e) => onChargerChange(charger.id, "SN", e.target.value)} crossOrigin={undefined} />
                                             <Input label={t.power} required value={charger.power} onChange={(e) => onChargerChange(charger.id, "power", e.target.value)} crossOrigin={undefined} />

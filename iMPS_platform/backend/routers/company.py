@@ -197,6 +197,27 @@ async def list_coworkers(current: UserClaims = Depends(get_current_user)):
     return {"company": await _my_company(current), "users": await coworker_usernames(current)}
 
 
+@router.get("/vendor-options")
+async def vendor_options(current: UserClaims = Depends(get_current_user)):
+    """ตัวเลือกช่อง Vendor ของตู้ชาร์จ (หน้าเพิ่ม/แก้ไขสถานีและตู้ชาร์จ)
+
+    ดึงจากเมนู Company → type=vendor: ทุก owner รวมรายชื่อ vendor ข้างในเป็นลิสต์เดียว
+    ชื่อซ้ำข้าม owner (ไม่สนตัวพิมพ์) รวมเป็นรายการเดียวแล้วรวมยี่ห้อเข้าด้วยกัน
+    ไม่ได้จำกัดเฉพาะ admin เพราะคนที่เพิ่ม/แก้ตู้ชาร์จได้ไม่ใช่แค่ admin — คืนแค่ชื่อกับยี่ห้อ
+    """
+    docs = await companies_coll_async.find({"type": "vendor"}, {"name": 1, "vendors": 1}).to_list(length=None)
+    merged: Dict[str, Dict[str, Any]] = {}
+    for doc in docs:
+        for v in doc.get("vendors") or []:
+            name = str(v.get("name") or "").strip()
+            if not name:
+                continue
+            item = merged.setdefault(name.lower(), {"name": name, "brands": []})
+            item["brands"] = _dedupe_brands(item["brands"] + [str(b) for b in (v.get("brands") or [])])
+    vendors = sorted(merged.values(), key=lambda x: x["name"].lower())
+    return {"vendors": vendors}
+
+
 @router.get("/pm-options")
 async def pm_assignee_options(current: UserClaims = Depends(get_current_user)):
     """ตัวเลือก "ผู้รับผิดชอบ" ของฟอร์ม PM (วางแผน/เปิดใบงาน) — แยกเป็น 3 กลุ่ม

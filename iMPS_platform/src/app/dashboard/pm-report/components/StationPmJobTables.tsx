@@ -25,7 +25,7 @@ import {
   Button, Card, CardBody, CardHeader, Dialog, DialogBody, DialogFooter, DialogHeader, Input, Typography,
 } from "@material-tailwind/react";
 import {
-  ArrowLeftIcon, CheckCircleIcon, ClipboardDocumentListIcon, DocumentArrowDownIcon, PencilSquareIcon, PlusIcon, XMarkIcon,
+  ArrowLeftIcon, CheckCircleIcon, ClipboardDocumentListIcon, DocumentArrowDownIcon, LockClosedIcon, PencilSquareIcon, PlusIcon, XMarkIcon,
 } from "@heroicons/react/24/outline";
 import { discardOpenFormDraft } from "@/app/dashboard/pm-report/lib/discardDraft";
 import { PmCancelEditContext, PmReviewActionContext } from "@/app/dashboard/pm-report/lib/reviewAction";
@@ -116,6 +116,13 @@ type SectionState = {
   inspector: string;
   /** ช่างกด N/A ไว้ — ส่วนนี้ไม่ต้องกรอก (มีได้เฉพาะส่วนที่ยังไม่มีเอกสาร) */
   na?: boolean;
+  /**
+   * บริษัทเจ้าของส่วนนี้ เมื่อใบงานแบ่งตู้ให้ vendor (เช่น EDS) — ว่าง = ไม่ได้แบ่งงาน
+   * editable=false = คนที่ login อยู่กรอกส่วนนี้ไม่ได้ (เป็นงานของบริษัทอื่น)
+   * backend เป็นคนคิดให้ (routers/pm_scope.py) และบังคับซ้ำตอนบันทึก
+   */
+  owner?: string;
+  editable?: boolean;
 };
 
 type Job = {
@@ -233,6 +240,10 @@ const T = {
   closeJobEmpty: { th: "ยังไม่มีส่วนไหนถูกกรอก", en: "No section has been filled yet" },
   sectionSent: { th: "กรอกแล้ว", en: "Done" },
   back: { th: "ย้อนกลับ", en: "Back" },
+  lockedSection: {
+    th: "ส่วนนี้เป็นงานของ {owner} — บริษัทของคุณกรอกส่วนนี้ไม่ได้",
+    en: "This section is assigned to {owner} — your company cannot fill it in",
+  },
 
   approve: { th: "อนุมัติทั้งใบ", en: "Approve document" },
   reject: { th: "ตีกลับ", en: "Send back" },
@@ -252,6 +263,8 @@ const T = {
   noChargers: { th: "สถานีนี้ยังไม่มีตู้ชาร์จในระบบ", en: "No chargers registered at this station" },
   chargersDone: { th: "กรอกแล้ว", en: "filled" },
   na: { th: "N/A", en: "N/A" },
+  ownedBy: { th: "งานของ", en: "Assigned to" },
+  otherTeam: { th: "บริษัทอื่น", en: "another company" },
   markNa: { th: "ไม่ต้องกรอกส่วนนี้ (N/A)", en: "Mark as N/A (no need to fill)" },
   undoNa: { th: "ยกเลิก N/A — กลับไปต้องกรอก", en: "Undo N/A — fill this section" },
   naTitle: { th: "ไม่ต้องกรอกส่วนนี้ (N/A)", en: "Mark as N/A" },
@@ -367,8 +380,11 @@ function SectionFillButton({
   const Icon = sent ? CheckCircleIcon : filled ? PencilSquareIcon : ClipboardDocumentListIcon;
   const iconClass = sent ? "tw-text-green-600" : filled ? "tw-text-amber-600" : "";
   const na = !!state.na;
+  // เป็นงานของบริษัทอื่น (ใบงานแบ่งตู้ให้ vendor) — ยังไม่กรอกก็กดไม่ได้ กรอกแล้วเปิดดูได้อย่างเดียว
+  const locked = state.editable === false;
+  const ownerText = `${t("ownedBy", lang)} ${state.owner || t("otherTeam", lang)}`;
   // ปิดใบงานแล้ว (รออนุมัติ/ปิด) เปลี่ยน N/A ไม่ได้ — ปุ่มหายไป เหลือแค่ป้าย N/A
-  const canToggleNa = job.status === "draft" && !filled;
+  const canToggleNa = job.status === "draft" && !filled && !locked;
   return (
     // ไม่ยืดเต็มการ์ด — กว้างพอดีชื่ออุปกรณ์ + ปุ่ม N/A (มือถือยังเต็มความกว้างให้กดง่าย)
     <div className="tw-flex tw-w-full tw-items-stretch tw-gap-1.5 sm:tw-max-w-[15rem]">
@@ -382,16 +398,32 @@ function SectionFillButton({
             {t("na", lang)}
           </span>
         </div>
+      ) : locked && !filled ? (
+        <div
+          title={`${label}: ${ownerText}`}
+          aria-label={`${label}: ${ownerText}`}
+          className="tw-flex tw-min-w-0 tw-flex-1 tw-items-center tw-justify-center tw-gap-1.5 tw-rounded-lg tw-border tw-border-dashed tw-border-gray-300 tw-bg-gray-50 tw-px-3 tw-py-1.5 tw-text-xs tw-font-bold tw-uppercase tw-text-gray-400"
+        >
+          <LockClosedIcon className="tw-h-4 tw-w-4 tw-shrink-0" />
+          <span className="tw-flex tw-min-w-0 tw-flex-col tw-items-start tw-leading-tight">
+            <span className="tw-truncate">{label}</span>
+            <span className="tw-truncate tw-text-[10px] tw-font-medium tw-normal-case tw-text-gray-500">{ownerText}</span>
+          </span>
+        </div>
       ) : (
         <Button
           size="sm"
           variant={filled ? "outlined" : "filled"}
           onClick={() => onOpen(job, state)}
-          title={`${action}: ${label}`}
-          aria-label={`${action}: ${label}`}
+          title={locked ? `${t("view", lang)}: ${label} (${ownerText})` : `${action}: ${label}`}
+          aria-label={locked ? `${t("view", lang)}: ${label} (${ownerText})` : `${action}: ${label}`}
           className="tw-flex tw-min-w-0 tw-flex-1 tw-items-center tw-justify-center tw-gap-1.5"
         >
-          <Icon className={`tw-h-4 tw-w-4 tw-shrink-0 ${iconClass}`} /> <span className="tw-truncate">{label}</span>
+          {locked
+            ? <LockClosedIcon className="tw-h-4 tw-w-4 tw-shrink-0" />
+            : <Icon className={`tw-h-4 tw-w-4 tw-shrink-0 ${iconClass}`} />}{" "}
+          <span className="tw-truncate">{label}</span>
+          {state.owner && <span className="tw-shrink-0 tw-text-[10px] tw-font-medium tw-normal-case tw-opacity-70">· {state.owner}</span>}
         </Button>
       )}
       {canToggleNa && (
@@ -587,7 +619,8 @@ export default function StationPmJobTables() {
       sn: s.section === CHARGER_SECTION ? (s.sn || null) : null,
       edit_id: s.report_id || null,
       // ใบที่ปิดแล้ว/รออนุมัติ เปิดเป็นโหมดตรวจอ่านอย่างเดียว เหมือนที่ตารางเดิมทำ
-      review: closed || waiting ? "1" : null,
+      // ส่วนที่เป็นงานของบริษัทอื่นก็เปิดดูได้อย่างเดียวเช่นกัน
+      review: closed || waiting || s.editable === false ? "1" : null,
       action: null, pmtab: null,
     });
   };
@@ -854,11 +887,28 @@ export default function StationPmJobTables() {
     const approving = viewing && canApprove && currentJob?.status === "Wait for approve"
       && !!openedSection?.report_id && !["closed", "submitted"].includes(sectionStatus);
     const canEditSent = viewing && PM_EDIT_SENT_ROLES.includes(me?.role ?? "") && !!openedSection?.report_id
+      && openedSection?.editable !== false
       && !["closed", "submitted"].includes(sectionStatus)
       && (currentJob?.status === "draft" || approving);
     // ตัด review ออก = ฟอร์มเดิมในโหมดแก้ไข (key ใหม่ให้โหลดเอกสารใหม่ทั้งหมด พร้อมรูปเดิม)
     const startEdit = () => goto({ review: null, approve: null });
     const backToHub = () => goto({ section: null, sn: null, edit_id: null, review: null, approve: null });
+    // เข้าฟอร์มกรอกของส่วนที่เป็นงานของบริษัทอื่นตรง ๆ (เช่นลิงก์เก่า) — ไม่ให้กรอกเสียเวลาแล้วไปโดนปฏิเสธตอนบันทึก
+    if (openedSection?.editable === false && !viewing) {
+      return (
+        <Card className="tw-mx-auto tw-mt-4 tw-max-w-xl tw-border tw-border-gray-200 tw-shadow-sm">
+          <CardBody className="tw-flex tw-flex-col tw-items-center tw-gap-4 tw-p-6 tw-text-center">
+            <LockClosedIcon className="tw-h-8 tw-w-8 tw-text-gray-400" />
+            <Typography className="tw-text-sm tw-text-gray-700">
+              {t("lockedSection", lang).replace("{owner}", openedSection.owner || t("otherTeam", lang))}
+            </Typography>
+            <Button type="button" variant="outlined" onClick={backToHub} className="tw-flex tw-items-center tw-gap-1.5 tw-text-sm">
+              <ArrowLeftIcon className="tw-h-4 tw-w-4" /> {t("back", lang)}
+            </Button>
+          </CardBody>
+        </Card>
+      );
+    }
     // ฟอร์มวางปุ่มนี้ตรงตำแหน่งปุ่ม "บันทึก" ของหน้ากรอก (ผ่าน PmReviewActionContext) หน้าตาเดียวกับปุ่มบันทึก
     const editButton = canEditSent ? (
       <Button type="button" onClick={startEdit} className="tw-text-sm tw-py-2.5 tw-bg-gray-800 hover:tw-bg-gray-900 tw-w-full sm:tw-w-auto tw-flex tw-items-center tw-justify-center tw-gap-1.5">

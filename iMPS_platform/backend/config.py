@@ -53,10 +53,13 @@ SUPER_ADMIN_ROLE = "super_admin"
 SUPER_ADMIN_USERNAME = "thatsawan"
 # role ที่ super admin สลับ (impersonate) ไปได้ผ่าน dropdown
 SWITCHABLE_ROLES = ("super_admin", "admin", "owner", "cs", "planner", "technician")
+# อายุ access token จริงคำนวณที่ session_expiry.py (หมดอายุตี 3 เวลาไทย) — 2 ค่านี้ไม่ได้ใช้แล้ว
 ACCESS_TOKEN_EXPIRE_MINUTES_TECHNICIAN = 1440
 ACCESS_TOKEN_EXPIRE_MINUTES_DEFAULT = 1440
 SESSION_IDLE_MINUTES_TECHNICIAN = None
-SESSION_IDLE_MINUTES_DEFAULT = 15
+# ไม่ใช้ idle timeout กับทุกบทบาท — ผู้ใช้เปิดหน้า monitoring ค้างไว้ทั้งวันได้
+# (ตั้งเป็นจำนวนนาทีถ้าต้องการเปิดใช้; /refresh เช็คจาก lastActiveAt ซึ่งอัปเดตเฉพาะตอน login/refresh)
+SESSION_IDLE_MINUTES_DEFAULT = None
 REFRESH_TOKEN_EXPIRE_DAYS = 7
 th_tz = ZoneInfo("Asia/Bangkok")
 ACCESS_COOKIE_NAME = "access_token"

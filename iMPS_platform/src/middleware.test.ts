@@ -30,17 +30,20 @@ describe("middleware — aucune page du dashboard sans session", () => {
     expect(run("/dashboard/stations", { access_token: jwt(3600) }).headers.get("x-middleware-next")).toBe("1");
   });
 
-  it("access expiré mais refresh valide → passe (le client renouvellera la session)", () => {
-    const res = run("/dashboard/stations", { access_token: jwt(-60), refresh_token: jwt(7 * 86400) });
-    expect(res.headers.get("x-middleware-next")).toBe("1");
+  it("access expiré même avec refresh valide → login (pas de renouvellement)", () => {
+    expect(run("/dashboard/stations", { access_token: jwt(-60), refresh_token: jwt(7 * 86400) }).status).toBe(307);
   });
 
   it.each([
     ["access expiré seul", { access_token: jwt(-60) }],
-    ["refresh expiré seul", { refresh_token: jwt(-60) }],
+    ["refresh valide seul", { refresh_token: jwt(7 * 86400) }],
     ["cookie illisible", { access_token: "not-a-jwt" }],
     ["JWT sans exp", { access_token: `${b64({ alg: "HS256" })}.${b64({ sub: "x" })}.sig` }],
-  ])("%s → login", (_label, cookies) => {
-    expect(run("/dashboard/stations", cookies).status).toBe(307);
+  ])("%s → page « session expirée » puis login", (_label, cookies) => {
+    const res = run("/dashboard/stations?x=1", cookies);
+    expect(res.status).toBe(307);
+    const location = new URL(res.headers.get("location")!);
+    expect(location.pathname).toBe("/auth/session-expired");
+    expect(location.searchParams.get("next")).toBe("/dashboard/stations?x=1");
   });
 });
