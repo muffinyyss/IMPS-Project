@@ -622,7 +622,10 @@ async def mdbpmreport_post_submit(
 # Photo Upload
 # ============================================
 
-PHOTO_GROUP_PATTERN = r"(g\d+|r\d+_\d+)"
+# g{n} = ข้อหลัก, r{n}_{i} = ข้อย่อยตัวเลข (r6_1), r{n}_{name} = ข้อย่อยแบบตั้งชื่อ
+# (ข้อ 3 แหล่งจ่ายไฟ: r3_power_main_cb / r3_power_cb / r3_power_meter / r3_power_transformer)
+# ห้ามมี "." หรือ "$" เพราะใช้เป็นชื่อ field ใน Mongo และชื่อโฟลเดอร์
+PHOTO_GROUP_PATTERN = r"(g\d+|r\d+_[a-z0-9]+(?:_[a-z0-9]+)*)"
 
 
 @router.post("/mdbpmreport/{report_id}/post/photos")
