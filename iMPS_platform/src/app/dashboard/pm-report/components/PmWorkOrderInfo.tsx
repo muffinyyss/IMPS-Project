@@ -17,7 +17,8 @@ import { ChargerByTag, ownTeamLabel } from "./PmChargerBy";
 import { apiFetch } from "@/utils/api";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
 import {
-  chargerByMap,
+  byKey,
+  equipmentByMap,
   equipLabel,
   formatDate,
   pendingVendorPlans,
@@ -65,7 +66,7 @@ const T = {
   noEquipment: { th: "ยังไม่ได้เลือกอุปกรณ์", en: "No equipment selected" },
 
   startPm: { th: "เริ่ม PM", en: "Start PM" },
-  vendorChargers: { th: "ตู้ที่รับผิดชอบ", en: "Assigned chargers" },
+  vendorChargers: { th: "อุปกรณ์ที่รับผิดชอบ", en: "Assigned equipment" },
   vendorAllJob: { th: "ทั้งใบงาน", en: "Whole work order" },
   vendorSection: { th: "แผนของ", en: "Plan by" },
   vendorPlanned: { th: "วางแผนแล้ว", en: "Planned" },
@@ -133,14 +134,20 @@ export default function PmWorkOrderInfo({ source, identifier, wonum, onStart, on
 
   const assignees = (wo?.assignees ?? []).filter(Boolean);
   const equipment = wo?.selected_equipment ?? [];
-  // ผู้ทำ PM ของแต่ละตู้ที่ planner เลือกไว้ — โชว์ป้ายบอกว่าใครรับตู้ไหน
-  const byOf = chargerByMap(wo);
+  // ผู้ทำ PM ของอุปกรณ์แต่ละชิ้นที่ planner เลือกไว้ — โชว์ป้ายบอกว่าใครรับชิ้นไหน
+  const byOf = equipmentByMap(wo);
   const ownLabel = ownTeamLabel(wo?.planner_company, lang);
-  const chargersOf = (party: string) =>
-    Object.entries(byOf).filter(([, by]) => by.toLowerCase() === party.trim().toLowerCase()).map(([sn]) => sn);
-  const chargerLabel = (sn: string) =>
-    equipLabel(equipment.find((e) => e.type === "charger" && String(e.sn ?? "").toLowerCase() === sn.toLowerCase())
-      ?? { type: "charger", sn });
+  /** ชื่ออุปกรณ์ที่เป็นงานของผู้ทำ PM รายนั้น เรียงตามรายการอุปกรณ์ของใบงาน */
+  const itemsOf = (party: string) => {
+    const p = party.trim().toLowerCase();
+    const keys = Object.keys(byOf).filter((k) => byOf[k].toLowerCase() === p);
+    const listed = equipment.filter((e) => keys.includes(byKey(e)));
+    // ใบส่งต่อรุ่นก่อนอาจผูกตู้ที่ไม่อยู่ในรายการอุปกรณ์แล้ว — ยังต้องโชว์
+    const extra = keys
+      .filter((k) => !listed.some((e) => byKey(e) === k))
+      .map((k) => (k.startsWith("charger:") ? k.slice("charger:".length) : equipLabel({ type: k })));
+    return [...listed.map(equipLabel), ...extra];
+  };
   // แผนรอบ 2 ของ vendor (เช่น EDS) — ช่างของ vendor ต้องเห็นกำหนดการ/ทีมของบริษัทตัวเอง
   const vendorPlans: VendorPlan[] = wo?.vendor_plans ?? [];
   const waitingVendors = pendingVendorPlans(wo).map((v) => v.vendor).filter(Boolean);
@@ -271,8 +278,8 @@ export default function PmWorkOrderInfo({ source, identifier, wonum, onStart, on
                     <div className="tw-mb-4">
                       <label className={LABEL}>{t("vendorChargers", lang)}</label>
                       <div className={RO}>
-                        {chargersOf(vp.vendor).length > 0
-                          ? chargersOf(vp.vendor).map(chargerLabel).join(", ")
+                        {itemsOf(vp.vendor).length > 0
+                          ? itemsOf(vp.vendor).join(", ")
                           : t("vendorAllJob", lang)}
                       </div>
                     </div>
@@ -327,9 +334,7 @@ export default function PmWorkOrderInfo({ source, identifier, wonum, onStart, on
                         {e.type === "charger" && e.sn && (
                           <span className="tw-font-mono tw-text-[11px] tw-text-indigo-400">{e.sn}</span>
                         )}
-                        {e.type === "charger" && e.sn && (
-                          <ChargerByTag by={byOf[e.sn.toLowerCase()]} ownLabel={ownLabel} />
-                        )}
+                        <ChargerByTag by={byOf[byKey(e)]} ownLabel={ownLabel} />
                       </span>
                     ))}
                   </div>

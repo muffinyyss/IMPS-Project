@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { allAssignees, chargerByMap, myVendorPlan, pendingVendorPlans } from "./planning";
+import { allAssignees, byKey, equipmentByMap, myVendorPlan, pendingVendorPlans } from "./planning";
 import { toPmFlow, woToRow } from "./flow";
 import { stageOf } from "@/utils/pm-dashboard";
 
@@ -58,27 +58,45 @@ describe("ใบงานเก่าที่ไม่มีใบส่งต�
   });
 });
 
-describe("ผู้ทำ PM ที่ planner เลือกให้แต่ละตู้", () => {
-  it("map SN → ผู้ทำ PM ไม่สนตัวพิมพ์ ตู้ที่ทีมเราทำไม่อยู่ในผล", () => {
+describe("ผู้ทำ PM ที่ planner เลือกให้อุปกรณ์แต่ละชิ้น", () => {
+  it("map byKey → ผู้ทำ PM ไม่สนตัวพิมพ์ ชิ้นที่ทีมเราทำไม่อยู่ในผล", () => {
     const wo = {
       vendor_plans: [{ vendor: "EDS", status: "pending" }],
       selected_equipment: [
-        { type: "station" },
+        { type: "station", by: "EDS" },
+        { type: "mdb" },
         { type: "charger", sn: "SN-A", by: "EDS" },
         { type: "charger", sn: "sn-b", by: "OS Co" },
         { type: "charger", sn: "SN-C", by: "" },
+        { type: "charger", by: "EDS" },
       ],
     };
-    expect(chargerByMap(wo)).toEqual({ "sn-a": "EDS", "sn-b": "OS Co" });
+    expect(equipmentByMap(wo)).toEqual({ station: "EDS", "charger:sn-a": "EDS", "charger:sn-b": "OS Co" });
   });
 
-  it("ใบส่งต่อรุ่นก่อนที่ผูกตู้ไว้ยังอ่านได้", () => {
-    expect(chargerByMap({ vendor_plans: [{ vendor: "EDS", status: "pending", chargers: ["X1"] }] }))
-      .toEqual({ x1: "EDS" });
+  it("จ้าง vendor ทำทั้งสถานี = ทุกชิ้นเป็นของ vendor", () => {
+    const types = ["station", "mdb", "ccb", "cbbox"];
+    const wo = {
+      selected_equipment: [
+        ...types.map((type) => ({ type, by: "EDS" })),
+        { type: "charger", sn: "F1", by: "EDS" },
+      ],
+    };
+    expect(Object.values(equipmentByMap(wo))).toEqual(["EDS", "EDS", "EDS", "EDS", "EDS"]);
   });
 
-  it("ใบที่ไม่มีข้อมูล = ทีมเราทำทุกตู้", () => {
-    expect(chargerByMap({ vendor_plans: [] })).toEqual({});
-    expect(chargerByMap(null)).toEqual({});
+  it("ใบส่งต่อรุ่นก่อนที่ผูกอุปกรณ์ไว้ยังอ่านได้", () => {
+    expect(equipmentByMap({ vendor_plans: [{ vendor: "EDS", status: "pending", chargers: ["X1"], sections: ["MDB"] }] }))
+      .toEqual({ "charger:x1": "EDS", mdb: "EDS" });
+  });
+
+  it("ใบที่ไม่มีข้อมูล = ทีมเราทำทุกชิ้น", () => {
+    expect(equipmentByMap({ vendor_plans: [] })).toEqual({});
+    expect(equipmentByMap(null)).toEqual({});
+  });
+
+  it("byKey ตรงกับ item_key ของ backend (routers/pm_scope.py)", () => {
+    expect(byKey({ type: "charger", sn: " SN-A " })).toBe("charger:sn-a");
+    expect(byKey({ type: "CBBOX" })).toBe("cbbox");
   });
 });

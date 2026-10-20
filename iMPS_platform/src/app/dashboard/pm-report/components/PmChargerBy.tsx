@@ -1,21 +1,22 @@
 "use client";
 
 /**
- * "ผู้ทำ PM" ของตู้ชาร์จแต่ละตู้ในใบงาน — planner ต้นทางเลือกทุกใบงาน
+ * "ผู้ทำ PM" ของอุปกรณ์แต่ละชิ้นในใบงาน (ตู้ชาร์จ + Station/MDB/CCB/CB_BOX) — planner ต้นทางเลือกทุกใบงาน
+ * (ชื่อไฟล์/คอมโพเนนต์ยังเป็น "Charger" ตามรุ่นแรกที่เลือกได้เฉพาะตู้ชาร์จ)
  *
- * ตู้แต่ละตู้ไม่ได้ทำโดยคนเดิมเสมอ: บางตู้ vendor ทำเอง (เช่น EDS) บางตู้ทีมเราทำเอง
- * บางตู้ outsource ทำ — ตัวเลือกมาจาก vendor / outsource ของบริษัทเรา (ตั้งที่หน้า Company)
- * ค่าว่าง = ทีมของ planner เอง
+ * อุปกรณ์แต่ละชิ้นไม่ได้ทำโดยคนเดิมเสมอ: บางตู้ vendor ทำเอง (เช่น EDS) บางตู้ทีมเราทำเอง
+ * บางตู้ outsource ทำ บางใบจ้าง vendor ทำทั้งสถานี — ตัวเลือกมาจาก vendor / outsource
+ * ของบริษัทเรา (ตั้งที่หน้า Company) ค่าว่าง = ทีมของ planner เอง (ค่าตั้งต้นของทุกชิ้น)
  *
  * ผลของการเลือก (backend routers/pm_scope.py):
- *   - ตู้ที่เลือกคนอื่น จะกรอกได้เฉพาะคนของรายนั้น ทีมเรากรอกส่วนที่เหลือ
+ *   - ส่วนที่เลือกคนอื่น จะกรอกได้เฉพาะคนของรายนั้น ทีมเรากรอกส่วนที่เหลือ
  *   - vendor ที่มี planner ของตัวเอง (เช่น EDS) ได้ใบส่งต่อให้วางแผนทีมของตัวเองอีกรอบ
  *
  * ใช้ร่วมกันระหว่าง PmPlanForm (ใบงาน Maximo) และ PmCreateWoForm (เปิดใบงานเอง)
  */
 import React from "react";
 import type { Lang } from "@/utils/useLanguage";
-import { chargerHandoffs, type PmAssigneeOptions } from "./planning";
+import { handoffGroups, type PmAssigneeOptions } from "./planning";
 
 const T = {
   own: { th: "ทีมเรา", en: "Our team" },
@@ -23,13 +24,17 @@ const T = {
   outsourceGroup: { th: "Outsource", en: "Outsource" },
   chargerVendor: { th: "vendor ของตู้", en: "charger vendor" },
   doneBy: { th: "ผู้ทำ PM", en: "PM by" },
-  handoff: { th: "ตู้ชาร์จที่ให้ผู้อื่นทำ", en: "Chargers done by others" },
+  mixed: { th: "หลายราย", en: "Mixed" },
+  handoff: { th: "อุปกรณ์ที่ให้ผู้อื่นทำ", en: "Done by others" },
   vendorHint: {
-    th: "Vendor เลือกที่ช่อง \"ผู้ทำ PM\" ของแต่ละตู้ในหัวข้ออุปกรณ์",
-    en: "Pick a vendor in each charger's \"PM by\" field under Equipment",
+    th: "Vendor เลือกที่ช่อง \"ผู้ทำ PM\" ในหัวข้ออุปกรณ์ (แถว \"ทั้งหมด\" ตั้งทุกรายการได้ทีเดียว)",
+    en: "Pick a vendor in the \"PM by\" field under Equipment (the \"All\" row sets every item at once)",
   },
 } as const;
 const t = (k: keyof typeof T, lang: Lang) => T[k][lang === "en" ? "en" : "th"];
+
+/** ค่าหลอกของ option "หลายราย" — เลือกไม่ได้ (disabled) และกรองทิ้งใน onChange อีกชั้น */
+const MIXED = "__mixed__";
 
 /** ชื่อฝั่งทีมเรา — ใช้ชื่อบริษัทถ้ารู้ (เช่น "EGAT") ไม่งั้น "ทีมเรา" */
 export function ownTeamLabel(company: string | null | undefined, lang: Lang) {
@@ -38,7 +43,7 @@ export function ownTeamLabel(company: string | null | undefined, lang: Lang) {
 }
 
 export function ChargerBySelect({
-  value, onChange, options, ownLabel, chargerVendor, lang, disabled = false,
+  value, onChange, options, ownLabel, chargerVendor, lang, disabled = false, label, mixed = false,
 }: {
   value: string;
   onChange: (next: string) => void;
@@ -48,6 +53,10 @@ export function ChargerBySelect({
   chargerVendor?: string | null;
   lang: Lang;
   disabled?: boolean;
+  /** ป้ายหน้าช่อง — ไม่ส่ง = "ผู้ทำ PM" */
+  label?: string;
+  /** แถว "ทั้งหมด": อุปกรณ์แต่ละชิ้นผู้ทำไม่ตรงกัน → โชว์ "หลายราย" (เลือกค่าใหม่ = ตั้งทุกชิ้น) */
+  mixed?: boolean;
 }) {
   const hint = String(chargerVendor ?? "").trim().toLowerCase();
   const mark = (name: string) => (hint && name.toLowerCase() === hint ? ` (${t("chargerVendor", lang)})` : "");
@@ -55,15 +64,16 @@ export function ChargerBySelect({
   const known = [...options.vendors, ...options.outsources].some((n) => n.toLowerCase() === value.toLowerCase());
   return (
     <label className="tw-flex tw-shrink-0 tw-items-center tw-gap-1.5 tw-text-xs tw-text-blue-gray-500">
-      <span className="tw-whitespace-nowrap">{t("doneBy", lang)}</span>
+      <span className="tw-whitespace-nowrap">{label ?? t("doneBy", lang)}</span>
       <select
-        value={value}
+        value={mixed ? MIXED : value}
         disabled={disabled}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => { if (e.target.value !== MIXED) onChange(e.target.value); }}
         className={`tw-max-w-[11rem] tw-rounded-md tw-border tw-px-2 tw-py-1 tw-text-xs focus:tw-outline-none focus:tw-border-blue-500 ${
           value ? "tw-border-amber-300 tw-bg-amber-50 tw-text-amber-900" : "tw-border-blue-gray-200 tw-bg-white tw-text-blue-gray-800"
         }`}
       >
+        {mixed && <option value={MIXED} disabled>{t("mixed", lang)}</option>}
         <option value="">{ownLabel}</option>
         {value && !known && <option value={value}>{value}</option>}
         {options.vendors.length > 0 && (
@@ -81,7 +91,7 @@ export function ChargerBySelect({
   );
 }
 
-/** ป้ายผู้ทำ PM ของตู้ (อ่านอย่างเดียว) — ทีมเราเป็นสีเทา คนอื่นสีส้ม */
+/** ป้ายผู้ทำ PM ของอุปกรณ์ (อ่านอย่างเดียว) — ทีมเราเป็นสีเทา คนอื่นสีส้ม */
 export function ChargerByTag({ by, ownLabel }: { by?: string | null; ownLabel: string }) {
   const name = String(by ?? "").trim();
   return (
@@ -96,9 +106,9 @@ export function ChargerByTag({ by, ownLabel }: { by?: string | null; ownLabel: s
 }
 
 /**
- * ใต้ลิสต์ผู้รับผิดชอบ: สรุปว่าตู้ไหนให้ vendor / outsource รายไหนทำ
- * ยังไม่มีตู้ที่ให้คนอื่นทำ + บริษัทมี vendor = บอกว่าเลือก vendor ได้ที่ไหน
- * (ลิสต์ผู้รับผิดชอบไม่มีกลุ่ม Vendor แล้ว — เลือกผ่าน "ผู้ทำ PM" ของตู้ที่เดียว)
+ * ใต้ลิสต์ผู้รับผิดชอบ: สรุปว่าอุปกรณ์ไหนให้ vendor / outsource รายไหนทำ
+ * ยังไม่มีอุปกรณ์ที่ให้คนอื่นทำ + บริษัทมี vendor = บอกว่าเลือก vendor ได้ที่ไหน
+ * (ลิสต์ผู้รับผิดชอบไม่มีกลุ่ม Vendor — เลือกผ่าน "ผู้ทำ PM" ของอุปกรณ์ที่เดียว)
  */
 export function ChargerHandoffNote({
   items, showVendorHint, lang,
@@ -107,7 +117,7 @@ export function ChargerHandoffNote({
   showVendorHint: boolean;
   lang: Lang;
 }) {
-  const groups = chargerHandoffs(items);
+  const groups = handoffGroups(items);
   if (groups.length === 0) {
     return showVendorHint ? (
       <p className="tw-mt-2 tw-text-xs tw-text-blue-gray-400">{t("vendorHint", lang)}</p>

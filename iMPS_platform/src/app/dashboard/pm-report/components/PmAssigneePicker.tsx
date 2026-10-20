@@ -8,7 +8,7 @@
  *
  * ชื่อที่เลือกได้มาจาก GET /companies/pm-options ซึ่งกรองด้วย company ของคนที่ login แล้ว
  * แบ่งเป็น Technician / Vendor / Outsource (กลุ่มที่ไม่มีคนจะไม่ถูกส่งมา)
- * แผนต้นทางไม่มีกลุ่ม Vendor — vendor เลือกที่ "ผู้ทำ PM" ของแต่ละตู้ (pmAssigneeGroups vendors: false)
+ * แผนต้นทางไม่มีกลุ่ม Vendor — vendor เลือกที่ "ผู้ทำ PM" ของอุปกรณ์ (pmAssigneeGroups vendors: false)
  */
 
 import React, { useMemo, useState } from "react";

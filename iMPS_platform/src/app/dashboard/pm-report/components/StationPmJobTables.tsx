@@ -154,7 +154,63 @@ type Job = {
   maximo_contractor?: string;
   /** ใบที่ไม่ได้ผูกกับ Maximo — ผู้ปฏิบัติงานเป็นบัญชี iMPS แทน laborcode */
   imps_labor?: string[];
+  /**
+   * ใบงานที่ Maximo เปิดมา (ไม่ใช่ใบงานที่เปิดเองใน iMPS) — ปิดใบงานลงเวลาด้วย laborcode
+   * และตอนอนุมัติ backend ยิง IN03 → IN09 → IN02 CLOSED เข้า Maximo
+   */
+  from_maximo?: boolean;
+  /** ผลการยิงชุดปิดงานเข้า Maximo ของทั้งใบ */
+  maximo_sync?: Record<string, MaximoStep>;
+  /**
+   * ฝ่ายที่ต้องส่งงานในใบ (แบ่งตามผู้ทำ PM ที่ planner เลือก) — ใบที่ไม่ได้แบ่งงานมีฝ่ายเดียว
+   * แต่ละฝ่ายกด "ส่งงาน" พร้อมเวลาทำงาน/ผู้ลงเวลาของตัวเอง ครบทุกฝ่ายใบจึงรออนุมัติ
+   */
+  parties?: JobParty[];
+  /** ฝ่ายของคนที่ login อยู่ (key ของ parties) */
+  my_party?: string;
+  split?: boolean;
+  work_entries?: WorkEntry[];
 };
+
+type JobParty = {
+  key: string;
+  name: string;
+  /** ทุกส่วนของฝ่ายนี้ส่งครบแล้ว กดส่งงานได้ */
+  ready: boolean;
+  missing: { th: string; en: string }[];
+  submitted: boolean;
+};
+
+type WorkEntry = {
+  key: string;
+  party: string;
+  work_start: string;
+  work_finish: string;
+  maximo_labor: string[];
+  maximo_contractor: string;
+  imps_labor: string[];
+  submitted: boolean;
+  submitted_by: string;
+  submitted_at: string;
+};
+
+/** role ที่ส่งงานแทนฝ่ายอื่นได้ — ต้องตรงกับ pm_scope.BYPASS_ROLES */
+const PM_SUBMIT_FOR_ANY_ROLES = ["admin", "owner"];
+
+type MaximoStep = { ok: boolean; at?: string; status?: string; error?: string; errors?: string[] };
+
+/** ขั้นของชุดปิดงานที่โชว์ในหน้าใบ — เรียงตามลำดับที่ยิงจริง */
+const MAXIMO_CLOSE_STEPS: { key: string; th: string; en: string }[] = [
+  { key: "IN03", th: "แนบ PDF", en: "Attach PDF" },
+  { key: "IN09", th: "ลงเวลาช่าง", en: "Labor time" },
+  { key: "IN02", th: "ปิด WO", en: "Close WO" },
+];
+const PM_RESYNC_ROLES = ["admin", "owner", "planner"];
+
+/** อนุมัติแล้วชุดปิดงานผ่านครบไหม — IN02 CLOSED ผ่าน = ปิด WO ใน Maximo แล้ว */
+function maximoClosed(sync: Record<string, MaximoStep> | undefined) {
+  return !!sync?.IN02?.ok && String(sync.IN02.status ?? "").toUpperCase() !== "INPRG";
+}
 
 type LaborOption = { laborcode: string; name: string; needs_name?: boolean };
 
@@ -210,6 +266,18 @@ const T = {
   downloadPdf: { th: "PDF ทั้งใบ", en: "Full PDF" },
   pdfClosedOnly: { th: "โหลด PDF ได้หลังอนุมัติใบงานแล้ว (Closed)", en: "PDF is available once the document is approved (Closed)" },
   closeJob: { th: "ปิดใบงาน", en: "Close work order" },
+  submitParty: { th: "ส่งงานของ {p}", en: "Submit {p} work" },
+  resubmitParty: { th: "แก้ไขงานที่ส่ง ({p})", en: "Edit submitted work ({p})" },
+  submitAs: { th: "ส่งงานของฝ่าย", en: "Submit for" },
+  partiesTitle: { th: "การส่งงานแต่ละฝ่าย", en: "Work submitted by each party" },
+  partySent: { th: "ส่งแล้ว", en: "Submitted" },
+  partyWaiting: { th: "รอส่งงาน", en: "Waiting" },
+  partyNotReady: { th: "ยังกรอกไม่ครบ", en: "Not complete" },
+  ownTeam: { th: "ทีมต้นทาง", en: "Origin team" },
+  submitPartyHint: {
+    th: "ใบนี้แบ่งงานหลายฝ่าย — แต่ละฝ่ายส่งงานพร้อมเวลาทำงานของตัวเอง ครบทุกฝ่ายแล้วใบจึงส่งให้อนุมัติ",
+    en: "This document is split between parties — each submits its own work time; it goes for approval once all have submitted",
+  },
   closingJob: { th: "กำลังปิดใบงาน…", en: "Closing…" },
   closeJobHint: {
     th: "กรอกเวลาทำงานจริงและช่างที่ลงเวลาเข้า Maximo แล้วส่งให้ผู้อนุมัติ — หลังจากนี้แก้ไขเอกสารไม่ได้ จนกว่าจะถูกตีกลับ",
@@ -250,6 +318,14 @@ const T = {
   rejectReason: { th: "เหตุผลที่ตีกลับ", en: "Reason" },
   rejected: { th: "ถูกตีกลับให้แก้:", en: "Sent back for fixes:" },
   approved: { th: "อนุมัติแล้วโดย", en: "Approved by" },
+  maximoTitle: { th: "ส่งเข้า Maximo", en: "Sent to Maximo" },
+  maximoPending: { th: "ยังไม่ได้ส่ง", en: "Not sent" },
+  maximoResync: { th: "ส่งเข้า Maximo ใหม่", en: "Resend to Maximo" },
+  maximoResyncing: { th: "กำลังส่ง…", en: "Sending…" },
+  maximoFailedAlert: {
+    th: "อนุมัติแล้ว แต่ส่งเข้า Maximo ยังไม่สำเร็จ ({steps}) — กด \"ส่งเข้า Maximo ใหม่\" ที่หน้าใบ PM ได้",
+    en: "Approved, but sending to Maximo did not complete ({steps}) — press \"Resend to Maximo\" on the PM document",
+  },
   rejectConfirm: {
     th: "ตีกลับทั้งใบให้ช่างแก้ — ระบุเหตุผลให้ช่างรู้ว่าต้องแก้อะไร",
     en: "Send the whole document back for fixes. Tell the technician what to change.",
@@ -468,6 +544,8 @@ export default function StationPmJobTables() {
 
   // ปิดใบงาน: เวลาทำงานจริง + ช่างที่ลงเวลา Maximo กรอกครั้งเดียวที่นี่ (ฟอร์มแต่ละส่วนไม่มีแล้ว)
   const [closeOpen, setCloseOpen] = useState(false);
+  // ฝ่ายที่กำลังส่งงานในหน้าต่างปิดใบงาน (key ของ parties)
+  const [closeParty, setCloseParty] = useState("");
   const [workStart, setWorkStart] = useState("");
   const [workFinish, setWorkFinish] = useState("");
   const [maximoLabor, setMaximoLabor] = useState<string[]>([]);
@@ -736,21 +814,38 @@ export default function StationPmJobTables() {
    * ช่างกด "ปิดใบงาน" → เปิดหน้าต่างกรอกเวลาทำงาน + ช่างที่ลงเวลา Maximo (เติมค่าเดิมถ้าเคยกรอก)
    * ยังไม่เคยกรอก: เริ่ม = วันนี้ + เวลาที่กดรับงาน, เสร็จ = ตอนนี้
    */
-  const openCloseJob = () => {
-    if (!currentJob || acting || !currentJob.ready_to_submit) return;
+  const fillCloseForm = (job: Job, partyKey: string) => {
     const now = new Date();
-    setWorkStart(currentJob.work_start || defaultWorkStart(currentJob.createdAt, now));
-    setWorkFinish(currentJob.work_finish || toLocalDatetimeInput(now));
-    setMaximoLabor(currentJob.maximo_labor || []);
-    setMaximoContractor(currentJob.maximo_contractor || "");
-    setImpsLabor(currentJob.imps_labor || []);
+    // ฝ่ายนี้เคยส่งแล้ว (แก้ / โดนตีกลับ) = เติมค่าที่ส่งไว้ ไม่งั้นใช้ค่าของใบ (ใบฝ่ายเดียวรุ่นก่อน)
+    const e = job.work_entries?.find((x) => x.key === partyKey);
+    const fallback = job.split ? undefined : job;
+    setWorkStart(e?.work_start || fallback?.work_start || defaultWorkStart(job.createdAt, now));
+    setWorkFinish(e?.work_finish || fallback?.work_finish || toLocalDatetimeInput(now));
+    setMaximoLabor(e?.maximo_labor || fallback?.maximo_labor || []);
+    setMaximoContractor(e?.maximo_contractor || fallback?.maximo_contractor || "");
+    setImpsLabor(e?.imps_labor || fallback?.imps_labor || []);
+  };
+
+  const openCloseJob = () => {
+    if (!currentJob || acting) return;
+    const parties = currentJob.parties ?? [];
+    const mine = parties.find((p) => p.key === currentJob.my_party);
+    // ส่งแทนฝ่ายอื่นได้เฉพาะ admin/owner — ฝ่ายตัวเองยังไม่พร้อม/ไม่มี ก็เลือกฝ่ายแรกที่พร้อม
+    const canPickAny = PM_SUBMIT_FOR_ANY_ROLES.includes(me?.role ?? "");
+    const party = mine?.ready ? mine : canPickAny ? parties.find((p) => p.ready) : undefined;
+    if (parties.length > 0 && !party) return;
+    if (parties.length === 0 && !currentJob.ready_to_submit) return;
+    const key = party?.key ?? currentJob.my_party ?? "";
+    setCloseParty(key);
+    fillCloseForm(currentJob, key);
     setCloseError("");
     setCloseOpen(true);
   };
 
   const contractorPicked = laborOptions.some((o) => o.needs_name && maximoLabor.includes(o.laborcode));
   // ไม่มีเลขใบงาน Maximo = ไม่มีอะไรให้ลงเวลาใน Maximo (IN09) — ใช้บัญชี iMPS แทน
-  const isMaximoJob = !!currentJob?.wonum;
+  // ใบงานที่ Maximo เปิดมาเท่านั้น — ใบงานที่เปิดเองใน iMPS มีเลขใบงานแต่ไม่มีใน Maximo
+  const isMaximoJob = currentJob?.from_maximo ?? !!currentJob?.wonum;
 
   /** ตรวจแบบเดียวกับ backend (pm_flow.validate_work_time) — บอกให้แก้ก่อนยิง */
   const closeJobProblem = (): string => {
@@ -778,6 +873,7 @@ export default function StationPmJobTables() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            party: closeParty,
             work_start: workStart,
             work_finish: workFinish,
             ...(isMaximoJob
@@ -809,10 +905,35 @@ export default function StationPmJobTables() {
       const json = await res.json().catch(() => ({} as any));
       if (!res.ok) throw new Error(json?.detail || t("errAction", lang));
       await loadJobs();
+      // ใบงานจาก Maximo: บอกทันทีถ้ายิงชุดปิดงานไม่ผ่าน (ใบใน iMPS ปิดแล้ว แต่ WO ใน Maximo ยังไม่ปิด)
+      const mx = json?.maximo;
+      if (mx && !mx.skipped && !maximoClosed(mx)) {
+        const failed = MAXIMO_CLOSE_STEPS.filter((s) => !mx?.[s.key]?.ok).map((s) => s.key);
+        alert(t("maximoFailedAlert", lang).replace("{steps}", (failed.length ? failed : ["error"]).join(", ")));
+      }
       return true;
     } catch (err) {
       alert(err instanceof Error ? err.message : t("errAction", lang));
       return false;
+    } finally {
+      setActing(false);
+    }
+  };
+
+  /** ยิงชุดปิดงานเข้า Maximo ใหม่ (ใบที่อนุมัติแล้วแต่รอบก่อนส่งไม่ผ่าน) */
+  const resyncMaximo = async () => {
+    if (!currentJob || acting) return;
+    setActing(true);
+    try {
+      const res = await apiFetch(
+        `/stationpmjob/${encodeURIComponent(currentJob.id)}/maximo-sync?station_id=${encodeURIComponent(currentJob.station_id)}`,
+        { method: "POST" }
+      );
+      const json = await res.json().catch(() => ({} as any));
+      if (!res.ok) throw new Error(json?.detail || t("errAction", lang));
+      if (json?.job) setJobs((prev) => prev.map((j) => (j.id === json.job.id ? json.job : j)));
+    } catch (err) {
+      alert(err instanceof Error ? err.message : t("errAction", lang));
     } finally {
       setActing(false);
     }
@@ -1099,16 +1220,35 @@ export default function StationPmJobTables() {
     // ปิดใบงาน — มีเฉพาะใบที่ยังทำอยู่ กดได้เมื่อส่งครบทุกส่วนในแผนแล้ว
     // ยังไม่ครบ: ปุ่มจาง ชี้ค้างเห็นว่าขาดส่วนไหน
     // วางทั้งแถบบนและท้ายการ์ดทั้ง 2 ใบ — ทุกปุ่มปิดทั้งใบพร้อมกัน (ไม่ได้ปิดแยกรายการ์ด)
-    const closeJobButton = job.status === "draft" && (
-      <span title={closeJobHint}>
+    // ใบที่แบ่งงานหลายฝ่าย: ปุ่มเป็น "ส่งงานของ <ฝ่ายตัวเอง>" กดได้เมื่อส่วนของฝ่ายตัวเองส่งครบ
+    // admin/owner ที่ไม่มีส่วนของตัวเอง ส่งแทนฝ่ายที่พร้อมแล้วได้ (เลือกฝ่ายในหน้าต่าง)
+    const myParty = job.parties?.find((p) => p.key === job.my_party);
+    const partyLabel = (p?: JobParty) => (p?.name || t("ownTeam", lang));
+    const canPickAny = PM_SUBMIT_FOR_ANY_ROLES.includes(me?.role ?? "");
+    const closeEnabled = job.split
+      ? (myParty?.ready ?? false) || (canPickAny && !!job.parties?.some((p) => p.ready))
+      : !!job.ready_to_submit;
+    const closeLabel = !job.split
+      ? t("closeJob", lang)
+      : myParty
+        ? t(myParty.submitted ? "resubmitParty" : "submitParty", lang).replace("{p}", partyLabel(myParty))
+        : t("submitParty", lang).replace("{p}", "…");
+    const closeHint = !job.split
+      ? closeJobHint
+      : myParty && !myParty.ready
+        ? `${t("closeJobMissing", lang)} ${myParty.missing.map((m) => pick(m, lang)).join(", ")}`
+        : undefined;
+    const showCloseButton = job.status === "draft" && (!job.split || !!myParty || canPickAny);
+    const closeJobButton = showCloseButton && (
+      <span title={closeHint}>
         <Button
           size="sm"
-          disabled={!job.ready_to_submit || acting}
+          disabled={!closeEnabled || acting}
           onClick={openCloseJob}
           className="tw-flex tw-items-center tw-gap-1.5 tw-bg-green-600 disabled:tw-pointer-events-none"
         >
           <CheckCircleIcon className="tw-h-4 tw-w-4" />
-          {acting ? t("closingJob", lang) : t("closeJob", lang)}
+          {acting ? t("closingJob", lang) : closeLabel}
         </Button>
       </span>
     );
@@ -1185,6 +1325,64 @@ export default function StationPmJobTables() {
               <div className="tw-mt-4 tw-flex tw-items-start tw-gap-2 tw-text-sm tw-text-green-700">
                 <CheckCircleIcon className="tw-h-5 tw-w-5 tw-shrink-0" />
                 <span className="tw-min-w-0 [overflow-wrap:anywhere]">{t("approved", lang)} {job.approved_by}</span>
+              </div>
+            )}
+            {/* ใบที่แบ่งงานหลายฝ่าย — ใครส่งงานแล้วบ้าง */}
+            {job.split && job.status === "draft" && (
+              <div className="tw-mt-4">
+                <div className="tw-mb-1.5 tw-text-xs tw-font-semibold tw-text-gray-600">{t("partiesTitle", lang)}</div>
+                <div className="tw-flex tw-flex-wrap tw-gap-2 tw-text-xs">
+                  {(job.parties ?? []).map((p) => {
+                    const entry = job.work_entries?.find((e) => e.key === p.key);
+                    const state = p.submitted ? "sent" : p.ready ? "waiting" : "notReady";
+                    const cls = state === "sent"
+                      ? "tw-border-green-200 tw-bg-green-50 tw-text-green-700"
+                      : state === "waiting"
+                        ? "tw-border-amber-200 tw-bg-amber-50 tw-text-amber-800"
+                        : "tw-border-gray-200 tw-bg-gray-50 tw-text-gray-600";
+                    const title = state === "sent"
+                      ? `${entry?.submitted_by ?? ""} · ${entry?.work_start?.replace("T", " ") ?? ""} – ${entry?.work_finish?.replace("T", " ") ?? ""}`
+                      : state === "notReady"
+                        ? p.missing.map((m) => pick(m, lang)).join(", ")
+                        : "";
+                    return (
+                      <span key={p.key} title={title} className={`tw-rounded-full tw-border tw-px-2.5 tw-py-1 tw-font-semibold ${cls}`}>
+                        {state === "sent" ? "✓" : "⏳"} {partyLabel(p)} ·{" "}
+                        {t(state === "sent" ? "partySent" : state === "waiting" ? "partyWaiting" : "partyNotReady", lang)}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            {/* ใบงานจาก Maximo ที่อนุมัติแล้ว — ชุดปิดงานผ่านแต่ละขั้นหรือยัง (ใบที่เปิดเองใน iMPS ไม่ส่ง) */}
+            {job.status === "Closed" && job.from_maximo && (
+              <div className="tw-mt-3 tw-flex tw-flex-wrap tw-items-center tw-gap-2 tw-text-xs">
+                <span className="tw-font-semibold tw-text-gray-600">{t("maximoTitle", lang)}</span>
+                {MAXIMO_CLOSE_STEPS.map((step) => {
+                  const r = job.maximo_sync?.[step.key];
+                  // IN02 ของใบ = CLOSED เท่านั้น (INPRG จดไว้ที่ใบงาน ไม่ใช่ที่ใบ PM)
+                  const cls = !r
+                    ? "tw-border-gray-200 tw-bg-gray-50 tw-text-gray-500"
+                    : r.ok
+                      ? "tw-border-green-200 tw-bg-green-50 tw-text-green-700"
+                      : "tw-border-red-200 tw-bg-red-50 tw-text-red-700";
+                  const detail = r?.error || r?.errors?.join(" | ") || "";
+                  return (
+                    <span
+                      key={step.key}
+                      title={detail || (r ? "" : t("maximoPending", lang))}
+                      className={`tw-rounded-full tw-border tw-px-2 tw-py-0.5 tw-font-semibold ${cls}`}
+                    >
+                      {r ? (r.ok ? "✓" : "✗") : "–"} {step.key} {lang === "en" ? step.en : step.th}
+                    </span>
+                  );
+                })}
+                {!maximoClosed(job.maximo_sync) && PM_RESYNC_ROLES.includes(me?.role ?? "") && (
+                  <Button size="sm" variant="outlined" disabled={acting} onClick={resyncMaximo} className="tw-py-1 tw-px-2.5 tw-text-[11px]">
+                    {acting ? t("maximoResyncing", lang) : t("maximoResync", lang)}
+                  </Button>
+                )}
               </div>
             )}
           </CardBody>
@@ -1303,8 +1501,33 @@ export default function StationPmJobTables() {
 
         {/* ปิดใบงาน — เวลาทำงานจริง + ช่างที่ลงเวลา Maximo (ใช้ส่ง IN09) */}
         <Dialog open={closeOpen} handler={() => { if (!acting) setCloseOpen(false); }} size="sm">
-          <DialogHeader>{t("closeJob", lang)}</DialogHeader>
+          <DialogHeader>
+            {currentJob?.split
+              ? t("submitParty", lang).replace(
+                "{p}",
+                currentJob.parties?.find((p) => p.key === closeParty)?.name || t("ownTeam", lang),
+              )
+              : t("closeJob", lang)}
+          </DialogHeader>
           <DialogBody className="tw-flex tw-max-h-[70vh] tw-flex-col tw-gap-4 tw-overflow-y-auto">
+            {currentJob?.split && <p className="tw-text-sm tw-text-gray-600">{t("submitPartyHint", lang)}</p>}
+            {/* admin/owner ส่งแทนฝ่ายอื่นได้ — เลือกฝ่าย (เฉพาะฝ่ายที่ส่วนของตัวเองส่งครบแล้ว) */}
+            {currentJob?.split && PM_SUBMIT_FOR_ANY_ROLES.includes(me?.role ?? "") && (
+              <label className="tw-block">
+                <span className="tw-mb-1.5 tw-block tw-text-xs tw-font-semibold tw-text-gray-700">{t("submitAs", lang)}</span>
+                <select
+                  value={closeParty}
+                  onChange={(e) => { setCloseParty(e.target.value); if (currentJob) fillCloseForm(currentJob, e.target.value); }}
+                  className="tw-w-full tw-rounded-lg tw-border tw-border-gray-300 tw-px-3 tw-py-2 tw-text-sm"
+                >
+                  {(currentJob.parties ?? []).map((p) => (
+                    <option key={p.key} value={p.key} disabled={!p.ready}>
+                      {p.name || t("ownTeam", lang)}{p.submitted ? ` (${t("partySent", lang)})` : ""}{!p.ready ? ` (${t("partyNotReady", lang)})` : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             <p className="tw-text-sm tw-text-gray-600">{t(isMaximoJob ? "closeJobHint" : "closeJobHintNoMaximo", lang)}</p>
             <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 tw-gap-3">
               <label className="tw-block">
