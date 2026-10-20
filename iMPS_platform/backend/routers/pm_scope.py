@@ -200,10 +200,10 @@ async def guard(
 ) -> None:
     """
     กันไม่ให้บันทึก/อัปโหลดรูป/ส่งส่วนที่เป็นงานของบริษัทอื่นในใบ PM สถานี
+    และส่วนที่มีคนอื่นกำลังกรอกอยู่ (ล็อกรายส่วน — routers/pm_lock.py)
     ใบเดี่ยวที่ไม่ได้ผูกกับใบแม่ (ไม่มี job_id) ไม่ตรวจ — เหมือนเดิม
     """
-    if _norm(current.role) in BYPASS_ROLES:
-        return
+    bypass = _norm(current.role) in BYPASS_ROLES
     job_id = (job_id or "").strip()
     station_id = (station_id or "").strip()
     if (not job_id or not station_id) and report_id:
@@ -225,8 +225,18 @@ async def guard(
         return
 
     from routers.pm_helpers import get_stationpmjob_collection_for
+    from routers import pm_lock
     try:
-        job = await get_stationpmjob_collection_for(station_id).find_one({"_id": ObjectId(job_id)}, {"wonum": 1})
+        oid = ObjectId(job_id)
+    except Exception:
+        return
+    jobs = get_stationpmjob_collection_for(station_id)
+    # มีคนอื่นถือล็อกของส่วนนี้อยู่ = ห้ามเขียนทับ (ใช้กับทุก role — admin ก็ทับงานคนอื่นไม่ได้)
+    await pm_lock.assert_free(jobs, {"_id": oid}, pm_lock.section_lock_field(section, sn), current, "ส่วนนี้")
+    if bypass:
+        return
+    try:
+        job = await jobs.find_one({"_id": oid}, {"wonum": 1})
     except Exception:
         job = None
     wonum = str((job or {}).get("wonum") or "").strip()

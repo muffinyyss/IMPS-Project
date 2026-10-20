@@ -28,6 +28,8 @@ import {
   ArrowLeftIcon, CheckCircleIcon, ClipboardDocumentListIcon, DocumentArrowDownIcon, LockClosedIcon, PencilSquareIcon, PlusIcon, XMarkIcon,
 } from "@heroicons/react/24/outline";
 import { discardOpenFormDraft } from "@/app/dashboard/pm-report/lib/discardDraft";
+import { sectionLockPath, useEditLock } from "@/app/dashboard/pm-report/lib/lock";
+import PmLockBanner from "@/app/dashboard/pm-report/components/PmLockBanner";
 import { PmCancelEditContext, PmReviewActionContext } from "@/app/dashboard/pm-report/lib/reviewAction";
 import { apiFetch } from "@/utils/api";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
@@ -123,6 +125,8 @@ type SectionState = {
    */
   owner?: string;
   editable?: boolean;
+  /** คนที่กำลังเปิดฟอร์มของส่วนนี้ในโหมดกรอกอยู่ (ล็อกรายส่วน) — ว่าง = ไม่มีใคร */
+  locked_by?: string;
 };
 
 type Job = {
@@ -340,6 +344,9 @@ const T = {
   chargersDone: { th: "กรอกแล้ว", en: "filled" },
   na: { th: "N/A", en: "N/A" },
   ownedBy: { th: "งานของ", en: "Assigned to" },
+  inUseBy: { th: "กำลังกรอก:", en: "In use:" },
+  viewOnly: { th: "ดูอย่างเดียว", en: "View only" },
+  lockChecking: { th: "กำลังตรวจสอบว่ามีคนกรอกส่วนนี้อยู่หรือไม่…", en: "Checking whether someone else is filling in this section…" },
   otherTeam: { th: "บริษัทอื่น", en: "another company" },
   markNa: { th: "ไม่ต้องกรอกส่วนนี้ (N/A)", en: "Mark as N/A (no need to fill)" },
   undoNa: { th: "ยกเลิก N/A — กลับไปต้องกรอก", en: "Undo N/A — fill this section" },
@@ -437,7 +444,7 @@ function sectionChipClass(status: string) {
  * ข้าง ๆ มีปุ่ม N/A ให้กดว่าส่วนนี้ไม่ต้องกรอก (เฉพาะส่วนที่ยังไม่มีเอกสาร และใบยังไม่ได้ปิดใบงาน)
  */
 function SectionFillButton({
-  job, state, lang, onOpen, onToggleNa, busy = false,
+  job, state, lang, onOpen, onToggleNa, busy = false, inUseBy = "",
 }: {
   job: Job;
   state: SectionState;
@@ -445,6 +452,8 @@ function SectionFillButton({
   onOpen: (job: Job, s: SectionState) => void;
   onToggleNa: (job: Job, s: SectionState, na: boolean) => void;
   busy?: boolean;
+  /** คนอื่นกำลังกรอกส่วนนี้อยู่ (ชื่อ) — กดเข้าไปได้แค่ดู */
+  inUseBy?: string;
 }) {
   const filled = !!state.report_id;
   const status = String(state.status).trim().toLowerCase();
@@ -460,7 +469,7 @@ function SectionFillButton({
   const locked = state.editable === false;
   const ownerText = `${t("ownedBy", lang)} ${state.owner || t("otherTeam", lang)}`;
   // ปิดใบงานแล้ว (รออนุมัติ/ปิด) เปลี่ยน N/A ไม่ได้ — ปุ่มหายไป เหลือแค่ป้าย N/A
-  const canToggleNa = job.status === "draft" && !filled && !locked;
+  const canToggleNa = job.status === "draft" && !filled && !locked && !inUseBy;
   return (
     // ไม่ยืดเต็มการ์ด — กว้างพอดีชื่ออุปกรณ์ + ปุ่ม N/A (มือถือยังเต็มความกว้างให้กดง่าย)
     <div className="tw-flex tw-w-full tw-items-stretch tw-gap-1.5 sm:tw-max-w-[15rem]">
@@ -500,6 +509,11 @@ function SectionFillButton({
             : <Icon className={`tw-h-4 tw-w-4 tw-shrink-0 ${iconClass}`} />}{" "}
           <span className="tw-truncate">{label}</span>
           {state.owner && <span className="tw-shrink-0 tw-text-[10px] tw-font-medium tw-normal-case tw-opacity-70">· {state.owner}</span>}
+          {inUseBy && (
+            <span className="tw-shrink-0 tw-rounded tw-bg-amber-100 tw-px-1.5 tw-py-0.5 tw-text-[10px] tw-font-semibold tw-normal-case tw-text-amber-800">
+              {t("inUseBy", lang)} {inUseBy}
+            </span>
+          )}
         </Button>
       )}
       {canToggleNa && (
@@ -669,6 +683,27 @@ export default function StationPmJobTables() {
 
   const canApprove = PM_APPROVE_ROLES.includes(me?.role ?? "");
 
+  // ── ล็อกกันกรอกชนกัน (ทีละส่วน — routers/pm_lock.py) ──
+  // จองสิทธิ์เฉพาะตอนเปิดฟอร์มของส่วนนั้นในโหมดกรอก (ดูอย่างเดียวไม่จอง จะได้ไม่ไปกันคนอื่น)
+  // หลายฝ่ายกรอกคนละส่วนพร้อมกันได้ ชนกันเฉพาะคนที่เปิดส่วนเดียวกัน
+  const formSn = section === CHARGER_SECTION ? (searchParams.get("sn") ?? "") : "";
+  const formViewing = searchParams.get("review") === "1";
+  const formState = currentJob?.sections.find(
+    (x) => x.section === section && (section !== CHARGER_SECTION || x.sn === formSn)
+  );
+  const sectionLockWanted = isFormView && !!section && !!currentJob && !formViewing && formState?.editable !== false;
+  const { lockedBy: sectionLockedBy, checking: sectionLockChecking } = useEditLock(
+    sectionLockWanted && currentJob && section
+      ? sectionLockPath(currentJob.id, currentJob.station_id, section, formSn || null)
+      : null,
+    sectionLockWanted,
+  );
+  /** คนอื่น (ไม่ใช่เรา) กำลังกรอกส่วนนี้อยู่ — ตามข้อมูลล่าสุดของหน้ารวม */
+  const inUseByOther = (s?: SectionState) => {
+    const who = String(s?.locked_by ?? "").trim();
+    return who && who.toLowerCase() !== String(me?.username ?? "").trim().toLowerCase() ? who : "";
+  };
+
   const goto = useCallback((params: Record<string, string | null>) => {
     const next = new URLSearchParams(searchParams.toString());
     next.delete("tab");
@@ -698,7 +733,7 @@ export default function StationPmJobTables() {
       edit_id: s.report_id || null,
       // ใบที่ปิดแล้ว/รออนุมัติ เปิดเป็นโหมดตรวจอ่านอย่างเดียว เหมือนที่ตารางเดิมทำ
       // ส่วนที่เป็นงานของบริษัทอื่นก็เปิดดูได้อย่างเดียวเช่นกัน
-      review: closed || waiting || s.editable === false ? "1" : null,
+      review: closed || waiting || s.editable === false || !!inUseByOther(s) ? "1" : null,
       action: null, pmtab: null,
     });
   };
@@ -1009,11 +1044,31 @@ export default function StationPmJobTables() {
       && !!openedSection?.report_id && !["closed", "submitted"].includes(sectionStatus);
     const canEditSent = viewing && PM_EDIT_SENT_ROLES.includes(me?.role ?? "") && !!openedSection?.report_id
       && openedSection?.editable !== false
+      && !inUseByOther(openedSection)
       && !["closed", "submitted"].includes(sectionStatus)
       && (currentJob?.status === "draft" || approving);
     // ตัด review ออก = ฟอร์มเดิมในโหมดแก้ไข (key ใหม่ให้โหลดเอกสารใหม่ทั้งหมด พร้อมรูปเดิม)
     const startEdit = () => goto({ review: null, approve: null });
     const backToHub = () => goto({ section: null, sn: null, edit_id: null, review: null, approve: null });
+    // มีคนอื่นกำลังกรอกส่วนนี้อยู่ — ไม่เปิดฟอร์มกรอก (กรอกไปก็บันทึกไม่ได้) ให้ดูอย่างเดียวแทน
+    // ระบบขอสิทธิ์ใหม่ทุก 15 วิ คนแรกออกเมื่อไหร่ฟอร์มกรอกจะขึ้นเองโดยไม่ต้องรีเฟรช
+    if (sectionLockWanted && sectionLockedBy) {
+      return (
+        <div className="tw-mx-auto tw-mt-4 tw-max-w-xl">
+          <PmLockBanner lockedBy={sectionLockedBy} kind="section" lang={lang}>
+            <Button size="sm" onClick={() => goto({ review: "1", approve: null })} className="tw-bg-gray-800">
+              {t("viewOnly", lang)}
+            </Button>
+            <Button size="sm" variant="outlined" onClick={backToHub} className="tw-flex tw-items-center tw-gap-1.5">
+              <ArrowLeftIcon className="tw-h-4 tw-w-4" /> {t("back", lang)}
+            </Button>
+          </PmLockBanner>
+        </div>
+      );
+    }
+    if (sectionLockWanted && sectionLockChecking) {
+      return <p className="tw-mt-10 tw-text-center tw-text-sm tw-text-gray-500">{t("lockChecking", lang)}</p>;
+    }
     // เข้าฟอร์มกรอกของส่วนที่เป็นงานของบริษัทอื่นตรง ๆ (เช่นลิงก์เก่า) — ไม่ให้กรอกเสียเวลาแล้วไปโดนปฏิเสธตอนบันทึก
     if (openedSection?.editable === false && !viewing) {
       return (
@@ -1087,6 +1142,12 @@ export default function StationPmJobTables() {
     );
     return (
       <div className="tw-mt-4 sm:tw-mt-6 lg:tw-mt-8">
+        {/* เปิดดูอยู่ระหว่างที่มีคนอื่นกรอกส่วนนี้ — บอกไว้ ข้อมูลที่เห็นอาจยังไม่ใช่ล่าสุด */}
+        {viewing && inUseByOther(openedSection) && (
+          <div className="tw-mx-auto tw-max-w-6xl">
+            <PmLockBanner lockedBy={inUseByOther(openedSection)} kind="section" lang={lang} />
+          </div>
+        )}
         <PmReviewActionContext.Provider value={reviewActions}>
           <PmCancelEditContext.Provider value={cancelButton}>
             <SectionForm key={viewing ? "view" : "edit"} />
@@ -1219,7 +1280,7 @@ export default function StationPmJobTables() {
     }).length;
     // ปิดใบงาน — มีเฉพาะใบที่ยังทำอยู่ กดได้เมื่อส่งครบทุกส่วนในแผนแล้ว
     // ยังไม่ครบ: ปุ่มจาง ชี้ค้างเห็นว่าขาดส่วนไหน
-    // วางทั้งแถบบนและท้ายการ์ดทั้ง 2 ใบ — ทุกปุ่มปิดทั้งใบพร้อมกัน (ไม่ได้ปิดแยกรายการ์ด)
+    // ปุ่มเดียวท้ายหน้า (ตำแหน่งเดียวกับปุ่มอนุมัติ/ตีกลับ) — ส่งงาน/ปิดใบเป็นการกระทำระดับทั้งใบ ไม่ใช่รายการ์ด
     // ใบที่แบ่งงานหลายฝ่าย: ปุ่มเป็น "ส่งงานของ <ฝ่ายตัวเอง>" กดได้เมื่อส่วนของฝ่ายตัวเองส่งครบ
     // admin/owner ที่ไม่มีส่วนของตัวเอง ส่งแทนฝ่ายที่พร้อมแล้วได้ (เลือกฝ่ายในหน้าต่าง)
     const myParty = job.parties?.find((p) => p.key === job.my_party);
@@ -1259,7 +1320,6 @@ export default function StationPmJobTables() {
             <ArrowLeftIcon className="tw-h-4 tw-w-4" /> {t("back", lang)}
           </Button>
           <div className="tw-flex tw-flex-wrap tw-items-center tw-justify-end tw-gap-2">
-          {closeJobButton}
           {/* PDF ทั้งใบ — โหลดได้เฉพาะใบที่อนุมัติแล้ว (Closed) เหมือนปุ่ม PDF ในหน้า PM List
               ยังไม่ปิด: ปุ่มจาง ชี้ค้างเห็นเหตุผล */}
           {toPmFlow({ status: job.status, reject_remark: job.reject_remark }) === "closed" ? (
@@ -1408,8 +1468,7 @@ export default function StationPmJobTables() {
                 key={group.id}
                 className="tw-h-full tw-border tw-border-gray-200 tw-shadow-sm"
               >
-                {/* การ์ดสูงเท่ากันทั้งแถว (grid stretch) และดันปุ่มปิดใบงานลงล่างสุด
-                    — ปุ่มของทั้ง 2 การ์ดจึงอยู่ระดับเดียวกัน แม้จำนวนปุ่มอุปกรณ์จะต่างกัน */}
+                {/* การ์ดสูงเท่ากันทั้งแถว (grid stretch) */}
                 <CardBody className="tw-flex tw-h-full tw-flex-col tw-p-4">
                   <div className="tw-flex tw-flex-1 tw-items-start tw-gap-3">
                     <div className="tw-flex tw-h-8 tw-w-8 tw-shrink-0 tw-items-center tw-justify-center tw-rounded-full tw-bg-gray-800 tw-text-sm tw-font-bold tw-text-white">
@@ -1443,6 +1502,7 @@ export default function StationPmJobTables() {
                                 job={job}
                                 state={state}
                                 lang={lang}
+                                inUseBy={inUseByOther(state)}
                                 onOpen={openSection}
                                 onToggleNa={toggleNa}
                                 busy={acting}
@@ -1464,6 +1524,7 @@ export default function StationPmJobTables() {
                                 job={job}
                                 state={c}
                                 lang={lang}
+                                inUseBy={inUseByOther(c)}
                                 onOpen={openSection}
                                 onToggleNa={toggleNa}
                                 busy={acting}
@@ -1475,17 +1536,16 @@ export default function StationPmJobTables() {
                     </div>
                   </div>
 
-                  {/* ml-11 = วงกลมเลข (w-8) + gap-3 — เส้นคั่นเริ่มตรงกับเนื้อหาด้านบน */}
-                  {closeJobButton && (
-                    <div className="tw-ml-11 tw-mt-4 tw-flex tw-justify-end tw-border-t tw-border-gray-100 tw-pt-3">
-                      {closeJobButton}
-                    </div>
-                  )}
                 </CardBody>
               </Card>
             );
           })}
         </div>
+
+        {/* ส่งงาน / ปิดใบงาน — ปุ่มเดียวของทั้งใบ อยู่ท้ายหน้าหลังตรวจครบทุกส่วน */}
+        {closeJobButton && (
+          <div className="tw-mt-6 tw-flex tw-justify-end">{closeJobButton}</div>
+        )}
 
         {/* ปุ่มอนุมัติ/ตีกลับ — ทั้งใบพร้อมกัน (มีแค่ปุ่ม ไม่มีแถบข้อความ) */}
         {waiting && canApprove && (

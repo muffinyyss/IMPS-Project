@@ -17,6 +17,8 @@ import { ArrowLeftIcon, ExclamationTriangleIcon } from "@heroicons/react/24/outl
 import { apiFetch } from "@/utils/api";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
 import PmAssigneePicker from "./PmAssigneePicker";
+import PmLockBanner from "./PmLockBanner";
+import { planLockPath, useEditLock } from "@/app/dashboard/pm-report/lib/lock";
 import { ChargerBySelect, ChargerByTag, ChargerHandoffNote, ownTeamLabel } from "./PmChargerBy";
 import {
   byKey,
@@ -470,6 +472,20 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
   const planStatus = derivePlanningStatus(selectedCount, wo?.planning_status ?? "pending");
   const alreadyPlanned = planStatus === "planned";
 
+  // ล็อกหน้าวางแผน — จองสิทธิ์เฉพาะตอนอยู่ในโหมดกรอก (วางแผนครั้งแรก / แก้แผน / แผนรอบ 2 ของ vendor)
+  // planner อีกคนที่เปิดใบเดียวกันจะเห็นแถบเตือนและแก้ไม่ได้จนกว่าคนแรกจะออก (backend กันซ้ำตอนบันทึก)
+  const myPlanTurn = (() => {
+    const vp = myVendorPlan(wo, myCompany);
+    return !!vp && vp.status !== "planned";
+  })();
+  const planLockWanted = canPlan && !loading && !!wo && (!alreadyPlanned || editing || vEditing || myPlanTurn);
+  const { lockedBy: planLockedBy, checking: planLockChecking } = useEditLock(
+    wonum ? planLockPath(wonum) : null,
+    planLockWanted,
+  );
+  // ยังไม่รู้ผลรอบแรก / คนอื่นถืออยู่ = ยังไม่ให้บันทึก
+  const planBusy = planLockWanted && (!!planLockedBy || planLockChecking);
+
   // เริ่ม PM ได้ต่อเมื่อ planner เลือกอุปกรณ์ไว้แล้ว — อ่านจากแผนที่บันทึกแล้ว
   // ไม่ใช่ state ของ checkbox ที่ planner อาจกำลังแก้ค้างอยู่
   const plannedEquipment = wo?.selected_equipment ?? [];
@@ -478,7 +494,7 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
   const ownLabel = ownTeamLabel(wo?.planner_company || myCompany, lang);
   // วางแผนเสร็จแล้ว = อ่านอย่างเดียว จนกว่าจะกด "แก้ไขแผน" (แก้ได้จนกว่าช่างจะกดเริ่ม PM
   // และ vendor ที่ส่งต่อไปยังไม่ได้วางแผน — backend ตรวจซ้ำตอนบันทึก)
-  const locked = !canPlan || (alreadyPlanned && !editing);
+  const locked = !canPlan || (alreadyPlanned && !editing) || !!planLockedBy;
   // อุปกรณ์ที่ให้คนอื่นทำ — กำลังกรอกใช้ค่าในฟอร์ม อ่านอย่างเดียวใช้แผนที่บันทึกไว้
   const handoffItems = locked
     ? plannedEquipment.map((e) => ({ label: equipLabel(e), by: byOf[byKey(e)] }))
@@ -572,6 +588,9 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
               </div>
             </div>
           )}
+
+          {/* มี planner คนอื่นกำลังแก้แผนใบนี้อยู่ */}
+          <PmLockBanner lockedBy={planLockedBy} kind="plan" lang={lang} />
 
           {/* วางแผนแล้ว — อ่านอย่างเดียว / ยังแก้ได้ / กำลังแก้ */}
           {!loading && canPlan && alreadyPlanned && !vendorTurn && (
@@ -758,7 +777,7 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
 
               {/* ═══ แผนของ vendor (ส่งต่อมาให้วางแผนอีกรอบ) — 1 หัวข้อต่อ 1 บริษัท ═══ */}
               {vendorPlans.map((vp, i) => {
-                const editable = vendorFormOpen && mine === vp;
+                const editable = vendorFormOpen && mine === vp && !planLockedBy;
                 const planned = vp.status === "planned";
                 return (
                   <div key={vp.vendor} className="tw-mb-6 tw-rounded-lg tw-overflow-hidden tw-border tw-border-blue-gray-100 tw-bg-white tw-shadow-sm">
@@ -984,7 +1003,7 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
                   {editing && (
                     <Button
                       onClick={onSave}
-                      disabled={locked || saving || !wo}
+                      disabled={locked || saving || !wo || planBusy}
                       className="tw-bg-gray-800 hover:!tw-bg-blue-600 tw-text-white hover:tw-shadow-lg hover:!tw-shadow-blue-500/30 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed disabled:tw-shadow-none"
                     >
                       {saving ? t("saving", lang) : t("saveEdit", lang)}
@@ -993,7 +1012,7 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
                   {vEditing && (
                     <Button
                       onClick={onSaveVendor}
-                      disabled={saving || !wo}
+                      disabled={saving || !wo || planBusy}
                       className="tw-bg-gray-800 hover:!tw-bg-blue-600 tw-text-white hover:tw-shadow-lg hover:!tw-shadow-blue-500/30 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed disabled:tw-shadow-none"
                     >
                       {saving ? t("saving", lang) : t("saveEdit", lang)}
@@ -1004,7 +1023,7 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
                   {canPlan && !alreadyPlanned && (
                     <Button
                       onClick={onSave}
-                      disabled={locked || saving || !wo}
+                      disabled={locked || saving || !wo || planBusy}
                       className="tw-bg-gray-800 hover:!tw-bg-blue-600 tw-text-white hover:tw-shadow-lg hover:!tw-shadow-blue-500/30 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed disabled:tw-shadow-none"
                     >
                       {saving ? t("saving", lang) : t("save", lang)}
@@ -1015,7 +1034,7 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
                   {vendorTurn && (
                     <Button
                       onClick={onSaveVendor}
-                      disabled={saving || !wo}
+                      disabled={saving || !wo || planBusy}
                       className="tw-bg-gray-800 hover:!tw-bg-blue-600 tw-text-white hover:tw-shadow-lg hover:!tw-shadow-blue-500/30 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed disabled:tw-shadow-none"
                     >
                       {saving ? t("saving", lang) : t("save", lang)}
