@@ -383,7 +383,14 @@ def _iso(v: Any) -> str:
 
 
 def _serialize_job(job: dict, sections: list[dict], required: set[SectionKey] | None = None) -> dict:
+    from routers import pm_lock
+
     _mark_plan(sections, required)
+    # ใครกำลังกรอกส่วนไหนอยู่ (ล็อกรายส่วนที่ยังไม่หมดอายุ) — หน้ารวมโชว์ชื่อบนปุ่มของส่วนนั้น
+    locks = pm_lock.active_locks(job)
+    for s in sections:
+        key = pm_lock.section_lock_field(s["section"], s.get("sn") or "")[len("locks."):]
+        s["locked_by"] = locks.get(key, "")
     progress = job_progress(sections, required, _job_submitted(job))
     status = progress["status"]
     done = _sections_done(sections)
@@ -777,6 +784,49 @@ async def job_numbering(station_id: str, job_id: str) -> dict:
 
 
 # ══════════════════════════════════════════════════════════════════
+# ล็อกกันกรอกชนกัน — ทีละส่วน (routers/pm_lock.py)
+#   ฟอร์มของส่วนยิง POST ตอนเปิดในโหมดกรอก แล้วต่ออายุทุก 30 วิ / DELETE ตอนออกจากหน้า
+# ══════════════════════════════════════════════════════════════════
+
+def _lock_target(job_id: str, station_id: str, section: str, sn: str):
+    section = (section or "").strip().lower()
+    if section not in SECTIONS:
+        raise HTTPException(status_code=400, detail=f"ส่วนของเอกสารไม่ถูกต้อง: {section}")
+    from routers import pm_lock
+    sn = (sn or "").strip() if section == CHARGER_SECTION else ""
+    jobs = get_stationpmjob_collection_for((station_id or "").strip())
+    return jobs, {"_id": pm_flow.to_oid(job_id)}, pm_lock.section_lock_field(section, sn)
+
+
+@router.post("/stationpmjob/{job_id}/lock")
+async def lock_station_pm_section(
+    job_id: str,
+    station_id: str = Query(...),
+    section: str = Query(...),
+    sn: str = Query(""),
+    current: UserClaims = Depends(get_current_user),
+):
+    """ขอ/ต่ออายุสิทธิ์กรอกส่วนนี้ — คนอื่นถืออยู่ได้ held_by_me=false + ชื่อคนถือ (HTTP 200)"""
+    from routers import pm_lock
+    jobs, flt, field = _lock_target(job_id, station_id, section, sn)
+    return await pm_lock.acquire(jobs, flt, field, current)
+
+
+@router.delete("/stationpmjob/{job_id}/lock")
+async def unlock_station_pm_section(
+    job_id: str,
+    station_id: str = Query(...),
+    section: str = Query(...),
+    sn: str = Query(""),
+    current: UserClaims = Depends(get_current_user),
+):
+    """ปล่อยสิทธิ์กรอกส่วนนี้ — ไม่ยิงก็แค่รอหมดอายุเอง"""
+    from routers import pm_lock
+    jobs, flt, field = _lock_target(job_id, station_id, section, sn)
+    return await pm_lock.release(jobs, flt, field, current)
+
+
+# ══════════════════════════════════════════════════════════════════
 # ช่างกด "ปิดใบงาน" — ส่งทั้งใบเข้าคิวอนุมัติ
 # ══════════════════════════════════════════════════════════════════
 
@@ -1024,6 +1074,13 @@ async def delete_section_photo(
     url = (body.url or "").strip()
     if not group or "." in group or "$" in group or not url:
         raise HTTPException(status_code=400, detail="Bad photo reference")
+
+    # มีคนอื่นกำลังกรอกส่วนนี้อยู่ = ห้ามแตะรูป
+    from routers import pm_lock
+    await pm_lock.assert_free(
+        get_stationpmjob_collection_for(station_id), {"_id": job["_id"]},
+        pm_lock.section_lock_field(body.section, body.sn), current, "ส่วนนี้",
+    )
 
     coll = section_collection(body.section, station_id, body.sn)
     oid = pm_flow.to_oid(body.report_id)

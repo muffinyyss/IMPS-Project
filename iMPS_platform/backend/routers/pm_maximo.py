@@ -1186,6 +1186,31 @@ def _merge_vendor_plans(existing: list[dict] | None, vendors: list[str]) -> list
 # ══════════════════════════════════════════════════════════════════
 PLAN_BYPASS_ROLES = {"admin", "owner"}
 
+# ล็อกหน้าวางแผน — planner สองคนแก้แผนใบเดียวกันพร้อมกันไม่ได้ (routers/pm_lock.py)
+PLAN_LOCK_FIELD = "plan_lock"
+
+
+@router.post("/maximo/pm/{wonum}/plan-lock")
+async def lock_pm_plan(wonum: str, current: UserClaims = Depends(get_current_user)):
+    """ขอ/ต่ออายุสิทธิ์แก้แผน — หน้าวางแผนยิงตอนอยู่ในโหมดกรอก แล้วต่ออายุทุก 30 วิ"""
+    from routers import pm_lock
+    if (current.role or "").strip().lower() not in PM_PLANNING_ROLES:
+        raise HTTPException(status_code=403, detail="เฉพาะ planner ที่วางแผนใบงานได้")
+    wo = await _find_open_wo((wonum or "").strip())
+    if not wo:
+        raise HTTPException(status_code=404, detail=f"ไม่พบใบงาน wonum={wonum}")
+    return await pm_lock.acquire(_open_coll(), {"_id": wo["_id"]}, PLAN_LOCK_FIELD, current)
+
+
+@router.delete("/maximo/pm/{wonum}/plan-lock")
+async def unlock_pm_plan(wonum: str, current: UserClaims = Depends(get_current_user)):
+    """ปล่อยสิทธิ์แก้แผน — ไม่ยิงก็แค่รอหมดอายุเอง"""
+    from routers import pm_lock
+    wo = await _find_open_wo((wonum or "").strip())
+    if not wo:
+        return {"ok": True}
+    return await pm_lock.release(_open_coll(), {"_id": wo["_id"]}, PLAN_LOCK_FIELD, current)
+
 
 async def _wo_started(wo: dict) -> bool:
     """ช่างกดเริ่ม PM ใบงานนี้แล้วหรือยัง"""
@@ -1767,6 +1792,9 @@ async def set_pm_vendor_plan(
             idx = len(plans) - 1
     if not company or idx < 0:
         raise HTTPException(status_code=403, detail="ใบงานนี้ไม่ได้ส่งต่อให้บริษัทของคุณวางแผน")
+    from routers import pm_lock
+    await pm_lock.assert_free(_open_coll(), {"_id": wo["_id"]}, PLAN_LOCK_FIELD, current, "แผนของใบงานนี้")
+
     is_edit = plans[idx].get("status") == "planned"
     if is_edit:
         state = await _plan_edit_state(wo, current)
@@ -1850,6 +1878,10 @@ async def set_pm_equipment(
     wo = await _find_open_wo(wonum)
     if not wo:
         raise HTTPException(status_code=404, detail=f"PM work order not found: {wonum}")
+
+    # มี planner คนอื่นเปิดหน้าวางแผนใบนี้ค้างอยู่ (ถือล็อก) = ห้ามบันทึกทับ
+    from routers import pm_lock
+    await pm_lock.assert_free(_open_coll(), {"_id": wo["_id"]}, PLAN_LOCK_FIELD, current, "แผนของใบงานนี้")
 
     # วางแผนไปแล้ว = เป็นการแก้แผน — แก้ได้จนกว่าช่างจะกดเริ่ม PM / vendor จะวางแผนตาม
     is_edit = str(wo.get("planning_status") or "").strip().lower() == "planned"
