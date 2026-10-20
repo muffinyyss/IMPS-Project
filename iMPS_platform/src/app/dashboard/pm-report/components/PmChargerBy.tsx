@@ -15,7 +15,7 @@
  */
 import React from "react";
 import type { Lang } from "@/utils/useLanguage";
-import type { PmAssigneeOptions } from "./planning";
+import { chargerHandoffs, type PmAssigneeOptions } from "./planning";
 
 const T = {
   own: { th: "ทีมเรา", en: "Our team" },
@@ -23,6 +23,11 @@ const T = {
   outsourceGroup: { th: "Outsource", en: "Outsource" },
   chargerVendor: { th: "vendor ของตู้", en: "charger vendor" },
   doneBy: { th: "ผู้ทำ PM", en: "PM by" },
+  handoff: { th: "ตู้ชาร์จที่ให้ผู้อื่นทำ", en: "Chargers done by others" },
+  vendorHint: {
+    th: "Vendor เลือกที่ช่อง \"ผู้ทำ PM\" ของแต่ละตู้ในหัวข้ออุปกรณ์",
+    en: "Pick a vendor in each charger's \"PM by\" field under Equipment",
+  },
 } as const;
 const t = (k: keyof typeof T, lang: Lang) => T[k][lang === "en" ? "en" : "th"];
 
@@ -87,5 +92,36 @@ export function ChargerByTag({ by, ownLabel }: { by?: string | null; ownLabel: s
     >
       {name || ownLabel}
     </span>
+  );
+}
+
+/**
+ * ใต้ลิสต์ผู้รับผิดชอบ: สรุปว่าตู้ไหนให้ vendor / outsource รายไหนทำ
+ * ยังไม่มีตู้ที่ให้คนอื่นทำ + บริษัทมี vendor = บอกว่าเลือก vendor ได้ที่ไหน
+ * (ลิสต์ผู้รับผิดชอบไม่มีกลุ่ม Vendor แล้ว — เลือกผ่าน "ผู้ทำ PM" ของตู้ที่เดียว)
+ */
+export function ChargerHandoffNote({
+  items, showVendorHint, lang,
+}: {
+  items: Array<{ label: string; by?: string | null }>;
+  showVendorHint: boolean;
+  lang: Lang;
+}) {
+  const groups = chargerHandoffs(items);
+  if (groups.length === 0) {
+    return showVendorHint ? (
+      <p className="tw-mt-2 tw-text-xs tw-text-blue-gray-400">{t("vendorHint", lang)}</p>
+    ) : null;
+  }
+  return (
+    <p className="tw-mt-2 tw-text-xs tw-text-blue-gray-600">
+      <span className="tw-font-semibold">{t("handoff", lang)}:</span>{" "}
+      {groups.map((g, i) => (
+        <React.Fragment key={g.name}>
+          {i > 0 && " · "}
+          <span className="tw-font-semibold tw-text-amber-800">{g.name}</span> ({g.labels.join(", ")})
+        </React.Fragment>
+      ))}
+    </p>
   );
 }

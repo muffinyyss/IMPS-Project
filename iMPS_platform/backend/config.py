@@ -89,6 +89,7 @@ db = client1["iMPS"]
 users_collection = db["users"]
 station_collection = db["stations"]
 charger_collection = db["charger"]
+companies_collection = db["companies"]  # ตัว sync ของ companies_coll_async — ใช้ใน routers/users.py
 
 station_collection.create_index("station_id", unique=True)
 charger_collection.create_index("station_id")

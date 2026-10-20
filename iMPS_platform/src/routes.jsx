@@ -110,7 +110,8 @@ const baseRoutes = [
   { name: "Power Plant", icon: <i className="fa fa-industry" />, path: "/dashboard/power-plant", allow: ["admin", "owner", "planner"], showMode: "before" },
   // เมนู Company — super_admin / admin จัดการได้ทุกแท็บ, planner เฉพาะ Vendor / Outsource ของบริษัทตัวเอง
   { name: "Company Profile", icon: <i className="fa fa-building" />, path: "/dashboard/company", allow: ["super_admin", "admin", "planner"], showMode: "before" },
-  { name: "Users Management", icon: <i className="fa fa-users" />, path: "/dashboard/users", allow: ["admin"], showMode: "before" },
+  // Users — admin จัดการได้ทุกคน, planner เพิ่ม/แก้ technician / cs / planner ของบริษัทตัวเอง + outsource ของตัวเอง
+  { name: "Users Management", icon: <i className="fa fa-users" />, path: "/dashboard/users", allow: ["admin", "planner"], showMode: "before" },
   {
     name: "My Charger",
     icon: <i className="fa fa-charging-station" />,

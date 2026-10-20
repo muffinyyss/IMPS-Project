@@ -15,17 +15,20 @@ import { ArrowLeftIcon, CheckIcon, ChevronDownIcon, ExclamationTriangleIcon, Mag
 import { apiFetch } from "@/utils/api";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
 import PmAssigneePicker from "./PmAssigneePicker";
-import { ChargerBySelect, ownTeamLabel } from "./PmChargerBy";
+import { ChargerBySelect, ChargerHandoffNote, ownTeamLabel } from "./PmChargerBy";
 import {
   dateTimeLocalFromNow,
   EMPTY_PM_ASSIGNEE_OPTIONS,
   equipKey,
   equipLabel,
   fetchPmAssigneeOptions,
+  needsOwnAssignee,
   PM_DEFAULT_SPAN_DAYS,
   pmAssigneeGroups,
   pmAssigneeNames,
   PM_PLANNING_ROLES,
+  vendorOnlyNames,
+  withoutNames,
   type EquipmentChoices,
   type EquipmentItem,
   type PmAssigneeOptions,
@@ -73,8 +76,8 @@ const T = {
   },
   technician: { th: "ผู้รับผิดชอบ", en: "Assignees" },
   noTechnicians: {
-    th: "ไม่พบ Technician / Vendor / Outsource ในบริษัทของคุณ",
-    en: "No technicians, vendors or outsources found in your company",
+    th: "ไม่พบ Technician / Outsource ในบริษัทของคุณ",
+    en: "No technicians or outsources found in your company",
   },
 
   equipSection: { th: "อุปกรณ์ที่จะ PM", en: "Equipment to maintain" },
@@ -304,7 +307,11 @@ export default function PmCreateWoForm({ onSaved, onCancel }: Props) {
     setChecked(next);
   };
 
-  const assigneeGroups = useMemo(() => pmAssigneeGroups(assigneeOptions), [assigneeOptions]);
+  // ไม่มีกลุ่ม Vendor — vendor เลือกได้ที่ "ผู้ทำ PM" ของแต่ละตู้ที่เดียว (ดู pmAssigneeGroups)
+  const assigneeGroups = useMemo(
+    () => pmAssigneeGroups(assigneeOptions, { vendors: false }),
+    [assigneeOptions]
+  );
   const assigneeNames = useMemo(() => pmAssigneeNames(assigneeGroups), [assigneeGroups]);
 
   // เทียบเป็น string ได้เพราะ datetime-local เป็น ISO เรียงตัวอักษรตรงกับเรียงเวลา
@@ -317,8 +324,6 @@ export default function PmCreateWoForm({ onSaved, onCancel }: Props) {
     if (!stationId) { setError(t("errStation", lang)); return; }
     if (!schedStart || !schedFinish) { setError(t("errSched", lang)); return; }
     if (schedRangeInvalid) { setError(t("schedRangeError", lang)); return; }
-    if (assignees.length === 0) { setError(t("errTech", lang)); return; }
-
     const equipment = equipmentOptions
       .filter((e) => checked[equipKey(e)])
       .map((e: EquipmentItem) => ({
@@ -328,6 +333,11 @@ export default function PmCreateWoForm({ onSaved, onCancel }: Props) {
         ...(e.label ? { label: e.label } : {}),
         ...(e.type === "charger" && chargerBy[equipKey(e)] ? { by: chargerBy[equipKey(e)] } : {}),
       }));
+
+    // vendor ส่งผ่าน "ผู้ทำ PM" ของตู้เท่านั้น (backend ก็ตัดซ้ำ — routers/pm_maximo.py _plan_assignees)
+    const ownAssignees = withoutNames(assignees, vendorOnlyNames(assigneeOptions));
+    // ทุกอุปกรณ์ให้คนอื่นทำหมด = ไม่ต้องมีคนของเรา
+    if (ownAssignees.length === 0 && needsOwnAssignee(equipment)) { setError(t("errTech", lang)); return; }
 
     setSaving(true);
     setError("");
@@ -343,7 +353,7 @@ export default function PmCreateWoForm({ onSaved, onCancel }: Props) {
           planned_at: plannedAt,
           sched_start: schedStart,
           sched_finish: schedFinish,
-          assignees,
+          assignees: ownAssignees,
         }),
       });
       const j = await res.json().catch(() => ({} as any));
@@ -359,7 +369,7 @@ export default function PmCreateWoForm({ onSaved, onCancel }: Props) {
       setSaving(false);
     }
   }, [
-    saving, stationId, schedStart, schedFinish, schedRangeInvalid, assignees,
+    saving, stationId, schedStart, schedFinish, schedRangeInvalid, assignees, assigneeOptions,
     equipmentOptions, checked, chargerBy, plannedAt, lang, onSaved,
   ]);
   const ownLabel = ownTeamLabel(myCompany, lang);
@@ -568,6 +578,13 @@ export default function PmCreateWoForm({ onSaved, onCancel }: Props) {
                       ) : (
                         <p className="tw-mt-1.5 tw-text-xs tw-text-orange-600">{t("noTechnicians", lang)}</p>
                       )}
+                      <ChargerHandoffNote
+                        items={equipmentOptions
+                          .filter((e) => e.type === "charger" && checked[equipKey(e)])
+                          .map((e) => ({ label: equipLabel(e), by: chargerBy[equipKey(e)] }))}
+                        showVendorHint={!locked && assigneeOptions.vendors.length > 0}
+                        lang={lang}
+                      />
                     </div>
                   </div>
                 </div>

@@ -42,6 +42,7 @@ import {
 // components
 import AddUser, { NewUserPayload } from "@/app/dashboard/users/components/adduser";
 import { apiFetch, getSessionProfile } from "@/utils/api";
+import type { UserRole } from "@/utils/roles";
 import useLanguage, { type Lang } from "@/utils/useLanguage";
 import TableSkeletonRows from "@/components/TableSkeletonRows";
 
@@ -99,7 +100,22 @@ const T = {
   deleteUserFailed: { th: "ลบผู้ใช้ไม่สำเร็จ", en: "Failed to delete user" },
   userNotFound: { th: "ไม่พบผู้ใช้นี้", en: "User not found" },
   networkError: { th: "เกิดข้อผิดพลาดของเครือข่าย/เซิร์ฟเวอร์", en: "Network/Server error" },
+  forbidden: { th: "ไม่มีสิทธิ์ทำรายการนี้", en: "You don't have permission for this action" },
+  plannerNoCompany: {
+    th: "บัญชีของคุณยังไม่ได้ระบุบริษัท จึงเพิ่มผู้ใช้ไม่ได้ — กรุณาติดต่อ admin",
+    en: "Your account has no company set, so you can't add users — please contact an admin",
+  },
 } as const;
+
+// role ที่ planner เพิ่ม/แก้ได้ — ต้องตรงกับ PLANNER_MANAGED_ROLES ใน backend/routers/users.py
+const PLANNER_ROLES: UserRole[] = ["technician", "cs", "planner"];
+const EDIT_ROLE_OPTIONS: { value: UserRole; label: string }[] = [
+  { value: "admin", label: "admin" },
+  { value: "owner", label: "owner" },
+  { value: "technician", label: "Technician" },
+  { value: "cs", label: "CS" },
+  { value: "planner", label: "Planner" },
+];
 
 const t = (k: keyof typeof T, lang: Lang) => T[k][lang];
 
@@ -133,7 +149,11 @@ export default function SearchDataTables() {
   /* --- Auth state --- */
   const [authChecked, setAuthChecked] = useState(false);
   const [meRole, setMeRole] = useState<string>("user");
+  const [meId, setMeId] = useState<string>("");
   const isAdmin = meRole === "admin";
+  // planner: เห็น/เพิ่ม/แก้ได้เฉพาะ technician / cs / planner ของบริษัทตัวเอง + outsource ของตัวเอง (ลบไม่ได้)
+  const isPlanner = meRole === "planner";
+  const [companyOptions, setCompanyOptions] = useState<string[] | null>(null);
 
   // ตรวจ session + ตั้ง meRole + ปักธง authChecked (และ redirect ถ้าไม่ผ่าน)
   // JWT อยู่ในคุกกี้ HttpOnly: อายุ token ตรวจที่ middleware + backend ส่วน role มากับโปรไฟล์
@@ -145,8 +165,25 @@ export default function SearchDataTables() {
       return;
     }
     if (profile.role) setMeRole(profile.role);
+    setMeId(String(profile.user_id ?? ""));
     setAuthChecked(true);
   }, [router]);
+
+  // ตัวเลือกช่อง Company ของ planner (บริษัทตัวเอง + outsource) — admin พิมพ์เองได้อิสระ
+  useEffect(() => {
+    if (!authChecked || !isPlanner) return;
+    let alive = true;
+    (async () => {
+      try {
+        const res = await apiFetch(`/users/manageable-companies`);
+        const json = res.ok ? await res.json() : {};
+        if (alive) setCompanyOptions(Array.isArray(json?.companies) ? json.companies : []);
+      } catch {
+        if (alive) setCompanyOptions([]);
+      }
+    })();
+    return () => { alive = false; };
+  }, [authChecked, isPlanner]);
 
   /* --- Table/UI states --- */
   const [data, setData] = useState<UserRow[]>([]);
@@ -290,6 +327,15 @@ export default function SearchDataTables() {
     }
   }, [availableStations]);
 
+  const plannerNoCompany = isPlanner && companyOptions !== null && companyOptions.length === 0;
+  const editingSelf = !!editingRow?.id && editingRow.id === meId;
+  // company เดิมที่ไม่อยู่ในลิสต์ (เช่นพิมพ์ต่างตัวพิมพ์) ต้องไม่หายจาก dropdown
+  const editCompanyChoices = (() => {
+    const opts = companyOptions ?? [];
+    const cur = (editingRow?.company ?? "").trim();
+    return cur && cur !== "-" && !opts.includes(cur) ? [cur, ...opts] : opts;
+  })();
+
   /* -------------------- Handlers -------------------- */
   const handleEdit = (row: UserRow) => {
     setEditingRow(row);
@@ -305,11 +351,12 @@ export default function SearchDataTables() {
         body: JSON.stringify(payload),
       });
 
-      if (res.status === 401 || res.status === 403) {
+      if (res.status === 401) {
         const next = encodeURIComponent(window.location.pathname);
         router.replace(`/auth/signin/basic?next=${next}`);
         return;
       }
+      if (res.status === 403) throw new Error(t("forbidden", lang));
       if (res.status === 409) throw new Error(t("emailAlreadyUsed", lang));
       if (!res.ok) {
         const text = await res.text();
@@ -359,11 +406,12 @@ export default function SearchDataTables() {
       body: JSON.stringify(body),
     });
 
-    if (res.status === 401 || res.status === 403) {
+    if (res.status === 401) {
       const next = encodeURIComponent(window.location.pathname);
       router.replace(`/auth/signin/basic?next=${next}`);
       return;
     }
+    if (res.status === 403) throw new Error(t("forbidden", lang));
 
     const raw = await res.text();
     if (!res.ok) throw new Error(raw || `Update failed: ${res.status}`);
@@ -435,11 +483,12 @@ export default function SearchDataTables() {
           setConfirmDialog(prev => ({ ...prev, loading: true }));
           const res = await apiFetch(`/delete_users/${row.id}`, { method: "DELETE" });
 
-          if (res.status === 401 || res.status === 403) {
+          if (res.status === 401) {
             const next = encodeURIComponent(window.location.pathname);
             router.replace(`/auth/signin/basic?next=${next}`);
             return;
           }
+          if (res.status === 403) throw new Error(t("forbidden", lang));
           if (res.status === 404) throw new Error(t("userNotFound", lang));
           if (!res.ok) {
             const text = await res.text();
@@ -556,13 +605,15 @@ export default function SearchDataTables() {
           >
             <PencilSquareIcon className="tw-h-4 tw-w-4 tw-text-blue-600 group-hover/btn:tw-text-white tw-transition-colors" />
           </button>
-          <button
-            title={t("deleteUser", lang)}
-            onClick={() => handleDelete(row.original)}
-            className="tw-group/btn tw-rounded-lg tw-p-2 tw-bg-red-50 tw-ring-1 tw-ring-red-200/60 hover:tw-bg-red-600 hover:tw-ring-red-600 tw-transition-all tw-duration-200 tw-shadow-sm hover:tw-shadow-md"
-          >
-            <TrashIcon className="tw-h-4 tw-w-4 tw-text-red-500 group-hover/btn:tw-text-white tw-transition-colors" />
-          </button>
+          {isAdmin && (
+            <button
+              title={t("deleteUser", lang)}
+              onClick={() => handleDelete(row.original)}
+              className="tw-group/btn tw-rounded-lg tw-p-2 tw-bg-red-50 tw-ring-1 tw-ring-red-200/60 hover:tw-bg-red-600 hover:tw-ring-red-600 tw-transition-all tw-duration-200 tw-shadow-sm hover:tw-shadow-md"
+            >
+              <TrashIcon className="tw-h-4 tw-w-4 tw-text-red-500 group-hover/btn:tw-text-white tw-transition-colors" />
+            </button>
+          )}
         </span>
       ),
     },
@@ -616,8 +667,14 @@ export default function SearchDataTables() {
 
           <div className="tw-w-full md:tw-w-auto md:tw-ml-auto md:tw-flex md:tw-justify-end">
             <div className="tw-flex tw-flex-wrap tw-items-center tw-gap-2 sm:tw-gap-3 tw-justify-end tw-w-full md:tw-w-auto md:tw-mt-6">
+              {plannerNoCompany && (
+                <Typography variant="small" className="!tw-text-red-500 tw-text-xs">
+                  {t("plannerNoCompany", lang)}
+                </Typography>
+              )}
               <Button
                 onClick={() => setOpenAdd(true)}
+                disabled={isPlanner && !companyOptions?.length}
                 size="sm"
                 className="tw-flex tw-items-center tw-gap-2 tw-px-4 sm:tw-px-5 tw-py-2.5 tw-rounded-xl tw-bg-gray-900 hover:tw-bg-black tw-text-white tw-font-semibold tw-text-xs sm:tw-text-sm tw-shadow-lg tw-flex-shrink-0 tw-normal-case tw-tracking-wide"
               >
@@ -738,7 +795,14 @@ export default function SearchDataTables() {
       </Card>
 
       {/* Dialog: Add */}
-      <AddUser open={openAdd} onClose={() => setOpenAdd(false)} onSubmit={handleCreateUser} loading={saving} />
+      <AddUser
+        open={openAdd}
+        onClose={() => setOpenAdd(false)}
+        onSubmit={handleCreateUser}
+        loading={saving}
+        allowedRoles={isPlanner ? PLANNER_ROLES : undefined}
+        companyOptions={isPlanner ? companyOptions ?? [] : undefined}
+      />
 
       {/* Dialog: Edit */}
       <Dialog
@@ -781,7 +845,9 @@ export default function SearchDataTables() {
               tel: form.tel?.value?.trim(),
             };
 
-            if (isAdmin) payload.role = roleValue;
+            // planner แก้ profile ตัวเองได้แค่ข้อมูลส่วนตัว — role / company ของตัวเองให้ admin เปลี่ยน
+            if (isAdmin || (isPlanner && !editingSelf)) payload.role = roleValue;
+            if (isPlanner && editingSelf) delete payload.company;
             // Always send station_id (empty array if technician with no stations, or if not technician)
             if (roleValue === "technician") {
               payload.station_id = selectedStations.map((s) => s.station_id);
@@ -812,11 +878,35 @@ export default function SearchDataTables() {
             <div className="tw-flex tw-flex-col tw-gap-4">
               <Input name="username" label={t("username", lang)} defaultValue={editingRow?.username ?? ""} required crossOrigin={undefined} />
               <Input name="email" label={t("email", lang)} type="email" defaultValue={editingRow?.email ?? ""} required crossOrigin={undefined} />
-              <Input name="company" label={t("company", lang)} defaultValue={editingRow?.company ?? ""} crossOrigin={undefined} />
+              {isPlanner && !editingSelf ? (
+                <div className="tw-relative tw-h-10 tw-w-full">
+                  <select
+                    name="company"
+                    required
+                    defaultValue={editingRow?.company ?? ""}
+                    className="tw-h-full tw-w-full tw-cursor-pointer tw-appearance-none tw-rounded-[7px] tw-border tw-border-blue-gray-200 tw-bg-transparent tw-px-3 tw-py-2.5 tw-font-sans tw-text-sm tw-font-normal tw-text-blue-gray-700 tw-outline-none focus:tw-border-2 focus:tw-border-gray-900"
+                  >
+                    {editCompanyChoices.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                  <label className="tw-pointer-events-none tw-absolute tw-left-3 tw--top-1.5 tw-bg-white tw-px-1 tw-text-[11px] tw-font-normal tw-text-blue-gray-400">
+                    {t("company", lang)} *
+                  </label>
+                </div>
+              ) : (
+                <Input
+                  name="company"
+                  label={t("company", lang)}
+                  defaultValue={editingRow?.company ?? ""}
+                  disabled={isPlanner && editingSelf}
+                  crossOrigin={undefined}
+                />
+              )}
               <Input name="tel" label={t("tel", lang)} defaultValue={editingRow?.tel ?? ""} crossOrigin={undefined} />
               {/* <Input name="password" label="New Password (optional)" type="password" /> */}
 
-              {isAdmin && (
+              {(isAdmin || (isPlanner && !editingSelf)) && (
                 <Select label={t("role", lang)} value={roleValue} onChange={(v) => {
                   setRoleValue(v ?? "user");
                   // รีเซ็ต stations เมื่อเปลี่ยน role
@@ -824,11 +914,11 @@ export default function SearchDataTables() {
                     setSelectedStations([]);
                   }
                 }}>
-                  <Option value="admin">admin</Option>
-                  <Option value="owner">owner</Option>
-                  <Option value="technician">Technician</Option>
-                  <Option value="cs">CS</Option>
-                  <Option value="planner">Planner</Option>
+                  {EDIT_ROLE_OPTIONS
+                    .filter((o) => !isPlanner || PLANNER_ROLES.includes(o.value))
+                    .map((o) => (
+                      <Option key={o.value} value={o.value}>{o.label}</Option>
+                    ))}
                 </Select>
 
 

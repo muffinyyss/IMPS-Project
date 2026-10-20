@@ -211,6 +211,13 @@ async def _unhandled_exception_handler(request: Request, exc: Exception):
     return JSONResponse(status_code=500, content={"detail": "Internal Server Error"})
 
 
+# ─── 401 จากการเปิดลิงก์ตรง (PDF / zip รูป) → หน้า "เซสชันหมดอายุ" ของ frontend แทน JSON ดิบ ───
+from auth_redirect import install_login_redirect
+from config import FRONTEND_BASE_URL
+
+install_login_redirect(app, FRONTEND_BASE_URL)
+
+
 # ─── Log 422 ของ upload รูป: ดูว่า multipart body มาถึงจริงมั้ย ───
 # เคส "sn/group/files หายพร้อมกันทั้งหมด" = body parse ไม่ออก ไม่ใช่ frontend ไม่ได้ส่ง
 # log content-type/length ไว้เพื่อแยกว่าเป็นชื่อไฟล์เพี้ยน หรือ proxy ตัด body ทิ้ง

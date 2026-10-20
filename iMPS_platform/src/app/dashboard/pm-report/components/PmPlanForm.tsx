@@ -17,7 +17,7 @@ import { ArrowLeftIcon, ExclamationTriangleIcon } from "@heroicons/react/24/outl
 import { apiFetch } from "@/utils/api";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
 import PmAssigneePicker from "./PmAssigneePicker";
-import { ChargerBySelect, ChargerByTag, ownTeamLabel } from "./PmChargerBy";
+import { ChargerBySelect, ChargerByTag, ChargerHandoffNote, ownTeamLabel } from "./PmChargerBy";
 import {
   dateTimeLocalFromNow,
   derivePlanningStatus,
@@ -27,6 +27,8 @@ import {
   equipLabel,
   fetchPmAssigneeOptions,
   myVendorPlan,
+  needsOwnAssignee,
+  ownPlanAssignees,
   pendingVendorPlans,
   formatDate,
   planningChipClass,
@@ -36,6 +38,8 @@ import {
   PM_PLANNER_FILL_ROLES,
   PM_PLANNING_ROLES,
   toDateTimeLocalValue,
+  vendorOnlyNames,
+  withoutNames,
   type EquipmentChoices,
   type EquipmentItem,
   type MaximoSource,
@@ -104,6 +108,10 @@ const T = {
   noTechnicians: {
     th: "ไม่พบ Technician / Vendor / Outsource ในบริษัทของคุณ",
     en: "No technicians, vendors or outsources found in your company",
+  },
+  noOwnTeam: {
+    th: "ไม่พบ Technician / Outsource ในบริษัทของคุณ",
+    en: "No technicians or outsources found in your company",
   },
   noAssignee: { th: "ยังไม่ได้มอบหมายช่าง", en: "No technician assigned" },
 
@@ -272,7 +280,8 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
       setSchedFinish(
         toDateTimeLocalValue(found.sched_finish) || dateTimeLocalFromNow(PM_DEFAULT_SPAN_DAYS)
       );
-      setAssignees(Array.isArray(found.assignees) ? found.assignees.filter(Boolean) : []);
+      // เฉพาะคนที่ติ๊กเอง — ผู้ทำ PM ของตู้ที่ backend เติมให้ตอนบันทึกไม่เอากลับมาติ๊กค้าง
+      setAssignees(ownPlanAssignees(found));
       // แผนของ vendor: ตั้งต้นกำหนดการตามแผนต้นทาง ช่างเริ่มว่าง (ต้องเลือกคนของบริษัทตัวเอง)
       const vp = myVendorPlan(found, company);
       setVSchedStart(toDateTimeLocalValue(vp?.sched_start || found.sched_start) || dateTimeLocalFromNow());
@@ -305,7 +314,10 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
         setChecked(preset);
       }
 
-      setAssigneeOptions(await fetchPmAssigneeOptions());
+      const options = await fetchPmAssigneeOptions();
+      setAssigneeOptions(options);
+      // vendor ที่ติ๊กไว้ในแผนรุ่นก่อน — ลิสต์ไม่มีกลุ่ม Vendor แล้ว อย่าให้ค้างเป็นติ๊กที่มองไม่เห็น
+      setAssignees((prev) => withoutNames(prev, vendorOnlyNames(options)));
     } catch (err) {
       console.error("pm plan load error:", err);
       setError(t("errLoad", lang));
@@ -337,8 +349,15 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
     setChecked(next);
   };
 
+  // ลิสต์เต็ม (มี Vendor) — ใช้กับแผนรอบ 2 ของ vendor ที่เลือกทีมของบริษัทตัวเอง
   const assigneeGroups = useMemo(() => pmAssigneeGroups(assigneeOptions), [assigneeOptions]);
   const assigneeNames = useMemo(() => pmAssigneeNames(assigneeGroups), [assigneeGroups]);
+  // ลิสต์ของแผนต้นทาง: ไม่มีกลุ่ม Vendor — vendor เลือกได้ที่ "ผู้ทำ PM" ของแต่ละตู้ที่เดียว
+  const ownGroups = useMemo(
+    () => pmAssigneeGroups(assigneeOptions, { vendors: false }),
+    [assigneeOptions]
+  );
+  const ownNames = useMemo(() => pmAssigneeNames(ownGroups), [ownGroups]);
 
   // เทียบเป็น string ได้เพราะ datetime-local เป็น ISO เรียงตัวอักษรตรงกับเรียงเวลา
   const schedRangeInvalid = !!schedStart && !!schedFinish && schedFinish < schedStart;
@@ -360,7 +379,13 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
 
     if (!schedStart || !schedFinish) { setError(t("errSched", lang)); return; }
     if (schedRangeInvalid) { setError(t("schedRangeError", lang)); return; }
-    if (assignees.length === 0) { setError(t("errTech", lang)); return; }
+    // vendor ส่งผ่าน "ผู้ทำ PM" ของตู้เท่านั้น (backend ก็ตัดซ้ำ — routers/pm_maximo.py _plan_assignees)
+    const ownAssignees = withoutNames(assignees, vendorOnlyNames(assigneeOptions));
+    // ทุกอุปกรณ์ให้คนอื่นทำหมด = ไม่ต้องมีคนของเรา
+    if (ownAssignees.length === 0 && needsOwnAssignee(equipment ?? wo?.selected_equipment ?? [])) {
+      setError(t("errTech", lang));
+      return;
+    }
 
     setSaving(true);
     setError("");
@@ -374,7 +399,7 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
           planned_at: plannedAt || new Date().toISOString(),
           sched_start: schedStart,
           sched_finish: schedFinish,
-          assignees,
+          assignees: ownAssignees,
         }),
       });
       const j = await res.json().catch(() => ({} as any));
@@ -437,6 +462,14 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
   // วางแผนเสร็จแล้ว = อ่านอย่างเดียว จนกว่าจะกด "แก้ไขแผน" (แก้ได้จนกว่าช่างจะกดเริ่ม PM
   // และ vendor ที่ส่งต่อไปยังไม่ได้วางแผน — backend ตรวจซ้ำตอนบันทึก)
   const locked = !canPlan || (alreadyPlanned && !editing);
+  // ตู้ชาร์จที่ให้คนอื่นทำ — กำลังกรอกใช้ค่าในฟอร์ม อ่านอย่างเดียวใช้แผนที่บันทึกไว้
+  const handoffItems = locked
+    ? plannedEquipment
+      .filter((e) => e.type === "charger" && e.sn)
+      .map((e) => ({ label: equipLabel(e), by: byOf[String(e.sn).toLowerCase()] }))
+    : equipmentOptions
+      .filter((e) => e.type === "charger" && checked[equipKey(e)])
+      .map((e) => ({ label: equipLabel(e), by: chargerBy[equipKey(e)] }));
   const canEditPlan = canPlan && alreadyPlanned && !!planState?.can_edit_plan;
   // ใบงานที่ส่งต่อมาให้บริษัทของคนที่ login วางแผนอีกรอบ และยังไม่ได้วางแผน
   const mine = myVendorPlan(wo, myCompany);
@@ -688,16 +721,21 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
                         <div className={FIELD_RO}>
                           {assignees.length > 0 ? assignees.join(", ") : t("noAssignee", lang)}
                         </div>
-                      ) : assigneeNames.length > 0 ? (
+                      ) : ownNames.length > 0 ? (
                         <PmAssigneePicker
-                          groups={assigneeGroups}
+                          groups={ownGroups}
                           assignees={assignees}
                           onChange={setAssignees}
                           disabled={locked}
                         />
                       ) : (
-                        <p className="tw-mt-1.5 tw-text-xs tw-text-orange-600">{t("noTechnicians", lang)}</p>
+                        <p className="tw-mt-1.5 tw-text-xs tw-text-orange-600">{t("noOwnTeam", lang)}</p>
                       )}
+                      <ChargerHandoffNote
+                        items={handoffItems}
+                        showVendorHint={!locked && assigneeOptions.vendors.length > 0}
+                        lang={lang}
+                      />
                     </div>
                   </div>
                 </div>
