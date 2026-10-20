@@ -15,8 +15,10 @@ export type EquipmentItem = {
   sn?: string | null;        // เฉพาะ charger
   location?: string | null;
   label?: string | null;
-  /** vendor ที่ดูแลตู้ (ช่อง Vendor ของตู้) — มีเฉพาะในรายการตัวเลือกตอนวางแผน */
+  /** vendor ที่ดูแลตู้ (ช่อง Vendor ของตู้) — มีเฉพาะในรายการตัวเลือกตอนวางแผน ใช้เป็นคำใบ้เท่านั้น */
   vendor?: string | null;
+  /** ตู้ชาร์จ: ผู้ทำ PM ตู้นี้ในใบงานนี้ (vendor / outsource) — ว่าง = ทีมของ planner เอง */
+  by?: string | null;
 };
 
 /** ใบงาน PM ที่ Maximo เปิดแล้วยิงเข้ามาทาง IN06 (POST /maximo/pm/open) */
@@ -62,18 +64,24 @@ export type VendorPlan = {
 };
 
 /**
- * SN ของตู้ (ตัวพิมพ์เล็ก) → ชื่อ vendor ที่รับตู้นั้นไปทำ ตามใบส่งต่อของใบงาน
- * ตู้ที่ไม่อยู่ในผล = งานของทีมต้นทาง (backend เป็นคนตัดสินจริง — routers/pm_scope.py)
+ * SN ของตู้ (ตัวพิมพ์เล็ก) → ผู้ทำ PM ที่ planner เลือกให้ตู้นั้น (vendor / outsource)
+ * ตู้ที่ไม่อยู่ในผล = ทีมของ planner เอง (backend เป็นคนตัดสินสิทธิ์จริง — routers/pm_scope.py)
  */
-export function chargerVendorMap(
-  wo: Pick<MaximoWorkOrder, "vendor_plans"> | null | undefined,
+export function chargerByMap(
+  wo: Pick<MaximoWorkOrder, "vendor_plans" | "selected_equipment"> | null | undefined,
 ): Record<string, string> {
   const out: Record<string, string> = {};
+  // ใบส่งต่อที่ผูกตู้ไว้ (ข้อมูลรุ่นก่อนที่ยังไม่มีผู้ทำ PM รายตู้)
   for (const v of wo?.vendor_plans ?? []) {
     for (const sn of v.chargers ?? []) {
       const k = String(sn ?? "").trim().toLowerCase();
       if (k) out[k] = String(v.vendor ?? "").trim();
     }
+  }
+  for (const e of wo?.selected_equipment ?? []) {
+    const k = String(e.sn ?? "").trim().toLowerCase();
+    const by = String(e.by ?? "").trim();
+    if (e.type === "charger" && k && by) out[k] = by;
   }
   return out;
 }

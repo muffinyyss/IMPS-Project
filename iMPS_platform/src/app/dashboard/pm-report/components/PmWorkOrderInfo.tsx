@@ -13,10 +13,11 @@ import React, { useCallback, useEffect, useState } from "react";
 import Image from "next/image";
 import { Button, Input } from "@material-tailwind/react";
 import { ArrowLeftIcon, ExclamationTriangleIcon } from "@heroicons/react/24/outline";
+import { ChargerByTag, ownTeamLabel } from "./PmChargerBy";
 import { apiFetch } from "@/utils/api";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
 import {
-  chargerVendorMap,
+  chargerByMap,
   equipLabel,
   formatDate,
   pendingVendorPlans,
@@ -132,8 +133,11 @@ export default function PmWorkOrderInfo({ source, identifier, wonum, onStart, on
 
   const assignees = (wo?.assignees ?? []).filter(Boolean);
   const equipment = wo?.selected_equipment ?? [];
-  // ตู้ที่เป็นงานของ vendor (ตามช่อง Vendor ของตู้) — โชว์ป้ายบอกว่าใครรับตู้ไหน
-  const vendorOf = chargerVendorMap(wo);
+  // ผู้ทำ PM ของแต่ละตู้ที่ planner เลือกไว้ — โชว์ป้ายบอกว่าใครรับตู้ไหน
+  const byOf = chargerByMap(wo);
+  const ownLabel = ownTeamLabel(wo?.planner_company, lang);
+  const chargersOf = (party: string) =>
+    Object.entries(byOf).filter(([, by]) => by.toLowerCase() === party.trim().toLowerCase()).map(([sn]) => sn);
   const chargerLabel = (sn: string) =>
     equipLabel(equipment.find((e) => e.type === "charger" && String(e.sn ?? "").toLowerCase() === sn.toLowerCase())
       ?? { type: "charger", sn });
@@ -267,8 +271,8 @@ export default function PmWorkOrderInfo({ source, identifier, wonum, onStart, on
                     <div className="tw-mb-4">
                       <label className={LABEL}>{t("vendorChargers", lang)}</label>
                       <div className={RO}>
-                        {(vp.chargers ?? []).length > 0
-                          ? (vp.chargers ?? []).map(chargerLabel).join(", ")
+                        {chargersOf(vp.vendor).length > 0
+                          ? chargersOf(vp.vendor).map(chargerLabel).join(", ")
                           : t("vendorAllJob", lang)}
                       </div>
                     </div>
@@ -323,10 +327,8 @@ export default function PmWorkOrderInfo({ source, identifier, wonum, onStart, on
                         {e.type === "charger" && e.sn && (
                           <span className="tw-font-mono tw-text-[11px] tw-text-indigo-400">{e.sn}</span>
                         )}
-                        {e.type === "charger" && e.sn && vendorOf[e.sn.toLowerCase()] && (
-                          <span className="tw-rounded-full tw-bg-amber-100 tw-px-2 tw-py-0.5 tw-text-[10px] tw-text-amber-800">
-                            {vendorOf[e.sn.toLowerCase()]}
-                          </span>
+                        {e.type === "charger" && e.sn && (
+                          <ChargerByTag by={byOf[e.sn.toLowerCase()]} ownLabel={ownLabel} />
                         )}
                       </span>
                     ))}

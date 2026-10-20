@@ -17,12 +17,13 @@ import { ArrowLeftIcon, ExclamationTriangleIcon } from "@heroicons/react/24/outl
 import { apiFetch } from "@/utils/api";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
 import PmAssigneePicker from "./PmAssigneePicker";
+import { ChargerBySelect, ChargerByTag, ownTeamLabel } from "./PmChargerBy";
 import {
   dateTimeLocalFromNow,
   derivePlanningStatus,
   EMPTY_PM_ASSIGNEE_OPTIONS,
   equipKey,
-  chargerVendorMap,
+  chargerByMap,
   equipLabel,
   fetchPmAssigneeOptions,
   myVendorPlan,
@@ -176,15 +177,6 @@ function SectionHeader({ no, title, right }: { no: number; title: string; right?
   );
 }
 
-/** ป้ายชื่อ vendor ที่ดูแลตู้ — ตู้ของ vendor ที่มี planner จะถูกส่งต่อเป็นงานของ vendor ตอนบันทึกแผน */
-function VendorTag({ name }: { name: string }) {
-  return (
-    <span className="tw-shrink-0 tw-rounded-full tw-bg-amber-100 tw-px-2 tw-py-0.5 tw-text-[10px] tw-font-semibold tw-text-amber-800">
-      {name}
-    </span>
-  );
-}
-
 export default function PmPlanForm({ source, identifier, wonum, onSaved, onCancel, onStart }: Props) {
   const { lang } = useLanguage();
 
@@ -204,6 +196,8 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
   const [error, setError] = useState("");
 
   const [checked, setChecked] = useState<Record<string, boolean>>({});
+  // ผู้ทำ PM ของแต่ละตู้ (key = equipKey) — ว่าง = ทีมเรา
+  const [chargerBy, setChargerBy] = useState<Record<string, string>>({});
   const [plannedAt, setPlannedAt] = useState("");
   const [schedStart, setSchedStart] = useState("");
   const [schedFinish, setSchedFinish] = useState("");
@@ -276,7 +270,12 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
         };
         setChoices(data);
         const preset: Record<string, boolean> = {};
-        data.selected_equipment.forEach((e) => { preset[equipKey(e)] = true; });
+        const presetBy: Record<string, string> = {};
+        data.selected_equipment.forEach((e) => {
+          preset[equipKey(e)] = true;
+          if (e.type === "charger" && e.by) presetBy[equipKey(e)] = e.by;
+        });
+        setChargerBy(presetBy);
         setChecked(preset);
       }
 
@@ -329,6 +328,7 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
           ...(e.sn ? { sn: e.sn } : {}),
           ...(e.location ? { location: e.location } : {}),
           ...(e.label ? { label: e.label } : {}),
+          ...(e.type === "charger" && chargerBy[equipKey(e)] ? { by: chargerBy[equipKey(e)] } : {}),
         }))
       : null;
 
@@ -405,8 +405,9 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
   // เริ่ม PM ได้ต่อเมื่อ planner เลือกอุปกรณ์ไว้แล้ว — อ่านจากแผนที่บันทึกแล้ว
   // ไม่ใช่ state ของ checkbox ที่ planner อาจกำลังแก้ค้างอยู่
   const plannedEquipment = wo?.selected_equipment ?? [];
-  // ตู้ที่ส่งต่อเป็นงานของ vendor แล้ว (ตามช่อง Vendor ของตู้) — โชว์ป้ายชื่อ vendor ข้างตู้
-  const vendorOf = chargerVendorMap(wo);
+  // ผู้ทำ PM ของแต่ละตู้ที่บันทึกไว้แล้ว — โชว์ป้ายข้างตู้ตอนอ่านอย่างเดียว
+  const byOf = chargerByMap(wo);
+  const ownLabel = ownTeamLabel(wo?.planner_company || myCompany, lang);
   // วางแผนเสร็จแล้ว = อ่านอย่างเดียวถาวร (PM ไม่มีแก้ไขแผน)
   const locked = !canPlan || alreadyPlanned;
   // ใบงานที่ส่งต่อมาให้บริษัทของคนที่ login วางแผนอีกรอบ และยังไม่ได้วางแผน
@@ -761,7 +762,7 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
                           {plannedEquipment.map((e) => (
                             <div key={equipKey(e)} className="tw-flex tw-items-center tw-gap-2.5 tw-px-3 tw-py-2.5">
                               <span className="tw-min-w-0 tw-truncate tw-text-sm tw-text-blue-gray-700">{equipLabel(e)}</span>
-                              {e.sn && vendorOf[e.sn.toLowerCase()] && <VendorTag name={vendorOf[e.sn.toLowerCase()]} />}
+                              {e.type === "charger" && e.sn && <ChargerByTag by={byOf[e.sn.toLowerCase()]} ownLabel={ownLabel} />}
                               {e.sn && <span className="tw-ml-auto tw-text-xs tw-text-blue-gray-400">{e.sn}</span>}
                             </div>
                           ))}
@@ -789,22 +790,33 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
                         {equipmentOptions.map((e) => {
                           const k = equipKey(e);
                           return (
-                            <label key={k} className="tw-flex tw-items-center tw-gap-2.5 tw-px-3 tw-py-2.5 tw-cursor-pointer hover:tw-bg-blue-gray-50/60 tw-transition-colors">
-                              <input
-                                type="checkbox"
-                                checked={!!checked[k]}
-                                disabled={locked}
-                                onChange={() => toggle(k)}
-                                className="tw-h-4 tw-w-4 tw-shrink-0 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500 tw-cursor-pointer"
-                              />
-                              <span className="tw-min-w-0 tw-truncate tw-text-sm tw-text-blue-gray-800">
-                                {equipLabel(e)}
-                              </span>
-                              {e.type === "charger" && e.vendor && <VendorTag name={e.vendor} />}
-                              {e.sn && (
-                                <span className="tw-ml-auto tw-text-xs tw-text-blue-gray-400">{e.sn}</span>
+                            <div key={k} className="tw-flex tw-flex-wrap tw-items-center tw-gap-x-2.5 tw-gap-y-1.5 tw-px-3 tw-py-2.5 hover:tw-bg-blue-gray-50/60 tw-transition-colors">
+                              <label className="tw-flex tw-min-w-0 tw-flex-1 tw-items-center tw-gap-2.5 tw-cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={!!checked[k]}
+                                  disabled={locked}
+                                  onChange={() => toggle(k)}
+                                  className="tw-h-4 tw-w-4 tw-shrink-0 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500 tw-cursor-pointer"
+                                />
+                                <span className="tw-min-w-0 tw-truncate tw-text-sm tw-text-blue-gray-800">
+                                  {equipLabel(e)}
+                                </span>
+                                {e.sn && <span className="tw-text-xs tw-text-blue-gray-400">{e.sn}</span>}
+                              </label>
+                              {/* ตู้ที่ติ๊กแล้วต้องบอกว่าใครทำ PM — ทีมเรา / vendor / outsource */}
+                              {e.type === "charger" && checked[k] && (
+                                <ChargerBySelect
+                                  value={chargerBy[k] ?? ""}
+                                  onChange={(v) => setChargerBy((prev) => ({ ...prev, [k]: v }))}
+                                  options={assigneeOptions}
+                                  ownLabel={ownLabel}
+                                  chargerVendor={e.vendor}
+                                  lang={lang}
+                                  disabled={locked}
+                                />
                               )}
-                            </label>
+                            </div>
                           );
                         })}
                       </div>

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { allAssignees, chargerVendorMap, myVendorPlan, pendingVendorPlans } from "./planning";
+import { allAssignees, chargerByMap, myVendorPlan, pendingVendorPlans } from "./planning";
 import { toPmFlow, woToRow } from "./flow";
 import { stageOf } from "@/utils/pm-dashboard";
 
@@ -58,19 +58,27 @@ describe("ใบงานเก่าที่ไม่มีใบส่งต�
   });
 });
 
-describe("ตู้ที่เป็นงานของ vendor (ตามช่อง Vendor ของตู้)", () => {
-  it("map SN → vendor จากใบส่งต่อ ไม่สนตัวพิมพ์", () => {
+describe("ผู้ทำ PM ที่ planner เลือกให้แต่ละตู้", () => {
+  it("map SN → ผู้ทำ PM ไม่สนตัวพิมพ์ ตู้ที่ทีมเราทำไม่อยู่ในผล", () => {
     const wo = {
-      vendor_plans: [
-        { vendor: "EDS", status: "pending", chargers: ["SN-A", "sn-b"] },
-        { vendor: "XYZ", status: "planned" },
+      vendor_plans: [{ vendor: "EDS", status: "pending" }],
+      selected_equipment: [
+        { type: "station" },
+        { type: "charger", sn: "SN-A", by: "EDS" },
+        { type: "charger", sn: "sn-b", by: "OS Co" },
+        { type: "charger", sn: "SN-C", by: "" },
       ],
     };
-    expect(chargerVendorMap(wo)).toEqual({ "sn-a": "EDS", "sn-b": "EDS" });
+    expect(chargerByMap(wo)).toEqual({ "sn-a": "EDS", "sn-b": "OS Co" });
   });
 
-  it("ใบที่ไม่มีใบส่งต่อ = ไม่มีตู้ของ vendor", () => {
-    expect(chargerVendorMap({ vendor_plans: [] })).toEqual({});
-    expect(chargerVendorMap(null)).toEqual({});
+  it("ใบส่งต่อรุ่นก่อนที่ผูกตู้ไว้ยังอ่านได้", () => {
+    expect(chargerByMap({ vendor_plans: [{ vendor: "EDS", status: "pending", chargers: ["X1"] }] }))
+      .toEqual({ x1: "EDS" });
+  });
+
+  it("ใบที่ไม่มีข้อมูล = ทีมเราทำทุกตู้", () => {
+    expect(chargerByMap({ vendor_plans: [] })).toEqual({});
+    expect(chargerByMap(null)).toEqual({});
   });
 });

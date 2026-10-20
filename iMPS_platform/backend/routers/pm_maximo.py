@@ -1083,6 +1083,9 @@ class EquipmentItem(BaseModel):
     sn: Optional[str] = None           # สำหรับ charger (ระบุตู้)
     location: Optional[str] = None     # maximo location ของอุปกรณ์ (ถ้ามี)
     label: Optional[str] = None        # ชื่อไว้โชว์
+    # ตู้ชาร์จเท่านั้น: ผู้ทำ PM ตู้นี้ในใบงานนี้ — ชื่อ vendor / outsource จากหน้า Company
+    # ว่าง = ทีมของ planner เอง (เช่น EGAT) — planner เลือกทุกใบงาน ไม่ได้อิงช่อง Vendor ของตู้
+    by: Optional[str] = None
 
 
 class SelectEquipmentIn(BaseModel):
@@ -1159,6 +1162,35 @@ def _merge_vendor_plans(existing: list[dict] | None, vendors: list[str]) -> list
     return out
 
 
+async def _validate_charger_by(items: list[dict], current: UserClaims) -> None:
+    """ผู้ทำ PM ของตู้ต้องเป็น vendor / outsource ของบริษัทคนวางแผน (ชุดเดียวกับ /companies/pm-options)"""
+    names = {str(i.get("by") or "").strip() for i in items if str(i.get("by") or "").strip()}
+    if not names:
+        return
+    from routers.company import pm_assignee_options
+
+    options = await pm_assignee_options(current)
+    allowed = {n.lower() for group in ("vendors", "outsources") for n in options.get(group) or []}
+    outside = sorted(n for n in names if n.lower() not in allowed)
+    if outside:
+        raise HTTPException(
+            status_code=400,
+            detail=f"ผู้ทำ PM ของตู้ต้องเป็น vendor / outsource ของบริษัทคุณ (ตั้งที่หน้า Company): {', '.join(outside)}",
+        )
+
+
+def _with_charger_parties(assignees: list[str], items: list[dict]) -> list[str]:
+    """เติมผู้ทำ PM ของแต่ละตู้เข้าไปในผู้รับผิดชอบของใบงาน (ไม่ซ้ำ ไม่สนตัวพิมพ์)"""
+    out = list(assignees)
+    seen = {a.lower() for a in out}
+    for i in items:
+        by = str(i.get("by") or "").strip()
+        if by and by.lower() not in seen:
+            out.append(by)
+            seen.add(by.lower())
+    return out
+
+
 def _build_vendor_plans(
     existing: list[dict] | None,
     assignees: list[str],
@@ -1170,13 +1202,14 @@ def _build_vendor_plans(
     ใบส่งต่อ vendor ของแผนรอบนี้ + ตู้ที่ส่งต่อให้แต่ละราย (field chargers)
 
     vendor ที่ได้ใบส่งต่อ = vendor ที่ planner ต้นทางเลือกเป็นผู้รับผิดชอบ
-    และ vendor ตามช่อง Vendor ของตู้ที่อยู่ในแผน — เฉพาะรายที่มี planner ของตัวเองในระบบ
+    และผู้ทำ PM ที่ planner เลือกให้แต่ละตู้ (item.by) — เฉพาะรายที่มี planner ของตัวเองในระบบ
+    (outsource ปกติไม่มี planner จึงไม่ได้ใบส่งต่อ — planner ต้นทางมอบหมายตรง)
     (ไม่มี planner = ไม่มีคนรับไปวางแผนต่อ ทีมต้นทางทำเองทั้งหมดเหมือนเดิม)
     ตู้ของ vendor รายนั้นจะกลายเป็นงานของ vendor — ดูกติกาที่ routers/pm_scope.py
     """
     from routers import pm_scope
 
-    by_vendor = pm_scope.chargers_by_vendor(station_id, items or [])
+    by_vendor = pm_scope.chargers_by_party(items or [])
     names = list(assignees) + [name for name, _sns in by_vendor.values()]
     vendors = _vendor_companies_with_planner(names, planner_company)
     plans = _merge_vendor_plans(existing, vendors)
@@ -1461,6 +1494,9 @@ def _build_equipment_items(station_id: str, equipment: list["EquipmentItem"]) ->
                 or charger.get("chargeBoxID")
                 or sn
             )
+            by = (e.by or "").strip()
+            if by:
+                item["by"] = by
         else:
             if e.location:
                 item["location"] = e.location.strip()
@@ -1574,7 +1610,7 @@ async def set_pm_vendor_plan(
         )
         if named:
             from routers import pm_scope
-            by_vendor = pm_scope.chargers_by_vendor(_station_id_of_wo(wo), wo.get("selected_equipment") or [])
+            by_vendor = pm_scope.chargers_by_party(wo.get("selected_equipment") or [])
             plans.append({
                 "vendor": named, "status": "pending",
                 "chargers": list(by_vendor.get(named.lower(), ("", []))[1]),
@@ -1686,6 +1722,7 @@ async def set_pm_equipment(
         )
 
     items = _build_equipment_items(_station_id_of_wo(wo), body.equipment or [])
+    await _validate_charger_by(items, current)
 
     now = datetime.now(timezone.utc)
     planned_at_value = (body.planned_at or now.isoformat()).strip()
@@ -1697,6 +1734,8 @@ async def set_pm_equipment(
     # ไม่ส่ง equipment มา = คงรายการเดิมไว้ (ผู้เรียกที่ยังมี picker ส่ง list มาเหมือนเดิม)
     keep_equipment = body.equipment is None
     effective_items = (wo.get("selected_equipment") or []) if keep_equipment else items
+    # ผู้ทำ PM ของแต่ละตู้เป็นผู้รับผิดชอบใบงานด้วย (เห็นใบงานในคิวของตัวเองเหมือนเลือกจากลิสต์)
+    assignees = _with_charger_parties(assignees, effective_items)
 
     # วางแผนเสร็จเมื่อเลือกอุปกรณ์แล้ว "หรือ" มีกำหนดการ + ช่างครบ
     # (หน้าวางแผน PM มอบหมายด้วยกำหนดการ+ช่างอย่างเดียว ไม่ได้เลือกอุปกรณ์)
@@ -1896,7 +1935,10 @@ async def create_pm_work_order(
         )
 
     items = _build_equipment_items(sid, body.equipment or [])
-    assignees = [str(x).strip() for x in body.assignees if str(x or "").strip()]
+    await _validate_charger_by(items, current)
+    assignees = _with_charger_parties(
+        [str(x).strip() for x in body.assignees if str(x or "").strip()], items
+    )
 
     now = datetime.now(timezone.utc)
     # ไม่ได้ตั้ง maximo_location ไว้ = ใช้ station_id แทน ใบงานจะได้ยังผูกกับสถานีได้
