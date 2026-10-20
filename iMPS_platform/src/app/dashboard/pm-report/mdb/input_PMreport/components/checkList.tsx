@@ -127,7 +127,7 @@ async function _bgUploadSingle(reportId: string, stationId: string, group: strin
     const normalizedGroup = (() => {
         const k = String(group);
         if (/^\d+$/.test(k)) return `g${k}`;
-        if (/^r\d+_\d+$/.test(k)) return k;
+        if (/^r\d+_[a-z0-9]+(?:_[a-z0-9]+)*$/.test(k)) return k;
         if (k.startsWith("g")) return k;
         return `g${k}`;
     })();
@@ -1453,7 +1453,7 @@ export default function MDBPMForm() {
     const normalizePhotoGroup = (group: string | number) => {
         const k = String(group);
         if (/^\d+$/.test(k)) return `g${k}`;       // "1" -> "g1"
-        if (/^r\d+_\d+$/.test(k)) return k;         // "r6_1" -> "r6_1" (MDB backend accepts r\d+_\d+)
+        if (/^r\d+_[a-z0-9]+(?:_[a-z0-9]+)*$/.test(k)) return k; // "r6_1", "r3_power_cb" -> ไม่เติม g (backend รับ r{n}_xxx)
         if (k.startsWith("g")) return k;             // "g1" -> "g1"
         return `g${k}`;
     };
@@ -1875,7 +1875,7 @@ export default function MDBPMForm() {
     // คีย์รูปของ mdb: ข้อหลักแปลงเป็น g{n} ส่วนข้อย่อยเก็บด้วยคีย์คำตอบตรงๆ
     // (normalizeGroup ปล่อย r{n}_{i} ผ่านโดยไม่เติม g)
     const photoKeysOf = useCallback((row: { key: string }) => {
-        if (/^r\d+_\d+$/.test(row.key)) return [row.key, row.key.replace(/^r/, "g")];
+        if (/^r\d+_[a-z0-9]+(?:_[a-z0-9]+)*$/.test(row.key)) return [row.key, row.key.replace(/^r/, "g")];
         return [`g${row.key.replace(/^r/, "")}`];
     }, []);
 

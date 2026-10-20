@@ -2794,8 +2794,7 @@ export default function ChargerPMForm() {
                                         containerProps={{ className: "!tw-min-w-0" }}
                                         className="!tw-w-full !tw-text-sm resize-none"
                                     />
-                                    {/* Temporarily disabled: Maximo labor input is hidden on all pages. */}
-                                    {false && <div className="tw-pt-3 sm:tw-pt-4 tw-border-t tw-border-gray-200">
+                                    <div className="tw-pt-3 sm:tw-pt-4 tw-border-t tw-border-gray-200">
                                         <PassFailRow
                                             label={t("summaryResult", lang)}
                                             value={summaryCheck}
@@ -2803,7 +2802,7 @@ export default function ChargerPMForm() {
                                             labels={{ PASS: t("summaryPass", lang), FAIL: t("summaryFail", lang), NA: t("summaryNA", lang) }}
                                             lang={lang}
                                         />
-                                    </div>}
+                                    </div>
 
                                     {/* ใบที่เป็นส่วนหนึ่งของใบ PM สถานี: เวลาทำงาน/ช่างที่ลงเวลา Maximo กรอกครั้งเดียวตอนกด
                                         "ปิดใบงาน" ที่หน้ารวมของใบ — ไม่ต้องกรอกซ้ำทุกส่วน (ใบเดี่ยวรุ่นเก่ายังกรอกที่นี่) */}

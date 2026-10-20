@@ -577,7 +577,9 @@ def _collect_photos_for_main_idx(photos: dict, idx: int) -> List[dict]:
 
     for k, items in (photos or {}).items():
         # รองรับทั้ง g{idx} และ r{idx}_* (เช่น r4_1, r6_2)
-        if k == prefix_g or k.startswith(prefix_g + "_") or k.startswith(prefix_r):
+        # r{idx}_ ต้องตามด้วยตัวเลขเท่านั้น — r3_power_* เป็นข้อ 3 แหล่งจ่ายไฟ ไม่ใช่ข้อย่อยของ r3 (ข้อ 4)
+        sub = k[len(prefix_r):] if k.startswith(prefix_r) else ""
+        if k == prefix_g or k.startswith(prefix_g + "_") or sub.isdigit():
             if isinstance(items, list):
                 for p in items:
                     if isinstance(p, dict) and p.get("url"):
