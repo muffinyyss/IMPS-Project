@@ -673,6 +673,15 @@ function getSeverityColor(severity: string) {
 // ==================== PROBLEM GROUP (ชุดกรอกเพิ่ม: ปัญหา→สาเหตุ→การแก้ไข→การดำเนินการ) ====================
 type PGroup = { kind: "full" | "cause" | "correction"; problem_type: string[]; cause: string[]; repaired_equipment: string[]; corrective_actions: CorrectiveItem[] };
 const newGroup = (kind: "full" | "cause" | "correction"): PGroup => ({ kind, problem_type: [], cause: [], repaired_equipment: [], corrective_actions: [{ text: "", beforeImages: [], afterImages: [] }] });
+// key ของคู่ "ปัญหา+สาเหตุ" ที่ใช้คำนวณตัวเลือกการแก้ไข — ใช้กันเลือกการแก้ไขซ้ำเฉพาะในชุดเดียวกัน
+// (คนละปัญหา/สาเหตุ เลือกการแก้ไขเดียวกันได้)
+const pairKey = (problems: string[], causes: string[]) =>
+    [problems, causes].map(xs => xs.filter(Boolean).slice().sort().join("|")).join("##");
+// บล็อกสาเหตุใช้ปัญหาหลัก, บล็อกการแก้ไขใช้ปัญหา+สาเหตุหลัก (ตรงกับ effProblems/effCauses ใน ProblemGroupBlock)
+const groupPairKey = (g: PGroup, mainProblem: string[], mainCause: string[]) => pairKey(
+    g.kind === "cause" || g.kind === "correction" ? mainProblem : g.problem_type,
+    g.kind === "correction" ? mainCause : g.cause,
+);
 // เปลี่ยนตัวเลือกด้านบนแล้วต้องถอด code ที่ผูกไว้ออก แต่ "รายละเอียดการแก้ไข" กับรูป
 // เป็นสิ่งที่ผู้ใช้พิมพ์/แนบเอง ห้ามล้าง — planner มาแก้ต่อจากช่างแล้วข้อมูลหายทั้งชุด
 const detachCorrectiveCodes = (actions: CorrectiveItem[]): CorrectiveItem[] => actions.map(action => ({
@@ -737,7 +746,7 @@ function ProblemGroupBlock({ faultyEquipment, value, onChange, onRemove, onAddGr
     const correctionOptions = toOptions(
         maximoRemedyOptions(maximoTree, faultyEquipment, effProblems, effCauses));
     const resolveCorrectionLabel = (v: string) => correctionOptions?.find(o => o.value === v)?.label ?? formatDeviceName(v);
-    // ตัด "การแก้ไข" ที่ถูกเลือกไว้ในช่องอื่นออก (กันเลือกซ้ำ) — เก็บค่าของตัวเองไว้ เกณฑ์เดียวกับสาเหตุ
+    // ตัด "การแก้ไข" ที่ถูกเลือกไว้ในบล็อกอื่นที่มีปัญหา+สาเหตุเดียวกันออก (takenCorrections คัดมาแล้ว) — เก็บค่าของตัวเองไว้
     const storedCorrectionOptions = value.repaired_equipment
         .filter(Boolean)
         .map(v => ({ value: v, label: resolveCorrectionLabel(v) }));
@@ -3027,9 +3036,16 @@ export default function CMInProgressForm() {
     const resolveCorrectionLabel = (val: string) =>
         correctionOptions?.find(o => o.value === val)?.label ?? formatDeviceName(val);
 
-    // การแก้ไขที่ถูกเลือกในบล็อกเพิ่มเติม — ตัดออกจากช่องการแก้ไขหลัก (กันเลือกซ้ำ เกณฑ์เดียวกับสาเหตุ)
+    // กันเลือก "การแก้ไข" ซ้ำเฉพาะบล็อกที่มีปัญหา+สาเหตุเดียวกัน — คนละชุดปัญหาเลือกการแก้ไขเดียวกันได้
     // ค่าของช่องตัวเองต้องเหลือไว้ ไม่งั้น select จะหาค่าที่เลือกอยู่ไม่เจอ
-    const correctionsInGroups = extraGroups.flatMap(g => g.repaired_equipment).filter(Boolean);
+    const mainPairKey = pairKey(job.problem_type, job.cause);
+    const takenCorrectionsFor = (key: string, skip: number | "main") => [
+        ...(skip !== "main" && key === mainPairKey ? job.repaired_equipment : []),
+        ...extraGroups
+            .filter((g, j) => j !== skip && groupPairKey(g, job.problem_type, job.cause) === key)
+            .flatMap(g => g.repaired_equipment),
+    ].filter(Boolean);
+    const correctionsInGroups = takenCorrectionsFor(mainPairKey, "main");
     const storedMainCorrectionOptions = job.repaired_equipment
         .filter(Boolean)
         .map(value => ({ value, label: resolveCorrectionLabel(value) }));
@@ -3958,7 +3974,7 @@ export default function CMInProgressForm() {
                                     mainProblem={job.problem_type}
                                     mainCause={job.cause}
                                     takenCauses={[...job.cause, ...extraGroups.filter((_, j) => j !== i).flatMap(x => x.cause)].filter(Boolean)}
-                                    takenCorrections={[...job.repaired_equipment, ...extraGroups.filter((_, j) => j !== i).flatMap(x => x.repaired_equipment)].filter(Boolean)}
+                                    takenCorrections={takenCorrectionsFor(groupPairKey(g, job.problem_type, job.cause), i)}
                                     lang={lang}
                                     index={i}
                                     disabled={viewOnly}
