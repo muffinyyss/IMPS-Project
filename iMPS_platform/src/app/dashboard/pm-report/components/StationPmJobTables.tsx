@@ -285,6 +285,10 @@ const T = {
   view: { th: "ดู", en: "View" },
   notFilled: { th: "ยังไม่กรอก", en: "Not filled" },
   downloadPdf: { th: "PDF ทั้งใบ", en: "Full PDF" },
+  // PDF รายการ์ด — Station (รวม MDB/CCB/CB_BOX) / ตู้ชาร์จทุกตู้: checklist ก่อน รูปตามหลัง
+  cardPdf: { th: "PDF", en: "PDF" },
+  cardPdfTitle: { th: "PDF ของส่วนนี้ — checklist ทุกฟอร์มก่อน แล้วตามด้วยรูป", en: "PDF of this part — all checklists first, then photos" },
+  cardPdfEmpty: { th: "ยังไม่มีฟอร์มที่กรอกแล้ว", en: "No filled forms yet" },
   pdfClosedOnly: { th: "โหลด PDF ได้หลังอนุมัติใบงานแล้ว (Closed)", en: "PDF is available once the document is approved (Closed)" },
   closeJob: { th: "ปิดใบงาน", en: "Close work order" },
   submitParty: { th: "ส่งงานของ {p}", en: "Submit {p} work" },
@@ -370,6 +374,11 @@ const T = {
   vendorReviewHint: {
     th: "ฟอร์มตู้ชาร์จของ {p} รอคุณตรวจ — เปิดดูแต่ละฟอร์มเพื่อตีกลับรายฟอร์ม หรือกด \"อนุมัติงานของ {p}\" เพื่อส่งต่อให้ planner ต้นทาง",
     en: "{p} charger forms are waiting for your review — open a form to send it back, or approve to pass them on to the origin planner",
+  },
+  // planner ของ vendor ตรวจ/อนุมัติจากในฟอร์มตู้ชาร์จ — หน้ารวมเหลือแค่ข้อความบอกทาง
+  vendorReviewOpenForm: {
+    th: "ฟอร์มตู้ชาร์จของ {p} รอคุณตรวจ — เปิดฟอร์มตู้ชาร์จเพื่ออนุมัติหรือตีกลับ",
+    en: "{p} charger forms are waiting for your review — open a charger form to approve or send it back",
   },
   vendorPending: { th: "รอ planner {p} อนุมัติ", en: "Waiting for {p} planner" },
   vendorApproved: { th: "{p} อนุมัติแล้ว", en: "Approved by {p}" },
@@ -1083,7 +1092,7 @@ export default function StationPmJobTables() {
 
   /** planner ของ vendor อนุมัติงานตู้ชาร์จของฝ่ายตัวเองทีเดียว → ส่งต่อให้ planner ต้นทาง (backend: vendor-approve) */
   const [vendorApproveParty, setVendorApproveParty] = useState<JobParty | null>(null);
-  const vendorApprove = async (party: JobParty) => {
+  const vendorApprove = async (party: JobParty, onDone?: () => void) => {
     if (!currentJob || acting) return;
     setActing(true);
     try {
@@ -1099,11 +1108,33 @@ export default function StationPmJobTables() {
       if (!res.ok) throw new Error(json?.detail || t("errAction", lang));
       setVendorApproveParty(null);
       await loadJobs();
+      onDone?.();
     } catch (err) {
       alert(err instanceof Error ? err.message : t("errAction", lang));
     } finally {
       setActing(false);
     }
+  };
+
+  // หน้าต่างยืนยัน — ใช้ทั้งหน้ารวม (admin อนุมัติแทน) และในฟอร์มตู้ชาร์จ (planner ของ vendor)
+  const vendorApproveDialog = (onDone?: () => void) => {
+    const label = vendorApproveParty?.name || t("ownTeam", lang);
+    return (
+      <Dialog open={!!vendorApproveParty} handler={() => { if (!acting) setVendorApproveParty(null); }} size="sm">
+        <DialogHeader>{t("vendorApproveTitle", lang).replace("{p}", label)}</DialogHeader>
+        <DialogBody>
+          <p className="tw-text-sm tw-text-gray-600">
+            {t("vendorApproveConfirm", lang).replaceAll("{p}", label)}
+          </p>
+        </DialogBody>
+        <DialogFooter className="tw-gap-2">
+          <Button variant="text" disabled={acting} onClick={() => setVendorApproveParty(null)}>{t("cancel", lang)}</Button>
+          <Button color="green" disabled={acting} onClick={() => { if (vendorApproveParty) void vendorApprove(vendorApproveParty, onDone); }}>
+            {acting ? t("vendorApproving", lang) : t("vendorApprove", lang).replace("{p}", label)}
+          </Button>
+        </DialogFooter>
+      </Dialog>
+    );
   };
 
   // ══════════════ ทางเข้าจากใบงาน Maximo ══════════════
@@ -1154,6 +1185,10 @@ export default function StationPmJobTables() {
     const vendorReviewing = viewing && !!currentJob?.vendor_reviewer && vendorPending
       && String(openedSection?.owner ?? "").trim().toLowerCase() === currentJob.vendor_reviewer
       && !!openedSection?.report_id && sectionStatus === "wait for approve";
+    // ฝ่ายที่ planner vendor คนนี้กำลังตรวจ — อนุมัติจากในฟอร์มตู้ชาร์จได้เลย (อนุมัติทุกฟอร์มตู้ชาร์จของฝ่ายนี้ทีเดียว)
+    const vendorParty = vendorReviewing
+      ? currentJob?.parties?.find((p) => p.key === currentJob.vendor_reviewer && p.vendor_review === "pending")
+      : undefined;
     const approving = vendorReviewing || (viewing && canApprove && inReview && !vendorPending
       && !!openedSection?.report_id && sectionStatus === "wait for approve");
     // ส่วนนี้โดนตีกลับและยังไม่ได้ส่งใหม่ — บอกช่างว่าต้องแก้อะไร
@@ -1209,7 +1244,17 @@ export default function StationPmJobTables() {
         <PencilSquareIcon className="tw-h-4 tw-w-4" /> {t("edit", lang)}
       </Button>
     ) : null;
-    // ปุ่มชุดผู้อนุมัติ: ย้อนกลับ · ตีกลับ · แก้ไข (เรียงซ้าย→ขวา)
+    const vendorApproveButton = vendorParty ? (
+      <Button
+        type="button"
+        disabled={acting}
+        onClick={() => setVendorApproveParty(vendorParty)}
+        className="tw-text-sm tw-py-2.5 tw-w-full sm:tw-w-auto tw-bg-green-600 hover:tw-bg-green-700 tw-flex tw-items-center tw-justify-center tw-gap-1.5"
+      >
+        <CheckCircleIcon className="tw-h-4 tw-w-4" /> {t("vendorApprove", lang).replace("{p}", vendorParty.name || t("ownTeam", lang))}
+      </Button>
+    ) : null;
+    // ปุ่มชุดผู้อนุมัติ: ย้อนกลับ · ตีกลับ · แก้ไข · อนุมัติ (planner vendor) (เรียงซ้าย→ขวา)
     const reviewActions = approving ? (
       <>
         <Button
@@ -1232,6 +1277,7 @@ export default function StationPmJobTables() {
           {t("rejectSection", lang)}
         </Button>
         {editButton}
+        {vendorApproveButton}
       </>
     ) : editButton;
     // กำลังแก้ส่วนที่ส่งแล้ว (เข้ามาจากปุ่ม "แก้ไข") — ยกเลิกได้ ทิ้งสิ่งที่แก้ในเครื่องแล้วกลับหน้าดู
@@ -1277,6 +1323,7 @@ export default function StationPmJobTables() {
             <SectionForm key={viewing ? "view" : "edit"} />
           </PmCancelEditContext.Provider>
         </PmReviewActionContext.Provider>
+        {vendorParty && vendorApproveDialog(backToHub)}
         {/* modal รูปแบบเดียวกับหน้า CM (overlay + กล่อง max-w-md) — ไม่ใช้ Dialog ของ Material Tailwind ที่บังคับความกว้าง/ฟอนต์เอง */}
         {cancelEditOpen && editingSent && (
           <div
@@ -1648,6 +1695,26 @@ export default function StationPmJobTables() {
                             {doneCount}/{rows.length} {t("chargersDone", lang)}
                           </span>
                         )}
+                        {/* PDF ของการ์ดนี้ — เปิดได้เมื่อมีฟอร์มที่กรอกแล้วอย่างน้อย 1 ฟอร์ม (เรนเดอร์สดจนกว่าจะปิดใบ) */}
+                        {rows.some((x) => !!x.report_id) ? (
+                          <a
+                            href={`${API_BASE}/stationpmjob/${encodeURIComponent(job.id)}/pdf?station_id=${encodeURIComponent(job.station_id)}&lang=${lang}&part=${group.id}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            title={t("cardPdfTitle", lang)}
+                            className="tw-ml-auto tw-inline-flex tw-items-center tw-gap-1 tw-rounded-md tw-border tw-border-gray-300 tw-px-2 tw-py-1 tw-text-xs tw-font-semibold tw-text-gray-700 hover:tw-bg-gray-50"
+                          >
+                            <DocumentArrowDownIcon className="tw-h-3.5 tw-w-3.5" /> {t("cardPdf", lang)}
+                          </a>
+                        ) : (
+                          <span
+                            title={t("cardPdfEmpty", lang)}
+                            aria-disabled="true"
+                            className="tw-ml-auto tw-inline-flex tw-cursor-not-allowed tw-items-center tw-gap-1 tw-rounded-md tw-border tw-border-gray-300 tw-px-2 tw-py-1 tw-text-xs tw-font-semibold tw-text-gray-700 tw-opacity-50"
+                          >
+                            <DocumentArrowDownIcon className="tw-h-3.5 tw-w-3.5" /> {t("cardPdf", lang)}
+                          </span>
+                        )}
                       </div>
                       <p className="tw-mt-1 tw-text-xs tw-text-gray-500">{pick(SECTION_GROUP_HINT[group.id], lang)}</p>
 
@@ -1708,11 +1775,15 @@ export default function StationPmJobTables() {
           <div className="tw-mt-6 tw-flex tw-justify-end">{closeJobButton}</div>
         )}
 
-        {/* planner ของ vendor (เช่น EDS) — อนุมัติงานตู้ชาร์จของฝ่ายตัวเองทีเดียว แล้วส่งต่อให้ planner ต้นทาง
-            admin อนุมัติแทนได้ทุกราย */}
+        {/* planner ของ vendor (เช่น EDS) ตรวจแค่ฟอร์มตู้ชาร์จ — ปุ่มอนุมัติอยู่ในฟอร์มตู้ชาร์จ (ข้างปุ่มแก้ไข) หน้ารวมบอกทางอย่างเดียว
+            admin อนุมัติแทนได้ทุกราย จากหน้ารวมนี้ */}
         {job.status === "draft" && vendorTargets.length > 0 && (
           <div className="tw-mt-6 tw-flex tw-flex-col tw-items-end tw-gap-2">
-            {vendorTargets.map((p) => (
+            {vendorTargets.map((p) => job.vendor_reviewer ? (
+              <p key={p.key} className="tw-text-right tw-text-xs tw-text-amber-800">
+                {t("vendorReviewOpenForm", lang).replaceAll("{p}", partyLabel(p))}
+              </p>
+            ) : (
               <React.Fragment key={p.key}>
                 <p className="tw-text-right tw-text-xs tw-text-amber-800">
                   {t("vendorReviewHint", lang).replaceAll("{p}", partyLabel(p))}
@@ -1726,20 +1797,7 @@ export default function StationPmJobTables() {
           </div>
         )}
 
-        <Dialog open={!!vendorApproveParty} handler={() => { if (!acting) setVendorApproveParty(null); }} size="sm">
-          <DialogHeader>{t("vendorApproveTitle", lang).replace("{p}", partyLabel(vendorApproveParty ?? undefined))}</DialogHeader>
-          <DialogBody>
-            <p className="tw-text-sm tw-text-gray-600">
-              {t("vendorApproveConfirm", lang).replaceAll("{p}", partyLabel(vendorApproveParty ?? undefined))}
-            </p>
-          </DialogBody>
-          <DialogFooter className="tw-gap-2">
-            <Button variant="text" disabled={acting} onClick={() => setVendorApproveParty(null)}>{t("cancel", lang)}</Button>
-            <Button color="green" disabled={acting} onClick={() => { if (vendorApproveParty) void vendorApprove(vendorApproveParty); }}>
-              {acting ? t("vendorApproving", lang) : t("vendorApprove", lang).replace("{p}", partyLabel(vendorApproveParty ?? undefined))}
-            </Button>
-          </DialogFooter>
-        </Dialog>
+        {vendorApproveDialog()}
 
         {/* ปุ่มอนุมัติ/ตีกลับ — ทั้งใบพร้อมกัน (มีแค่ปุ่ม ไม่มีแถบข้อความ) */}
         {waiting && jobCanApprove(job) && (

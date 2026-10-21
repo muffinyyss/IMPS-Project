@@ -655,6 +655,37 @@ class OpenJobIn(BaseModel):
     inspector: Optional[str] = None
 
 
+# งานเบื้องหลังที่ยิงแล้วไม่รอผล — ต้องเก็บ reference ไว้ ไม่งั้น task โดน GC กลางทาง
+_bg_tasks: set = set()
+
+
+def _in_background(coro) -> None:
+    task = asyncio.create_task(coro)
+    _bg_tasks.add(task)
+    task.add_done_callback(_bg_tasks.discard)
+
+
+def _start_in_progress(job: dict, who: str) -> None:
+    """
+    ช่างเปิดใบ PM สถานี = งานเริ่มจริงแล้ว → IN02 INPRG (ถ้ายังไม่เคยยิงผ่าน)
+
+    เดิมยิง INPRG แค่ตอน planner วางแผนเสร็จ และพักไว้ถ้ายังมี vendor ที่ยังไม่วางแผน
+    → ทีมเราเริ่มงานไปแล้วแต่ Maximo ยังค้าง APPR และถ้า vendor ไม่วางแผนเลย
+    ใบงานจะค้างไปจนปิด (ปิด WO จาก APPR ไม่ผ่าน)
+    ยิงเฉพาะใบที่ยังไม่ส่งงาน — ห้ามดึงใบที่รออนุมัติ/ปิดแล้วกลับเป็น INPRG
+    sync_in_progress ข้ามใบงานที่เปิดเองใน iMPS และกันยิงซ้ำสถานะเดิมอยู่แล้ว
+    ไม่รอผล: Maximo ช้า/ล่มต้องไม่ทำให้ช่างเปิดใบไม่ได้
+    """
+    wonum = str(job.get("wonum") or "").strip()
+    if not wonum or job.get("submitted_at"):
+        return
+    status = str(job.get("status") or "").strip()
+    if status and (_is_closed(status) or _is_wait(status)):
+        return
+    from services import pm_maximo_out
+    _in_background(pm_maximo_out.safe_sync_in_progress(wonum, memo=f"PM started by {who}"))
+
+
 @router.post("/stationpmjob/open")
 async def open_station_pm_job(
     body: OpenJobIn,
@@ -686,6 +717,9 @@ async def open_station_pm_job(
     if existing:
         job_out = _serialize_job(existing, await _section_states(existing), await job_planned_keys(existing))
         await _with_ownership([job_out], current)
+        # ใบที่เปิดไว้ก่อนมีกติกานี้ (INPRG ยังค้างรอ vendor) — ตามยิงให้ตอนมีคนเปิดใบ
+        if job_out.get("status") == pm_flow.PM_STATUS_DRAFT:
+            _start_in_progress(existing, current.username or current.sub)
         return {"ok": True, "created": False, "job": job_out}
 
     station = station_collection.find_one({"station_id": station_id}, {"_id": 0, "station_name": 1}) or {}
@@ -726,6 +760,7 @@ async def open_station_pm_job(
     res = await jobs.insert_one(doc)
     saved = await jobs.find_one({"_id": res.inserted_id}) or {**doc, "_id": res.inserted_id}
     log.info(f"  ✅ เปิดใบ PM สถานี {issue_id} ({station_id}, wonum={wonum or '-'})")
+    _start_in_progress(saved, current.username or current.sub)
     job_out = _serialize_job(saved, await _section_states(saved), await job_planned_keys(saved))
     await _with_ownership([job_out], current)
     return {"ok": True, "created": True, "job": job_out}
@@ -1317,7 +1352,27 @@ async def close_out_job(job: dict, station_id: str, *, memo: str = "") -> dict:
             per_party_labor=bool(job.get("work_entries")),
         )
         log.info(f"  📤 ปิดใบงาน {wonum} เข้า Maximo: {out['maximo']}")
+
+    # ธงให้ auto-retry (services/pm_maximo_retry.py) และหน้า PM List รู้ว่า Maximo ยังไม่ปิด
+    pending = not maximo_close_done(out.get("maximo"))
+    try:
+        update: dict = {"$set": {"maximo_pending": pending}}
+        if not pending:
+            update["$unset"] = {"maximo_retry": ""}
+        await get_stationpmjob_collection_for(station_id).update_one({"_id": job["_id"]}, update)
+    except Exception as e:
+        log.warning(f"  ⚠️ จดธง maximo_pending ของใบ {job.get('issue_id') or job.get('_id')} ไม่สำเร็จ: {e}")
+    out["maximo_pending"] = pending
     return out
+
+
+def maximo_close_done(result: Any) -> bool:
+    """ชุดปิดงานจบแล้วหรือยัง — IN02 CLOSED ผ่าน หรือไม่มีอะไรต้องส่ง (ใบเปิดเอง / ปิด integration)"""
+    if not isinstance(result, dict) or result.get("error"):
+        return False
+    if result.get("skipped"):
+        return True
+    return bool((result.get("IN02") or {}).get("ok"))
 
 
 # role ที่สั่งยิงชุดปิดงานเข้า Maximo ซ้ำได้ — ตรงกับ PM_SYNC_ROLES ของ pm_maximo
@@ -1343,6 +1398,8 @@ async def resync_station_pm_job(
         raise HTTPException(status_code=404, detail=f"ไม่พบใบ PM สถานี id={job_id}")
     if not _is_closed(str(job.get("status") or "")):
         raise HTTPException(status_code=409, detail="ใบนี้ยังไม่ได้อนุมัติปิดงาน")
+    # กดส่งเองแล้ว = เริ่มนับ auto-retry ใหม่ (ใบที่ retry จนยอมแพ้ไปแล้วจะกลับมาลองต่อ)
+    await jobs.update_one({"_id": job["_id"]}, {"$unset": {"maximo_retry": ""}})
     closing = await close_out_job(job, station_id, memo=f"re-sync by {current.username or current.sub}")
     fresh = await jobs.find_one({"_id": job["_id"]}) or job
     job_out = _serialize_job(fresh, await _section_states(fresh), await job_planned_keys(fresh))
@@ -1680,10 +1737,48 @@ def _page_number_overlay(count: int, lang: str):
     return PdfReader(io.BytesIO(bytes(pdf.output())))
 
 
-def job_pdf_cache_path(station_id: str, job_id: str, lang: str) -> pathlib.Path:
-    """ไฟล์ PDF รวมของใบที่อนุมัติแล้ว — สร้างตอนอนุมัติ ลิงก์ใน Maximo เปิดแล้วได้ไฟล์ทันที"""
+def job_pdf_cache_path(station_id: str, job_id: str, lang: str, part: str = "") -> pathlib.Path:
+    """ไฟล์ PDF รวมของใบที่อนุมัติแล้ว — สร้างตอนอนุมัติ ลิงก์ใน Maximo เปิดแล้วได้ไฟล์ทันที
+    part = "station" / "charger" คือ PDF ของการ์ดนั้นในหน้ารวม (แยกไฟล์ cache)"""
     from routers.pm_helpers import UPLOADS_ROOT
-    return pathlib.Path(UPLOADS_ROOT) / "pdf_cache" / "stationPMJob" / station_id / f"{job_id}_{lang}.pdf"
+    suffix = f"_{part}" if part else ""
+    return pathlib.Path(UPLOADS_ROOT) / "pdf_cache" / "stationPMJob" / station_id / f"{job_id}{suffix}_{lang}.pdf"
+
+
+# การ์ดในหน้ารวมใบ PM สถานี → ส่วนที่อยู่ในการ์ดนั้น (PDF รายการ์ด)
+PDF_PARTS: dict[str, set[str]] = {
+    "station": {"station", "mdb", "ccb", "cbbox"},
+    "charger": {CHARGER_SECTION},
+}
+
+
+async def _charger_vendor_approvers(job: dict, states: list[dict]) -> dict[str, str]:
+    """
+    {sn: ชื่อ planner ของ vendor ที่อนุมัติตู้นั้น} — เฉพาะตู้ที่มอบให้ vendor ที่มี planner ของตัวเอง (เช่น EDS)
+    และ planner คนนั้นอนุมัติแล้ว ใช้ใส่ช่อง "ผู้อนุมัติ" ใน PDF ของตู้นั้น
+    """
+    from routers import pm_scope
+
+    wonum = str(job.get("wonum") or "").strip()
+    if not wonum:
+        return {}
+    try:
+        wo = (await pm_scope.wos_by_wonum([wonum])).get(wonum)
+    except Exception as e:
+        log.warning(f"  ⚠️ อ่านใบงาน {wonum} เพื่อหาผู้อนุมัติของ vendor ไม่สำเร็จ: {e}")
+        return {}
+    vendors = review_vendors(wo)
+    entries = {e.get("key"): e for e in job.get("work_entries") or [] if isinstance(e, dict)}
+    out: dict[str, str] = {}
+    for s in states:
+        sn = s.get("sn") or ""
+        if s.get("section") != CHARGER_SECTION or not sn:
+            continue
+        key = _pkey(pm_scope.section_owner(wo, CHARGER_SECTION, sn))
+        entry = entries.get(key) or {}
+        if key in vendors and entry.get("vendor_approved"):
+            out[sn] = str(entry.get("vendor_approved_by") or "")
+    return out
 
 
 def _render_job_pdf(parts: list[tuple[dict, dict, dict]], lang: str) -> bytes:
@@ -1729,10 +1824,14 @@ def _render_job_pdf(parts: list[tuple[dict, dict, dict]], lang: str) -> bytes:
     return buf.getvalue()
 
 
-async def build_job_pdf(job: dict, station_id: str, lang: str) -> tuple[bytes, list[str]]:
+async def build_job_pdf(job: dict, station_id: str, lang: str, part: str = "") -> tuple[bytes, list[str]]:
     """
     PDF ของทั้งใบ — ใช้ template เดิมของแต่ละชนิด เรียง Station → MDB → CCB → CB_BOX → Charger
     (ตู้ละชุด ตามหมายเลขตู้) ส่วนที่ยังไม่ได้กรอกจะถูกข้าม
+    part = "station" (Station + MDB + CCB + CB_BOX) / "charger" (ทุกตู้) = PDF ของการ์ดนั้นอย่างเดียว
+    ทุกแบบเรียง checklist ของทุกส่วนก่อน แล้วรูปตามหลัง
+    ช่องลายเซ็นพิมพ์ชื่อผู้ทำ (inspector ของฟอร์ม) และผู้อนุมัติ
+    (ตู้ของ vendor ที่มี planner เอง = planner vendor ที่อนุมัติ / อื่น ๆ = ผู้อนุมัติทั้งใบ เมื่อปิดใบแล้ว)
 
     ใบที่อนุมัติแล้วใช้ไฟล์ใน cache (สร้างไว้ตอนอนุมัติ) — ไม่มีก็สร้างแล้วเก็บไว้
     ใบที่ยังไม่ปิดเรนเดอร์สดทุกครั้ง (เนื้อหายังเปลี่ยนได้)
@@ -1743,13 +1842,18 @@ async def build_job_pdf(job: dict, station_id: str, lang: str) -> tuple[bytes, l
 
     job_id = str(job["_id"])
     closed = _is_closed(str(job.get("status") or ""))
-    cache = job_pdf_cache_path(station_id, job_id, lang)
+    cache = job_pdf_cache_path(station_id, job_id, lang, part)
     if closed and cache.exists():
         return cache.read_bytes(), ["cache"]
 
+    wanted = PDF_PARTS.get(part) if part else None
+    states = [s for s in await _section_states(job) if wanted is None or s["section"] in wanted]
+    vendor_approvers = await _charger_vendor_approvers(job, states)
+    job_approver = str(job.get("approved_by") or "") if closed else ""
+
     parts: list[tuple[dict, dict, dict]] = []
     included: list[str] = []
-    for state in await _section_states(job):
+    for state in states:
         if not state["report_id"]:
             continue
         info = TEMPLATE_MAP.get(SECTION_PDF_KIND[state["section"]])
@@ -1761,12 +1865,20 @@ async def build_job_pdf(job: dict, station_id: str, lang: str) -> tuple[bytes, l
             continue
         # ให้ทุกส่วนพิมพ์เลขที่/ชื่อเอกสารของใบแม่ — เป็นเอกสารใบเดียวกัน
         doc = {**doc, "issue_id": job.get("issue_id") or doc.get("issue_id"),
-               "doc_name": job.get("doc_name") or doc.get("doc_name")}
+               "doc_name": job.get("doc_name") or doc.get("doc_name"),
+               "_signers": {
+                   "performed": str(doc.get("inspector") or state.get("inspector") or ""),
+                   "approved": vendor_approvers.get(state.get("sn") or "") or job_approver,
+               }}
         parts.append((state, doc, info))
         included.append(f"{state['section']}:{state['sn']}" if state.get("sn") else state["section"])
 
     if not parts:
-        raise HTTPException(status_code=404, detail="ใบนี้ยังไม่มีส่วนไหนถูกกรอก จึงยังไม่มี PDF")
+        raise HTTPException(
+            status_code=404,
+            detail="ส่วนนี้ยังไม่มีฟอร์มที่กรอกแล้ว จึงยังไม่มี PDF" if part
+            else "ใบนี้ยังไม่มีส่วนไหนถูกกรอก จึงยังไม่มี PDF",
+        )
 
     # รูปในเอกสารอ้างด้วย path สัมพัทธ์ — ตอนไม่มี request (สร้างตอนอนุมัติ) ต้องมี base URL จาก env
     import os
@@ -1798,18 +1910,22 @@ async def export_station_pm_job_pdf(
     station_id: str = Query(...),
     lang: str = Query("th"),
     dl: int = Query(0, description="1 = ดาวน์โหลด, 0 = เปิดดูในเบราว์เซอร์"),
+    part: str = Query("", description="station = การ์ด Station (Station/MDB/CCB/CB_BOX), charger = การ์ดตู้ชาร์จ, ว่าง = ทั้งใบ"),
     current: UserClaims = Depends(get_current_user),
 ):
-    """PDF ของทั้งใบ (ดู build_job_pdf)"""
+    """PDF ของทั้งใบ หรือของการ์ดเดียว (ดู build_job_pdf)"""
     station_id = station_id.strip()
+    part = part.strip().lower()
+    if part and part not in PDF_PARTS:
+        raise HTTPException(status_code=400, detail=f"part ไม่ถูกต้อง: {part}")
     jobs = get_stationpmjob_collection_for(station_id)
     job = await jobs.find_one({"_id": pm_flow.to_oid(job_id)})
     if not job:
         raise HTTPException(status_code=404, detail=f"ไม่พบใบ PM สถานี id={job_id}")
 
-    data, included = await build_job_pdf(job, station_id, lang)
+    data, included = await build_job_pdf(job, station_id, lang, part)
 
-    filename = f"{(job.get('issue_id') or job_id)}.pdf".replace("/", "-")
+    filename = f"{(job.get('issue_id') or job_id)}{f'_{part}' if part else ''}.pdf".replace("/", "-")
     disposition = "attachment" if dl else "inline"
     return Response(
         content=data,

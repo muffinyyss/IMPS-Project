@@ -22,7 +22,7 @@ from config import (
 )
 from deps import UserClaims, get_current_user
 from session_expiry import access_token_ttl
-from brand_scope import assert_charger_in_scope, brand_regex, brand_scope_of
+from brand_scope import assert_charger_in_scope, brand_scope_of, charger_brand_clause
 from session_cookies import (
     REFRESH_COOKIE_NAME, as_utc, clear_session_cookies, set_session_cookies,
 )
@@ -413,7 +413,7 @@ def charger_info(
         # ค้นด้วย station_id ได้ตู้ตัวไหนก็ได้ในสถานี — สถานีที่ปนยี่ห้อต้องคัดตั้งแต่ query
         # ไม่งั้นจะสุ่มได้ตู้ยี่ห้ออื่นแล้ว 403 ทั้งที่ตู้ที่ตัวเองดูแลก็มีอยู่
         if scope:
-            query["brand"] = brand_regex(scope)
+            query.update(charger_brand_clause(scope))
     else:
         raise HTTPException(status_code=400, detail="station_id or sn required")
 

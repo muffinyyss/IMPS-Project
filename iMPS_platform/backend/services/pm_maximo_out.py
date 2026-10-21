@@ -288,7 +288,10 @@ async def push_status(
     target = (status or PM_CLOSE_STATUS).strip().upper()
 
     # ยิงซ้ำสถานะเดิมไม่มีประโยชน์ และ Maximo error ว่าเปลี่ยนเป็นค่าเดิมไม่ได้
-    if (report.get("maximo_sync") or {}).get("IN02", {}).get("status") == target:
+    # ต้องดู ok ด้วย — _record จด status ไว้แม้ยิงไม่ผ่าน ถ้าเทียบแค่ status
+    # การส่งใหม่ (ปุ่ม / auto-retry) จะตอบ "ผ่าน" ทั้งที่ Maximo ยังไม่เคยรับ
+    prev = (report.get("maximo_sync") or {}).get("IN02", {})
+    if prev.get("status") == target and prev.get("ok"):
         return {"ok": True, "status": target, "unchanged": True}
 
     trace: dict = {}

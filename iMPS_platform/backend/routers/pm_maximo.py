@@ -1835,6 +1835,8 @@ async def set_pm_vendor_plan(
         plans[idx]["planned_at"] = (body.planned_at or datetime.now(timezone.utc).isoformat()).strip()
     await _open_coll().update_one({"_id": wo["_id"]}, {"$set": {"vendor_plans": plans}})
     log.info(f"  ✅ vendor {plans[idx]['vendor']} วางแผนใบงาน {wonum}: {assignees} โดย {who}")
+    from brand_scope import invalidate_assigned_work
+    invalidate_assigned_work()
 
     saved = await _find_open_wo(wonum) or {**wo, "vendor_plans": plans}
 
@@ -1971,6 +1973,9 @@ async def set_pm_equipment(
 
     doc = await _find_open_wo(wonum)
     log.info(f"  ✅ PM plan saved for {wonum}: {len(effective_items)} equipment item(s), status={planning_status}")
+    # ผู้ทำ PM รายชิ้นเปลี่ยน → สถานี/ตู้ที่ vendor (เช่น EDS) เห็นได้เปลี่ยนตาม (brand_scope)
+    from brand_scope import invalidate_assigned_work
+    invalidate_assigned_work()
 
     # ── ขั้น 2 ของ sequencing: assign เสร็จ = ใบงานเข้าสถานะ In Progress ──
     # ยิงเฉพาะตอนวางแผนครบจริง ไม่ใช่ทุกครั้งที่กดบันทึก

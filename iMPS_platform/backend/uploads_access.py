@@ -114,11 +114,11 @@ def assert_upload_access(current: UserClaims, rel_path: str) -> None:
         station_id = owner
     elif kind in SN_KINDS:
         station_id = _station_id_for_sn(owner)
-        charger_doc = charger_collection.find_one({"SN": owner}, {"brand": 1})
+        charger_doc = charger_collection.find_one({"SN": owner}, {"brand": 1, "SN": 1})
     elif kind in CHARGER_ID_KINDS:
         station_id = _station_id_for_charger_id(owner)
         try:
-            charger_doc = charger_collection.find_one({"_id": ObjectId(owner)}, {"brand": 1})
+            charger_doc = charger_collection.find_one({"_id": ObjectId(owner)}, {"brand": 1, "SN": 1})
         except Exception:
             charger_doc = None
     else:
