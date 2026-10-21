@@ -42,6 +42,8 @@ PROJECTION = {
     "station_id": 1, "createdAt": 1, "timestamp": 1,
     "urls": 1, "url": 1, "file_url": 1,
     "job_id": 1,
+    # เหตุผลที่ planner ตีกลับ — หน้า PM List ใช้แยกสถานะ Reject ออกจาก In Progress
+    "reject_remark": 1,
     }
 
 
@@ -96,6 +98,8 @@ def _serialize_report(doc: dict, source: str, station_id: str) -> dict:
         "pm_type":       source,
         "pm_date":       doc.get("pm_date") or "-",
         "status":        doc.get("status") or "submitted",
+        # มีค่า + status เป็น draft = โดนตีกลับ รอช่างแก้ (หน้า PM List โชว์ Reject)
+        "reject_remark": doc.get("reject_remark") or "",
         "technician":    doc.get("inspector") or doc.get("technician") or "-",
         "sn":            doc.get("sn") or doc.get("SN") or "-",
         "chargeBoxID":   doc.get("chargeBoxID") or "-",
@@ -168,6 +172,7 @@ async def _apply_job_status(reports: list[dict], chargers: list[dict]) -> None:
     from routers.pmreport_station_job import (
         derive_job_status, planned_keys_by_wonum, section_key, SECTIONS, CHARGER_SECTION,
     )
+    from routers import pm_flow
 
     groups: dict[tuple[str, str], list[dict]] = {}
     for r in reports:
@@ -196,6 +201,9 @@ async def _apply_job_status(reports: list[dict], chargers: list[dict]) -> None:
     plans = await planned_keys_by_wonum(
         [r.get("wonum") or "" for rows in groups.values() for r in rows]
     )
+    # ใบงานที่มีตู้ของ vendor (มี planner ของตัวเอง) — ใช้บอกว่าใบไหนรอ planner ของ vendor อนุมัติ
+    from routers import pm_scope
+    wos = await pm_scope.wos_by_wonum(r.get("wonum") or "" for rows in groups.values() for r in rows)
 
     for (station_id, _job_id), rows in groups.items():
         job = job_docs.get((station_id, _job_id)) or {}
@@ -225,8 +233,43 @@ async def _apply_job_status(reports: list[dict], chargers: list[dict]) -> None:
         job_status = derive_job_status(
             list(states.values()), plans.get(wonum), bool(job.get("submitted_at"))
         )
+        # ใบที่โดนตีกลับ (ทั้งใบ / รายฟอร์ม) และยังไม่ได้ส่งกลับมา = Reject
+        # ใช้เหตุผลของใบแม่ ใบเก่าที่ไม่มีก็ดูจากใบลูกที่ยังเป็น draft
+        reject_remark = ""
+        if job_status == pm_flow.PM_STATUS_DRAFT:
+            reject_remark = str(job.get("reject_remark") or "").strip() or next(
+                (str(r.get("reject_remark") or "").strip() for r in rows
+                 if str(r.get("status") or "").strip().lower() == pm_flow.PM_STATUS_DRAFT
+                 and str(r.get("reject_remark") or "").strip()),
+                "",
+            )
+        # ฝ่าย vendor ที่ส่งงานตู้ชาร์จแล้ว แต่ planner ของ vendor ยังไม่อนุมัติ (ใบยังไม่ถึง planner ต้นทาง)
+        vendor_review = (
+            _pending_vendor_reviews(wos.get(wonum), job.get("work_entries") or [])
+            if job_status == pm_flow.PM_STATUS_DRAFT else []
+        )
         for r in rows:
             r["status"] = job_status
+            r["reject_remark"] = reject_remark
+            r["vendor_review"] = vendor_review
+
+
+def _pending_vendor_reviews(wo: dict | None, entries: list) -> list[str]:
+    """ชื่อ vendor ที่รอ planner ของตัวเองอนุมัติงานตู้ชาร์จ (ย่อจาก pmreport_station_job.vendor_review_state)"""
+    from routers import pm_scope
+    from routers.pmreport_station_job import review_vendors
+
+    reviewers = review_vendors(wo)
+    with_chargers = {
+        key for key, (_name, sns, _secs) in pm_scope.items_by_party((wo or {}).get("selected_equipment") or []).items()
+        if sns
+    }
+    return [
+        reviewers[str(e.get("key") or "")]
+        for e in entries
+        if isinstance(e, dict) and e.get("submitted") and not e.get("vendor_approved")
+        and str(e.get("key") or "") in reviewers and str(e.get("key") or "") in with_chargers
+    ]
 
 
 async def _apply_wo_origin(reports: list[dict]) -> None:
@@ -270,7 +313,7 @@ async def _job_docs(keys) -> dict[tuple[str, str], dict]:
     async def one(station_id: str, ids: list[ObjectId]) -> list[tuple[tuple[str, str], dict]]:
         try:
             cursor = get_stationpmjob_collection_for(station_id).find(
-                {"_id": {"$in": ids}}, {"_id": 1, "wonum": 1, "submitted_at": 1, "na_sections": 1}
+                {"_id": {"$in": ids}}, {"_id": 1, "wonum": 1, "submitted_at": 1, "na_sections": 1, "reject_remark": 1, "work_entries": 1}
             )
             return [((station_id, str(d["_id"])), d) async for d in cursor]
         except Exception:

@@ -445,6 +445,9 @@ def _serialize_entry(e: dict) -> dict:
         "submitted": bool(e.get("submitted")),
         "submitted_by": e.get("submitted_by") or "",
         "submitted_at": _iso(e.get("submitted_at")),
+        "vendor_approved": bool(e.get("vendor_approved")),
+        "vendor_approved_by": e.get("vendor_approved_by") or "",
+        "vendor_approved_at": _iso(e.get("vendor_approved_at")),
         **({"maximo": {"ok": bool(mx.get("ok")), "sent_codes": mx.get("sent_codes") or [],
                        "errors": [str(x)[:200] for x in mx.get("errors") or []]}} if mx else {}),
     }
@@ -510,6 +513,86 @@ def _party_done(key: str, party: dict, entries: list[dict]) -> bool:
     return bool(entry and entry.get("submitted")) and all(s.get("sent") for s in party["states"])
 
 
+# ══════════════════════════════════════════════════════════════════
+# อนุมัติชั้นแรกโดย planner ของ vendor — เฉพาะฟอร์มตู้ชาร์จ (ตัดสินใจ 2026-10-21)
+#   ตู้ที่มอบให้ vendor ที่มี planner ของตัวเอง (มีใบส่งต่อใน vendor_plans เช่น EDS)
+#   ฝ่าย vendor ส่งงาน → planner ของ vendor ตรวจ (ตีกลับรายฟอร์มได้) แล้วกด "อนุมัติงานของ <vendor>"
+#   ครั้งเดียวทั้งฝ่าย → ค่อยนับว่าฝ่ายนั้นส่งครบ → ครบทุกฝ่าย = Wait for approve ให้ planner ต้นทาง
+#   ตีกลับฟอร์มของฝ่ายนั้นทีหลัง (ใครตีก็ตาม) / ฝ่ายส่งงานใหม่ = ต้องผ่าน planner ของ vendor อีกรอบ
+#   ส่วนระดับสถานี (Station/MDB/CCB/CB_BOX) และ outsource (ไม่มี planner) ไป planner ต้นทางตรงเหมือนเดิม
+#   ผลเก็บที่ work_entries ของฝ่ายนั้น: vendor_approved / vendor_approved_by / vendor_approved_at
+# ══════════════════════════════════════════════════════════════════
+
+def review_vendors(wo: dict | None) -> dict[str, str]:
+    """vendor ที่มี planner ของตัวเองในใบงานนี้ {key: ชื่อ} — ไม่นับบริษัทของ planner ต้นทาง"""
+    origin = _pkey((wo or {}).get("planner_company") or "")
+    out: dict[str, str] = {}
+    for v in (wo or {}).get("vendor_plans") or []:
+        name = str(v.get("vendor") or "").strip()
+        if name and _pkey(name) != origin:
+            out[_pkey(name)] = name
+    return out
+
+
+def party_needs_vendor_review(key: str, party: dict, wo: dict | None) -> bool:
+    """ฝ่ายนี้เป็น vendor ที่มี planner และมีฟอร์มตู้ชาร์จในแผน (ไม่ N/A)"""
+    return key in review_vendors(wo) and any(s.get("section") == CHARGER_SECTION for s in party["states"])
+
+
+def vendor_review_state(key: str, party: dict, entries: list[dict], wo: dict | None) -> str:
+    """
+    "" = ไม่ต้องผ่าน planner ของ vendor | "waiting" = ฝ่ายยังไม่ได้ส่งงาน (หรือมีฟอร์มโดนตีกลับ)
+    "pending" = รอ planner ของ vendor อนุมัติ | "approved" = planner ของ vendor อนุมัติแล้ว
+    """
+    if not party_needs_vendor_review(key, party, wo):
+        return ""
+    if not _party_done(key, party, entries):
+        return "waiting"
+    entry = next((e for e in entries if e.get("key") == key), None) or {}
+    return "approved" if entry.get("vendor_approved") else "pending"
+
+
+def _party_cleared(key: str, party: dict, entries: list[dict], wo: dict | None) -> bool:
+    """ฝ่ายนี้พร้อมให้ planner ต้นทางอนุมัติ = ส่งงานแล้ว และผ่าน planner ของ vendor แล้ว (ถ้าต้องผ่าน)"""
+    return _party_done(key, party, entries) and vendor_review_state(key, party, entries, wo) in ("", "approved")
+
+
+def vendor_reviewer_key(wo: dict | None, current: UserClaims, company: str) -> str:
+    """planner ของ vendor ที่ต้องตรวจฟอร์มตู้ชาร์จของฝ่ายตัวเองในใบนี้ → key ฝ่าย ไม่ใช่ = "" """
+    if (current.role or "").strip().lower() != "planner":
+        return ""
+    key = user_party_key(wo, current, company)
+    return key if key in review_vendors(wo) else ""
+
+
+def is_origin_approver(wo: dict | None, current: UserClaims, company: str) -> bool:
+    """อนุมัติ / ตีกลับทั้งใบได้ = admin / planner ที่ไม่ใช่ planner ของ vendor ในใบนี้"""
+    if (current.role or "").strip().lower() not in pm_flow.PM_APPROVE_ROLES:
+        return False
+    return not vendor_reviewer_key(wo, current, company)
+
+
+async def _job_wo(job: dict) -> dict | None:
+    from routers import pm_scope
+
+    wonum = str(job.get("wonum") or "").strip()
+    return (await pm_scope.wos_by_wonum([wonum])).get(wonum) if wonum else None
+
+
+def _assert_origin_approver(wo: dict | None, current: UserClaims) -> None:
+    from routers import pm_scope
+
+    pm_flow.assert_approver(current)
+    company = pm_scope.company_of(current)
+    vendor = vendor_reviewer_key(wo, current, company)
+    if vendor:
+        name = review_vendors(wo).get(vendor) or company
+        raise HTTPException(
+            status_code=403,
+            detail=f"planner ของ {name} อนุมัติได้เฉพาะงานตู้ชาร์จของ {name} — อนุมัติ/ตีกลับทั้งใบเป็นของ planner ต้นทาง",
+        )
+
+
 async def _with_ownership(jobs: list[dict], current: UserClaims) -> list[dict]:
     """
     เติม owner / editable ให้ทุกส่วนของใบ (in-place) ตามการแบ่งงานกับ vendor
@@ -532,19 +615,32 @@ async def _with_ownership(jobs: list[dict], current: UserClaims) -> list[dict]:
         # ฝ่ายที่ต้องส่งงาน + สถานะของแต่ละฝ่าย (หน้ารวมใช้โชว์ปุ่ม "ส่งงานของ ..." และสถานะ)
         parties = job_parties(j.get("sections") or [], wo)
         entries = j.get("work_entries") or []
-        j["parties"] = [
-            {
+        for s in j.get("sections") or []:
+            s["vendor_review"] = ""
+        out_parties = []
+        for key, p in parties.items():
+            review = vendor_review_state(key, p, entries, wo)
+            entry = next((e for e in entries if e.get("key") == key), None) or {}
+            # ฟอร์มตู้ชาร์จของฝ่ายนี้รอ / ผ่าน planner ของ vendor แล้ว — หน้ารวม/ฟอร์มใช้ตัดสินว่าใครตรวจได้
+            for s in p["states"]:
+                if s.get("section") == CHARGER_SECTION:
+                    s["vendor_review"] = review
+            out_parties.append({
                 "key": key,
                 "name": p["name"],
                 "ready": all(s.get("sent") for s in p["states"]),
                 "missing": [s.get("label") or {"th": s["section"], "en": s["section"]}
                             for s in p["states"] if not s.get("sent")],
                 "submitted": _party_done(key, p, entries),
-            }
-            for key, p in parties.items()
-        ]
+                "vendor_review": review,
+                "vendor_approved_by": (entry.get("vendor_approved_by") or "") if review == "approved" else "",
+            })
+        j["parties"] = out_parties
         j["my_party"] = user_party_key(wo, current, company)
         j["split"] = len(parties) > 1
+        # planner ของ vendor = ตรวจ/อนุมัติเฉพาะฟอร์มตู้ชาร์จของฝ่ายตัวเอง / อนุมัติทั้งใบเป็นของ planner ต้นทาง
+        j["vendor_reviewer"] = vendor_reviewer_key(wo, current, company)
+        j["can_approve"] = is_origin_approver(wo, current, company)
     return jobs
 
 
@@ -947,7 +1043,9 @@ async def submit_station_pm_job(
              "submitted": True, "submitted_by": who, "submitted_at": now}
     entries = [e for e in job.get("work_entries") or [] if isinstance(e, dict) and e.get("key") != key]
     entries.append(entry)
-    all_done = all(_party_done(k, p, entries) for k, p in parties.items())
+    # ฝ่าย vendor ที่มีฟอร์มตู้ชาร์จ ต้องผ่าน planner ของ vendor ก่อน (entry ใหม่ = ยังไม่ผ่าน)
+    all_done = all(_party_cleared(k, p, entries, wo) for k, p in parties.items())
+    needs_review = party_needs_vendor_review(key, party, wo)
 
     update: dict = {"work_entries": entries, "updatedAt": now}
     if len(parties) == 1:
@@ -964,10 +1062,11 @@ async def submit_station_pm_job(
     log.info(
         f"  ✅ ส่งงานใบ PM สถานี {fresh.get('issue_id') or job_id} ฝ่าย {party['name'] or '-'} ({who})"
         + (" → ครบทุกฝ่าย รออนุมัติ" if all_done else "")
+        + (f" → รอ planner ของ {party['name']} อนุมัติ" if needs_review else "")
     )
     job_out = _serialize_job(fresh, await _section_states(fresh), required)
     await _with_ownership([job_out], current)
-    return {"ok": True, "all_submitted": all_done, "job": job_out}
+    return {"ok": True, "all_submitted": all_done, "vendor_review": needs_review, "job": job_out}
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -1086,6 +1185,14 @@ async def delete_section_photo(
         pm_lock.section_lock_field(body.section, body.sn), current, "ส่วนนี้",
     )
 
+    # ฟอร์มตู้ชาร์จที่ planner ของ vendor อนุมัติแล้ว — ช่างแก้ไม่ได้ (กติกาเดียวกับ pm_scope.guard)
+    if body.section == CHARGER_SECTION and (current.role or "").strip().lower() not in pm_flow.PM_APPROVE_ROLES:
+        from routers import pm_scope
+        owner = _pkey(pm_scope.section_owner(await _job_wo(job), body.section, body.sn))
+        entry = next((e for e in job.get("work_entries") or [] if isinstance(e, dict) and e.get("key") == owner), {})
+        if entry.get("submitted") and entry.get("vendor_approved"):
+            raise HTTPException(status_code=409, detail="ฟอร์มนี้ planner ของ vendor อนุมัติแล้ว แก้ไขไม่ได้")
+
     coll = section_collection(body.section, station_id, body.sn)
     oid = pm_flow.to_oid(body.report_id)
     doc = await coll.find_one({"_id": oid, "job_id": job_id}, {"_id": 1, "status": 1})
@@ -1132,6 +1239,8 @@ async def approve_station_pm_job(
     job = await jobs.find_one({"_id": pm_flow.to_oid(job_id)})
     if not job:
         raise HTTPException(status_code=404, detail=f"ไม่พบใบ PM สถานี id={job_id}")
+    # planner ของ vendor อนุมัติได้แค่ฟอร์มตู้ชาร์จของฝ่ายตัวเอง (vendor-approve) ไม่ใช่ทั้งใบ
+    _assert_origin_approver(await _job_wo(job), current)
 
     # อนุมัติได้เฉพาะใบที่ส่งครบทุกส่วนในแผนแล้ว — กันปิดใบทั้งที่ช่างยังทำไม่เสร็จ
     required = await job_planned_keys(job)
@@ -1255,6 +1364,7 @@ async def reject_station_pm_job(
     job = await jobs.find_one({"_id": pm_flow.to_oid(job_id)})
     if not job:
         raise HTTPException(status_code=404, detail=f"ไม่พบใบ PM สถานี id={job_id}")
+    _assert_origin_approver(await _job_wo(job), current)
 
     results: list[dict] = []
     for state in await _section_states(job):
@@ -1272,7 +1382,8 @@ async def reject_station_pm_job(
     sections = await _section_states(job)
     required = await job_planned_keys(job)
     # ทุกฝ่ายต้องส่งงานใหม่ — เก็บเวลา/ผู้ลงเวลาเดิมไว้เติมให้ตอนกดส่งใหม่
-    entries = [{**e, "submitted": False} for e in job.get("work_entries") or [] if isinstance(e, dict)]
+    # ฟอร์มตู้ชาร์จของ vendor ต้องผ่าน planner ของ vendor อีกรอบ
+    entries = [{**e, **_REOPENED} for e in job.get("work_entries") or [] if isinstance(e, dict)]
     await jobs.update_one(
         {"_id": job["_id"]},
         {
@@ -1288,6 +1399,98 @@ async def reject_station_pm_job(
     )
     fresh = await jobs.find_one({"_id": job["_id"]}) or job
     return {"ok": True, "results": results, "job": _serialize_job(fresh, sections, required)}
+
+
+# ══════════════════════════════════════════════════════════════════
+# อนุมัติชั้น vendor — planner ของ vendor (เช่น EDS) อนุมัติฟอร์มตู้ชาร์จของฝ่ายตัวเองทีเดียว
+# ══════════════════════════════════════════════════════════════════
+
+class VendorApproveIn(BaseModel):
+    # admin อนุมัติแทน vendor รายใดก็ได้ — ไม่ระบุ = รายเดียวที่รออยู่
+    party: Optional[str] = None
+
+
+@router.post("/stationpmjob/{job_id}/vendor-approve")
+async def vendor_approve_station_pm_job(
+    job_id: str,
+    body: VendorApproveIn | None = None,
+    station_id: str = Query(...),
+    current: UserClaims = Depends(get_current_user),
+):
+    """
+    planner ของ vendor อนุมัติงานตู้ชาร์จของฝ่ายตัวเองในใบ (ชั้นแรก) — แล้วส่งต่อให้ planner ต้นทาง
+
+    กดได้เมื่อฝ่ายนั้นกด "ส่งงาน" แล้ว และทุกฟอร์มของฝ่ายยังอยู่ในสถานะส่งแล้ว
+    ครบทุกฝ่าย (และทุกฝ่าย vendor ผ่าน planner ของตัวเองแล้ว) → ใบเป็น Wait for approve
+    ฟอร์มยังเป็น Wait for approve เหมือนเดิม (ปิดจริงตอน planner ต้นทางอนุมัติทั้งใบ)
+    """
+    from routers import pm_scope
+
+    station_id = station_id.strip()
+    jobs = get_stationpmjob_collection_for(station_id)
+    job = await jobs.find_one({"_id": pm_flow.to_oid(job_id)})
+    if not job:
+        raise HTTPException(status_code=404, detail=f"ไม่พบใบ PM สถานี id={job_id}")
+
+    required = await job_planned_keys(job)
+    sections = await _section_states(job)
+    _mark_plan(sections, required)
+    if job_progress(sections, required, _job_submitted(job))["status"] != pm_flow.PM_STATUS_DRAFT:
+        raise HTTPException(status_code=409, detail="ใบนี้ส่งให้ planner ต้นทางแล้ว")
+
+    wo = await _job_wo(job)
+    parties = job_parties(sections, wo)
+    entries = [e for e in job.get("work_entries") or [] if isinstance(e, dict)]
+    role = (current.role or "").strip().lower()
+    if role == "admin":
+        if body and body.party:
+            key = _pkey(body.party)
+        else:
+            pending = [k for k, p in parties.items() if vendor_review_state(k, p, entries, wo) == "pending"]
+            if len(pending) != 1:
+                raise HTTPException(status_code=400, detail="ระบุฝ่าย vendor ที่จะอนุมัติแทน (party)")
+            key = pending[0]
+    else:
+        key = vendor_reviewer_key(wo, current, pm_scope.company_of(current))
+        if not key:
+            raise HTTPException(status_code=403, detail="เฉพาะ planner ของ vendor ที่รับงานตู้ชาร์จในใบนี้")
+
+    party = parties.get(key)
+    name = (party or {}).get("name") or review_vendors(wo).get(key) or key
+    review = vendor_review_state(key, party, entries, wo) if party else ""
+    if not review:
+        raise HTTPException(status_code=400, detail=f"ใบนี้ไม่มีฟอร์มตู้ชาร์จของ {name} ที่ต้องอนุมัติ")
+    if review == "waiting":
+        raise HTTPException(status_code=409, detail=f"ฝ่าย {name} ยังไม่ได้ส่งงาน หรือมีฟอร์มที่ยังแก้อยู่")
+    if review == "approved":
+        raise HTTPException(status_code=409, detail=f"งานของ {name} อนุมัติไปแล้ว")
+
+    now = datetime.now(timezone.utc)
+    who = current.username or current.sub
+    entries = [
+        {**e, "vendor_approved": True, "vendor_approved_by": who, "vendor_approved_at": now}
+        if e.get("key") == key else e
+        for e in entries
+    ]
+    all_done = all(_party_cleared(k, p, entries, wo) for k, p in parties.items())
+    update: dict = {"work_entries": entries, "updatedAt": now}
+    if all_done:
+        last = max((e for e in entries if e.get("submitted")),
+                   key=lambda e: _iso(e.get("submitted_at")), default={})
+        update.update({
+            "submitted_at": now,
+            "submitted_by": last.get("submitted_by") or who,
+            "status": pm_flow.PM_STATUS_WAIT_APPROVE,
+        })
+    await jobs.update_one({"_id": job["_id"]}, {"$set": update})
+    fresh = await jobs.find_one({"_id": job["_id"]}) or job
+    log.info(
+        f"  ✅ planner {name} อนุมัติงานตู้ชาร์จของใบ {fresh.get('issue_id') or job_id} ({who})"
+        + (" → ครบทุกฝ่าย รอ planner ต้นทางอนุมัติ" if all_done else "")
+    )
+    job_out = _serialize_job(fresh, await _section_states(fresh), required)
+    await _with_ownership([job_out], current)
+    return {"ok": True, "all_submitted": all_done, "job": job_out}
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -1323,13 +1526,17 @@ def _can_reject_section(job: dict, job_status: str) -> bool:
     return job_status == pm_flow.PM_STATUS_DRAFT and bool(str(job.get("reject_remark") or "").strip())
 
 
+# work_entry ที่ต้องส่งใหม่ — ล้างผลอนุมัติของ planner vendor ด้วย (ต้องผ่าน vendor อีกรอบ)
+_REOPENED = {"submitted": False, "vendor_approved": False, "vendor_approved_by": "", "vendor_approved_at": None}
+
+
 def _reopen_entries(entries: list, owner_key: str, single_party: bool) -> list[dict]:
     """
     work_entries หลังตีกลับรายส่วน — เฉพาะฝ่ายเจ้าของส่วนนั้นกลับเป็นยังไม่ส่ง (ค่าเดิมเก็บไว้เติมให้)
     ใบฝ่ายเดียว: รายการเดียวของใบกลับเป็นยังไม่ส่ง (ไม่ต้องเทียบ key — ใบรุ่นก่อนอาจคิด key ต่างกัน)
     """
     return [
-        {**e, "submitted": False} if (single_party or e.get("key") == owner_key) else e
+        {**e, **_REOPENED} if (single_party or e.get("key") == owner_key) else e
         for e in entries or [] if isinstance(e, dict)
     ]
 
@@ -1361,8 +1568,32 @@ async def reject_station_pm_section(
 
     required = await job_planned_keys(job)
     sections = await _section_states(job)
-    if not _can_reject_section(job, derive_job_status(sections, required, _job_submitted(job))):
-        raise HTTPException(status_code=409, detail="ใบนี้ยังไม่ได้ส่งอนุมัติ จึงยังตีกลับไม่ได้")
+    _mark_plan(sections, required)
+    wo = await _job_wo(job)
+    parties = job_parties(sections, wo)
+    entries_now = job.get("work_entries") or []
+    owner_key = _pkey(pm_scope.section_owner(wo, section, sn))
+    owner_party = parties.get(owner_key)
+    review = vendor_review_state(owner_key, owner_party, entries_now, wo) \
+        if owner_party and section == CHARGER_SECTION else ""
+    vendor_key = vendor_reviewer_key(wo, current, pm_scope.company_of(current))
+
+    if vendor_key:
+        # planner ของ vendor — ตีกลับได้เฉพาะฟอร์มตู้ชาร์จของฝ่ายตัวเองที่รอตัวเองอนุมัติอยู่
+        if section != CHARGER_SECTION or owner_key != vendor_key:
+            raise HTTPException(status_code=403, detail="ตีกลับได้เฉพาะฟอร์มตู้ชาร์จที่เป็นงานของบริษัทคุณ")
+        if review != "pending":
+            raise HTTPException(
+                status_code=409,
+                detail="ฟอร์มนี้ไม่ได้รอคุณอนุมัติ (ฝ่ายของคุณยังไม่ได้ส่งงาน หรืออนุมัติไปแล้ว)",
+            )
+    else:
+        if not _can_reject_section(job, derive_job_status(sections, required, _job_submitted(job))):
+            raise HTTPException(status_code=409, detail="ใบนี้ยังไม่ได้ส่งอนุมัติ จึงยังตีกลับไม่ได้")
+        # ฟอร์มที่ฝ่าย vendor ส่งงานมาแล้ว รอ planner ของ vendor อยู่ — ให้ vendor ตรวจก่อน
+        if review == "pending":
+            name = review_vendors(wo).get(owner_key) or owner_key
+            raise HTTPException(status_code=409, detail=f"ฟอร์มนี้รอ planner ของ {name} อนุมัติก่อน")
     target = section_key(section, sn)
     state = next((s for s in sections if section_key(s["section"], s.get("sn") or "") == target), None)
     if not state or not state["report_id"]:
@@ -1376,19 +1607,26 @@ async def reject_station_pm_section(
     )
 
     # ฝ่ายเจ้าของส่วนนี้ต้องกดส่งงานใหม่ ฝ่ายอื่นยังนับว่าส่งแล้ว
-    wonum = str(job.get("wonum") or "").strip()
-    wo = (await pm_scope.wos_by_wonum([wonum])).get(wonum) if wonum else None
-    _mark_plan(sections, required)
-    parties = job_parties(sections, wo)
-    entries = _reopen_entries(
-        job.get("work_entries") or [],
-        _pkey(pm_scope.section_owner(wo, section, sn)),
-        single_party=len(parties) <= 1,
-    )
+    entries = _reopen_entries(entries_now, owner_key, single_party=len(parties) <= 1)
 
     fresh_sections = await _section_states(job)
     now = datetime.now(timezone.utc)
     who = current.username or current.sub
+    if vendor_key:
+        # ตีกลับในชั้น vendor — ใบยังไม่ถึงมือ planner ต้นทาง ไม่แตะเหตุผล/สถานะของใบแม่
+        # (เหตุผลอยู่ที่ใบลูก หน้ารวมโชว์รายฟอร์มอยู่แล้ว)
+        await jobs.update_one(
+            {"_id": job["_id"]},
+            {"$set": {"updatedAt": now, **({"work_entries": entries} if entries else {})}},
+        )
+        fresh = await jobs.find_one({"_id": job["_id"]}) or job
+        log.info(
+            f"  ↩️ planner {vendor_key} ตีกลับตู้ {sn} ของใบ {fresh.get('issue_id') or job_id} ({who}): {remark}"
+        )
+        job_out = _serialize_job(fresh, fresh_sections, required)
+        await _with_ownership([job_out], current)
+        return {"ok": True, "job": job_out}
+
     await jobs.update_one(
         {"_id": job["_id"]},
         {

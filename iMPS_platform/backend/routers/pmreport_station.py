@@ -496,6 +496,12 @@ async def stationpmreport_post_submit(
 # pre_r1/pre_r2 = ข้อ 1-2 (สภาพก่อนเริ่มงาน) เป็นคำถามของใบ Post ตั้งแต่ตัดด่าน Pre-PM ออก
 PHOTO_GROUP_PATTERN = re.compile(r"^(pre_)?r\d+$")
 
+# หน้าฟอร์มให้แนบได้ 10 รูป "ต่อข้อย่อย" แต่ server เก็บรูปรวมก้อนเดียวต่อข้อหลัก
+# เพดานของข้อที่มีข้อย่อยจึงต้องคูณจำนวนข้อย่อย — เดิมจำกัด 10 ต่อข้อ ข้อ 3 (MDB มี 4 ข้อย่อย)
+# แนบเกิน 10 รูปเมื่อไหร่ server ตอบ ok แต่ทิ้งรูปเงียบ ๆ
+STATION_GROUP_SUBITEMS = {"r103": 4, "r7": 2, "r8": 2, "r9": 2, "r10": 3}
+MAX_PHOTOS_PER_ITEM = 10
+
 
 @router.post("/stationpmreport/{report_id}/post/photos")
 async def stationpmreport_upload_post_photos(
@@ -530,7 +536,7 @@ async def stationpmreport_upload_post_photos(
     if doc.get("station_id") != station_id:
         raise HTTPException(status_code=400, detail="station_id mismatch")
 
-    MAX_PHOTOS_PER_GROUP = 10
+    MAX_PHOTOS_PER_GROUP = MAX_PHOTOS_PER_ITEM * STATION_GROUP_SUBITEMS.get(group, 1)
     existing_count = len((doc.get("photos") or {}).get(group, []))
     remaining = MAX_PHOTOS_PER_GROUP - existing_count
     if remaining <= 0:

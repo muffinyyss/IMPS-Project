@@ -130,7 +130,14 @@ type SectionState = {
   /** planner ตีกลับส่วนนี้ (รายฟอร์ม) — หายเองเมื่อช่างส่งฟอร์มใหม่ */
   reject_remark?: string;
   rejected_by?: string;
+  /**
+   * ฟอร์มตู้ชาร์จของ vendor ที่มี planner ของตัวเอง (เช่น EDS) ต้องผ่าน planner ของ vendor ก่อน
+   * "" = ไม่ต้องผ่าน | waiting = ฝ่ายยังไม่ส่งงาน | pending = รอ planner ของ vendor | approved = ผ่านแล้ว
+   */
+  vendor_review?: VendorReview;
 };
+
+type VendorReview = "" | "waiting" | "pending" | "approved";
 
 type Job = {
   id: string;
@@ -177,6 +184,10 @@ type Job = {
   my_party?: string;
   split?: boolean;
   work_entries?: WorkEntry[];
+  /** คนที่ login เป็น planner ของ vendor ในใบนี้ → key ฝ่ายที่ต้องตรวจฟอร์มตู้ชาร์จ ("" = ไม่ใช่) */
+  vendor_reviewer?: string;
+  /** อนุมัติ/ตีกลับทั้งใบได้ (planner ต้นทาง / admin) — planner ของ vendor ไม่ได้ */
+  can_approve?: boolean;
 };
 
 type JobParty = {
@@ -186,6 +197,9 @@ type JobParty = {
   ready: boolean;
   missing: { th: string; en: string }[];
   submitted: boolean;
+  /** ฟอร์มตู้ชาร์จของฝ่ายนี้ต้องผ่าน planner ของ vendor ก่อน (ดู SectionState.vendor_review) */
+  vendor_review?: VendorReview;
+  vendor_approved_by?: string;
 };
 
 type WorkEntry = {
@@ -345,6 +359,24 @@ const T = {
     en: "Send only this form back for fixes — the other forms stay waiting for approval. Tell the technician what to change.",
   },
   sectionRejected: { th: "ตีกลับ", en: "Sent back" },
+  // อนุมัติชั้นแรกโดย planner ของ vendor (ฟอร์มตู้ชาร์จที่มอบให้ vendor เช่น EDS)
+  vendorApprove: { th: "อนุมัติงานของ {p}", en: "Approve {p} work" },
+  vendorApproving: { th: "กำลังอนุมัติ…", en: "Approving…" },
+  vendorApproveTitle: { th: "อนุมัติงานตู้ชาร์จของ {p}", en: "Approve {p} charger work" },
+  vendorApproveConfirm: {
+    th: "ตรวจฟอร์มตู้ชาร์จของ {p} ครบแล้ว — อนุมัติแล้วจะส่งต่อให้ planner ต้นทางอนุมัติทั้งใบ (ฟอร์มที่ต้องแก้ให้เปิดฟอร์มแล้วกด \"ตีกลับฟอร์มนี้\" ก่อน)",
+    en: "All {p} charger forms reviewed — approving passes them on to the origin planner for final approval (send back any form that needs fixing first)",
+  },
+  vendorReviewHint: {
+    th: "ฟอร์มตู้ชาร์จของ {p} รอคุณตรวจ — เปิดดูแต่ละฟอร์มเพื่อตีกลับรายฟอร์ม หรือกด \"อนุมัติงานของ {p}\" เพื่อส่งต่อให้ planner ต้นทาง",
+    en: "{p} charger forms are waiting for your review — open a form to send it back, or approve to pass them on to the origin planner",
+  },
+  vendorPending: { th: "รอ planner {p} อนุมัติ", en: "Waiting for {p} planner" },
+  vendorApproved: { th: "{p} อนุมัติแล้ว", en: "Approved by {p}" },
+  vendorRejectSectionConfirm: {
+    th: "ตีกลับเฉพาะฟอร์มนี้ให้ช่างแก้ — ช่างต้องส่งงานใหม่ แล้วกลับมาให้คุณอนุมัติอีกครั้ง ระบุเหตุผลให้ช่างรู้ว่าต้องแก้อะไร",
+    en: "Send only this form back — the technicians resubmit and it comes back to you for approval. Tell them what to change.",
+  },
 
   errLoad: { th: "โหลดใบ PM ไม่สำเร็จ", en: "Failed to load PM documents" },
   errCreate: { th: "เปิดใบใหม่ไม่สำเร็จ", en: "Failed to create document" },
@@ -700,7 +732,10 @@ export default function StationPmJobTables() {
     [jobs, jobId]
   );
 
-  const canApprove = PM_APPROVE_ROLES.includes(me?.role ?? "");
+  // อนุมัติ/ตีกลับทั้งใบ = planner ต้นทาง / admin — backend บอกมาต่อใบ (planner ของ vendor ไม่ได้)
+  const roleCanApprove = PM_APPROVE_ROLES.includes(me?.role ?? "");
+  const jobCanApprove = (j?: Job | null) => (j?.can_approve ?? roleCanApprove);
+  const canApprove = jobCanApprove(currentJob);
 
   // ── ล็อกกันกรอกชนกัน (ทีละส่วน — routers/pm_lock.py) ──
   // จองสิทธิ์เฉพาะตอนเปิดฟอร์มของส่วนนั้นในโหมดกรอก (ดูอย่างเดียวไม่จอง จะได้ไม่ไปกันคนอื่น)
@@ -1046,6 +1081,31 @@ export default function StationPmJobTables() {
     }
   };
 
+  /** planner ของ vendor อนุมัติงานตู้ชาร์จของฝ่ายตัวเองทีเดียว → ส่งต่อให้ planner ต้นทาง (backend: vendor-approve) */
+  const [vendorApproveParty, setVendorApproveParty] = useState<JobParty | null>(null);
+  const vendorApprove = async (party: JobParty) => {
+    if (!currentJob || acting) return;
+    setActing(true);
+    try {
+      const res = await apiFetch(
+        `/stationpmjob/${encodeURIComponent(currentJob.id)}/vendor-approve?station_id=${encodeURIComponent(currentJob.station_id)}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ party: party.name }),
+        }
+      );
+      const json = await res.json().catch(() => ({} as any));
+      if (!res.ok) throw new Error(json?.detail || t("errAction", lang));
+      setVendorApproveParty(null);
+      await loadJobs();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : t("errAction", lang));
+    } finally {
+      setActing(false);
+    }
+  };
+
   // ══════════════ ทางเข้าจากใบงาน Maximo ══════════════
   // ทุก role เข้าหน้าเดียวกันจาก PM List — ผู้วางแผนได้ฟอร์มวางแผน
   // ช่างได้หน้าเดียวกันแบบอ่านอย่างเดียว + ปุ่ม "เริ่ม PM" ท้ายหน้า
@@ -1089,12 +1149,19 @@ export default function StationPmJobTables() {
     // ใบที่เพิ่งตีกลับบางฟอร์มไป (In Progress + มีเหตุผลตีกลับ) ยังตีกลับฟอร์มอื่นที่รออนุมัติเพิ่มได้
     const inReview = currentJob?.status === "Wait for approve"
       || (currentJob?.status === "draft" && !!currentJob?.reject_remark);
-    const approving = viewing && canApprove && inReview
+    // ฟอร์มตู้ชาร์จของ vendor ที่รอ planner ของ vendor — ชั้นแรกเป็นของ planner vendor (ต้นทางยังตรวจไม่ได้)
+    const vendorPending = openedSection?.vendor_review === "pending";
+    const vendorReviewing = viewing && !!currentJob?.vendor_reviewer && vendorPending
+      && String(openedSection?.owner ?? "").trim().toLowerCase() === currentJob.vendor_reviewer
       && !!openedSection?.report_id && sectionStatus === "wait for approve";
+    const approving = vendorReviewing || (viewing && canApprove && inReview && !vendorPending
+      && !!openedSection?.report_id && sectionStatus === "wait for approve");
     // ส่วนนี้โดนตีกลับและยังไม่ได้ส่งใหม่ — บอกช่างว่าต้องแก้อะไร
     const sectionRejectRemark = sectionStatus === "draft" ? (openedSection?.reject_remark ?? "") : "";
     const canEditSent = viewing && PM_EDIT_SENT_ROLES.includes(me?.role ?? "") && !!openedSection?.report_id
       && openedSection?.editable !== false
+      // planner ของ vendor อนุมัติฟอร์มตู้ชาร์จนี้แล้ว — ช่างแก้ไม่ได้จนกว่าจะถูกตีกลับ (backend กันซ้ำ)
+      && !(openedSection?.vendor_review === "approved" && !roleCanApprove)
       && !inUseByOther(openedSection)
       && !["closed", "submitted"].includes(sectionStatus)
       && (currentJob?.status === "draft" || approving);
@@ -1259,7 +1326,9 @@ export default function StationPmJobTables() {
                 {t("rejectSection", lang)}
                 {openedSection && <span className="tw-font-semibold tw-text-blue-gray-500">· {pick(openedSection.label, lang)}</span>}
               </h3>
-              <p className="tw-mb-3 tw-text-sm tw-text-blue-gray-600">{t("rejectSectionConfirm", lang)}</p>
+              <p className="tw-mb-3 tw-text-sm tw-text-blue-gray-600">
+                {t(vendorReviewing ? "vendorRejectSectionConfirm" : "rejectSectionConfirm", lang)}
+              </p>
               <label className="tw-mb-1 tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800">
                 {t("rejectReason", lang)} <span className="tw-text-red-500">*</span>
               </label>
@@ -1358,6 +1427,9 @@ export default function StationPmJobTables() {
         ? `${t("closeJobMissing", lang)} ${myParty.missing.map((m) => pick(m, lang)).join(", ")}`
         : undefined;
     const showCloseButton = job.status === "draft" && (!job.split || !!myParty || canPickAny);
+    // ฝ่าย vendor ที่ส่งงานแล้ว รอ planner ของ vendor คนนี้ (หรือ admin) อนุมัติ
+    const vendorTargets = (job.parties ?? []).filter((p) => p.vendor_review === "pending"
+      && (job.vendor_reviewer ? p.key === job.vendor_reviewer : me?.role === "admin"));
     const closeJobButton = showCloseButton && (
       <span title={closeHint}>
         <Button
@@ -1465,14 +1537,18 @@ export default function StationPmJobTables() {
               </div>
             )}
             {/* ใบที่แบ่งงานหลายฝ่าย — ใครส่งงานแล้วบ้าง */}
-            {job.split && job.status === "draft" && (
+            {(job.split || job.parties?.some((p) => !!p.vendor_review)) && job.status === "draft" && (
               <div className="tw-mt-4">
                 <div className="tw-mb-1.5 tw-text-xs tw-font-semibold tw-text-gray-600">{t("partiesTitle", lang)}</div>
                 <div className="tw-flex tw-flex-wrap tw-gap-2 tw-text-xs">
                   {(job.parties ?? []).map((p) => {
                     const entry = job.work_entries?.find((e) => e.key === p.key);
                     const state = p.submitted ? "sent" : p.ready ? "waiting" : "notReady";
-                    const cls = state === "sent"
+                    // ส่งแล้วแต่ยังรอ planner ของ vendor = ยังไม่ถึง planner ต้นทาง (สีเหลือง)
+                    const vendorWait = state === "sent" && p.vendor_review === "pending";
+                    const cls = vendorWait
+                      ? "tw-border-amber-200 tw-bg-amber-50 tw-text-amber-800"
+                      : state === "sent"
                       ? "tw-border-green-200 tw-bg-green-50 tw-text-green-700"
                       : state === "waiting"
                         ? "tw-border-amber-200 tw-bg-amber-50 tw-text-amber-800"
@@ -1484,8 +1560,12 @@ export default function StationPmJobTables() {
                         : "";
                     return (
                       <span key={p.key} title={title} className={`tw-rounded-full tw-border tw-px-2.5 tw-py-1 tw-font-semibold ${cls}`}>
-                        {state === "sent" ? "✓" : "⏳"} {partyLabel(p)} ·{" "}
+                        {state === "sent" && !vendorWait ? "✓" : "⏳"} {partyLabel(p)} ·{" "}
                         {t(state === "sent" ? "partySent" : state === "waiting" ? "partyWaiting" : "partyNotReady", lang)}
+                        {vendorWait && <> · {t("vendorPending", lang).replace("{p}", partyLabel(p))}</>}
+                        {state === "sent" && p.vendor_review === "approved" && (
+                          <> · {t("vendorApproved", lang).replace("{p}", partyLabel(p))}</>
+                        )}
                       </span>
                     );
                   })}
@@ -1624,8 +1704,41 @@ export default function StationPmJobTables() {
           <div className="tw-mt-6 tw-flex tw-justify-end">{closeJobButton}</div>
         )}
 
+        {/* planner ของ vendor (เช่น EDS) — อนุมัติงานตู้ชาร์จของฝ่ายตัวเองทีเดียว แล้วส่งต่อให้ planner ต้นทาง
+            admin อนุมัติแทนได้ทุกราย */}
+        {job.status === "draft" && vendorTargets.length > 0 && (
+          <div className="tw-mt-6 tw-flex tw-flex-col tw-items-end tw-gap-2">
+            {vendorTargets.map((p) => (
+              <React.Fragment key={p.key}>
+                <p className="tw-text-right tw-text-xs tw-text-amber-800">
+                  {t("vendorReviewHint", lang).replaceAll("{p}", partyLabel(p))}
+                </p>
+                <Button size="sm" disabled={acting} onClick={() => setVendorApproveParty(p)} className="tw-flex tw-items-center tw-gap-1.5 tw-bg-green-600">
+                  <CheckCircleIcon className="tw-h-4 tw-w-4" />
+                  {t("vendorApprove", lang).replace("{p}", partyLabel(p))}
+                </Button>
+              </React.Fragment>
+            ))}
+          </div>
+        )}
+
+        <Dialog open={!!vendorApproveParty} handler={() => { if (!acting) setVendorApproveParty(null); }} size="sm">
+          <DialogHeader>{t("vendorApproveTitle", lang).replace("{p}", partyLabel(vendorApproveParty ?? undefined))}</DialogHeader>
+          <DialogBody>
+            <p className="tw-text-sm tw-text-gray-600">
+              {t("vendorApproveConfirm", lang).replaceAll("{p}", partyLabel(vendorApproveParty ?? undefined))}
+            </p>
+          </DialogBody>
+          <DialogFooter className="tw-gap-2">
+            <Button variant="text" disabled={acting} onClick={() => setVendorApproveParty(null)}>{t("cancel", lang)}</Button>
+            <Button color="green" disabled={acting} onClick={() => { if (vendorApproveParty) void vendorApprove(vendorApproveParty); }}>
+              {acting ? t("vendorApproving", lang) : t("vendorApprove", lang).replace("{p}", partyLabel(vendorApproveParty ?? undefined))}
+            </Button>
+          </DialogFooter>
+        </Dialog>
+
         {/* ปุ่มอนุมัติ/ตีกลับ — ทั้งใบพร้อมกัน (มีแค่ปุ่ม ไม่มีแถบข้อความ) */}
-        {waiting && canApprove && (
+        {waiting && jobCanApprove(job) && (
           <div className="tw-mt-6 tw-flex tw-justify-end tw-gap-2">
             <Button size="sm" variant="outlined" disabled={acting} onClick={() => { setRejectRemark(""); setRejectOpen(true); }}>
               {t("rejectAll", lang)}
