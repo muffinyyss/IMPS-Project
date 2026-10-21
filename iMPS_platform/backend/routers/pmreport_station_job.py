@@ -1891,6 +1891,10 @@ async def build_job_pdf(job: dict, station_id: str, lang: str, part: str = "") -
         data = await asyncio.to_thread(_render_job_pdf, parts, lang)
     except ValueError:
         raise HTTPException(status_code=500, detail="สร้าง PDF ของใบนี้ไม่สำเร็จ")
+    except Exception as e:
+        # ต่อ PDF ไม่สำเร็จ (เช่น server ยังไม่ได้ติดตั้ง pypdf) — บอกสาเหตุแทน "Internal Server Error" เปล่า ๆ
+        log.exception(f"  ⚠️ ต่อ PDF ใบ {job.get('issue_id') or job_id} ไม่สำเร็จ")
+        raise HTTPException(status_code=500, detail=f"สร้าง PDF ของใบนี้ไม่สำเร็จ: {type(e).__name__}: {e}")
 
     if closed:
         try:
