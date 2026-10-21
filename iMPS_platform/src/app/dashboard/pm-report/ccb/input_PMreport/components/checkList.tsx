@@ -1,4 +1,5 @@
 "use client";
+import { usePmConfirm } from "@/app/dashboard/pm-report/components/PmConfirmDialog";
 
 import React, { useMemo, useCallback, useRef, useState, useEffect } from "react";
 import {
@@ -1332,6 +1333,8 @@ function getPhotoKeyForQuestion(q: Question, subKey?: string): number {
 
 export default function CCBPMReport() {
     const { lang } = useLanguage();
+    // ยืนยันก่อนบันทึกทุกครั้ง — แบบเดียวกับปุ่มบันทึกของหน้า CM
+    const { ask: askConfirm, dialog: confirmDialog } = usePmConfirm(lang);
     const [me, setMe] = useState<Me | null>(null);
     const router = useRouter();
     const [submitting, setSubmitting] = useState(false);
@@ -2439,7 +2442,7 @@ export default function CCBPMReport() {
                         <div className="tw-mt-3 tw-flex tw-flex-col sm:tw-flex-row tw-justify-end tw-gap-2 sm:tw-gap-3">
                             {!reviewMode && cancelEditAction}
                             {reviewMode ? reviewAction : (
-                                <Button type="button" onClick={onFinalSave} disabled={!canFinalSave || submitting}
+                                <Button type="button" onClick={() => askConfirm("saveReport", onFinalSave)} disabled={!canFinalSave || submitting}
                                     className="tw-text-sm tw-py-2.5 tw-w-full sm:tw-w-auto tw-bg-gray-800 hover:tw-bg-gray-900 disabled:tw-bg-gray-800 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed">
                                     {submitting ? t("saving", lang) : t("save", lang)}
                                 </Button>
@@ -2460,6 +2463,7 @@ export default function CCBPMReport() {
                     />
                 </div>
             )}
+            {confirmDialog}
         </section>
     );
 }

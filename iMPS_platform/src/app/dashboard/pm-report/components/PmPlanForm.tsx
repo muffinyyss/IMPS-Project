@@ -18,6 +18,7 @@ import { apiFetch } from "@/utils/api";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
 import PmAssigneePicker from "./PmAssigneePicker";
 import PmLockBanner from "./PmLockBanner";
+import { usePmConfirm } from "./PmConfirmDialog";
 import { planLockPath, useEditLock } from "@/app/dashboard/pm-report/lib/lock";
 import { ChargerBySelect, ChargerByTag, ChargerHandoffNote, ownTeamLabel } from "./PmChargerBy";
 import {
@@ -210,6 +211,8 @@ function SectionHeader({ no, title, right }: { no: number; title: string; right?
 
 export default function PmPlanForm({ source, identifier, wonum, onSaved, onCancel, onStart }: Props) {
   const { lang } = useLanguage();
+  // ยืนยันก่อนกดปุ่มที่เปลี่ยนข้อมูลทุกครั้ง — แบบเดียวกับหน้า CM
+  const { ask: askConfirm, dialog: confirmDialog } = usePmConfirm(lang);
 
   const [wo, setWo] = useState<MaximoWorkOrder | null>(null);
   const [choices, setChoices] = useState<EquipmentChoices | null>(null);
@@ -1002,7 +1005,7 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
                   )}
                   {editing && (
                     <Button
-                      onClick={onSave}
+                      onClick={() => askConfirm("saveEdit", onSave)}
                       disabled={locked || saving || !wo || planBusy}
                       className="tw-bg-gray-800 hover:!tw-bg-blue-600 tw-text-white hover:tw-shadow-lg hover:!tw-shadow-blue-500/30 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed disabled:tw-shadow-none"
                     >
@@ -1011,7 +1014,7 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
                   )}
                   {vEditing && (
                     <Button
-                      onClick={onSaveVendor}
+                      onClick={() => askConfirm("saveEdit", onSaveVendor)}
                       disabled={saving || !wo || planBusy}
                       className="tw-bg-gray-800 hover:!tw-bg-blue-600 tw-text-white hover:tw-shadow-lg hover:!tw-shadow-blue-500/30 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed disabled:tw-shadow-none"
                     >
@@ -1022,7 +1025,7 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
                   {/* วางแผนแล้วไม่ต้องมีปุ่ม Assign ให้กดทับ — ช่างก็ไม่ต้องเห็นปุ่มจาง */}
                   {canPlan && !alreadyPlanned && (
                     <Button
-                      onClick={onSave}
+                      onClick={() => askConfirm("assign", onSave)}
                       disabled={locked || saving || !wo || planBusy}
                       className="tw-bg-gray-800 hover:!tw-bg-blue-600 tw-text-white hover:tw-shadow-lg hover:!tw-shadow-blue-500/30 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed disabled:tw-shadow-none"
                     >
@@ -1033,7 +1036,7 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
                   {/* planner ของ vendor: Assign แผนของบริษัทตัวเอง */}
                   {vendorTurn && (
                     <Button
-                      onClick={onSaveVendor}
+                      onClick={() => askConfirm("assign", onSaveVendor)}
                       disabled={saving || !wo || planBusy}
                       className="tw-bg-gray-800 hover:!tw-bg-blue-600 tw-text-white hover:tw-shadow-lg hover:!tw-shadow-blue-500/30 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed disabled:tw-shadow-none"
                     >
@@ -1046,7 +1049,7 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
                   {showStart && (
                     <Button
                       type="button"
-                      onClick={() => onStart?.()}
+                      onClick={() => askConfirm("startPm", () => onStart?.())}
                       disabled={!canStart}
                       className="tw-bg-amber-500 hover:tw-bg-amber-600 tw-text-white tw-font-semibold hover:tw-shadow-lg hover:tw-shadow-amber-500/30 tw-transition-all disabled:tw-opacity-50 disabled:tw-shadow-none"
                     >
@@ -1059,6 +1062,7 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
           )}
         </div>
       </form>
+      {confirmDialog}
     </section>
   );
 }

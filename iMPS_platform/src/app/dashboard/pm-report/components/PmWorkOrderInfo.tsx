@@ -14,6 +14,7 @@ import Image from "next/image";
 import { Button, Input } from "@material-tailwind/react";
 import { ArrowLeftIcon, ExclamationTriangleIcon } from "@heroicons/react/24/outline";
 import { ChargerByTag, ownTeamLabel } from "./PmChargerBy";
+import { usePmConfirm } from "./PmConfirmDialog";
 import { apiFetch } from "@/utils/api";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
 import {
@@ -104,6 +105,8 @@ const LABEL = "tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-
 
 export default function PmWorkOrderInfo({ source, identifier, wonum, onStart, onCancel }: Props) {
   const { lang } = useLanguage();
+  // ยืนยันก่อนเริ่ม PM — แบบเดียวกับหน้า CM
+  const { ask: askConfirm, dialog: confirmDialog } = usePmConfirm(lang);
   const [wo, setWo] = useState<MaximoWorkOrder | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -368,7 +371,7 @@ export default function PmWorkOrderInfo({ source, identifier, wonum, onStart, on
           <Button
             key={c?.sn ?? `start-${i}`}
             type="button"
-            onClick={() => onStart(c?.sn ?? chargers[0]?.sn ?? undefined)}
+            onClick={() => askConfirm("startPm", () => onStart(c?.sn ?? chargers[0]?.sn ?? undefined))}
             disabled={loading || !wo || equipment.length === 0 || waitingVendors.length > 0}
             className="tw-bg-amber-500 hover:tw-bg-amber-600 tw-text-white tw-font-semibold tw-text-base tw-px-8 tw-py-3 tw-rounded-xl hover:tw-shadow-lg hover:tw-shadow-amber-500/30 tw-transition-all disabled:tw-opacity-50 disabled:tw-shadow-none"
           >
@@ -376,6 +379,7 @@ export default function PmWorkOrderInfo({ source, identifier, wonum, onStart, on
           </Button>
         ))}
       </div>
+      {confirmDialog}
     </section>
   );
 }

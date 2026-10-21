@@ -1,4 +1,5 @@
 "use client";
+import { usePmConfirm } from "@/app/dashboard/pm-report/components/PmConfirmDialog";
 
 import React, { useMemo, useCallback, useRef, useState, useEffect } from "react";
 import {
@@ -986,6 +987,8 @@ async function fetchReport(reportId: string, stationId: string) {
 // ==================== MAIN COMPONENT ====================
 export default function MDBPMForm() {
     const { lang } = useLanguage();
+    // ยืนยันก่อนบันทึกทุกครั้ง — แบบเดียวกับปุ่มบันทึกของหน้า CM
+    const { ask: askConfirm, dialog: confirmDialog } = usePmConfirm(lang);
     const [me, setMe] = useState<Me | null>(null);
     const router = useRouter();
     const [submitting, setSubmitting] = useState(false);
@@ -2119,7 +2122,7 @@ export default function MDBPMForm() {
                         <div className="tw-mt-3 tw-flex tw-flex-col sm:tw-flex-row tw-justify-end tw-gap-2 sm:tw-gap-3">
                             {!reviewMode && cancelEditAction}
                             {reviewMode ? reviewAction : (
-                                <Button type="button" onClick={onFinalSave} disabled={!canFinalSave || submitting}
+                                <Button type="button" onClick={() => askConfirm("saveReport", onFinalSave)} disabled={!canFinalSave || submitting}
                                     className="tw-text-sm tw-py-2.5 tw-bg-gray-800 hover:tw-bg-gray-900"
                                     title={!canFinalSave ? t("allNotComplete", lang) : undefined}>
                                     {submitting ? t("saving", lang) : t("save", lang)}
@@ -2158,6 +2161,7 @@ export default function MDBPMForm() {
                     />
                 </div>
             )}
+            {confirmDialog}
         </section>
     );
 }
