@@ -70,6 +70,8 @@ type PMRow = {
   reject_remark?: string;
   /** vendor ที่ส่งงานตู้ชาร์จแล้ว รอ planner ของ vendor อนุมัติก่อนถึง planner ต้นทาง (เช่น ["EDS"]) */
   vendor_review?: string[];
+  /** อนุมัติปิดแล้ว แต่ส่งปิดงานเข้า Maximo ยังไม่ผ่าน (ระบบลองส่งใหม่เองเป็นระยะ) */
+  maximo_pending?: boolean;
   /** ใบงานส่งต่อมาให้บริษัทของคนที่ดูอยู่ และยังไม่ได้วางแผน — สำหรับคนนี้ใบนี้ยังเป็น Open */
   vendor_pending_for_me?: boolean;
 };
@@ -413,6 +415,8 @@ export default function PMListPage() {
       },
       stage: { open: "Open", in_progress: "In Progress", rejected: "Reject", wait_approve: "Wait for approve", closed: "Closed" },
       vendorWait: "รอ {p} อนุมัติ",
+      maximoPending: "ยังไม่ปิดใน Maximo",
+      maximoPendingTitle: "ส่งปิดงานเข้า Maximo ไม่ผ่าน ระบบกำลังลองส่งใหม่ — เปิดใบ PM เพื่อดูสถานะหรือกดส่งใหม่",
     },
     en: {
       pageTitle: "PM List",
@@ -459,6 +463,8 @@ export default function PMListPage() {
       },
       stage: { open: "Open", in_progress: "In Progress", rejected: "Reject", wait_approve: "Wait for approve", closed: "Closed" },
       vendorWait: "Waiting for {p} approval",
+      maximoPending: "Not closed in Maximo",
+      maximoPendingTitle: "Closing in Maximo failed and is being retried — open the PM document to see the status or resend",
     },
   }[lang]), [lang]);
 
@@ -1072,6 +1078,14 @@ export default function PMListPage() {
                           ? t.vendorWait.replace("{p}", r.vendor_review.join(", "))
                           : stageLabel[stage]}
                       </button>
+                      {stage === "closed" && r.maximo_pending && (
+                        <span
+                          title={t.maximoPendingTitle}
+                          className="tw-ml-1.5 tw-whitespace-nowrap tw-rounded-full tw-bg-red-100 tw-px-2 tw-py-0.5 tw-text-[10px] tw-font-semibold tw-text-red-700"
+                        >
+                          {t.maximoPending}
+                        </span>
+                      )}
                     </td>
                     <td className="tw-px-4 tw-py-3 tw-text-center">
                       {pdfHref ? (

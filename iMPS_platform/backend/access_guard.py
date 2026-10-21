@@ -69,7 +69,7 @@ def _assert_charger_id_access(current, charger_id: str) -> None:
     station_id = _station_id_for_charger_id(charger_id)
     if not station_id or not user_can_access_station(current, station_id):
         raise HTTPException(status_code=403, detail="Forbidden station")
-    doc = charger_collection.find_one({"_id": ObjectId(charger_id)}, {"brand": 1})
+    doc = charger_collection.find_one({"_id": ObjectId(charger_id)}, {"brand": 1, "SN": 1})
     if not charger_in_scope(doc, brand_scope_of(current)):
         raise HTTPException(status_code=403, detail="Forbidden charger brand")
 

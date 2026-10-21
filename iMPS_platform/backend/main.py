@@ -184,9 +184,13 @@ async def lifespan(app: FastAPI):
     await _warm_maximo_master_data()
     refresher = asyncio.create_task(_refresh_maximo_master_data())
     unified_task = asyncio.create_task(_keep_unified_fresh())
+    # ใบ PM ที่อนุมัติแล้วแต่ส่งปิดงานเข้า Maximo ไม่ผ่าน → ลองส่งใหม่เองเป็นระยะ
+    from services import pm_maximo_retry
+    pm_retry_task = asyncio.create_task(pm_maximo_retry.run_forever())
 
     yield
 
+    pm_retry_task.cancel()
     unified_task.cancel()
     refresher.cancel()
     # await stop_watcher()  # Auto CM ปิดไว้ชั่วคราว

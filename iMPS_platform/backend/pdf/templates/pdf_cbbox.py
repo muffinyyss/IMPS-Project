@@ -848,11 +848,21 @@ def _draw_signature_block(
 
     # ===== แถวชื่อ =====
     pdf.set_font(base_font, "", FONT_MAIN)
+    # ชื่อผู้ทำ / ผู้อนุมัติ / พยาน — PDF ของการ์ดในใบ PM สถานีส่งมาทาง doc["_signers"] (ไม่มี = เว้นช่องไว้เขียนเอง)
+    names = list(getattr(pdf, "_signer_names", None) or [])
     x_pos = x_table
-    for w in col_widths:
+    for i, w in enumerate(col_widths):
         pdf.rect(x_pos, y, w, row_h_name)
         pdf.set_xy(x_pos, y)
-        pdf.cell(w, row_h_name, "(                                                     )", align="C")
+        name = str(names[i]).strip() if i < len(names) and names[i] else ""
+        if name:
+            text = f"( {name} )"
+            while len(name) > 1 and pdf.get_string_width(text) > w - 2:
+                name = name[:-1]
+                text = f"( {name}… )"
+        else:
+            text = "(                                                     )"
+        pdf.cell(w, row_h_name, text, align="C")
         x_pos += w
     y += row_h_name
 
@@ -1412,6 +1422,8 @@ def make_pm_report_html_pdf_bytes(
     dropdownQ2 = str(doc.get("dropdownQ2", "-"))
 
     pdf = ReportPDF(unit="mm", format="A4", issue_id=issue_id, doc_name=doc_name)
+    _signers = doc.get("_signers") or {}
+    pdf._signer_names = [str(_signers.get(k) or "") for k in ("performed", "approved", "witnessed")]
     pdf._pm_date_th = pm_date_th
     pdf._section = "checklist"
     pdf._show_page_no = show_page_no

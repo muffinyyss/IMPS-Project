@@ -18,7 +18,7 @@ from config import (
 )
 from deps import UserClaims, get_current_user
 from brand_scope import (
-    brand_regex, assert_charger_in_scope, brand_scope_of, filter_chargers,
+    assert_charger_in_scope, brand_scope_of, charger_brand_clause, filter_chargers,
     station_brand_clause,
 )
 from routers.pm_helpers import (
@@ -1744,7 +1744,7 @@ def get_charger_info(
         # ค้นด้วย station_id ได้ตู้ตัวไหนก็ได้ในสถานี — สถานีที่ปนยี่ห้อต้องคัดตั้งแต่ query
         # ไม่งั้นจะสุ่มได้ตู้ยี่ห้ออื่นแล้ว 403 ทั้งที่ตู้ที่ตัวเองดูแลก็มีอยู่
         if scope:
-            query["brand"] = brand_regex(scope)
+            query.update(charger_brand_clause(scope))
 
     doc = charger_collection.find_one(query)
     if not doc:
@@ -1884,7 +1884,7 @@ async def get_station_availability_bulk(current: UserClaims = Depends(get_curren
     # สถานีที่ปนยี่ห้อ — นับเฉพาะหัวชาร์จของตู้ที่บริษัทตัวเองดูแล
     scope = brand_scope_of(current)
     if scope:
-        charger_query["brand"] = brand_regex(scope)
+        charger_query.update(charger_brand_clause(scope))
 
     pairs = [
         (c["station_id"], c["SN"].strip())
@@ -1928,7 +1928,7 @@ async def get_station_availability(
     charger_query: Dict[str, Any] = {"station_id": station_id}
     scope = brand_scope_of(current)
     if scope:
-        charger_query["brand"] = brand_regex(scope)
+        charger_query.update(charger_brand_clause(scope))
     chargers = list(charger_collection.find(charger_query, {"SN": 1}))
 
     total = 0

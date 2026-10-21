@@ -248,10 +248,13 @@ async def _apply_job_status(reports: list[dict], chargers: list[dict]) -> None:
             _pending_vendor_reviews(wos.get(wonum), job.get("work_entries") or [])
             if job_status == pm_flow.PM_STATUS_DRAFT else []
         )
+        # อนุมัติปิดแล้ว แต่ส่งปิดงานเข้า Maximo ยังไม่ผ่าน (auto-retry กำลังลองอยู่ / หยุดลองแล้ว)
+        maximo_pending = bool(job.get("maximo_pending")) and job_status == pm_flow.PM_STATUS_CLOSED
         for r in rows:
             r["status"] = job_status
             r["reject_remark"] = reject_remark
             r["vendor_review"] = vendor_review
+            r["maximo_pending"] = maximo_pending
 
 
 def _pending_vendor_reviews(wo: dict | None, entries: list) -> list[str]:
@@ -313,7 +316,8 @@ async def _job_docs(keys) -> dict[tuple[str, str], dict]:
     async def one(station_id: str, ids: list[ObjectId]) -> list[tuple[tuple[str, str], dict]]:
         try:
             cursor = get_stationpmjob_collection_for(station_id).find(
-                {"_id": {"$in": ids}}, {"_id": 1, "wonum": 1, "submitted_at": 1, "na_sections": 1, "reject_remark": 1, "work_entries": 1}
+                {"_id": {"$in": ids}}, {"_id": 1, "wonum": 1, "submitted_at": 1, "na_sections": 1, "reject_remark": 1, "work_entries": 1,
+                 "maximo_pending": 1}
             )
             return [((station_id, str(d["_id"])), d) async for d in cursor]
         except Exception:
