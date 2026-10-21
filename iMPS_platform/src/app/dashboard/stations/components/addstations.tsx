@@ -3,7 +3,7 @@ import LoadingOverlay from "../../components/Loadingoverlay";
 import { ensureViewableImage, looksLikeImageFile } from "@/utils/heic";
 import { useEffect, useState, useMemo, useRef } from "react";
 import { apiFetch } from "@/utils/api";
-import { WARRANTY_STATUS_OPTIONS, INVESTMENT_SCOPE_OPTIONS, MultiSelectDropdown, VendorSelect, LatLngInput, parseLatLng } from "./stationOptions";
+import { WARRANTY_STATUS_OPTIONS, INVESTMENT_SCOPE_OPTIONS, MultiSelectDropdown, VendorSelect, LatLngInput, parseLatLng, EMPTY_LATLNG, type LatLngText } from "./stationOptions";
 import {
     Dialog,
     DialogHeader,
@@ -52,8 +52,8 @@ export type StationForm = {
     warranty_status: string;
     investment_scope: string[];
     io_code: string;
-    /** ข้อความพิกัด "lat, lng" — แปลงเป็น latitude/longitude ตอนส่ง */
-    coords: string;
+    /** พิกัดสถานี (ข้อความในช่องกรอก) — แปลงเป็น latitude/longitude ตอนส่ง */
+    coords: LatLngText;
     stationImages: File[];
     mdbImages: File[];
 };
@@ -322,7 +322,7 @@ export default function AddStationModal({
                 stationInfo: "ข้อมูลสถานี", stationName: "ชื่อสถานี", owner: "เจ้าของ",
                 status: "สถานะ", active: "เปิดใช้งาน", inactive: "ปิดใช้งาน",
                 maximoLocation: "Location", maximoDesc: "Description",
-                warrantyStatus: "การรับประกัน", investmentScope: "สัดส่วนการลงทุน", ioCode: "รหัสค่าใช้จ่าย (IO)", coordsInvalid: "รูปแบบพิกัดไม่ถูกต้อง (ตัวอย่าง 13.7563, 100.5018)",
+                warrantyStatus: "การรับประกัน", investmentScope: "สัดส่วนการลงทุน", ioCode: "รหัสค่าใช้จ่าย (IO)", coordsInvalid: "พิกัดไม่ถูกต้อง — กรอกทั้งละติจูดและลองจิจูด (เช่น 13.7563 และ 100.5018)",
                 selectPlaceholder: "เลือก",
                 stationImages: "รูปภาพสถานี", station: "สถานี", mdb: "MDB",
                 chargers: "ตู้ชาร์จ", addCharger: "เพิ่มตู้ชาร์จ", chargerNo: "ตู้ชาร์จ #",
@@ -360,7 +360,7 @@ export default function AddStationModal({
                 stationInfo: "Station Information", stationName: "Station Name", owner: "Owner",
                 status: "Status", active: "Active", inactive: "Inactive",
                 maximoLocation: "Location", maximoDesc: "Description",
-                warrantyStatus: "Warranty", investmentScope: "Investment Scope", ioCode: "Expense Code (IO)", coordsInvalid: "Invalid coordinates (e.g. 13.7563, 100.5018)",
+                warrantyStatus: "Warranty", investmentScope: "Investment Scope", ioCode: "Expense Code (IO)", coordsInvalid: "Invalid coordinates — fill both latitude and longitude (e.g. 13.7563 and 100.5018)",
                 selectPlaceholder: "Select",
                 stationImages: "Station Images", station: "Station", mdb: "MDB",
                 chargers: "Chargers", addCharger: "Add Charger", chargerNo: "Charger #",
@@ -400,7 +400,7 @@ export default function AddStationModal({
     /* ── state ── */
     const [station, setStation] = useState<StationForm>({
         station_id: "", station_name: "", owner: "", is_active: true,
-        maximo_location: "", maximo_desc: "", warranty_status: "", investment_scope: [], io_code: "", coords: "",
+        maximo_location: "", maximo_desc: "", warranty_status: "", investment_scope: [], io_code: "", coords: EMPTY_LATLNG,
         stationImages: [], mdbImages: [],
     });
     const [stationPreviews, setStationPreviews] = useState<Record<StationImageKind, string[]>>({ station: [], mdb: [] });
@@ -768,7 +768,7 @@ export default function AddStationModal({
     const resetAndClose = () => {
         Object.values(stationPreviews).forEach((urls) => urls.forEach((u) => u && URL.revokeObjectURL(u)));
         Object.values(chargerPreviews).forEach((p) => { p.charger?.forEach((u) => URL.revokeObjectURL(u)); p.device?.forEach((u) => URL.revokeObjectURL(u)); });
-        setStation({ station_id: "", station_name: "", owner: isAdmin ? "" : currentUser, is_active: true, maximo_location: "", maximo_desc: "", warranty_status: "", investment_scope: [], io_code: "", coords: "", stationImages: [], mdbImages: [] });
+        setStation({ station_id: "", station_name: "", owner: isAdmin ? "" : currentUser, is_active: true, maximo_location: "", maximo_desc: "", warranty_status: "", investment_scope: [], io_code: "", coords: EMPTY_LATLNG, stationImages: [], mdbImages: [] });
         setStationPreviews({ station: [], mdb: [] });
         setChargerPreviews({});
         setChargers([]);

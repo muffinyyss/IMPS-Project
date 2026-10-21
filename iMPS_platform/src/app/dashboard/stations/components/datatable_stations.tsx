@@ -18,7 +18,7 @@ import {
 } from "@heroicons/react/24/solid";
 import { useRouter } from "next/navigation";
 import AddStation, { type NewStationPayload, MaximoLocationSelect, type MaximoLocation } from "@/app/dashboard/stations/components/addstations";
-import { WARRANTY_STATUS_OPTIONS, INVESTMENT_SCOPE_OPTIONS, MultiSelectDropdown, VendorSelect, LatLngInput, parseLatLng, formatLatLng } from "@/app/dashboard/stations/components/stationOptions";
+import { WARRANTY_STATUS_OPTIONS, INVESTMENT_SCOPE_OPTIONS, MultiSelectDropdown, VendorSelect, LatLngInput, parseLatLng, toLatLngText, type LatLngText } from "@/app/dashboard/stations/components/stationOptions";
 import { apiFetch, getSessionProfile } from "@/utils/api";
 import { isStaffRole, staffChargerPath } from "@/utils/roles";
 import { startVisiblePoll } from "@/utils/visible-poll";
@@ -341,7 +341,7 @@ export function SearchDataTables() {
 
   const [openEditStation, setOpenEditStation] = useState(false);
   const [editingStation, setEditingStation] = useState<StationRow | null>(null);
-  const [editStationForm, setEditStationForm] = useState<{ station_name: string; is_active: boolean; maximo_location: string; maximo_desc: string; warranty_status: string; investment_scope: string[]; io_code: string; coords: string }>({ station_name: "", is_active: true, maximo_location: "", maximo_desc: "", warranty_status: "", investment_scope: [], io_code: "", coords: "" });
+  const [editStationForm, setEditStationForm] = useState<{ station_name: string; is_active: boolean; maximo_location: string; maximo_desc: string; warranty_status: string; investment_scope: string[]; io_code: string; coords: LatLngText }>({ station_name: "", is_active: true, maximo_location: "", maximo_desc: "", warranty_status: "", investment_scope: [], io_code: "", coords: { lat: "", lng: "" } });
 
   const isFlexxfast = (brand: string) => brand.trim().toLowerCase() === "flexxfast";
   const [openEditCharger, setOpenEditCharger] = useState(false);
@@ -461,7 +461,7 @@ export function SearchDataTables() {
         stationName: "ชื่อสถานี", chargers: "ตู้ชาร์จ", owner: "เจ้าของ", technician: "ช่างเทคนิค",
         active: "เปิดใช้งาน", inactive: "ปิดใช้งาน", actions: "จัดการ", online: "ออนไลน์", offline: "ออฟไลน์",
         maximoLocation: "Maximo Location", maximoDescription: "Maximo Description", ocppUrl: "OCPP URL", ocppSection: "🔌 OCPP",
-        warrantyStatus: "การรับประกัน", investmentScope: "สัดส่วนการลงทุน", selectPlaceholder: "เลือก", ioCode: "รหัสค่าใช้จ่าย (IO)", coordsInvalid: "รูปแบบพิกัดไม่ถูกต้อง (ตัวอย่าง 13.7563, 100.5018)",
+        warrantyStatus: "การรับประกัน", investmentScope: "สัดส่วนการลงทุน", selectPlaceholder: "เลือก", ioCode: "รหัสค่าใช้จ่าย (IO)", coordsInvalid: "พิกัดไม่ถูกต้อง — กรอกทั้งละติจูดและลองจิจูด (เช่น 13.7563 และ 100.5018)",
         maximoSearch: "ค้นหา location...", maximoEmpty: "ไม่พบ location",
         chargerBoxId: "รหัสตู้ชาร์จ (Charge Box ID)", chargerType: "ประเภทตู้ชาร์จ",
         brand: "ยี่ห้อ", vendor: "ผู้จำหน่าย (Vendor)", model: "รุ่น", serialNumber: "S/N", workOrder: "W/O", power: "กำลังไฟ",
@@ -500,7 +500,7 @@ export function SearchDataTables() {
         stationName: "Station Name", chargers: "Chargers", owner: "Owner", technician: "Technician",
         active: "Active", inactive: "Inactive", actions: "Actions", online: "online", offline: "offline",
         maximoLocation: "Maximo Location", maximoDescription: "Maximo Description", ocppUrl: "OCPP URL", ocppSection: "🔌 OCPP",
-        warrantyStatus: "Warranty", investmentScope: "Investment Scope", selectPlaceholder: "Select", ioCode: "Expense Code (IO)", coordsInvalid: "Invalid coordinates (e.g. 13.7563, 100.5018)",
+        warrantyStatus: "Warranty", investmentScope: "Investment Scope", selectPlaceholder: "Select", ioCode: "Expense Code (IO)", coordsInvalid: "Invalid coordinates — fill both latitude and longitude (e.g. 13.7563 and 100.5018)",
         maximoSearch: "Search location...", maximoEmpty: "No location found",
         chargerBoxId: "Charge Box ID", chargerType: "Charger Type",
         brand: "Brand", vendor: "Vendor", model: "Model", serialNumber: "S/N", workOrder: "W/O", power: "Power",
@@ -646,7 +646,7 @@ export function SearchDataTables() {
 
   useEffect(() => {
     if (openEditStation && editingStation) {
-      setEditStationForm({ station_name: editingStation.station_name ?? "", is_active: !!editingStation.is_active, maximo_location: editingStation.maximo_location ?? "", maximo_desc: editingStation.maximo_desc ?? "", warranty_status: editingStation.warranty_status ?? "", investment_scope: editingStation.investment_scope ?? [], io_code: editingStation.io_code ?? "", coords: formatLatLng(editingStation.latitude, editingStation.longitude) });
+      setEditStationForm({ station_name: editingStation.station_name ?? "", is_active: !!editingStation.is_active, maximo_location: editingStation.maximo_location ?? "", maximo_desc: editingStation.maximo_desc ?? "", warranty_status: editingStation.warranty_status ?? "", investment_scope: editingStation.investment_scope ?? [], io_code: editingStation.io_code ?? "", coords: toLatLngText(editingStation.latitude, editingStation.longitude) });
       const ownerName = editingStation.username?.trim() ?? "";
       const ownerProfile = owners.find(o => o.name.trim().toLowerCase() === ownerName.toLowerCase());
       setSelectedOwnerName(ownerProfile?.name ?? "");

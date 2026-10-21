@@ -32,7 +32,7 @@ KEY_CANDIDATES = {
 }
 LAT_CANDIDATES = ["latitude", "lat", "ละติจูด", "ละติจูต"]
 LNG_CANDIDATES = ["longitude", "lng", "long", "lon", "ลองจิจูด", "ลองติจูด"]
-COORD_CANDIDATES = ["พิกัด", "coordinates", "coordinate", "coords", "lat,long", "lat,lng", "latlong", "latlng", "gps", "location gps", "google map"]
+COORD_CANDIDATES = ["gps", "พิกัด", "coordinates", "coordinate", "coords", "lat,long", "lat,lng", "latlong", "latlng", "gps", "location gps", "google map"]
 
 NUM_PAIR = re.compile(r"(-?\d+(?:\.\d+)?)\s*[,\s]\s*(-?\d+(?:\.\d+)?)")
 
@@ -66,7 +66,8 @@ def in_th(lat, lng):
 
 
 def key_norm(v):
-    return re.sub(r"\s+", " ", str(v or "")).strip().lower()
+    # ไม่สนช่องว่าง/ตัวพิมพ์ — ชื่อสถานีใน Excel กับในระบบมักเว้นวรรคไม่ตรงกัน
+    return re.sub(r"\s+", "", str(v or "")).lower()
 
 
 def main():

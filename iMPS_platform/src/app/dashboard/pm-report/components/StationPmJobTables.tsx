@@ -1426,10 +1426,14 @@ export default function StationPmJobTables() {
       : myParty && !myParty.ready
         ? `${t("closeJobMissing", lang)} ${myParty.missing.map((m) => pick(m, lang)).join(", ")}`
         : undefined;
-    const showCloseButton = job.status === "draft" && (!job.split || !!myParty || canPickAny);
     // ฝ่าย vendor ที่ส่งงานแล้ว รอ planner ของ vendor คนนี้ (หรือ admin) อนุมัติ
     const vendorTargets = (job.parties ?? []).filter((p) => p.vendor_review === "pending"
       && (job.vendor_reviewer ? p.key === job.vendor_reviewer : me?.role === "admin"));
+    // planner ของ vendor ที่กำลังตรวจงานฝ่ายตัวเองอยู่ — เหลือแค่ปุ่มอนุมัติ ไม่ต้องมีปุ่ม "แก้ไขงานที่ส่ง" ซ้อน
+    // (ถ้าต้องให้แก้ ใช้ตีกลับรายฟอร์มแทน)
+    const reviewingOwnParty = !!myParty && vendorTargets.some((p) => p.key === myParty.key);
+    const showCloseButton = job.status === "draft" && !reviewingOwnParty
+      && (!job.split || !!myParty || canPickAny);
     const closeJobButton = showCloseButton && (
       <span title={closeHint}>
         <Button

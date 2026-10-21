@@ -2303,4 +2303,10 @@ def _precache_all_images(doc: dict):
 
 # Public API expected by pdf_routes: generate_pdf(data, lang) -> bytes
 def generate_pdf(data: dict, lang: str = "th", **opts) -> bytes:
+    # ใบที่บันทึกหลังตัด Pre-PM ไม่มียี่ห้อ/รุ่น/กำลังไฟ/SN/หมายเลขตู้ใน job — เติมจากข้อมูลตู้
+    try:
+        from routers.pm_helpers import fill_charger_job_header
+        data = fill_charger_job_header(data)
+    except Exception as e:  # หาข้อมูลตู้ไม่ได้ก็ยังออก PDF ได้ (หัวกระดาษเป็น "-")
+        _log(f"[PDF] fill job header failed: {e}")
     return make_pm_report_html_pdf_bytes(data, lang=lang, **opts)
