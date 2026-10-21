@@ -1923,6 +1923,10 @@ async def export_station_pm_job_pdf(
     if not job:
         raise HTTPException(status_code=404, detail=f"ไม่พบใบ PM สถานี id={job_id}")
 
+    # PDF รายการ์ดโหลดได้เฉพาะใบที่อนุมัติแล้ว (Closed) — ตรงกับปุ่มในหน้ารวม
+    if part and not _is_closed(str(job.get("status") or "")):
+        raise HTTPException(status_code=409, detail="โหลด PDF ได้หลังอนุมัติใบงานแล้ว (Closed)")
+
     data, included = await build_job_pdf(job, station_id, lang, part)
 
     filename = f"{(job.get('issue_id') or job_id)}{f'_{part}' if part else ''}.pdf".replace("/", "-")

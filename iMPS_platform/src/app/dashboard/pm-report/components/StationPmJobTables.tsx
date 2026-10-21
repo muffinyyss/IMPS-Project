@@ -37,6 +37,7 @@ import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
 import { PM_APPROVE_ROLES, PmStatusBadge, toPmFlow } from "@/app/dashboard/pm-report/components/flow";
 import PmPlanForm from "@/app/dashboard/pm-report/components/PmPlanForm";
 import PmWorkOrderInfo from "@/app/dashboard/pm-report/components/PmWorkOrderInfo";
+import { usePmConfirm } from "@/app/dashboard/pm-report/components/PmConfirmDialog";
 import { pmBackRoute } from "@/app/dashboard/pm-report/lib/origin";
 
 // ฟอร์มกรอกของแต่ละส่วน — ของเดิมทั้งหมด ไม่ได้แก้เนื้อ checklist
@@ -597,6 +598,8 @@ function SectionFillButton({
 
 export default function StationPmJobTables() {
   const { lang } = useLanguage();
+  // ยืนยันก่อนกดปุ่มที่เปลี่ยนข้อมูล (อนุมัติทั้งใบ / ส่ง Maximo ใหม่) — แบบเดียวกับหน้า CM
+  const { ask: askConfirm, dialog: confirmDialog } = usePmConfirm(lang);
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -1647,7 +1650,7 @@ export default function StationPmJobTables() {
                   );
                 })}
                 {!maximoClosed(job.maximo_sync) && PM_RESYNC_ROLES.includes(me?.role ?? "") && (
-                  <Button size="sm" variant="outlined" disabled={acting} onClick={resyncMaximo} className="tw-py-1 tw-px-2.5 tw-text-[11px]">
+                  <Button size="sm" variant="outlined" disabled={acting} onClick={() => askConfirm("maximoResync", resyncMaximo)} className="tw-py-1 tw-px-2.5 tw-text-[11px]">
                     {acting ? t("maximoResyncing", lang) : t("maximoResync", lang)}
                   </Button>
                 )}
@@ -1695,8 +1698,8 @@ export default function StationPmJobTables() {
                             {doneCount}/{rows.length} {t("chargersDone", lang)}
                           </span>
                         )}
-                        {/* PDF ของการ์ดนี้ — เปิดได้เมื่อมีฟอร์มที่กรอกแล้วอย่างน้อย 1 ฟอร์ม (เรนเดอร์สดจนกว่าจะปิดใบ) */}
-                        {rows.some((x) => !!x.report_id) ? (
+                        {/* PDF ของการ์ดนี้ — เหมือน PDF ทั้งใบ: โหลดได้เฉพาะใบที่อนุมัติแล้ว (Closed) และการ์ดมีฟอร์มที่กรอกแล้ว */}
+                        {toPmFlow({ status: job.status, reject_remark: job.reject_remark }) === "closed" && rows.some((x) => !!x.report_id) ? (
                           <a
                             href={`${API_BASE}/stationpmjob/${encodeURIComponent(job.id)}/pdf?station_id=${encodeURIComponent(job.station_id)}&lang=${lang}&part=${group.id}`}
                             target="_blank"
@@ -1708,7 +1711,8 @@ export default function StationPmJobTables() {
                           </a>
                         ) : (
                           <span
-                            title={t("cardPdfEmpty", lang)}
+                            title={toPmFlow({ status: job.status, reject_remark: job.reject_remark }) === "closed"
+                              ? t("cardPdfEmpty", lang) : t("pdfClosedOnly", lang)}
                             aria-disabled="true"
                             className="tw-ml-auto tw-inline-flex tw-cursor-not-allowed tw-items-center tw-gap-1 tw-rounded-md tw-border tw-border-gray-300 tw-px-2 tw-py-1 tw-text-xs tw-font-semibold tw-text-gray-700 tw-opacity-50"
                           >
@@ -1805,7 +1809,7 @@ export default function StationPmJobTables() {
             <Button size="sm" variant="outlined" disabled={acting} onClick={() => { setRejectRemark(""); setRejectOpen(true); }}>
               {t("rejectAll", lang)}
             </Button>
-            <Button size="sm" disabled={acting} onClick={approveJob} className="tw-bg-green-600">
+            <Button size="sm" disabled={acting} onClick={() => askConfirm("approveJob", approveJob)} className="tw-bg-green-600">
               {t("approve", lang)}
             </Button>
           </div>
@@ -2012,6 +2016,8 @@ export default function StationPmJobTables() {
             </Button>
           </DialogFooter>
         </Dialog>
+
+        {confirmDialog}
       </div>
     );
   }

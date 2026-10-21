@@ -15,6 +15,7 @@ import { ArrowLeftIcon, CheckIcon, ChevronDownIcon, ExclamationTriangleIcon, Mag
 import { apiFetch } from "@/utils/api";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
 import PmAssigneePicker from "./PmAssigneePicker";
+import { usePmConfirm } from "./PmConfirmDialog";
 import { ChargerBySelect, ChargerHandoffNote, ownTeamLabel } from "./PmChargerBy";
 import {
   commonBy,
@@ -153,6 +154,8 @@ function todayValue() {
 
 export default function PmCreateWoForm({ onSaved, onCancel }: Props) {
   const { lang } = useLanguage();
+  // ยืนยันก่อนเปิดใบงาน — แบบเดียวกับหน้า CM
+  const { ask: askConfirm, dialog: confirmDialog } = usePmConfirm(lang);
 
   const [stations, setStations] = useState<StationOption[]>([]);
   const [assigneeOptions, setAssigneeOptions] = useState<PmAssigneeOptions>(EMPTY_PM_ASSIGNEE_OPTIONS);
@@ -705,7 +708,7 @@ export default function PmCreateWoForm({ onSaved, onCancel }: Props) {
                     {t("backToList", lang)}
                   </Button>
                   <Button
-                    onClick={onSave}
+                    onClick={() => askConfirm("createWo", onSave)}
                     disabled={locked || saving}
                     className="tw-bg-gray-800 hover:!tw-bg-blue-600 tw-text-white hover:tw-shadow-lg hover:!tw-shadow-blue-500/30 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed disabled:tw-shadow-none"
                   >
@@ -717,6 +720,7 @@ export default function PmCreateWoForm({ onSaved, onCancel }: Props) {
           )}
         </div>
       </form>
+      {confirmDialog}
     </section>
   );
 }
