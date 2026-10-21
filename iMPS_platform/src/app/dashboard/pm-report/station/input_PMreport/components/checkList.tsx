@@ -993,9 +993,13 @@ export default function StationPMReport() {
     const initialPhotos: Record<string, PhotoItem[]> = Object.fromEntries(
         QUESTIONS.filter((q) => q.hasPhoto).flatMap((q) => {
             const entries: [string, PhotoItem[]][] = [];
-            entries.push([`q${q.no}`, []]);
+            // ข้อที่มีข้อย่อย (เช่น ข้อ 3 = r103_1..r103_4) แนบรูปที่ข้อย่อยเท่านั้น — ห้ามมีคีย์ q{no} ของข้อหลัก
+            // เดิมใส่ q103 ไว้ด้วย ทั้งที่หน้าจอไม่ได้แสดง → ตอนโหลดรูปเดิมจากเอกสาร formKeyFromForward
+            // เลือก q103 (คีย์แรกของกลุ่ม r103) รูปข้อ 3 จึงไปค้างในช่องที่มองไม่เห็น หน้าจอเหมือนรูปหาย
             if (q.kind === "group") {
                 q.items.forEach((item) => { entries.push([item.key, []]); });
+            } else {
+                entries.push([`q${q.no}`, []]);
             }
             return entries;
         })
@@ -1410,6 +1414,11 @@ export default function StationPMReport() {
             form.append("files", compressed);
             const res = await fetch(url, { method: "POST", body: form, credentials: "include" });
             if (!res.ok) throw new Error(await res.text());
+            // server ตอบ ok แต่ไม่ได้เก็บรูป (ข้อเต็มเพดาน) — ห้ามติดธง uploaded ไม่งั้นรูปนี้จะไม่ถูกส่งอีกเลย
+            const body = await res.json().catch(() => null) as { count?: number; skipped?: string } | null;
+            if (body?.skipped || body?.count === 0) throw new Error(lang === "th"
+                ? `รูปข้อ ${getDisplayedRowNo(stateKey.startsWith("q") ? `r${stateKey.substring(1)}` : stateKey)} เกินจำนวนที่ระบบรับได้`
+                : `Too many photos for item ${stateKey}`);
             uploadedIds.add(p.id);
             setPhotos(prev => ({ ...prev, [stateKey]: ((prev as any)[stateKey] || []).map((x: PhotoItem) => x.id === p.id ? { ...x, uploaded: true } : x) }));
         }

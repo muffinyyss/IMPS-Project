@@ -236,7 +236,7 @@ async def guard(
     if bypass:
         return
     try:
-        job = await jobs.find_one({"_id": oid}, {"wonum": 1})
+        job = await jobs.find_one({"_id": oid}, {"wonum": 1, "work_entries": 1})
     except Exception:
         job = None
     wonum = str((job or {}).get("wonum") or "").strip()
@@ -247,3 +247,17 @@ async def guard(
     if not can_edit_section(wo, current.role, current.username or current.sub, company, section, sn):
         owner = section_owner(wo, section, sn) or "ทีมอื่น"
         raise HTTPException(status_code=403, detail=f"ส่วนนี้เป็นงานของ {owner} — บริษัทของคุณกรอกส่วนนี้ไม่ได้")
+    # ฟอร์มตู้ชาร์จที่ planner ของ vendor อนุมัติแล้ว (routers/pmreport_station_job.py vendor-approve)
+    # ช่างแก้ต่อไม่ได้ — ต้องให้ planner ตีกลับก่อน (planner แก้ก่อนอนุมัติได้เหมือนเดิม)
+    if _norm(section) == CHARGER_SECTION and _norm(current.role) != "planner":
+        owner = section_owner(wo, section, sn)
+        entry = next(
+            (e for e in (job or {}).get("work_entries") or []
+             if isinstance(e, dict) and _norm(e.get("key")) == _norm(owner)),
+            None,
+        )
+        if entry and entry.get("submitted") and entry.get("vendor_approved"):
+            raise HTTPException(
+                status_code=409,
+                detail=f"ฟอร์มนี้ planner ของ {owner} อนุมัติแล้ว — แก้ไขไม่ได้ จนกว่าจะถูกตีกลับ",
+            )

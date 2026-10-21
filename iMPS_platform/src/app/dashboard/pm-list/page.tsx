@@ -66,6 +66,10 @@ type PMRow = {
   wo_origin?: WoOrigin;
   /** vendor ที่ planner ต้นทางส่งต่อให้วางแผนอีกรอบ (ยืมจากใบงานผ่าน wonum) */
   vendor_plans?: VendorPlan[];
+  /** เหตุผลที่ planner ตีกลับ — มีค่า + status เป็น draft = Reject (รอช่างแก้แล้วส่งใหม่) */
+  reject_remark?: string;
+  /** vendor ที่ส่งงานตู้ชาร์จแล้ว รอ planner ของ vendor อนุมัติก่อนถึง planner ต้นทาง (เช่น ["EDS"]) */
+  vendor_review?: string[];
   /** ใบงานส่งต่อมาให้บริษัทของคนที่ดูอยู่ และยังไม่ได้วางแผน — สำหรับคนนี้ใบนี้ยังเป็น Open */
   vendor_pending_for_me?: boolean;
 };
@@ -147,7 +151,7 @@ function hasPmType(r: PMRow, type: string): boolean {
 }
 
 /** ด่านของงาน — ชื่อเดียวกับที่ใช้ในหน้า PM report */
-type PmStage = "open" | "in_progress" | "wait_approve" | "closed";
+type PmStage = "open" | "in_progress" | "rejected" | "wait_approve" | "closed";
 
 /** ใบเก่าไม่มี status / เป็น "submitted" = ปิดไปแล้วก่อนมี flow อนุมัติ */
 function stageOf(row: PMRow): PmStage {
@@ -161,13 +165,15 @@ function stageOf(row: PMRow): PmStage {
   }
   const s = String(row.status ?? "").trim().toLowerCase();
   if (s === "wait for approve") return "wait_approve";
-  if (s === "draft") return "in_progress";
+  // โดนตีกลับ (ทั้งใบ หรือบางฟอร์ม) และยังไม่ได้ส่งกลับมา — แยกจาก In Progress ให้เห็นชัด
+  if (s === "draft") return String(row.reject_remark ?? "").trim() ? "rejected" : "in_progress";
   return "closed";
 }
 
 const STAGE_STYLE: Record<PmStage, { bg: string; text: string }> = {
   open: { bg: "#fee2e2", text: "#dc2626" },
   in_progress: { bg: "#fff7ed", text: "#ea580c" },
+  rejected: { bg: "#fef9c3", text: "#a16207" },
   wait_approve: { bg: "#f3e8ff", text: "#7e22ce" },
   closed: { bg: "#dcfce7", text: "#15803d" },
 };
@@ -186,7 +192,7 @@ const TYPE_TO_TAB: Record<string, string> = {
 type SortKey = "station" | "wo" | "technician" | "date" | "status";
 type SortDir = "asc" | "desc";
 
-const STAGE_RANK: Record<PmStage, number> = { open: 0, in_progress: 1, wait_approve: 2, closed: 3 };
+const STAGE_RANK: Record<PmStage, number> = { open: 0, in_progress: 1, rejected: 2, wait_approve: 3, closed: 4 };
 
 /** pm_type ของใบงาน Maximo (CG/MB/CC/CB/ST) → ป้ายชนิดที่ตารางใช้ */
 const WO_PM_TYPE_LABEL: Record<string, string> = {
@@ -405,7 +411,8 @@ export default function PMListPage() {
         station: "สถานี", wo: "WO (Maximo)",
         technician: "ผู้ตรวจสอบ", date: "PM Plan", status: "สถานะ",
       },
-      stage: { open: "Open", in_progress: "In Progress", wait_approve: "Wait for approve", closed: "Closed" },
+      stage: { open: "Open", in_progress: "In Progress", rejected: "Reject", wait_approve: "Wait for approve", closed: "Closed" },
+      vendorWait: "รอ {p} อนุมัติ",
     },
     en: {
       pageTitle: "PM List",
@@ -450,7 +457,8 @@ export default function PMListPage() {
         station: "Station", wo: "WO (Maximo)",
         technician: "Inspector", date: "PM Plan", status: "Status",
       },
-      stage: { open: "Open", in_progress: "In Progress", wait_approve: "Wait for approve", closed: "Closed" },
+      stage: { open: "Open", in_progress: "In Progress", rejected: "Reject", wait_approve: "Wait for approve", closed: "Closed" },
+      vendorWait: "Waiting for {p} approval",
     },
   }[lang]), [lang]);
 
@@ -656,7 +664,7 @@ export default function PMListPage() {
     if (originFilter) base = base.filter((r) => originOf(r) === originFilter);
     if (typeFilter) base = base.filter((r) => hasPmType(r, typeFilter));
     base = applySearch(base);
-    const counts: Record<PmStage, number> = { open: 0, in_progress: 0, wait_approve: 0, closed: 0 };
+    const counts: Record<PmStage, number> = { open: 0, in_progress: 0, rejected: 0, wait_approve: 0, closed: 0 };
     for (const r of base) counts[stageOf(r)]++;
     return counts;
   }, [periodRows, originFilter, typeFilter, applySearch]);
@@ -895,7 +903,7 @@ export default function PMListPage() {
         </div>
 
         <div className="tw-flex tw-items-center tw-gap-1.5" role="group" aria-label={t.statusFilterLabel}>
-          {(["open", "in_progress", "wait_approve", "closed"] as const).map((key) => {
+          {(["open", "in_progress", "rejected", "wait_approve", "closed"] as const).map((key) => {
             const isActive = stageFilter === key;
             const { bg, text } = STAGE_STYLE[key];
             return (
@@ -1055,10 +1063,14 @@ export default function PMListPage() {
                     <td className="tw-px-4 tw-py-3">
                       <button
                         onClick={(e) => { e.stopPropagation(); setStageFilter(stageFilter === stage ? null : stage); setPage(0); }}
+                        title={stage === "rejected" ? r.reject_remark : undefined}
                         className="tw-whitespace-nowrap tw-rounded-full tw-px-2.5 tw-py-0.5 tw-text-xs tw-font-medium tw-transition-all hover:tw-opacity-80"
                         style={{ background: style.bg, color: style.text, outline: stageFilter === stage ? `2px solid ${style.text}` : "none" }}
                       >
-                        {stageLabel[stage]}
+                        {/* In Progress ที่ฝ่าย vendor ส่งงานตู้ชาร์จแล้ว รอ planner ของ vendor อนุมัติก่อนถึงต้นทาง */}
+                        {stage === "in_progress" && r.vendor_review?.length
+                          ? t.vendorWait.replace("{p}", r.vendor_review.join(", "))
+                          : stageLabel[stage]}
                       </button>
                     </td>
                     <td className="tw-px-4 tw-py-3 tw-text-center">
