@@ -17,49 +17,61 @@ export const INVESTMENT_SCOPE_OPTIONS = [
     { value: "ccb", th: "CCB ระบบสื่อสาร", en: "CCB communication system" },
 ] as const;
 
-/** พิกัดสถานี — รับข้อความแบบที่คัดลอกจาก Google Maps ได้ตรงๆ เช่น "13.7563, 100.5018"
- *  ว่าง → null ทั้งคู่ (ไม่มีพิกัด) · รูปแบบผิด/เกินช่วง → undefined */
-export function parseLatLng(text: string): { latitude: number | null; longitude: number | null } | undefined {
-    const s = (text ?? "").trim();
-    if (!s) return { latitude: null, longitude: null };
-    const m = s.match(/^(-?\d+(?:\.\d+)?)\s*[,\s]\s*(-?\d+(?:\.\d+)?)$/);
-    if (!m) return undefined;
-    const latitude = Number(m[1]);
-    const longitude = Number(m[2]);
-    if (!(latitude >= -90 && latitude <= 90 && longitude >= -180 && longitude <= 180)) return undefined;
-    return { latitude, longitude };
+/** พิกัดสถานี (WGS84 องศาทศนิยม) — เก็บในฟอร์มเป็นข้อความ 2 ช่อง */
+export type LatLngText = { lat: string; lng: string };
+export const EMPTY_LATLNG: LatLngText = { lat: "", lng: "" };
+
+export const toLatLngText = (lat?: number | null, lng?: number | null): LatLngText =>
+    lat != null && lng != null ? { lat: String(lat), lng: String(lng) } : { lat: "", lng: "" };
+
+const NUM_RE = /^-?\d+(?:\.\d*)?$/; // "13." ระหว่างพิมพ์ไม่ขึ้นแดง
+const PAIR_RE = /^\s*(-?\d+(?:\.\d+)?)\s*[,\s]\s*(-?\d+(?:\.\d+)?)\s*$/;
+
+const latError = (v: string) => !!v.trim() && !(NUM_RE.test(v.trim()) && Math.abs(Number(v)) <= 90);
+const lngError = (v: string) => !!v.trim() && !(NUM_RE.test(v.trim()) && Math.abs(Number(v)) <= 180);
+
+/** ว่างทั้งคู่ → null ทั้งคู่ (ยังไม่ระบุพิกัด) · กรอกช่องเดียว / ผิดรูปแบบ / เกินช่วง → undefined */
+export function parseLatLng(v: LatLngText): { latitude: number | null; longitude: number | null } | undefined {
+    const lat = (v?.lat ?? "").trim();
+    const lng = (v?.lng ?? "").trim();
+    if (!lat && !lng) return { latitude: null, longitude: null };
+    if (!lat || !lng || latError(lat) || lngError(lng)) return undefined;
+    return { latitude: Number(lat), longitude: Number(lng) };
 }
 
-export const formatLatLng = (lat?: number | null, lng?: number | null) =>
-    lat != null && lng != null ? `${lat}, ${lng}` : "";
-
-/** ช่องกรอกพิกัด + บอกว่ารูปแบบผิด / ลิงก์ไปเช็กตำแหน่งบน Google Maps */
+/** ส่วนกรอกพิกัดสถานี: ช่อง Latitude + Longitude
+ *  วางพิกัดที่คัดลอกจาก Google Maps ("13.7563, 100.5018") ลงช่องไหนก็ได้ จะแยกให้ทั้ง 2 ช่อง */
 export const LatLngInput = ({ value, onChange, lang, disabled = false }: {
-    value: string;
-    onChange: (next: string) => void;
+    value: LatLngText;
+    onChange: (next: LatLngText) => void;
     lang: "th" | "en";
     disabled?: boolean;
 }) => {
-    const parsed = parseLatLng(value);
     const tr = lang === "th"
-        ? { label: "พิกัด (ละติจูด, ลองจิจูด)", invalid: "รูปแบบไม่ถูกต้อง — ตัวอย่าง 13.7563, 100.5018", open: "ดูตำแหน่งบน Google Maps", hint: "คัดลอกพิกัดจาก Google Maps มาวางได้เลย" }
-        : { label: "Coordinates (lat, lng)", invalid: "Invalid format — e.g. 13.7563, 100.5018", open: "View on Google Maps", hint: "Paste coordinates copied from Google Maps" };
+        ? { title: "พิกัดสถานี", lat: "ละติจูด (Latitude)", lng: "ลองจิจูด (Longitude)", invalid: "พิกัดไม่ถูกต้อง — ต้องกรอกทั้ง 2 ช่อง เช่น 13.7563 และ 100.5018", open: "ดูตำแหน่งบน Google Maps", hint: "วางพิกัดที่คัดลอกจาก Google Maps (เช่น 13.7563, 100.5018) ลงช่องใดก็ได้" }
+        : { title: "Station location", lat: "Latitude", lng: "Longitude", invalid: "Invalid coordinates — fill both, e.g. 13.7563 and 100.5018", open: "View on Google Maps", hint: "Paste coordinates copied from Google Maps (e.g. 13.7563, 100.5018) into either box" };
+    const parsed = parseLatLng(value);
+    const set = (key: keyof LatLngText, text: string) => {
+        const m = text.match(PAIR_RE);
+        onChange(m ? { lat: m[1], lng: m[2] } : { ...value, [key]: text });
+    };
+    const oneMissing = !!value.lat.trim() !== !!value.lng.trim();
     return (
-        <div className="tw-flex tw-flex-col tw-gap-1">
-            <Input
-                label={tr.label}
-                value={value}
-                disabled={disabled}
-                error={parsed === undefined}
-                inputMode="decimal"
-                onChange={(e) => onChange(e.target.value)}
-                crossOrigin={undefined}
-            />
+        <div className="sm:tw-col-span-2 tw-rounded-lg tw-border tw-border-blue-gray-100 tw-p-3 tw-flex tw-flex-col tw-gap-2.5">
+            <p className="tw-text-[11px] tw-font-bold tw-text-blue-gray-500 tw-uppercase tw-tracking-widest">📍 {tr.title}</p>
+            <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 tw-gap-3">
+                <Input label={tr.lat} value={value.lat} disabled={disabled} inputMode="decimal"
+                    error={latError(value.lat) || (oneMissing && !value.lat.trim())}
+                    onChange={(e) => set("lat", e.target.value)} crossOrigin={undefined} />
+                <Input label={tr.lng} value={value.lng} disabled={disabled} inputMode="decimal"
+                    error={lngError(value.lng) || (oneMissing && !value.lng.trim())}
+                    onChange={(e) => set("lng", e.target.value)} crossOrigin={undefined} />
+            </div>
             <span className={`tw-text-[11px] tw-leading-tight ${parsed === undefined ? "tw-text-red-500" : "tw-text-blue-gray-400"}`}>
                 {parsed === undefined
                     ? tr.invalid
                     : parsed.latitude != null
-                        ? <a href={`https://www.google.com/maps?q=${parsed.latitude},${parsed.longitude}`} target="_blank" rel="noopener noreferrer" className="tw-text-blue-600 hover:tw-underline">📍 {tr.open}</a>
+                        ? <a href={`https://www.google.com/maps?q=${parsed.latitude},${parsed.longitude}`} target="_blank" rel="noopener noreferrer" className="tw-text-blue-600 hover:tw-underline">{tr.open}</a>
                         : tr.hint}
             </span>
         </div>

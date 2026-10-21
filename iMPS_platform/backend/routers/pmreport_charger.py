@@ -51,6 +51,7 @@ from routers.pm_helpers import (
     _latest_doc_name_anywhere,
     _next_year_seq,
     _resolve_issue_and_doc,
+    fill_charger_job_header,
 )
 
 from PIL import Image
@@ -221,7 +222,7 @@ async def pmreport_get(sn: str, report_id: str, current: UserClaims = Depends(ge
     doc = await coll.find_one({"_id": oid})
     if not doc:
         raise HTTPException(status_code=404, detail="Report not found")
-    return serialize_doc(doc)
+    return serialize_doc(fill_charger_job_header(doc))
 
 
 @router.get("/pmreport/list")
@@ -521,6 +522,8 @@ async def pmreport_post_submit(
         "status": "draft",
         "timestamp": datetime.now(timezone.utc),
     }
+    # หัวเอกสาร (ยี่ห้อ/รุ่น/กำลังไฟ/SN/หมายเลขตู้) เก็บลงเอกสารตั้งแต่สร้าง
+    doc = fill_charger_job_header(doc, charger)
     res = await coll.insert_one(doc)
     return {
         "ok": True,

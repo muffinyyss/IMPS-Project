@@ -28,6 +28,51 @@ def _validate_sn(sn: str):
         raise HTTPException(status_code=400, detail="SN is required")
 
 
+# ─── หัวเอกสาร PM ตู้ชาร์จ ─────────────────────────────────────
+# ตั้งแต่ตัด Pre-PM ออก หน้าเว็บส่ง job มาแค่ station_name/date — ใบที่บันทึกแล้ว
+# จึงไม่มียี่ห้อ/รุ่น/กำลังไฟ/SN/หมายเลขตู้ เปิดดู/แก้/PDF หัวกระดาษเลยว่าง
+# เติมจากข้อมูลตู้ตอนอ่าน (เฉพาะช่องที่ว่าง — ค่าที่เอกสารเก็บไว้ชนะเสมอ)
+CHARGER_HEADER_KEYS = ("station_name", "chargerNo", "sn", "brand", "model", "power")
+
+
+def _blank_header(v) -> bool:
+    return v is None or (isinstance(v, str) and v.strip() in ("", "-"))
+
+
+def fill_charger_job_header(doc: dict, charger: dict | None = None) -> dict:
+    """คืน doc ที่ job มีหัวเอกสารครบ (sync — ใช้ได้ทั้งใน route และตอนเรนเดอร์ PDF)"""
+    if not isinstance(doc, dict):
+        return doc
+    job = dict(doc.get("job") or {})
+    missing = [k for k in CHARGER_HEADER_KEYS if _blank_header(job.get(k))]
+    if not missing:
+        return doc
+    from config import charger_collection, station_collection
+    if charger is None:
+        sn = doc.get("sn") or job.get("sn")
+        if not sn:
+            return doc
+        charger = charger_collection.find_one({"SN": sn})
+    if not charger:
+        return doc
+    station_name = None
+    if "station_name" in missing and charger.get("station_id"):
+        st = station_collection.find_one({"station_id": charger["station_id"]}, {"station_name": 1})
+        station_name = (st or {}).get("station_name")
+    src = {
+        "station_name": station_name,
+        "chargerNo": charger.get("chargerNo"),
+        "sn": charger.get("SN"),
+        "brand": charger.get("brand"),
+        "model": charger.get("model"),
+        "power": charger.get("power"),
+    }
+    for k in missing:
+        if not _blank_header(src.get(k)):
+            job[k] = src[k]
+    return {**doc, "job": job}
+
+
 # ─── Collection Getters (charger) ─────────────────────────────
 def get_pmreport_collection_for(sn: str):
     _validate_sn(sn)

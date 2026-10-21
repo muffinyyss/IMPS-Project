@@ -2100,13 +2100,23 @@ export default function ChargerPMForm() {
                 if (data.job) {
                     setJob(prev => ({ ...prev, ...data.job, station_name: data.job.station_name || prev.station_name, issue_id: data.issue_id ?? prev.issue_id, chargingCables: data.job.numberOfCables || data.job.chargingCables || prev.chargingCables || 1 }));
                 }
-                // เอกสารหลายใบเก็บ job.station_name เป็นค่าว่าง — เติมจากข้อมูลตู้ ไม่งั้นช่อง "สถานที่" ในหน้าดูว่าง
-                if ((!data.job?.numberOfCables || !data.job?.station_name) && sn) {
+                // ใบที่บันทึกหลังตัด Pre-PM เก็บ job แค่ station_name/date — ยี่ห้อ/รุ่น/กำลังไฟ/SN/หมายเลขตู้
+                // ว่างหมด เติมช่องที่ว่างจากข้อมูลตู้ ไม่งั้นหัวกระดาษในหน้าแก้/หน้าดูว่าง
+                const headerMissing = (["station_name", "chargerNo", "sn", "brand", "model", "power"] as const)
+                    .some(k => !data.job?.[k] || data.job[k] === "-");
+                if ((!data.job?.numberOfCables || headerMissing) && sn) {
+                    const blank = (v: unknown) => v === undefined || v === null || v === "" || v === "-";
+                    const pick = (cur: string, v: unknown) => (blank(cur) && !blank(v) ? String(v) : cur);
                     getChargerInfoBySN(sn)
                         .then(st => {
                             setJob(prev => ({
                                 ...prev,
-                                station_name: prev.station_name || st.station_name || "",
+                                station_name: pick(prev.station_name, st.station_name),
+                                chargerNo: pick(prev.chargerNo, st.chargerNo),
+                                sn: pick(prev.sn, st.SN),
+                                brand: pick(prev.brand, st.brand),
+                                model: pick(prev.model, st.model),
+                                power: pick(prev.power, st.power),
                                 ...(!data.job?.numberOfCables && st.numberOfCables ? { chargingCables: st.numberOfCables } : {}),
                             }));
                         })
@@ -2637,7 +2647,7 @@ export default function ChargerPMForm() {
                 }
             }
             if (!report_id) {
-                const payload = { sn: sn, ...(jobId ? { job_id: jobId } : {}), inspector, job: { station_name: job.station_name, date: job.date }, ...(job.date ? { pm_date: job.date } : {}), rows, measures: { m16: m16.state, cp }, summary, ...(summaryCheck ? { summaryCheck } : {}), ...(jobId ? {} : { work_start: workStart, work_finish: workFinish, maximo_labor: maximoLabor, maximo_contractor: contractorPicked ? maximoContractor.trim() : "" }), wonum: searchParams.get("wonum") ?? "", dust_filter: dustFilterChanged, side: "post" as const, report_id: editId };
+                const payload = { sn: sn, ...(jobId ? { job_id: jobId } : {}), inspector, job: { station_name: job.station_name, date: job.date, chargerNo: job.chargerNo, sn: job.sn || sn, brand: job.brand, model: job.model, power: job.power }, ...(job.date ? { pm_date: job.date } : {}), rows, measures: { m16: m16.state, cp }, summary, ...(summaryCheck ? { summaryCheck } : {}), ...(jobId ? {} : { work_start: workStart, work_finish: workFinish, maximo_labor: maximoLabor, maximo_contractor: contractorPicked ? maximoContractor.trim() : "" }), wonum: searchParams.get("wonum") ?? "", dust_filter: dustFilterChanged, side: "post" as const, report_id: editId };
                 const submitRes = await apiFetch(`${API_BASE}/pmreport/submit`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
                 if (!submitRes.ok) throw new Error(await submitRes.text());
                 const jsonRes = await submitRes.json() as { report_id: string };
