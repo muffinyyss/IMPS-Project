@@ -510,9 +510,14 @@ async def stationpmreport_upload_post_photos(
     group: str = Form(...),
     files: List[UploadFile] = File(...),
     remark: Optional[str] = Form(None),
+    item: Optional[str] = Form(None),
     current: UserClaims = Depends(get_current_user),
 ):
     """Upload Post-PM photos for a Station report"""
+    # item = ข้อย่อยที่รูปนี้แนบมา (เช่น r103_2) — server เก็บรูปรวมก้อนเดียวต่อข้อหลัก
+    # ถ้าไม่จำไว้ ตอนเปิดใบกลับมารูปทุกข้อย่อยจะไปกองอยู่ที่ข้อย่อยแรก
+    if item is not None and not re.fullmatch(rf"{re.escape(group)}_\d+", item):
+        item = None
     # ตรวจสิทธิ์สถานีก่อนแตะข้อมูล — เดิมเช็คแค่ว่า field ตรงกับ document
     # ซึ่งผู้เรียกคุมได้ทั้งคู่ จึงยิงข้ามสถานีได้
     assert_station_access(current, station_id)
@@ -578,6 +583,7 @@ async def stationpmreport_upload_post_photos(
             "filename": fname,
             "url": url_path,
             "remark": remark or "",
+            **({"item": item} if item else {}),
             "uploadedAt": datetime.now(timezone.utc),
         })
 

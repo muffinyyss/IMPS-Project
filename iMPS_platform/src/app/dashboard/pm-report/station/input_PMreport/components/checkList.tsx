@@ -1008,6 +1008,8 @@ export default function StationPMReport() {
     // รูปเดิมของเอกสารที่โหลดมาใส่ฟอร์ม (หน้าดู / แก้ส่วนที่ส่งแล้ว) — ตอนบันทึกเทียบกับ photos
     // เพื่อรู้ว่าผู้ใช้กดลบรูปเดิมรูปไหนออก แล้วลบออกจากเอกสารจริง
     const serverPhotosRef = useRef<Record<string, ViewPhoto[]>>({});
+    // ข้อหลัก (r7, r10, r103 …) ที่มีรูปเดิมแบบไม่รู้ข้อย่อย (อัปก่อนเริ่มจำข้อย่อย) — รูปพวกนี้ไปกองที่ข้อย่อยแรก
+    const legacyGroupsRef = useRef<Set<string>>(new Set());
 
     const photosRef = useRef(photos);
     useEffect(() => { photosRef.current = photos; }, [photos]);
@@ -1158,7 +1160,15 @@ export default function StationPMReport() {
                     if (data.summaryCheck) setSummaryCheck(data.summaryCheck as PF);
                     // หน้าดูใช้ฟอร์มเดียวกับตอนกรอก — รูปมาจากเอกสาร ไม่ใช่ draft ในเครื่อง
                     const fromServer = serverPhotosToForm(data.photos,
-                        formKeyFromForward(Object.keys(initialPhotos), k => toGroupKey(String(k))), API_BASE);
+                        formKeyFromForward(Object.keys(initialPhotos), k => toGroupKey(String(k))), API_BASE,
+                        // server เก็บรูปทุกข้อย่อยรวมก้อนเดียวต่อข้อหลัก — วางกลับข้อย่อยจาก item ที่ server จำไว้
+                        // หรือจากชื่อไฟล์ (อัปโดยขึ้นต้นด้วย "r10_2__") รูปเก่าที่ไม่มีทั้งสองอย่างไปอยู่ข้อย่อยแรก
+                        (p, group) => {
+                            const own = p.item ?? p.url?.match(new RegExp(`/${group}/(${group}_\\d+)__`))?.[1];
+                            if (own && own in initialPhotos) return own;
+                            legacyGroupsRef.current.add(group);
+                            return null;
+                        });
                     serverPhotosRef.current = fromServer;
                     setPhotos(prev => ({ ...prev, ...fromServer }) as typeof prev);
                 }
@@ -1288,7 +1298,8 @@ export default function StationPMReport() {
             if ((photos[photoKey]?.length ?? 0) > 0) return false;
             // server เก็บรูปของข้อที่มีข้อย่อยรวมกันก้อนเดียว (ไม่รู้ว่ารูปไหนของข้อย่อยไหน)
             // ตอนเปิดแก้จึงวางรูปเดิมไว้ที่ข้อย่อยแรก — ข้อนี้มีรูปเดิมอยู่แล้ว ข้อย่อยอื่นไม่ต้องแนบซ้ำ
-            if (match && Object.entries(photos).some(([k, list]) =>
+            // (เฉพาะรูปเก่าที่ไม่รู้ข้อย่อย — รูปที่รู้ข้อย่อยแล้ววางถูกข้อ ข้อย่อยอื่นยังต้องแนบของตัวเอง)
+            if (match && legacyGroupsRef.current.has(`r${match[1]}`) && Object.entries(photos).some(([k, list]) =>
                 k.startsWith(`r${match[1]}_`) && (list ?? []).some(isServerPhoto))) return false;
             return true;
         });
@@ -1411,7 +1422,10 @@ export default function StationPMReport() {
             form.append("station_id", stationId);
             form.append("group", group);
             form.append("side", "post");
-            form.append("files", compressed);
+            // ข้อย่อย (r103_1 …) ส่งไปให้ server จำไว้ ตอนเปิดใบกลับมาจะได้วางรูปถูกข้อ
+            // ใส่ข้อย่อยไว้หน้าชื่อไฟล์ด้วย — server รุ่นที่ยังไม่รับ item ก็ยังรู้ข้อย่อยจากชื่อไฟล์ได้
+            if (!stateKey.startsWith("q")) form.append("item", stateKey);
+            form.append("files", compressed, stateKey.startsWith("q") ? compressed.name : `${stateKey}__${compressed.name}`);
             const res = await fetch(url, { method: "POST", body: form, credentials: "include" });
             if (!res.ok) throw new Error(await res.text());
             // server ตอบ ok แต่ไม่ได้เก็บรูป (ข้อเต็มเพดาน) — ห้ามติดธง uploaded ไม่งั้นรูปนี้จะไม่ถูกส่งอีกเลย

@@ -10,7 +10,7 @@
  * แต่ละฟอร์มตั้งสูตรคนละแบบ จึงให้ฟอร์มส่งตัวแปลง กลุ่ม → photo key เข้ามา
  */
 
-export type ServerPhoto = { url?: string; remark?: string };
+export type ServerPhoto = { url?: string; remark?: string; item?: string };
 
 /**
  * รูปที่อยู่บน server แล้ว — ไม่มีไฟล์ในเครื่อง มีแค่ลิงก์ (uploaded = ไม่ต้องอัปซ้ำ)
@@ -28,13 +28,17 @@ export function serverPhotosToForm(
   server: Record<string, ServerPhoto[] | undefined> | undefined | null,
   formKeyOf: (group: string) => string | number | null | undefined,
   apiBase: string,
+  /** รูปที่ server จำไว้ว่าเป็นของข้อย่อยไหน → key ของข้อย่อยนั้น (null = ใช้ key ของกลุ่มตามเดิม) */
+  photoKeyOf?: (photo: ServerPhoto, group: string) => string | number | null | undefined,
 ): Record<string, ViewPhoto[]> {
   const out: Record<string, ViewPhoto[]> = {};
   for (const [group, list] of Object.entries(server ?? {})) {
-    const key = formKeyOf(group);
-    if (key === null || key === undefined || key === "") continue;
+    const groupKey = formKeyOf(group);
     (list ?? []).forEach((p, i) => {
       if (!p?.url) return;
+      const own = photoKeyOf?.(p, group);
+      const key = own === null || own === undefined || own === "" ? groupKey : own;
+      if (key === null || key === undefined || key === "") return;
       const url = p.url.startsWith("http") ? p.url : `${apiBase}${p.url}`;
       (out[String(key)] ??= []).push({
         id: `${SERVER_ID}${group}-${i}`, preview: url, remark: p.remark ?? "", uploaded: true, group, url: p.url,

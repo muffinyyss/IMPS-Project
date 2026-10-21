@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { apiFetch } from "@/utils/api";
+import { Input } from "@material-tailwind/react";
 
 /** ตัวเลือกสถานะการรับประกัน / สัดส่วนการลงทุน (ระดับสถานี) — ใช้ร่วมกันทั้งฟอร์มเพิ่มและแก้ไข */
 export const WARRANTY_STATUS_OPTIONS = [
@@ -15,6 +16,55 @@ export const INVESTMENT_SCOPE_OPTIONS = [
     { value: "charger", th: "เครื่องอัดประจุไฟฟ้า (charger)", en: "Charger" },
     { value: "ccb", th: "CCB ระบบสื่อสาร", en: "CCB communication system" },
 ] as const;
+
+/** พิกัดสถานี — รับข้อความแบบที่คัดลอกจาก Google Maps ได้ตรงๆ เช่น "13.7563, 100.5018"
+ *  ว่าง → null ทั้งคู่ (ไม่มีพิกัด) · รูปแบบผิด/เกินช่วง → undefined */
+export function parseLatLng(text: string): { latitude: number | null; longitude: number | null } | undefined {
+    const s = (text ?? "").trim();
+    if (!s) return { latitude: null, longitude: null };
+    const m = s.match(/^(-?\d+(?:\.\d+)?)\s*[,\s]\s*(-?\d+(?:\.\d+)?)$/);
+    if (!m) return undefined;
+    const latitude = Number(m[1]);
+    const longitude = Number(m[2]);
+    if (!(latitude >= -90 && latitude <= 90 && longitude >= -180 && longitude <= 180)) return undefined;
+    return { latitude, longitude };
+}
+
+export const formatLatLng = (lat?: number | null, lng?: number | null) =>
+    lat != null && lng != null ? `${lat}, ${lng}` : "";
+
+/** ช่องกรอกพิกัด + บอกว่ารูปแบบผิด / ลิงก์ไปเช็กตำแหน่งบน Google Maps */
+export const LatLngInput = ({ value, onChange, lang, disabled = false }: {
+    value: string;
+    onChange: (next: string) => void;
+    lang: "th" | "en";
+    disabled?: boolean;
+}) => {
+    const parsed = parseLatLng(value);
+    const tr = lang === "th"
+        ? { label: "พิกัด (ละติจูด, ลองจิจูด)", invalid: "รูปแบบไม่ถูกต้อง — ตัวอย่าง 13.7563, 100.5018", open: "ดูตำแหน่งบน Google Maps", hint: "คัดลอกพิกัดจาก Google Maps มาวางได้เลย" }
+        : { label: "Coordinates (lat, lng)", invalid: "Invalid format — e.g. 13.7563, 100.5018", open: "View on Google Maps", hint: "Paste coordinates copied from Google Maps" };
+    return (
+        <div className="tw-flex tw-flex-col tw-gap-1">
+            <Input
+                label={tr.label}
+                value={value}
+                disabled={disabled}
+                error={parsed === undefined}
+                inputMode="decimal"
+                onChange={(e) => onChange(e.target.value)}
+                crossOrigin={undefined}
+            />
+            <span className={`tw-text-[11px] tw-leading-tight ${parsed === undefined ? "tw-text-red-500" : "tw-text-blue-gray-400"}`}>
+                {parsed === undefined
+                    ? tr.invalid
+                    : parsed.latitude != null
+                        ? <a href={`https://www.google.com/maps?q=${parsed.latitude},${parsed.longitude}`} target="_blank" rel="noopener noreferrer" className="tw-text-blue-600 hover:tw-underline">📍 {tr.open}</a>
+                        : tr.hint}
+            </span>
+        </div>
+    );
+};
 
 export const labelOf = (
     options: readonly { value: string; th: string; en: string }[],

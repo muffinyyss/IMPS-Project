@@ -558,6 +558,31 @@ def _clean_investment_scope(values: Optional[List[str]]) -> List[str]:
             out.append(v)
     return out
 
+def _clean_coords(lat: Optional[float], lng: Optional[float]):
+    """พิกัดสถานี (WGS84, องศาทศนิยม) สำหรับหน้าแผนที่
+
+    ต้องมาคู่กันเสมอ — ไม่มีทั้งคู่ = (None, None) คือยังไม่ระบุพิกัด
+    """
+    if lat is None and lng is None:
+        return None, None
+    if lat is None or lng is None:
+        raise HTTPException(status_code=400, detail="latitude and longitude must be provided together")
+    lat, lng = float(lat), float(lng)
+    if not (-90 <= lat <= 90):
+        raise HTTPException(status_code=400, detail=f"Invalid latitude: {lat}")
+    if not (-180 <= lng <= 180):
+        raise HTTPException(status_code=400, detail=f"Invalid longitude: {lng}")
+    return round(lat, 7), round(lng, 7)
+
+
+def _as_coord(v) -> Optional[float]:
+    """อ่านพิกัดจาก document — เอกสารเก่าไม่มี field / ค่าเพี้ยน → None"""
+    try:
+        return float(v) if v is not None and v != "" else None
+    except (TypeError, ValueError):
+        return None
+
+
 class StationCreate(BaseModel):
     station_id: str
     station_name: str
@@ -569,6 +594,8 @@ class StationCreate(BaseModel):
     warranty_status: Optional[str] = ""
     investment_scope: Optional[List[str]] = []
     io_code: Optional[str] = ""
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
 
 class StationUpdate(BaseModel):
     station_name: Optional[str] = None
@@ -580,6 +607,9 @@ class StationUpdate(BaseModel):
     warranty_status: Optional[str] = None
     investment_scope: Optional[List[str]] = None
     io_code: Optional[str] = None
+    # ส่ง null มาทั้งคู่ = ลบพิกัด / ไม่ส่ง field มาเลย = ไม่แตะพิกัดเดิม
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
 
 class StationOut(BaseModel):
     id: str
@@ -593,6 +623,8 @@ class StationOut(BaseModel):
     warranty_status: Optional[str] = ""
     investment_scope: Optional[List[str]] = []
     io_code: Optional[str] = ""
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
     status: Optional[bool] = None
     stationImage: Optional[str] = None
     stationImages: Optional[list] = []
@@ -865,6 +897,8 @@ def format_station_with_chargers(
         warranty_status=station_doc.get("warranty_status", ""),
         investment_scope=station_doc.get("investment_scope", []) or [],
         io_code=station_doc.get("io_code", ""),
+        latitude=_as_coord(station_doc.get("latitude")),
+        longitude=_as_coord(station_doc.get("longitude")),
         status=status,
         stationImage=station_image_list[0] if station_image_list else None,
         stationImages=station_image_list,
@@ -1172,6 +1206,8 @@ def create_station_with_chargers(
             # owner ใหม่ที่ยังไม่มีในระบบ → เก็บชื่อไว้ตรงๆ ไม่ผูก user_id
             owner_username = owner_name
 
+    lat, lng = _clean_coords(station_data.latitude, station_data.longitude)
+
     now = datetime.now(timezone.utc)
     actor = get_actor_id(current)
 
@@ -1186,6 +1222,8 @@ def create_station_with_chargers(
         "warranty_status": _clean_warranty_status(station_data.warranty_status),
         "investment_scope": _clean_investment_scope(station_data.investment_scope),
         "io_code": station_data.io_code.strip() if station_data.io_code else "",
+        "latitude": lat,
+        "longitude": lng,
         "images": {},
         "createdAt": now,
         "createdBy": actor,
@@ -1271,6 +1309,12 @@ def update_station(
         update_data["investment_scope"] = _clean_investment_scope(body.investment_scope)
     if body.io_code is not None:
         update_data["io_code"] = body.io_code.strip()
+
+    coord_fields = {"latitude", "longitude"} & body.model_fields_set
+    if coord_fields:
+        if len(coord_fields) != 2:
+            raise HTTPException(status_code=400, detail="latitude and longitude must be provided together")
+        update_data["latitude"], update_data["longitude"] = _clean_coords(body.latitude, body.longitude)
 
     if body.user_id is not None:
         new_user_oid = to_object_id(body.user_id)
