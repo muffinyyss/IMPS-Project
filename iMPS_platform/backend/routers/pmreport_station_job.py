@@ -36,7 +36,7 @@ from typing import Any, Literal, Optional
 
 from bson.objectid import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from config import charger_collection, station_collection
 from deps import UserClaims, get_current_user
@@ -292,7 +292,8 @@ async def _find_section_report(section: str, station_id: str, sn: str, job_id: s
         coll = section_collection(section, station_id, sn)
         return await coll.find_one(
             {"job_id": job_id},
-            {"_id": 1, "status": 1, "side": 1, "inspector": 1, "updatedAt": 1, "summary": 1},
+            {"_id": 1, "status": 1, "side": 1, "inspector": 1, "updatedAt": 1, "summary": 1,
+             "reject_remark": 1, "rejected_by": 1},
             sort=[("_id", -1)] if section == CHARGER_SECTION else [("createdAt", -1)],
         )
     except Exception as e:  # collection ยังไม่มี = ยังไม่เคยกรอกส่วนนี้
@@ -312,6 +313,9 @@ def _state_row(
         "status": _norm_status(doc.get("status")) if doc else "",
         "side": (doc or {}).get("side") or "",
         "inspector": (doc or {}).get("inspector") or "",
+        # เหตุผลที่ planner ตีกลับส่วนนี้ — ล้างเองเมื่อช่างส่งฟอร์มใหม่ (pm_flow.finalize)
+        "reject_remark": (doc or {}).get("reject_remark") or "",
+        "rejected_by": (doc or {}).get("rejected_by") or "",
         # N/A ได้เฉพาะส่วนที่ยังไม่มีเอกสาร — กรอกไปแล้วถือว่าไม่ใช่ N/A
         "na": bool(na and not doc),
     }
@@ -1107,7 +1111,7 @@ async def delete_section_photo(
 
 
 # ══════════════════════════════════════════════════════════════════
-# อนุมัติ / ตีกลับ ทั้งใบ (ทุกส่วนพร้อมกัน)
+# อนุมัติ / ตีกลับ ทั้งใบ (ทุกส่วนพร้อมกัน) — ตีกลับรายส่วนอยู่ถัดลงไป (reject-section)
 # ══════════════════════════════════════════════════════════════════
 
 @router.post("/stationpmjob/{job_id}/approve")
@@ -1284,6 +1288,129 @@ async def reject_station_pm_job(
     )
     fresh = await jobs.find_one({"_id": job["_id"]}) or job
     return {"ok": True, "results": results, "job": _serialize_job(fresh, sections, required)}
+
+
+# ══════════════════════════════════════════════════════════════════
+# ตีกลับรายส่วน — planner ตีกลับเฉพาะฟอร์มที่ต้องแก้ ฟอร์มอื่นยังรออนุมัติอยู่เหมือนเดิม
+#   - ใบลูกของส่วนนั้นกลับเป็น draft (pm_flow.reject) ส่วนอื่นไม่แตะ
+#   - ใบแม่กลับเป็น In Progress: ฝ่ายเจ้าของส่วนนั้นแก้ → ส่งฟอร์มใหม่ → กด "ส่งงาน / ปิดใบงาน"
+#     อีกครั้ง (เวลาทำงาน/ผู้ลงเวลาเดิมเติมให้) — ฝ่ายอื่นในใบที่แบ่งงานไม่ต้องส่งใหม่
+#   - ระหว่างที่ใบยังรอแก้ (draft ที่มี reject_remark) ตีกลับส่วนอื่นเพิ่มได้อีก
+# ══════════════════════════════════════════════════════════════════
+
+class SectionRejectIn(BaseModel):
+    section: str
+    sn: str = ""                          # ส่วน charger เท่านั้น
+    remark: str = Field(..., min_length=1, description="เหตุผลที่ตีกลับ — ช่างต้องรู้ว่าต้องแก้อะไร")
+
+
+def _rejected_summary(sections: list[dict]) -> str:
+    """เหตุผลรวมของใบ = ส่วนที่โดนตีกลับและยังไม่ได้ส่งใหม่ เช่น "MDB: …; ตู้ชาร์จ 2: …" """
+    parts: list[str] = []
+    for s in sections:
+        remark = str(s.get("reject_remark") or "").strip()
+        if not remark or _sent(s):
+            continue
+        label = (s.get("label") or {}).get("th") or s["section"]
+        parts.append(f"{label}: {remark}")
+    return "; ".join(parts)
+
+
+def _can_reject_section(job: dict, job_status: str) -> bool:
+    """ใบอยู่ในมือผู้อนุมัติ = รออนุมัติทั้งใบ หรือเพิ่งตีกลับบางส่วนไปแล้วและยังรอแก้"""
+    if _is_wait(job_status):
+        return True
+    return job_status == pm_flow.PM_STATUS_DRAFT and bool(str(job.get("reject_remark") or "").strip())
+
+
+def _reopen_entries(entries: list, owner_key: str, single_party: bool) -> list[dict]:
+    """
+    work_entries หลังตีกลับรายส่วน — เฉพาะฝ่ายเจ้าของส่วนนั้นกลับเป็นยังไม่ส่ง (ค่าเดิมเก็บไว้เติมให้)
+    ใบฝ่ายเดียว: รายการเดียวของใบกลับเป็นยังไม่ส่ง (ไม่ต้องเทียบ key — ใบรุ่นก่อนอาจคิด key ต่างกัน)
+    """
+    return [
+        {**e, "submitted": False} if (single_party or e.get("key") == owner_key) else e
+        for e in entries or [] if isinstance(e, dict)
+    ]
+
+
+@router.post("/stationpmjob/{job_id}/reject-section")
+async def reject_station_pm_section(
+    job_id: str,
+    body: SectionRejectIn,
+    station_id: str = Query(...),
+    current: UserClaims = Depends(get_current_user),
+):
+    """ตีกลับเฉพาะส่วนเดียวของใบ (ฟอร์มที่ planner เปิดตรวจอยู่) — ส่วนอื่นไม่ต้องแก้/ส่งใหม่"""
+    from routers import pm_scope
+
+    pm_flow.assert_approver(current)
+    remark = (body.remark or "").strip()
+    if not remark:
+        raise HTTPException(status_code=400, detail="กรุณาระบุเหตุผลที่ตีกลับ")
+    section = (body.section or "").strip().lower()
+    if section not in SECTIONS:
+        raise HTTPException(status_code=400, detail=f"ส่วนของเอกสารไม่ถูกต้อง: {body.section}")
+    sn = (body.sn or "").strip() if section == CHARGER_SECTION else ""
+
+    station_id = station_id.strip()
+    jobs = get_stationpmjob_collection_for(station_id)
+    job = await jobs.find_one({"_id": pm_flow.to_oid(job_id)})
+    if not job:
+        raise HTTPException(status_code=404, detail=f"ไม่พบใบ PM สถานี id={job_id}")
+
+    required = await job_planned_keys(job)
+    sections = await _section_states(job)
+    if not _can_reject_section(job, derive_job_status(sections, required, _job_submitted(job))):
+        raise HTTPException(status_code=409, detail="ใบนี้ยังไม่ได้ส่งอนุมัติ จึงยังตีกลับไม่ได้")
+    target = section_key(section, sn)
+    state = next((s for s in sections if section_key(s["section"], s.get("sn") or "") == target), None)
+    if not state or not state["report_id"]:
+        raise HTTPException(status_code=404, detail="ส่วนนี้ยังไม่ได้กรอก")
+    if not _is_wait(state["status"]):
+        raise HTTPException(status_code=409, detail="ส่วนนี้ไม่ได้รออนุมัติ (ยังไม่ได้ส่ง หรือปิดไปแล้ว)")
+
+    await pm_flow.reject(
+        section_collection(section, station_id, sn), ObjectId(state["report_id"]),
+        section_scope_filter(section, station_id, sn), current, remark,
+    )
+
+    # ฝ่ายเจ้าของส่วนนี้ต้องกดส่งงานใหม่ ฝ่ายอื่นยังนับว่าส่งแล้ว
+    wonum = str(job.get("wonum") or "").strip()
+    wo = (await pm_scope.wos_by_wonum([wonum])).get(wonum) if wonum else None
+    _mark_plan(sections, required)
+    parties = job_parties(sections, wo)
+    entries = _reopen_entries(
+        job.get("work_entries") or [],
+        _pkey(pm_scope.section_owner(wo, section, sn)),
+        single_party=len(parties) <= 1,
+    )
+
+    fresh_sections = await _section_states(job)
+    now = datetime.now(timezone.utc)
+    who = current.username or current.sub
+    await jobs.update_one(
+        {"_id": job["_id"]},
+        {
+            "$set": {
+                "status": derive_job_status(fresh_sections, required),
+                "reject_remark": _rejected_summary(fresh_sections) or remark,
+                "rejected_by": who,
+                "rejected_at": now,
+                "updatedAt": now,
+                **({"work_entries": entries} if entries else {}),
+            },
+            # ใบกลับไปอยู่ในมือช่าง — ส่งฟอร์มที่แก้แล้วกด "ส่งงาน / ปิดใบงาน" ใหม่
+            "$unset": {"submitted_at": "", "submitted_by": ""},
+        },
+    )
+    fresh = await jobs.find_one({"_id": job["_id"]}) or job
+    log.info(
+        f"  ↩️ ตีกลับส่วน {section}{f'/{sn}' if sn else ''} ของใบ {fresh.get('issue_id') or job_id} ({who}): {remark}"
+    )
+    job_out = _serialize_job(fresh, fresh_sections, required)
+    await _with_ownership([job_out], current)
+    return {"ok": True, "job": job_out}
 
 
 # ══════════════════════════════════════════════════════════════════

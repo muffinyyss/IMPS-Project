@@ -127,6 +127,9 @@ type SectionState = {
   editable?: boolean;
   /** คนที่กำลังเปิดฟอร์มของส่วนนี้ในโหมดกรอกอยู่ (ล็อกรายส่วน) — ว่าง = ไม่มีใคร */
   locked_by?: string;
+  /** planner ตีกลับส่วนนี้ (รายฟอร์ม) — หายเองเมื่อช่างส่งฟอร์มใหม่ */
+  reject_remark?: string;
+  rejected_by?: string;
 };
 
 type Job = {
@@ -335,6 +338,13 @@ const T = {
     en: "Send the whole document back for fixes. Tell the technician what to change.",
   },
   rejecting: { th: "กำลังตีกลับ…", en: "Sending back…" },
+  rejectAll: { th: "ตีกลับทั้งใบ", en: "Send back all" },
+  rejectSection: { th: "ตีกลับฟอร์มนี้", en: "Send back this form" },
+  rejectSectionConfirm: {
+    th: "ตีกลับเฉพาะฟอร์มนี้ให้ช่างแก้ — ฟอร์มอื่นยังรออนุมัติอยู่ ไม่ต้องส่งใหม่ ระบุเหตุผลให้ช่างรู้ว่าต้องแก้อะไร",
+    en: "Send only this form back for fixes — the other forms stay waiting for approval. Tell the technician what to change.",
+  },
+  sectionRejected: { th: "ตีกลับ", en: "Sent back" },
 
   errLoad: { th: "โหลดใบ PM ไม่สำเร็จ", en: "Failed to load PM documents" },
   errCreate: { th: "เปิดใบใหม่ไม่สำเร็จ", en: "Failed to create document" },
@@ -470,6 +480,8 @@ function SectionFillButton({
   const ownerText = `${t("ownedBy", lang)} ${state.owner || t("otherTeam", lang)}`;
   // ปิดใบงานแล้ว (รออนุมัติ/ปิด) เปลี่ยน N/A ไม่ได้ — ปุ่มหายไป เหลือแค่ป้าย N/A
   const canToggleNa = job.status === "draft" && !filled && !locked && !inUseBy;
+  // planner ตีกลับฟอร์มนี้ และยังไม่ได้ส่งใหม่
+  const rejectedRemark = filled && !sent ? (state.reject_remark ?? "") : "";
   return (
     // ไม่ยืดเต็มการ์ด — กว้างพอดีชื่ออุปกรณ์ + ปุ่ม N/A (มือถือยังเต็มความกว้างให้กดง่าย)
     <div className="tw-flex tw-w-full tw-items-stretch tw-gap-1.5 sm:tw-max-w-[15rem]">
@@ -500,7 +512,9 @@ function SectionFillButton({
           size="sm"
           variant={filled ? "outlined" : "filled"}
           onClick={() => onOpen(job, state)}
-          title={locked ? `${t("view", lang)}: ${label} (${ownerText})` : `${action}: ${label}`}
+          title={locked
+            ? `${t("view", lang)}: ${label} (${ownerText})`
+            : `${action}: ${label}${rejectedRemark ? ` — ${t("rejected", lang)} ${rejectedRemark}` : ""}`}
           aria-label={locked ? `${t("view", lang)}: ${label} (${ownerText})` : `${action}: ${label}`}
           className="tw-flex tw-min-w-0 tw-flex-1 tw-items-center tw-justify-center tw-gap-1.5"
         >
@@ -508,6 +522,11 @@ function SectionFillButton({
             ? <LockClosedIcon className="tw-h-4 tw-w-4 tw-shrink-0" />
             : <Icon className={`tw-h-4 tw-w-4 tw-shrink-0 ${iconClass}`} />}{" "}
           <span className="tw-truncate">{label}</span>
+          {rejectedRemark && (
+            <span className="tw-shrink-0 tw-rounded tw-bg-amber-100 tw-px-1.5 tw-py-0.5 tw-text-[10px] tw-font-semibold tw-normal-case tw-text-amber-800">
+              {t("sectionRejected", lang)}
+            </span>
+          )}
           {state.owner && <span className="tw-shrink-0 tw-text-[10px] tw-font-medium tw-normal-case tw-opacity-70">· {state.owner}</span>}
           {inUseBy && (
             <span className="tw-shrink-0 tw-rounded tw-bg-amber-100 tw-px-1.5 tw-py-0.5 tw-text-[10px] tw-font-semibold tw-normal-case tw-text-amber-800">
@@ -1000,6 +1019,33 @@ export default function StationPmJobTables() {
     }
   };
 
+  /** ตีกลับเฉพาะส่วนที่เปิดตรวจอยู่ — ส่วนอื่นยังรออนุมัติ (backend: reject-section) */
+  const rejectSection = async (s: SectionState | undefined): Promise<boolean> => {
+    if (!currentJob || !s || acting || !rejectRemark.trim()) return false;
+    setActing(true);
+    try {
+      const res = await apiFetch(
+        `/stationpmjob/${encodeURIComponent(currentJob.id)}/reject-section?station_id=${encodeURIComponent(currentJob.station_id)}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ section: s.section, sn: s.sn || "", remark: rejectRemark.trim() }),
+        }
+      );
+      const json = await res.json().catch(() => ({} as any));
+      if (!res.ok) throw new Error(json?.detail || t("errAction", lang));
+      setRejectOpen(false);
+      setRejectRemark("");
+      await loadJobs();
+      return true;
+    } catch (err) {
+      alert(err instanceof Error ? err.message : t("errAction", lang));
+      return false;
+    } finally {
+      setActing(false);
+    }
+  };
+
   // ══════════════ ทางเข้าจากใบงาน Maximo ══════════════
   // ทุก role เข้าหน้าเดียวกันจาก PM List — ผู้วางแผนได้ฟอร์มวางแผน
   // ช่างได้หน้าเดียวกันแบบอ่านอย่างเดียว + ปุ่ม "เริ่ม PM" ท้ายหน้า
@@ -1039,9 +1085,14 @@ export default function StationPmJobTables() {
     const viewing = searchParams.get("review") === "1";
     const sectionStatus = String(openedSection?.status ?? "").trim().toLowerCase();
     // ผู้อนุมัติ (planner/admin) เปิดดูส่วนหนึ่งของใบที่ช่างกดปิดใบงานแล้ว → ย้อนกลับ / ตีกลับ / แก้ไข ได้จากในฟอร์มเลย
-    // ตีกลับทำทั้งใบเหมือนปุ่มที่หน้ารวม ส่วนอนุมัติกดที่หน้ารวมเท่านั้น (ตรวจครบทุกส่วนก่อนค่อยอนุมัติทั้งใบ)
-    const approving = viewing && canApprove && currentJob?.status === "Wait for approve"
-      && !!openedSection?.report_id && !["closed", "submitted"].includes(sectionStatus);
+    // ตีกลับในฟอร์ม = ตีกลับเฉพาะฟอร์มนี้ (ฟอร์มอื่นยังรออนุมัติ) — ตีกลับทั้งใบ / อนุมัติ กดที่หน้ารวม
+    // ใบที่เพิ่งตีกลับบางฟอร์มไป (In Progress + มีเหตุผลตีกลับ) ยังตีกลับฟอร์มอื่นที่รออนุมัติเพิ่มได้
+    const inReview = currentJob?.status === "Wait for approve"
+      || (currentJob?.status === "draft" && !!currentJob?.reject_remark);
+    const approving = viewing && canApprove && inReview
+      && !!openedSection?.report_id && sectionStatus === "wait for approve";
+    // ส่วนนี้โดนตีกลับและยังไม่ได้ส่งใหม่ — บอกช่างว่าต้องแก้อะไร
+    const sectionRejectRemark = sectionStatus === "draft" ? (openedSection?.reject_remark ?? "") : "";
     const canEditSent = viewing && PM_EDIT_SENT_ROLES.includes(me?.role ?? "") && !!openedSection?.report_id
       && openedSection?.editable !== false
       && !inUseByOther(openedSection)
@@ -1111,7 +1162,7 @@ export default function StationPmJobTables() {
           onClick={() => { setRejectRemark(""); setRejectOpen(true); }}
           className="tw-text-sm tw-py-2.5 tw-w-full sm:tw-w-auto"
         >
-          {t("reject", lang)}
+          {t("rejectSection", lang)}
         </Button>
         {editButton}
       </>
@@ -1146,6 +1197,12 @@ export default function StationPmJobTables() {
         {viewing && inUseByOther(openedSection) && (
           <div className="tw-mx-auto tw-max-w-6xl">
             <PmLockBanner lockedBy={inUseByOther(openedSection)} kind="section" lang={lang} />
+          </div>
+        )}
+        {sectionRejectRemark && (
+          <div className="tw-mx-auto tw-mb-4 tw-max-w-6xl tw-rounded-lg tw-border tw-border-amber-200 tw-bg-amber-50 tw-px-4 tw-py-3 tw-text-sm tw-text-amber-800 [overflow-wrap:anywhere]">
+            {t("rejected", lang)} {sectionRejectRemark}
+            {openedSection?.rejected_by && <span className="tw-text-amber-700/80"> — {openedSection.rejected_by}</span>}
           </div>
         )}
         <PmReviewActionContext.Provider value={reviewActions}>
@@ -1190,7 +1247,7 @@ export default function StationPmJobTables() {
           </div>
         )}
 
-        {/* ตีกลับทั้งใบ — ต้องมีเหตุผล */}
+        {/* ตีกลับเฉพาะฟอร์มนี้ — ต้องมีเหตุผล */}
         {rejectOpen && approving && (
           <div
             className="tw-fixed tw-inset-0 tw-z-[9999] tw-flex tw-items-center tw-justify-center tw-bg-black/50 tw-p-4"
@@ -1199,9 +1256,10 @@ export default function StationPmJobTables() {
             <div role="dialog" aria-modal="true" className="tw-w-full tw-max-w-md tw-rounded-2xl tw-bg-white tw-p-6 tw-shadow-2xl" onClick={e => e.stopPropagation()}>
               <h3 className="tw-flex tw-items-center tw-gap-2 tw-text-lg tw-font-bold tw-text-blue-gray-800 tw-mb-2">
                 <XMarkIcon className="tw-h-5 tw-w-5 tw-text-red-600" />
-                {t("reject", lang)}
+                {t("rejectSection", lang)}
+                {openedSection && <span className="tw-font-semibold tw-text-blue-gray-500">· {pick(openedSection.label, lang)}</span>}
               </h3>
-              <p className="tw-mb-3 tw-text-sm tw-text-blue-gray-600">{t("rejectConfirm", lang)}</p>
+              <p className="tw-mb-3 tw-text-sm tw-text-blue-gray-600">{t("rejectSectionConfirm", lang)}</p>
               <label className="tw-mb-1 tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800">
                 {t("rejectReason", lang)} <span className="tw-text-red-500">*</span>
               </label>
@@ -1226,10 +1284,10 @@ export default function StationPmJobTables() {
                   type="button"
                   color="red"
                   disabled={acting || !rejectRemark.trim()}
-                  onClick={async () => { if (await rejectJob()) backToHub(); }}
+                  onClick={async () => { if (await rejectSection(openedSection)) backToHub(); }}
                   className="tw-font-semibold disabled:tw-opacity-50 disabled:tw-cursor-not-allowed"
                 >
-                  {t(acting ? "rejecting" : "reject", lang)}
+                  {t(acting ? "rejecting" : "rejectSection", lang)}
                 </Button>
               </div>
             </div>
@@ -1376,11 +1434,30 @@ export default function StationPmJobTables() {
               ))}
             </div>
 
-            {job.reject_remark && (
-              <div className="tw-mt-4 tw-rounded-lg tw-border tw-border-amber-200 tw-bg-amber-50 tw-px-4 tw-py-3 tw-text-sm tw-text-amber-800 [overflow-wrap:anywhere]">
-                {t("rejected", lang)} {job.reject_remark}
-              </div>
-            )}
+            {(() => {
+              // ฟอร์มที่โดนตีกลับและยังไม่ได้ส่งใหม่ — แยกรายฟอร์ม (ตีกลับรายฟอร์ม / ทั้งใบ ใช้ที่เดียวกัน)
+              const rejectedRows = job.sections.filter((s) =>
+                !!s.reject_remark && !!s.report_id && String(s.status).trim().toLowerCase() === "draft");
+              if (rejectedRows.length === 0 && !(job.reject_remark && job.status === "draft")) return null;
+              return (
+                <div className="tw-mt-4 tw-rounded-lg tw-border tw-border-amber-200 tw-bg-amber-50 tw-px-4 tw-py-3 tw-text-sm tw-text-amber-800 [overflow-wrap:anywhere]">
+                  {rejectedRows.length === 0 ? (
+                    <>{t("rejected", lang)} {job.reject_remark}</>
+                  ) : (
+                    <>
+                      <div className="tw-font-semibold">{t("rejected", lang)}</div>
+                      <ul className="tw-mt-1 tw-list-disc tw-space-y-0.5 tw-pl-5">
+                        {rejectedRows.map((s) => (
+                          <li key={`${s.section}:${s.sn}`}>
+                            <span className="tw-font-semibold">{pick(s.label, lang)}</span> — {s.reject_remark}
+                          </li>
+                        ))}
+                      </ul>
+                    </>
+                  )}
+                </div>
+              );
+            })()}
             {job.status === "Closed" && job.approved_by && (
               <div className="tw-mt-4 tw-flex tw-items-start tw-gap-2 tw-text-sm tw-text-green-700">
                 <CheckCircleIcon className="tw-h-5 tw-w-5 tw-shrink-0" />
@@ -1550,8 +1627,8 @@ export default function StationPmJobTables() {
         {/* ปุ่มอนุมัติ/ตีกลับ — ทั้งใบพร้อมกัน (มีแค่ปุ่ม ไม่มีแถบข้อความ) */}
         {waiting && canApprove && (
           <div className="tw-mt-6 tw-flex tw-justify-end tw-gap-2">
-            <Button size="sm" variant="outlined" disabled={acting} onClick={() => setRejectOpen(true)}>
-              {t("reject", lang)}
+            <Button size="sm" variant="outlined" disabled={acting} onClick={() => { setRejectRemark(""); setRejectOpen(true); }}>
+              {t("rejectAll", lang)}
             </Button>
             <Button size="sm" disabled={acting} onClick={approveJob} className="tw-bg-green-600">
               {t("approve", lang)}
@@ -1743,8 +1820,9 @@ export default function StationPmJobTables() {
         )}
 
         <Dialog open={rejectOpen} handler={() => setRejectOpen(false)} size="sm">
-          <DialogHeader>{t("reject", lang)}</DialogHeader>
-          <DialogBody>
+          <DialogHeader>{t("rejectAll", lang)}</DialogHeader>
+          <DialogBody className="tw-flex tw-flex-col tw-gap-3">
+            <p className="tw-text-sm tw-text-gray-600">{t("rejectConfirm", lang)}</p>
             <Input
               crossOrigin=""
               label={t("rejectReason", lang)}
@@ -1755,7 +1833,7 @@ export default function StationPmJobTables() {
           <DialogFooter className="tw-gap-2">
             <Button variant="text" onClick={() => setRejectOpen(false)}>{t("cancel", lang)}</Button>
             <Button color="red" disabled={!rejectRemark.trim() || acting} onClick={rejectJob}>
-              {t("reject", lang)}
+              {t("rejectAll", lang)}
             </Button>
           </DialogFooter>
         </Dialog>
