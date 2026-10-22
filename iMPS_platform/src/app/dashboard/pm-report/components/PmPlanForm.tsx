@@ -976,7 +976,7 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
                     <Button
                       type="button"
                       variant="outlined"
-                      onClick={() => { setError(""); setEditing(true); }}
+                      onClick={() => askConfirm("editPlan", () => { setError(""); setEditing(true); })}
                       className="tw-border-gray-800 tw-text-gray-800 hover:tw-bg-gray-50"
                     >
                       {t("editPlan", lang)}
@@ -986,7 +986,7 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
                     <Button
                       type="button"
                       variant="outlined"
-                      onClick={() => { setError(""); setVEditing(true); }}
+                      onClick={() => askConfirm("editPlan", () => { setError(""); setVEditing(true); })}
                       className="tw-border-gray-800 tw-text-gray-800 hover:tw-bg-gray-50"
                     >
                       {t("editVendorPlan", lang)}

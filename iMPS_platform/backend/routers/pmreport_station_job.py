@@ -1743,7 +1743,8 @@ def job_pdf_cache_path(station_id: str, job_id: str, lang: str, part: str = "") 
     from routers.pm_helpers import UPLOADS_ROOT
     suffix = f"_{part}" if part else ""
     # _v2 = ช่องลายเซ็นมี planner ต้นทางเป็นพยานของตู้ vendor (2026-10-22) — ไฟล์รุ่นก่อนไม่ถูกใช้ต่อ
-    return pathlib.Path(UPLOADS_ROOT) / "pdf_cache" / "stationPMJob" / station_id / f"{job_id}{suffix}_{lang}_v2.pdf"
+    # _v3 = แก้ขนาดตัวอักษรในตาราง checklist เพี้ยนเป็น 6pt หลังแถวแรก (2026-10-22)
+    return pathlib.Path(UPLOADS_ROOT) / "pdf_cache" / "stationPMJob" / station_id / f"{job_id}{suffix}_{lang}_v3.pdf"
 
 
 # การ์ดในหน้ารวมใบ PM สถานี → ส่วนที่อยู่ในการ์ดนั้น (PDF รายการ์ด)

@@ -39,6 +39,16 @@ export const PM_CONFIRM = {
     confirm: { th: "ยืนยันมอบหมาย", en: "Confirm assign" },
     color: COLOR.amber,
   },
+  /** เปิดโหมดแก้ไขแผนที่ Assign ไปแล้ว (ปุ่ม "แก้ไขแผน" / "แก้ไขแผนของบริษัทคุณ") */
+  editPlan: {
+    title: { th: "แก้ไขแผน", en: "Edit plan" },
+    body: {
+      th: "ยืนยันแก้ไขแผนงานนี้? แก้เสร็จแล้วกด \"บันทึกการแก้ไข\" เพื่อบันทึก หรือ \"ยกเลิก\" เพื่อกลับไปใช้แผนเดิม",
+      en: "Edit this plan? Press \"Save changes\" when done, or \"Cancel\" to keep the current plan.",
+    },
+    confirm: { th: "ยืนยันแก้ไข", en: "Confirm edit" },
+    color: COLOR.dark,
+  },
   /** บันทึกการแก้ไขแผนที่ Assign ไปแล้ว */
   saveEdit: {
     title: { th: "บันทึกการแก้ไข", en: "Save changes" },

@@ -1529,7 +1529,7 @@ export default function StationPmJobTables() {
 
         {/* หัวเอกสาร */}
         <Card className="tw-mb-5 tw-border tw-border-gray-200 tw-shadow-sm">
-          <CardBody className="tw-p-5">
+          <CardBody className="tw-p-4 sm:tw-p-5">
             <div className="tw-flex tw-items-start tw-justify-between tw-gap-3">
               <div className="tw-min-w-0 tw-flex-1">
                 <Typography variant="h5" className="tw-text-gray-900">{t("jobTitle", lang)}</Typography>
@@ -1546,16 +1546,18 @@ export default function StationPmJobTables() {
                 (เดิมเป็น grid กว้างคงที่ เลขที่/ชื่อเอกสารยาว ๆ เลยล้นไปทับช่องข้าง ๆ)
                 จอแคบกว่าข้อความจริง ๆ ค่อยตัดท้ายเป็น … ชี้ค้างดูค่าเต็มได้
                 ที่ว่างที่เหลือกระจายเท่า ๆ กันรอบทุกช่อง (space-evenly) — gap-x คือระยะห่างขั้นต่ำ */}
-            <div className="tw-mt-4 tw-flex tw-flex-wrap tw-justify-evenly tw-gap-x-10 tw-gap-y-3 tw-text-sm">
+            {/* มือถือ: grid 2 คอลัมน์ ชิดซ้าย — เลขที่ | วันที่ PM / ชื่อเอกสาร (เต็มแถว ตัดบรรทัดได้) / ใบงาน Maximo
+                sm ขึ้นไป: กลับเป็นแถว flex แบบเดิม (order ตามลำดับ array) */}
+            <div className="tw-mt-4 tw-grid tw-grid-cols-2 tw-gap-x-4 tw-gap-y-3 tw-border-t tw-border-gray-100 tw-pt-4 tw-text-sm sm:tw-flex sm:tw-flex-wrap sm:tw-justify-evenly sm:tw-gap-x-10 sm:tw-border-t-0 sm:tw-pt-0">
               {[
-                { label: t("docNo", lang), value: job.issue_id || "-" },
-                { label: t("docName", lang), value: job.doc_name || "-" },
-                { label: t("pmDate", lang), value: fmtDate(job.pm_date, lang) },
-                { label: t("wonum", lang), value: job.wonum || "-" },
+                { label: t("docNo", lang), value: job.issue_id || "-", cls: "tw-order-1" },
+                { label: t("docName", lang), value: job.doc_name || "-", cls: "tw-order-3 tw-col-span-2" },
+                { label: t("pmDate", lang), value: fmtDate(job.pm_date, lang), cls: "tw-order-2" },
+                { label: t("wonum", lang), value: job.wonum || "-", cls: "tw-order-4" },
               ].map((f) => (
-                <div key={f.label} className="tw-max-w-full tw-whitespace-nowrap">
-                  <div className="tw-text-gray-500">{f.label}</div>
-                  <div className="tw-truncate tw-font-semibold tw-text-gray-800" title={f.value}>{f.value}</div>
+                <div key={f.label} className={`tw-min-w-0 ${f.cls} sm:tw-order-none sm:tw-max-w-full sm:tw-whitespace-nowrap`}>
+                  <div className="tw-text-xs tw-text-gray-500 sm:tw-text-sm">{f.label}</div>
+                  <div className="tw-font-semibold tw-text-gray-800 [overflow-wrap:anywhere] sm:tw-truncate" title={f.value}>{f.value}</div>
                 </div>
               ))}
             </div>
@@ -1660,10 +1662,13 @@ export default function StationPmJobTables() {
         </Card>
 
         {/* 2 ส่วนหลัก — Station รวม 4 แบบตรวจเดิม ส่วน Charger แตกเป็นใบย่อยรายตู้ */}
-        <div className="tw-mb-2 tw-flex tw-flex-wrap tw-items-baseline tw-gap-x-3 tw-gap-y-1">
-          <Typography variant="h6" className="tw-text-gray-800">{t("sectionsTitle", lang)}</Typography>
-          <span className="tw-min-w-0 tw-text-xs tw-text-gray-500">{t("sectionsHint", lang)}</span>
-          <span className="tw-ml-auto tw-shrink-0 tw-text-xs tw-font-semibold tw-text-gray-500">
+        {/* หัวข้อ + ตัวนับอยู่แถวเดียวกันเสมอ — คำอธิบายลงบรรทัดใหม่บนมือถือ (เดิมตัวนับหลุดไปอยู่บรรทัดเดี่ยว) */}
+        <div className="tw-mb-3 tw-flex tw-items-baseline tw-gap-3">
+          <div className="tw-flex tw-min-w-0 tw-flex-1 tw-flex-col tw-gap-y-0.5 sm:tw-flex-row sm:tw-flex-wrap sm:tw-items-baseline sm:tw-gap-x-3">
+            <Typography variant="h6" className="tw-text-gray-800">{t("sectionsTitle", lang)}</Typography>
+            <span className="tw-min-w-0 tw-text-xs tw-text-gray-500">{t("sectionsHint", lang)}</span>
+          </div>
+          <span className="tw-shrink-0 tw-rounded-full tw-bg-gray-100 tw-px-2 tw-py-0.5 tw-text-xs tw-font-semibold tw-text-gray-600">
             {completedGroups}/{SECTION_GROUPS.length}
           </span>
         </div>
@@ -1680,13 +1685,14 @@ export default function StationPmJobTables() {
                 className="tw-h-full tw-border tw-border-gray-200 tw-shadow-sm"
               >
                 {/* การ์ดสูงเท่ากันทั้งแถว (grid stretch) */}
-                <CardBody className="tw-flex tw-h-full tw-flex-col tw-p-4">
-                  <div className="tw-flex tw-flex-1 tw-items-start tw-gap-3">
+                <CardBody className="tw-flex tw-h-full tw-flex-col tw-p-3 sm:tw-p-4">
+                  {/* หัวการ์ด: เลขลำดับ | ชื่อ+สถานะ+คำอธิบาย | ปุ่ม PDF (มุมขวาบนเสมอ ไม่หลุดไปบรรทัดใหม่) */}
+                  <div className="tw-flex tw-items-start tw-gap-3">
                     <div className="tw-flex tw-h-8 tw-w-8 tw-shrink-0 tw-items-center tw-justify-center tw-rounded-full tw-bg-gray-800 tw-text-sm tw-font-bold tw-text-white">
                       {idx + 1}
                     </div>
                     <div className="tw-min-w-0 tw-flex-1">
-                      <div className="tw-flex tw-flex-wrap tw-items-center tw-gap-2">
+                      <div className="tw-flex tw-flex-wrap tw-items-center tw-gap-x-2 tw-gap-y-1">
                         <span className="tw-font-semibold tw-text-gray-900">
                           {pick(SECTION_TITLE[group.id], lang)}
                         </span>
@@ -1694,80 +1700,82 @@ export default function StationPmJobTables() {
                           {sectionStatusLabel(groupStatus, lang, job.status !== "draft")}
                         </span>
                         {rows.length > 0 && (
-                          <span className="tw-text-[11px] tw-font-semibold tw-text-gray-500">
+                          <span className="tw-whitespace-nowrap tw-text-[11px] tw-font-semibold tw-text-gray-500">
                             {doneCount}/{rows.length} {t("chargersDone", lang)}
-                          </span>
-                        )}
-                        {/* PDF ของการ์ดนี้ — เหมือน PDF ทั้งใบ: โหลดได้เฉพาะใบที่อนุมัติแล้ว (Closed) และการ์ดมีฟอร์มที่กรอกแล้ว */}
-                        {toPmFlow({ status: job.status, reject_remark: job.reject_remark }) === "closed" && rows.some((x) => !!x.report_id) ? (
-                          <a
-                            href={`${API_BASE}/stationpmjob/${encodeURIComponent(job.id)}/pdf?station_id=${encodeURIComponent(job.station_id)}&lang=${lang}&part=${group.id}`}
-                            target="_blank"
-                            rel="noreferrer"
-                            title={t("cardPdfTitle", lang)}
-                            className="tw-ml-auto tw-inline-flex tw-items-center tw-gap-1 tw-rounded-md tw-border tw-border-gray-300 tw-px-2 tw-py-1 tw-text-xs tw-font-semibold tw-text-gray-700 hover:tw-bg-gray-50"
-                          >
-                            <DocumentArrowDownIcon className="tw-h-3.5 tw-w-3.5" /> {t("cardPdf", lang)}
-                          </a>
-                        ) : (
-                          <span
-                            title={toPmFlow({ status: job.status, reject_remark: job.reject_remark }) === "closed"
-                              ? t("cardPdfEmpty", lang) : t("pdfClosedOnly", lang)}
-                            aria-disabled="true"
-                            className="tw-ml-auto tw-inline-flex tw-cursor-not-allowed tw-items-center tw-gap-1 tw-rounded-md tw-border tw-border-gray-300 tw-px-2 tw-py-1 tw-text-xs tw-font-semibold tw-text-gray-700 tw-opacity-50"
-                          >
-                            <DocumentArrowDownIcon className="tw-h-3.5 tw-w-3.5" /> {t("cardPdf", lang)}
                           </span>
                         )}
                       </div>
                       <p className="tw-mt-1 tw-text-xs tw-text-gray-500">{pick(SECTION_GROUP_HINT[group.id], lang)}</p>
-
-                      {/* Station — แสดงเฉพาะปุ่มของ Station/MDB/CCB/CB_BOX เรียงต่อกันลงมาทีละปุ่ม */}
-                      {!isCharger && (
-                        <div className="tw-mt-3 tw-grid tw-grid-cols-1 tw-gap-2">
-                          {group.sectionIds.map((sectionId) => {
-                            const state = job.sections.find((item) => item.section === sectionId);
-                            if (!state) return null;
-                            return (
-                              <SectionFillButton
-                                key={sectionId}
-                                job={job}
-                                state={state}
-                                lang={lang}
-                                inUseBy={inUseByOther(state)}
-                                onOpen={openSection}
-                                onToggleNa={toggleNa}
-                                busy={acting}
-                              />
-                            );
-                          })}
-                        </div>
-                      )}
-
-                      {/* ส่วนที่ผูกกับตู้ — ตู้ละ 1 ใบ แต่ยังเป็นส่วนเดียวกัน */}
-                      {isCharger && (
-                        rows.length === 0 ? (
-                          <p className="tw-mt-3 tw-text-xs tw-text-gray-400">{t("noChargers", lang)}</p>
-                        ) : (
-                          <div className="tw-mt-3 tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 tw-gap-2">
-                            {rows.map((c) => (
-                              <SectionFillButton
-                                key={c.sn}
-                                job={job}
-                                state={c}
-                                lang={lang}
-                                inUseBy={inUseByOther(c)}
-                                onOpen={openSection}
-                                onToggleNa={toggleNa}
-                                busy={acting}
-                              />
-                            ))}
-                          </div>
-                        )
-                      )}
                     </div>
+                    {/* PDF ของการ์ดนี้ — เหมือน PDF ทั้งใบ: โหลดได้เฉพาะใบที่อนุมัติแล้ว (Closed) และการ์ดมีฟอร์มที่กรอกแล้ว */}
+                    {toPmFlow({ status: job.status, reject_remark: job.reject_remark }) === "closed" && rows.some((x) => !!x.report_id) ? (
+                      <a
+                        href={`${API_BASE}/stationpmjob/${encodeURIComponent(job.id)}/pdf?station_id=${encodeURIComponent(job.station_id)}&lang=${lang}&part=${group.id}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        title={t("cardPdfTitle", lang)}
+                        className="tw-inline-flex tw-shrink-0 tw-items-center tw-gap-1 tw-rounded-md tw-border tw-border-gray-300 tw-px-2 tw-py-1 tw-text-xs tw-font-semibold tw-text-gray-700 hover:tw-bg-gray-50"
+                      >
+                        <DocumentArrowDownIcon className="tw-h-3.5 tw-w-3.5" /> {t("cardPdf", lang)}
+                      </a>
+                    ) : (
+                      <span
+                        title={toPmFlow({ status: job.status, reject_remark: job.reject_remark }) === "closed"
+                          ? t("cardPdfEmpty", lang) : t("pdfClosedOnly", lang)}
+                        aria-disabled="true"
+                        className="tw-inline-flex tw-shrink-0 tw-cursor-not-allowed tw-items-center tw-gap-1 tw-rounded-md tw-border tw-border-gray-300 tw-px-2 tw-py-1 tw-text-xs tw-font-semibold tw-text-gray-700 tw-opacity-50"
+                      >
+                        <DocumentArrowDownIcon className="tw-h-3.5 tw-w-3.5" /> {t("cardPdf", lang)}
+                      </span>
+                    )}
                   </div>
 
+                  {/* ปุ่มกรอกแต่ละส่วน — มือถือใช้ความกว้างเต็มการ์ด, sm ขึ้นไปเยื้องตรงกับชื่อการ์ด (w-8 + gap-3) */}
+                  <div className="tw-flex-1 sm:tw-pl-11">
+                    {/* Station — แสดงเฉพาะปุ่มของ Station/MDB/CCB/CB_BOX เรียงต่อกันลงมาทีละปุ่ม */}
+                    {!isCharger && (
+                      <div className="tw-mt-3 tw-grid tw-grid-cols-1 tw-gap-2">
+                        {group.sectionIds.map((sectionId) => {
+                          const state = job.sections.find((item) => item.section === sectionId);
+                          if (!state) return null;
+                          return (
+                            <SectionFillButton
+                              key={sectionId}
+                              job={job}
+                              state={state}
+                              lang={lang}
+                              inUseBy={inUseByOther(state)}
+                              onOpen={openSection}
+                              onToggleNa={toggleNa}
+                              busy={acting}
+                            />
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* ส่วนที่ผูกกับตู้ — ตู้ละ 1 ใบ แต่ยังเป็นส่วนเดียวกัน */}
+                    {isCharger && (
+                      rows.length === 0 ? (
+                        <p className="tw-mt-3 tw-text-xs tw-text-gray-400">{t("noChargers", lang)}</p>
+                      ) : (
+                        <div className="tw-mt-3 tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 tw-gap-2">
+                          {rows.map((c) => (
+                            <SectionFillButton
+                              key={c.sn}
+                              job={job}
+                              state={c}
+                              lang={lang}
+                              inUseBy={inUseByOther(c)}
+                              onOpen={openSection}
+                              onToggleNa={toggleNa}
+                              busy={acting}
+                            />
+                          ))}
+                        </div>
+                      )
+                    )}
+                  </div>
                 </CardBody>
               </Card>
             );

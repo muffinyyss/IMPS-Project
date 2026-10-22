@@ -36,18 +36,19 @@ export default function DataTablesPage() {
     window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "smooth" });
 
   return (
-    <div className="tw-w-full">
+    // โหมดฟอร์มมีปุ่มลอยมุมขวาล่าง — เว้นที่ท้ายหน้าไว้ ให้เลื่อนเนื้อหาส่วนสุดท้ายพ้นปุ่มได้
+    <div className={`tw-w-full ${mode === "form" ? "tw-pb-28" : ""}`}>
       <StationPmJobTables />
 
       {/* ปุ่มเลื่อนขึ้นสุด/ลงสุด — แสดงเฉพาะตอนกรอกเอกสาร PM (ทั้ง PC และมือถือ) */}
       {mode === "form" && (
-      <div className="tw-fixed tw-bottom-5 tw-right-4 tw-z-40 tw-flex tw-flex-col tw-gap-2">
+      <div className="tw-fixed tw-bottom-4 tw-right-3 sm:tw-bottom-5 sm:tw-right-4 tw-z-40 tw-flex tw-flex-col tw-gap-2">
         <button
           type="button"
           onClick={scrollToTop}
           title={lang === "th" ? "เลื่อนขึ้นสุด" : "Scroll to top"}
           aria-label={lang === "th" ? "เลื่อนขึ้นสุด" : "Scroll to top"}
-          className="tw-flex tw-items-center tw-justify-center tw-w-11 tw-h-11
+          className="tw-flex tw-items-center tw-justify-center tw-w-10 tw-h-10 sm:tw-w-11 sm:tw-h-11
                      tw-rounded-full tw-bg-gray-900 tw-text-white
                      tw-shadow-lg tw-shadow-gray-900/30
                      hover:tw-bg-gray-700 active:tw-scale-95
@@ -60,7 +61,7 @@ export default function DataTablesPage() {
           onClick={scrollToBottom}
           title={lang === "th" ? "เลื่อนลงสุด" : "Scroll to bottom"}
           aria-label={lang === "th" ? "เลื่อนลงสุด" : "Scroll to bottom"}
-          className="tw-flex tw-items-center tw-justify-center tw-w-11 tw-h-11
+          className="tw-flex tw-items-center tw-justify-center tw-w-10 tw-h-10 sm:tw-w-11 sm:tw-h-11
                      tw-rounded-full tw-bg-gray-900 tw-text-white
                      tw-shadow-lg tw-shadow-gray-900/30
                      hover:tw-bg-gray-700 active:tw-scale-95

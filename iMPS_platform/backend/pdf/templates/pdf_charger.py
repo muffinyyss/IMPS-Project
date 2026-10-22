@@ -973,7 +973,22 @@ def _draw_header(
     # Doc Name (2 บรรทัด)
     pdf.set_xy(xr, y_top + h_right_half + 1)
     pdf.set_font(base_font, "B", FONT_MAIN - 2)
-    pdf.multi_cell(col_right, 4.5, f"{label_doc_name}\n{doc_name}", align="C")
+    pdf.multi_cell(col_right, 4.5, f"{label_doc_name}", align="C")
+    # ชื่อเอกสารยาว (เช่น 7Eleven_Banklangmueang_5/2026) เคยตัดบรรทัดล้นกรอบลงไปทับตาราง
+    # → ย่อฟอนต์ให้พอดีบรรทัดเดียว ถ้ายังไม่พอที่ 6pt ค่อยตัด 2 บรรทัดเล็ก ๆ ในกรอบ
+    _dn = str(doc_name)
+    _fs = FONT_MAIN - 2
+    while _fs > 6 and pdf.get_string_width(_dn) > col_right - 2:
+        _fs -= 0.5
+        pdf.set_font(base_font, "B", _fs)
+    pdf.set_xy(xr, y_top + h_right_half + 1 + 4.5)
+    if pdf.get_string_width(_dn) <= col_right - 2:
+        pdf.cell(col_right, 4.5, _dn, align="C")
+    else:
+        pdf.multi_cell(col_right, 2.5, _dn, align="C")
+    pdf.set_font(base_font, "B", FONT_MAIN - 2)
+    # ตำแหน่ง y หลังหัวกระดาษต้องเท่ากับของเดิม (multi_cell 2 บรรทัด) — เนื้อหาถัดไปเริ่มจาก get_y()
+    pdf.set_xy(xr + col_right, y_top + h_right_half + 1 + 2 * 4.5)
 
     return y_top + h_all
 
@@ -1159,6 +1174,7 @@ def _draw_result_cell(
     labels = ["pass", "fail", "na"]
     label_text = {"pass": "Pass", "fail": "Fail", "na": "N/A"}
 
+    _prev_font = (pdf.font_family, pdf.font_style, pdf.font_size_pt)
     pdf.set_font(base_font, "", 6)
 
     # วาดเส้นแบ่งคอลัมน์
@@ -1189,6 +1205,8 @@ def _draw_result_cell(
             pdf.cell(text_w, LINE_H, lab, border=0, ln=0, align="L")
 
     pdf.set_xy(x + w, y)
+    # คืนฟอนต์เดิม — ไม่ให้ขนาด 6 ของ Pass/Fail/N/A ค้างไปถึงข้อความแถวถัดไป
+    pdf.set_font(_prev_font[0], _prev_font[1], _prev_font[2])
     
 def _extract_row_result(row: dict) -> str:
     if not isinstance(row, dict):

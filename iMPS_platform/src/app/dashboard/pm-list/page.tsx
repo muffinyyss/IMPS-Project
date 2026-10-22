@@ -738,7 +738,6 @@ export default function PMListPage() {
   const columns: { key: SortKey; label: string }[] = [
     { key: "station", label: t.headers.station },
     { key: "wo", label: t.headers.wo },
-    { key: "technician", label: t.headers.technician },
     { key: "date", label: t.headers.date },
     { key: "status", label: t.headers.status },
   ];
@@ -1060,7 +1059,6 @@ export default function PMListPage() {
                         )}
                       </span>
                     </td>
-                    <td className="tw-px-4 tw-py-3 tw-text-gray-600">{r.technician || "-"}</td>
                     <td className="tw-px-4 tw-py-3 tw-whitespace-nowrap tw-text-gray-500">
                       {r.pm_date && r.pm_date !== "-"
                         ? new Date(r.pm_date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
