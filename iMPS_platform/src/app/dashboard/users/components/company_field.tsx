@@ -35,6 +35,40 @@ export function parseCompanyOptions(json: any): CompanyOption[] {
         : [];
 }
 
+/**
+ * รายชื่อจาก GET /companies/ (เมนู Company) → ตัวเลือก owner → vendor → outsource
+ * ตรรกะเดียวกับ _all_company_options() ฝั่ง backend — ใช้สำรองตอน manageable-companies ไม่คืน options (admin)
+ * doc type=vendor เก็บชื่อ owner ไว้ที่ name และ vendor ไว้ใน vendors[]
+ */
+export function companyOptionsFromList(json: any): CompanyOption[] {
+    const docs: any[] = Array.isArray(json?.companies) ? json.companies : [];
+    const owners: string[] = [];
+    const vendors: string[] = [];
+    const outsources: string[] = [];
+    for (const d of docs) {
+        if (!d || typeof d !== "object") continue;
+        if (d.type === "owner" || d.type === "vendor") owners.push(d.name);
+        if (d.type === "vendor") vendors.push(...(d.vendors ?? []).map((v: any) => v?.name));
+        else if (d.type === "outsource") outsources.push(d.name);
+    }
+    const out: CompanyOption[] = [];
+    const seen = new Set<string>();
+    const add = (names: string[], type: CompanyType) =>
+        names
+            .map((n) => String(n ?? "").trim())
+            .filter(Boolean)
+            .sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()))
+            .forEach((name) => {
+                if (seen.has(name.toLowerCase())) return;
+                seen.add(name.toLowerCase());
+                out.push({ name, type });
+            });
+    add(owners, "owner");
+    add(vendors, "vendor");
+    add(outsources, "outsource");
+    return out;
+}
+
 /** ค่าเดิมที่ไม่อยู่ในลิสต์ (เช่นพิมพ์ต่างตัวพิมพ์) ต้องไม่หายจาก dropdown — ใส่ไว้กลุ่ม "ค่าปัจจุบัน" */
 export function withCurrentCompany(options: CompanyOption[], current?: string): CompanyOption[] {
     const cur = (current ?? "").trim();

@@ -43,6 +43,7 @@ import {
 import AddUser, { NewUserPayload } from "@/app/dashboard/users/components/adduser";
 import {
   CompanyCombobox,
+  companyOptionsFromList,
   parseCompanyOptions,
   withCurrentCompany,
   type CompanyOption,
@@ -185,7 +186,17 @@ export default function SearchDataTables() {
       try {
         const res = await apiFetch(`/users/manageable-companies`);
         const json = res.ok ? await res.json() : {};
-        if (alive) setCompanyOptions(parseCompanyOptions(json));
+        let opts = parseCompanyOptions(json);
+        // admin: backend รุ่นเก่า / เรียกไม่สำเร็จ → ไม่มี options — ดึงจากเมนู Company ตรง ๆ แทน
+        if (isAdmin && opts.length === 0) {
+          try {
+            const r2 = await apiFetch(`/companies/`);
+            if (r2.ok) opts = companyOptionsFromList(await r2.json());
+          } catch {
+            /* ไม่มีรายชื่อแนะนำ — ยังพิมพ์เองได้ */
+          }
+        }
+        if (alive) setCompanyOptions(opts);
       } catch {
         if (alive) setCompanyOptions([]);
       }
@@ -892,13 +903,13 @@ export default function SearchDataTables() {
                   lang={lang}
                   defaultValue={editingRow?.company ?? ""}
                 />
-              ) : isAdmin && !!companyOptions?.length ? (
+              ) : isAdmin ? (
                 <CompanyCombobox
                   key={editingRow?.id}
                   freeText
                   required={false}
                   name="company"
-                  options={companyOptions}
+                  options={companyOptions ?? []}
                   label={t("company", lang)}
                   lang={lang}
                   defaultValue={editingRow?.company ?? ""}

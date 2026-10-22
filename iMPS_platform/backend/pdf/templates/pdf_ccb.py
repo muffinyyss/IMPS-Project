@@ -957,7 +957,8 @@ def _draw_header(
     x0 = left
     y_top = 10
 
-    col_left, col_mid = 35, 120
+    # กล่องขวา (รหัส/ชื่อเอกสาร) กว้าง 50 มม. ให้ชื่อเอกสารขนาดเท่ารหัสเอกสาร (9pt) — กล่องกลางยังพอใส่ที่อยู่ไทยบรรทัดยาวสุด (~95 มม.)
+    col_left, col_mid = 35, 105
     col_right = page_w - col_left - col_mid
 
     h_all = 22
@@ -1097,32 +1098,55 @@ def _draw_signature_block(
         x_pos += col_widths[i]
     y += row_h_header
 
-    # ===== กล่องลายเซ็น =====
-    x_pos = x_table
-    for w in col_widths:
-        pdf.rect(x_pos, y, w, row_h_sig)
-        x_pos += w
-    y += row_h_sig
-
-    # ===== แถวชื่อ =====
-    pdf.set_font(base_font, "", FONT_MAIN)
-    # ชื่อผู้ทำ / ผู้อนุมัติ / พยาน — PDF ของการ์ดในใบ PM สถานีส่งมาทาง doc["_signers"] (ไม่มี = เว้นช่องไว้เขียนเอง)
+    # ชื่อผู้ทำ / ผู้อนุมัติ / ผู้เห็นชอบ — PDF ของการ์ดในใบ PM สถานีส่งมาทาง doc["_signers"]
     names = list(getattr(pdf, "_signer_names", None) or [])
-    x_pos = x_table
-    for i, w in enumerate(col_widths):
-        pdf.rect(x_pos, y, w, row_h_name)
-        pdf.set_xy(x_pos, y)
-        name = str(names[i]).strip() if i < len(names) and names[i] else ""
-        if name:
-            text = f"( {name} )"
-            while len(name) > 1 and pdf.get_string_width(text) > w - 2:
-                name = name[:-1]
-                text = f"( {name}… )"
-        else:
-            text = "(                                                     )"
-        pdf.cell(w, row_h_name, text, align="C")
-        x_pos += w
-    y += row_h_name
+    if getattr(pdf, "_signer_dates", None) is not None:
+        # ใบ PM สถานี: ไม่เว้นช่องเซ็น — พิมพ์ชื่อในกล่องใหญ่เลย (รวมกล่องเซ็น + แถวชื่อเป็นกล่องเดียว ความสูงเท่าเดิม)
+        box_h = row_h_sig + row_h_name
+        x_pos = x_table
+        for i, w in enumerate(col_widths):
+            pdf.rect(x_pos, y, w, box_h)
+            name = str(names[i]).strip() if i < len(names) and names[i] else ""
+            if name:
+                fs = FONT_MAIN + 1
+                pdf.set_font(base_font, "B", fs)
+                while fs > FONT_MAIN - 2 and pdf.get_string_width(name) > w - 4:
+                    fs -= 0.5
+                    pdf.set_font(base_font, "B", fs)
+                text = name
+                if pdf.get_string_width(text) > w - 4:  # เล็กสุดแล้วยังยาวเกิน → ตัดท้าย
+                    while len(text) > 1 and pdf.get_string_width(text + "…") > w - 4:
+                        text = text[:-1]
+                    text += "…"
+                pdf.set_xy(x_pos, y)
+                pdf.cell(w, box_h, text, align="C")
+            x_pos += w
+        y += box_h
+        pdf.set_font(base_font, "", FONT_MAIN)
+    else:
+        # ฟอร์มเดี่ยว (ไม่มีชื่อส่งมา): เว้นกล่องไว้เซ็น + วงเล็บไว้เขียนชื่อเอง
+        x_pos = x_table
+        for w in col_widths:
+            pdf.rect(x_pos, y, w, row_h_sig)
+            x_pos += w
+        y += row_h_sig
+
+        pdf.set_font(base_font, "", FONT_MAIN)
+        x_pos = x_table
+        for i, w in enumerate(col_widths):
+            pdf.rect(x_pos, y, w, row_h_name)
+            pdf.set_xy(x_pos, y)
+            name = str(names[i]).strip() if i < len(names) and names[i] else ""
+            if name:
+                text = f"( {name} )"
+                while len(name) > 1 and pdf.get_string_width(text) > w - 2:
+                    name = name[:-1]
+                    text = f"( {name}… )"
+            else:
+                text = "(                                                     )"
+            pdf.cell(w, row_h_name, text, align="C")
+            x_pos += w
+        y += row_h_name
 
     # ===== แถววันที่ =====
     x_pos = x_table
