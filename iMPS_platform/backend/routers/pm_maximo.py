@@ -378,6 +378,13 @@ async def pm_maximo_sync(
     - ไม่ส่ง source/identifier = ดึงทุก location
     - ส่งมา = ดึงเฉพาะ location ของ tab/อุปกรณ์นั้น
     """
+    from services import pm_auto_wo
+    if await pm_auto_wo.intake_closed():
+        raise HTTPException(
+            status_code=423,
+            detail="ปิดรับใบงาน PM จาก Maximo อยู่ — ใบงาน PM ออกโดย iMPS ตามรอบ commissioning",
+        )
+
     locations = None
     if source and identifier:
         locations, _ = _locations_for(source, identifier.strip())
@@ -745,6 +752,27 @@ async def maximo_pm_open(
             detail="invalid or missing shared secret — ส่งมาทาง header X-Maximo-Token",
         )
 
+    # ปิดรับใบงานจาก Maximo (สวิตช์ admin ที่หน้า PM List) — ใบงาน PM ออกโดย iMPS ตามรอบ
+    # commissioning ของตู้ (services/pm_auto_wo.py) ปฏิเสธด้วย 423 ให้ฝั่ง Maximo รู้ว่าไม่ได้รับ
+    # และจดของที่ยิงมาไว้ที่ iMPS.maximo_pm_open_rejected
+    from services import pm_auto_wo
+    if await pm_auto_wo.intake_closed():
+        from fastapi.responses import JSONResponse
+        log.warning("  ⛔ IN06 rejected: ปิดรับใบงาน PM จาก Maximo อยู่ (%d bytes)", len(body_bytes))
+        await pm_auto_wo.record_rejected({
+            "content_type": ctype,
+            "token_headers": seen_headers or None,
+            "raw_body": (body_bytes[:4000].decode("utf-8", "replace") or None),
+        })
+        return JSONResponse(
+            status_code=423,
+            content={
+                "status": "REJECTED",
+                "message": "iMPS ปิดรับใบงาน PM จาก Maximo — ใบงาน PM ออกโดย iMPS "
+                           "ตามรอบ commissioning ของตู้ชาร์จ",
+            },
+        )
+
     # parse เอง ไม่ผ่าน pydantic body model: Maximo จะได้ไม่โดน 422 ที่อ่านไม่รู้เรื่อง
     # และ log เห็น body จริงทุกครั้งแม้ payload ผิดทรง (422 ของ FastAPI ไม่เข้ามาถึงตรงนี้)
     try:
@@ -838,8 +866,12 @@ async def maximo_pm_ping(request: Request):
                 "expected_header": "X-Maximo-Token",
             },
         )
+    from services import pm_auto_wo
+    closed = await pm_auto_wo.intake_closed()
     return {
         "status": "OK",
+        # false = iMPS ปิดรับใบงาน PM — POST /maximo/pm/open จะได้ 423
+        "accepting_workorders": not closed,
         "endpoint": "POST /maximo/pm/open",
         "required_fields": ["location"],
         "optional_fields": ["pm_date", "wonum", "status", "company", "description"],
@@ -857,6 +889,10 @@ def _serialize_open(doc: dict) -> dict:
         "station_id": doc.get("station_id"),
         "sn": doc.get("sn"),
         "origin": doc.get("origin"),
+        # ใบที่ iMPS ออกเองตามรอบ commissioning (services/pm_auto_wo.py) — origin ยังเป็น imps-manual
+        "auto_generated": bool(doc.get("auto_generated")),
+        "auto_cycle": doc.get("auto_cycle"),
+        "auto_due": doc.get("auto_due") or [],
         # อุปกรณ์ที่ผู้ใช้เลือกจะ PM ในฝั่ง iMPS (เลือกได้หลายตัว)
         "selected_equipment": doc.get("selected_equipment") or [],
         "selected_at": (
@@ -1783,7 +1819,14 @@ async def pm_equipment_choices(
         "location": doc.get("location"),
         "chargers": chargers,          # เลือกได้หลายตู้
         "fixed": fixed,                # อุปกรณ์ระดับสถานี
-        "selected_equipment": doc.get("selected_equipment") or [],
+        # ใบที่ระบบออกเองและยังไม่วางแผน = ติ๊กตู้ที่ครบรอบ (+ อุปกรณ์ระดับสถานี) ไว้ให้ก่อน
+        # ไม่ได้บันทึกลงใบ — selected_equipment ของใบยังว่าง ช่างจึงยังเริ่ม PM ไม่ได้จนกว่าจะวางแผน
+        "selected_equipment": doc.get("selected_equipment") or (
+            doc.get("auto_due_equipment") or []
+            if doc.get("auto_generated")
+            and str(doc.get("planning_status") or "").strip().lower() != "planned"
+            else []
+        ),
         # ใครแก้แผนได้ตอนนี้ — หน้าวางแผนใช้โชว์ปุ่ม "แก้ไขแผน"
         "plan_state": await _plan_edit_state(doc, current),
     }

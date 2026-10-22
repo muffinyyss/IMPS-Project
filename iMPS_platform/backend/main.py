@@ -187,10 +187,14 @@ async def lifespan(app: FastAPI):
     # ใบ PM ที่อนุมัติแล้วแต่ส่งปิดงานเข้า Maximo ไม่ผ่าน → ลองส่งใหม่เองเป็นระยะ
     from services import pm_maximo_retry
     pm_retry_task = asyncio.create_task(pm_maximo_retry.run_forever())
+    # ปิดรับใบงาน PM จาก Maximo อยู่ → ออกใบงานเองตามรอบ commissioning ของตู้ (services/pm_auto_wo.py)
+    from services import pm_auto_wo
+    pm_auto_wo_task = asyncio.create_task(pm_auto_wo.run_forever())
 
     yield
 
     pm_retry_task.cancel()
+    pm_auto_wo_task.cancel()
     unified_task.cancel()
     refresher.cancel()
     # await stop_watcher()  # Auto CM ปิดไว้ชั่วคราว
@@ -421,6 +425,7 @@ from routers.ai_agent import router as ai_agent_router
 from routers.company import router as company_router
 from routers.fault_detection import router as fault_detection_router
 from routers.images import router as images_router
+from routers.pm_auto_wo import router as pm_auto_wo_router
 
 # ด่านตรวจสิทธิ์กลาง — ทุก route ต้องมี session ยกเว้น PUBLIC_ROUTES และผู้ใช้ที่ถูกจำกัดสถานี
 # ถูกตรวจ station_id / sn / charger_id ใน URL (ดู access_guard.py)
@@ -452,3 +457,4 @@ app.include_router(ai_agent_router, dependencies=GUARD)
 app.include_router(company_router, dependencies=GUARD)
 app.include_router(fault_detection_router, dependencies=GUARD)
 app.include_router(images_router, dependencies=GUARD)
+app.include_router(pm_auto_wo_router, dependencies=GUARD)
