@@ -1742,7 +1742,8 @@ def job_pdf_cache_path(station_id: str, job_id: str, lang: str, part: str = "") 
     part = "station" / "charger" คือ PDF ของการ์ดนั้นในหน้ารวม (แยกไฟล์ cache)"""
     from routers.pm_helpers import UPLOADS_ROOT
     suffix = f"_{part}" if part else ""
-    return pathlib.Path(UPLOADS_ROOT) / "pdf_cache" / "stationPMJob" / station_id / f"{job_id}{suffix}_{lang}.pdf"
+    # _v2 = ช่องลายเซ็นมี planner ต้นทางเป็นพยานของตู้ vendor (2026-10-22) — ไฟล์รุ่นก่อนไม่ถูกใช้ต่อ
+    return pathlib.Path(UPLOADS_ROOT) / "pdf_cache" / "stationPMJob" / station_id / f"{job_id}{suffix}_{lang}_v2.pdf"
 
 
 # การ์ดในหน้ารวมใบ PM สถานี → ส่วนที่อยู่ในการ์ดนั้น (PDF รายการ์ด)
@@ -1864,11 +1865,15 @@ async def build_job_pdf(job: dict, station_id: str, lang: str, part: str = "") -
         if not doc:
             continue
         # ให้ทุกส่วนพิมพ์เลขที่/ชื่อเอกสารของใบแม่ — เป็นเอกสารใบเดียวกัน
+        # ช่องลายเซ็น: ตู้ของ vendor ที่มี planner เอง (อนุมัติ 2 ชั้น) = Approved by planner vendor
+        # + Witnessed by planner ต้นทางที่อนุมัติปิดใบ / ส่วนอื่น = Approved by planner ต้นทาง, Witnessed ว่าง
+        vendor_approver = vendor_approvers.get(state.get("sn") or "") or ""
         doc = {**doc, "issue_id": job.get("issue_id") or doc.get("issue_id"),
                "doc_name": job.get("doc_name") or doc.get("doc_name"),
                "_signers": {
                    "performed": str(doc.get("inspector") or state.get("inspector") or ""),
-                   "approved": vendor_approvers.get(state.get("sn") or "") or job_approver,
+                   "approved": vendor_approver or job_approver,
+                   "witnessed": job_approver if vendor_approver else "",
                }}
         parts.append((state, doc, info))
         included.append(f"{state['section']}:{state['sn']}" if state.get("sn") else state["section"])
