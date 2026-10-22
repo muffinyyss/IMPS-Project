@@ -79,10 +79,6 @@ type PMRow = {
   vendor_pending_for_me?: boolean;
   /** สรุปรายฝ่ายของใบ PM สถานี — บรรทัดรอง "รอใคร" ใต้สถานะหลัก (backend: party_summaries) */
   parties?: PartySummary[];
-  /** ใบนี้รอคนที่ login ทำต่อ (กรอก / แก้ / ส่งงาน / อนุมัติ) — backend คิดให้ (waiting_on_user) */
-  waiting_on_me?: boolean;
-  /** บริษัทของ planner ต้นทางของใบงาน (แถวใบงานที่ยังไม่มีเอกสาร) — ใช้กับตัวกรอง "รอฉัน" */
-  planner_company?: string;
 };
 
 type WoOrigin = "maximo" | "manual";
@@ -262,8 +258,6 @@ export default function PMListPage() {
   const [stageFilter, setStageFilter] = useState<PmStage | null>(null);
   // แท็บที่มาของใบงาน — null = ทั้งหมด
   const [originFilter, setOriginFilter] = useState<WoOrigin | null>(null);
-  // ตัวกรอง "รอฉัน" — ใบที่ติดอยู่ที่คนที่ login (ดู isWaitingOnMe)
-  const [mineOnly, setMineOnly] = useState(false);
   // แถวที่กำลังจะลบ — รอยืนยันใน pop-up (super admin เท่านั้น)
   const [deleteTarget, setDeleteTarget] = useState<PMRow | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -390,7 +384,6 @@ export default function PMListPage() {
               opened_at: String(w?.receivedAt || ""),
               file_url: "",
               exists_in_maximo: w?.exists_in_maximo ?? null,
-              planner_company: String(w?.planner_company || ""),
               wo_origin: String(w?.origin || "").trim().toLowerCase() === MANUAL_WO_ORIGIN ? "manual" as const : "maximo" as const,
             }));
         }
@@ -451,8 +444,6 @@ export default function PMListPage() {
       },
       stage: { open: "Open", in_progress: "In Progress", rejected: "Reject", wait_approve: "Wait for approve", closed: "Closed" },
       vendorWait: "รอ planner {p} อนุมัติ",
-      mineOnly: "รอฉัน",
-      mineOnlyTitle: "ใบที่รอคุณทำต่อ — วางแผน / เริ่ม PM / กรอก / แก้ฟอร์มที่ตีกลับ / ส่งงาน / อนุมัติ",
       maximoPending: "ยังไม่ปิดใน Maximo",
       maximoPendingTitle: "ส่งปิดงานเข้า Maximo ไม่ผ่าน ระบบกำลังลองส่งใหม่ — เปิดใบ PM เพื่อดูสถานะหรือกดส่งใหม่",
     },
@@ -501,8 +492,6 @@ export default function PMListPage() {
       },
       stage: { open: "Open", in_progress: "In Progress", rejected: "Reject", wait_approve: "Wait for approve", closed: "Closed" },
       vendorWait: "Waiting for {p} planner approval",
-      mineOnly: "Waiting on me",
-      mineOnlyTitle: "Documents waiting on you — plan / start PM / fill in / fix rejected forms / submit / approve",
       maximoPending: "Not closed in Maximo",
       maximoPendingTitle: "Closing in Maximo failed and is being retried — open the PM document to see the status or resend",
     },
@@ -639,7 +628,6 @@ export default function PMListPage() {
   };
 
   const clearAll = () => {
-    setMineOnly(false);
     setTypeFilter(null);
     setStageFilter(null);
     setOriginFilter(null);
@@ -649,7 +637,7 @@ export default function PMListPage() {
     setPage(0);
   };
   const activeFilterCount =
-    (mineOnly ? 1 : 0) + (typeFilter ? 1 : 0) + (stageFilter ? 1 : 0) + (originFilter ? 1 : 0) + (stationFilter !== "All" ? 1 : 0) + (companyFilter ? 1 : 0);
+    (typeFilter ? 1 : 0) + (stageFilter ? 1 : 0) + (originFilter ? 1 : 0) + (stationFilter !== "All" ? 1 : 0) + (companyFilter ? 1 : 0);
 
   // ช่างเห็นเฉพาะงานที่ planner มอบหมายให้ตัวเอง — role อื่นเห็นทุกใบ
   const scopedRows = useMemo(() => {
@@ -712,28 +700,6 @@ export default function PMListPage() {
     });
   }, [companyRows, stationFilter, yearSel, monthSel, weekSel]);
 
-  /**
-   * ใบนี้รอคนที่ login ทำต่อไหม (ตัวกรอง "รอฉัน")
-   *   แถวเอกสาร: backend คิดให้แล้ว (waiting_on_me) — ตามฝ่ายของผู้ใช้ / planner ที่ต้องอนุมัติ
-   *   แถวใบงาน (ยังไม่มีเอกสาร): Open → planner ที่ต้องวางแผน (ต้นทาง หรือ vendor ที่ได้ใบส่งต่อ)
-   *                             In Progress → ช่างที่ได้รับมอบ (ยังไม่กดเริ่ม PM)
-   */
-  const isWaitingOnMe = useCallback((r: PMRow): boolean => {
-    if (r.kind !== "wo") return !!r.waiting_on_me;
-    const role = me?.role ?? "";
-    const stage = stageOf(r);
-    if (stage === "open") {
-      if (!PM_PLANNING_ROLES.includes(role)) return false;
-      if (r.vendor_pending_for_me) return true;
-      if (pendingVendorPlans(r).length > 0) return false;   // รอ vendor รายอื่นวางแผน
-      if (role === "admin" || isSuperAdmin) return true;
-      const origin = String(r.planner_company ?? "").trim().toLowerCase();
-      return !origin || origin === userCompany.trim().toLowerCase();
-    }
-    // ช่างเห็นเฉพาะใบที่ได้รับมอบอยู่แล้ว (scopedRows)
-    return stage === "in_progress" && role === "technician";
-  }, [me, isSuperAdmin, userCompany]);
-
   const applySearch = useCallback((list: PMRow[]) => {
     const q = search.trim().toLowerCase();
     if (!q) return list;
@@ -745,45 +711,33 @@ export default function PMListPage() {
 
   const searchFiltered = useMemo(() => {
     let list = periodRows;
-    if (mineOnly) list = list.filter(isWaitingOnMe);
     if (originFilter) list = list.filter((r) => originOf(r) === originFilter);
     if (typeFilter) list = list.filter((r) => hasPmType(r, typeFilter));
     if (stageFilter) list = list.filter((r) => stageOf(r) === stageFilter);
     return applySearch(list);
-  }, [periodRows, mineOnly, isWaitingOnMe, originFilter, typeFilter, stageFilter, applySearch]);
-
-  // ตัวนับบนปุ่ม "รอฉัน" — ตามตัวกรองอื่นทั้งหมด
-  const mineCount = useMemo(() => {
-    let base = periodRows.filter(isWaitingOnMe);
-    if (originFilter) base = base.filter((r) => originOf(r) === originFilter);
-    if (typeFilter) base = base.filter((r) => hasPmType(r, typeFilter));
-    if (stageFilter) base = base.filter((r) => stageOf(r) === stageFilter);
-    return applySearch(base).length;
-  }, [periodRows, isWaitingOnMe, originFilter, typeFilter, stageFilter, applySearch]);
+  }, [periodRows, originFilter, typeFilter, stageFilter, applySearch]);
 
   // ตัวนับบนปุ่มสถานะ — ไม่ขึ้นกับตัวกรองสถานะที่เลือกอยู่ (เหมือน CM List)
   const stageCounts = useMemo(() => {
     let base = periodRows;
-    if (mineOnly) base = base.filter(isWaitingOnMe);
     if (originFilter) base = base.filter((r) => originOf(r) === originFilter);
     if (typeFilter) base = base.filter((r) => hasPmType(r, typeFilter));
     base = applySearch(base);
     const counts: Record<PmStage, number> = { open: 0, in_progress: 0, rejected: 0, wait_approve: 0, closed: 0 };
     for (const r of base) counts[stageOf(r)]++;
     return counts;
-  }, [periodRows, mineOnly, isWaitingOnMe, originFilter, typeFilter, applySearch]);
+  }, [periodRows, originFilter, typeFilter, applySearch]);
 
   // ตัวนับบนแท็บที่มา — ไม่ขึ้นกับแท็บที่เลือกอยู่ แต่ตามตัวกรองอื่นทั้งหมด
   const originCounts = useMemo(() => {
     let base = periodRows;
-    if (mineOnly) base = base.filter(isWaitingOnMe);
     if (typeFilter) base = base.filter((r) => hasPmType(r, typeFilter));
     if (stageFilter) base = base.filter((r) => stageOf(r) === stageFilter);
     base = applySearch(base);
     const counts: Record<WoOrigin, number> = { maximo: 0, manual: 0 };
     for (const r of base) counts[originOf(r)]++;
     return counts;
-  }, [periodRows, mineOnly, isWaitingOnMe, typeFilter, stageFilter, applySearch]);
+  }, [periodRows, typeFilter, stageFilter, applySearch]);
 
   const sortValue = useCallback((r: PMRow, key: SortKey): string | number => {
     switch (key) {
@@ -1007,17 +961,6 @@ export default function PMListPage() {
             );
           })}
         </div>
-
-        {/* รอฉัน — ใบที่ติดอยู่ที่คนที่ login (กดซ้ำเพื่อยกเลิก) */}
-        <button
-          type="button"
-          onClick={() => { setMineOnly((v) => !v); setPage(0); }}
-          aria-pressed={mineOnly}
-          title={t.mineOnlyTitle}
-          className={`tw-whitespace-nowrap tw-rounded-full tw-px-3 tw-py-1 tw-text-xs tw-font-semibold tw-transition-all ${mineOnly ? "tw-bg-blue-600 tw-text-white tw-shadow-sm" : "tw-bg-blue-50 tw-text-blue-700 hover:tw-brightness-95"}`}
-        >
-          {`${t.mineOnly} (${mineCount})`}
-        </button>
 
         <div className="tw-flex tw-items-center tw-gap-1.5" role="group" aria-label={t.statusFilterLabel}>
           {(["open", "in_progress", "rejected", "wait_approve", "closed"] as const).map((key) => {
