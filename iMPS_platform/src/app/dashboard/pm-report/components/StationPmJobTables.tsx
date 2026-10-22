@@ -360,7 +360,7 @@ const T = {
     en: "This section is assigned to {owner} — your company cannot fill it in",
   },
 
-  approve: { th: "อนุมัติทั้งใบ", en: "Approve document" },
+  approve: { th: "อนุมัติใบงาน", en: "Approve work order" },
   reject: { th: "ตีกลับ", en: "Send back" },
   rejectReason: { th: "เหตุผลที่ตีกลับ", en: "Reason" },
   rejected: { th: "ถูกตีกลับให้แก้:", en: "Sent back for fixes:" },
@@ -374,11 +374,11 @@ const T = {
     en: "Approved, but sending to Maximo did not complete ({steps}) — press \"Resend to Maximo\" on the PM document",
   },
   rejectConfirm: {
-    th: "ตีกลับทั้งใบให้ช่างแก้ — ระบุเหตุผลให้ช่างรู้ว่าต้องแก้อะไร",
-    en: "Send the whole document back for fixes. Tell the technician what to change.",
+    th: "ตีกลับใบงานให้ช่างแก้ไข (ทุกฟอร์มที่รออนุมัติ) — ระบุเหตุผลให้ช่างทราบว่าต้องแก้ไขอะไร",
+    en: "Send the work order back for fixes (all forms awaiting approval). Tell the technician what to change.",
   },
   rejecting: { th: "กำลังตีกลับ…", en: "Sending back…" },
-  rejectAll: { th: "ตีกลับทั้งใบ", en: "Send back all" },
+  rejectAll: { th: "ตีกลับใบงาน", en: "Send back work order" },
   rejectSection: { th: "ตีกลับฟอร์มนี้", en: "Send back this form" },
   rejectSectionConfirm: {
     th: "ตีกลับเฉพาะฟอร์มนี้ให้ช่างแก้ — ฟอร์มอื่นยังรออนุมัติอยู่ ไม่ต้องส่งใหม่ ระบุเหตุผลให้ช่างรู้ว่าต้องแก้อะไร",
@@ -390,7 +390,7 @@ const T = {
   vendorApproving: { th: "กำลังอนุมัติ…", en: "Approving…" },
   vendorApproveTitle: { th: "อนุมัติงานตู้ชาร์จของ {p}", en: "Approve {p} charger work" },
   vendorApproveConfirm: {
-    th: "ตรวจฟอร์มตู้ชาร์จของ {p} ครบแล้ว — อนุมัติแล้วจะส่งต่อให้ planner ต้นทางอนุมัติทั้งใบ (ฟอร์มที่ต้องแก้ให้เปิดฟอร์มแล้วกด \"ตีกลับฟอร์มนี้\" ก่อน)",
+    th: "ตรวจฟอร์มตู้ชาร์จของ {p} ครบแล้ว — อนุมัติแล้วจะส่งต่อให้ planner ต้นทางอนุมัติใบงาน (ฟอร์มที่ต้องแก้ให้เปิดฟอร์มแล้วกด \"ตีกลับฟอร์มนี้\" ก่อน)",
     en: "All {p} charger forms reviewed — approving passes them on to the origin planner for final approval (send back any form that needs fixing first)",
   },
   vendorReviewHint: {
