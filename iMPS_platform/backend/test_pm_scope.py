@@ -167,6 +167,26 @@ def main() -> int:
         failed += 1
         print("FAIL items_by_party ต้องข้ามอุปกรณ์ที่ระบุไม่ได้")
 
+    # ใบงานที่ planner ต้นทางยังไม่ได้วางแผน — vendor (EDS) ยังไม่เห็น
+    fresh = {"wonum": "WO1", "planning_status": "pending"}          # Maximo เพิ่งเปิดมา
+    planned = {"wonum": "WO2", "planning_status": "planned", "planner_company": "EGAT"}
+    eds_own = {"wonum": "PM1", "planning_status": "pending", "planner_company": "EDS"}  # EDS เปิดเอง
+    gate_cases = [
+        (fresh, "EDS", True),
+        (fresh, " eds ", True),
+        ({"wonum": "WO3"}, "EDS", True),       # ไม่มี planning_status = ยังไม่วางแผน
+        (planned, "EDS", False),
+        ({**planned, "planning_status": " Planned "}, "EDS", False),
+        (eds_own, "EDS", False),
+        (fresh, "", False),                    # ไม่ถูกจำกัด (EGAT / admin)
+        (None, "EDS", False),
+    ]
+    for wo, company, expected in gate_cases:
+        got = pm_scope.awaiting_origin_plan(wo, company)
+        if got != expected:
+            failed += 1
+            print(f"FAIL awaiting_origin_plan({wo}, {company!r}): got {got}, want {expected}")
+
     print("ผ่านทั้งหมด" if not failed else f"ไม่ผ่าน {failed} ข้อ")
     return 1 if failed else 0
 

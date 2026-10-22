@@ -17,6 +17,7 @@ import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
 import { apiFetch } from "@/utils/api";
 import { UserRole } from "@/utils/roles";
 import useLanguage, { type Lang } from "@/utils/useLanguage";
+import { CompanySelect, CompanySuggestions, type CompanyOption } from "./company_field";
 
 const T = {
     saving: { th: "กำลังบันทึก...", en: "Saving..." },
@@ -68,11 +69,15 @@ type Props = {
     loading?: boolean;
     /** จำกัด role ที่เลือกได้ (planner = technician / cs / planner) — ไม่ส่ง = ทุก role */
     allowedRoles?: UserRole[];
-    /** มีค่า = ช่อง Company เป็น dropdown จากลิสต์นี้ (planner: บริษัทตัวเอง + outsource ของตัวเอง) */
-    companyOptions?: string[];
+    /** มีค่า = ช่อง Company เป็น dropdown จากลิสต์นี้ (planner: บริษัทตัวเอง + vendor / outsource ของตัวเอง) */
+    companyOptions?: CompanyOption[];
+    /** ช่อง Company แบบพิมพ์เอง (admin) — รายชื่อแนะนำจากเมนู Company (owner / vendor / outsource) */
+    companySuggestions?: CompanyOption[];
 };
 
-export default function AddUserModal({ open, onClose, onSubmit, loading, allowedRoles, companyOptions }: Props) {
+export default function AddUserModal({
+    open, onClose, onSubmit, loading, allowedRoles, companyOptions, companySuggestions,
+}: Props) {
     const { lang } = useLanguage();
     const roles = allowedRoles?.length ? ALL_ROLES.filter((r) => allowedRoles.includes(r)) : ALL_ROLES;
     const defaultRole = roles[0];
@@ -103,8 +108,8 @@ export default function AddUserModal({ open, onClose, onSubmit, loading, allowed
             ...s,
             role: roles.includes(s.role) ? s.role : defaultRole,
             company_name:
-                companyOptions && !companyOptions.includes(s.company_name ?? "")
-                    ? companyOptions[0] ?? ""
+                companyOptions && !companyOptions.some((o) => o.name === (s.company_name ?? ""))
+                    ? companyOptions[0]?.name ?? ""
                     : s.company_name,
         }));
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -215,29 +220,32 @@ export default function AddUserModal({ open, onClose, onSubmit, loading, allowed
                             crossOrigin={undefined}
                         />
                         {companyOptions ? (
-                            <div className="tw-relative tw-h-10 tw-w-full">
-                                <select
-                                    required
-                                    value={form.company_name ?? ""}
-                                    onChange={(e) => onChange("company_name", e.target.value)}
-                                    className="tw-h-full tw-w-full tw-cursor-pointer tw-appearance-none tw-rounded-[7px] tw-border tw-border-blue-gray-200 tw-bg-transparent tw-px-3 tw-py-2.5 tw-font-sans tw-text-sm tw-font-normal tw-text-blue-gray-700 tw-outline-none focus:tw-border-2 focus:tw-border-gray-900"
-                                >
-                                    {companyOptions.map((c) => (
-                                        <option key={c} value={c}>{c}</option>
-                                    ))}
-                                </select>
-                                <label className="tw-pointer-events-none tw-absolute tw-left-3 tw--top-1.5 tw-bg-white tw-px-1 tw-text-[11px] tw-font-normal tw-text-blue-gray-400">
-                                    Company *
-                                </label>
-                            </div>
-                        ) : (
-                            <Input
+                            <CompanySelect
+                                options={companyOptions}
                                 label="Company"
-                                required
-                                value={form.company_name}
+                                lang={lang}
+                                value={form.company_name ?? ""}
                                 onChange={(e) => onChange("company_name", e.target.value)}
-                                crossOrigin={undefined}
                             />
+                        ) : (
+                            <>
+                                <Input
+                                    label="Company"
+                                    required
+                                    autoComplete="off"
+                                    list={companySuggestions?.length ? "add-user-company-suggestions" : undefined}
+                                    value={form.company_name}
+                                    onChange={(e) => onChange("company_name", e.target.value)}
+                                    crossOrigin={undefined}
+                                />
+                                {!!companySuggestions?.length && (
+                                    <CompanySuggestions
+                                        id="add-user-company-suggestions"
+                                        options={companySuggestions}
+                                        lang={lang}
+                                    />
+                                )}
+                            </>
                         )}
                         <div>
                             <div className="tw-flex tw-items-center tw-gap-1">

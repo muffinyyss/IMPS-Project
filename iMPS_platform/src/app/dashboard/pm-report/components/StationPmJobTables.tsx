@@ -1245,7 +1245,8 @@ export default function StationPmJobTables() {
       && !(openedSection?.vendor_review === "approved" && !roleCanApprove)
       && !inUseByOther(openedSection)
       && !["closed", "submitted"].includes(sectionStatus)
-      && (currentJob?.status === "draft" || approving);
+      // ใบรออนุมัติ (Wait for approve) ช่างยังแก้ฟอร์มของตัวเองได้จนกว่า planner จะอนุมัติปิดใบ (2026-10-22)
+      && (currentJob?.status === "draft" || currentJob?.status === "Wait for approve" || approving);
     // ตัด review ออก = ฟอร์มเดิมในโหมดแก้ไข (key ใหม่ให้โหลดเอกสารใหม่ทั้งหมด พร้อมรูปเดิม)
     const startEdit = () => goto({ review: null, approve: null });
     const backToHub = () => goto({ section: null, sn: null, edit_id: null, review: null, approve: null });

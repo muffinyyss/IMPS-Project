@@ -7,6 +7,7 @@ import {
   ownPlanAssignees,
   pmAssigneeGroups,
   handoffGroups,
+  isAssignedTo,
   pmAssigneeNames,
   togglePmAssigneeBatch,
   vendorOnlyNames,
@@ -196,5 +197,43 @@ describe("togglePmAssigneeBatch", () => {
       "ABB",
       "Delta",
     ]);
+  });
+});
+
+describe("isAssignedTo", () => {
+  const WO = {
+    // ช่าง EGAT 1 คน + outsource ทั้งบริษัท + EDS ที่ backend เติมจากผู้ทำ PM ของอุปกรณ์
+    assignees: ["Technician1 EGAT", "หจก.ช่างไทยบริการ", "EDS"],
+    vendor_plans: [{ vendor: "EDS", status: "planned", assignees: ["eds.tech1", "ABC Outsource"] }],
+  };
+
+  it("ช่างที่ถูกติ๊กชื่อเห็น / ช่างบริษัทเดียวกันที่ไม่ถูกติ๊กไม่เห็น", () => {
+    expect(isAssignedTo(WO, "technician1 egat", "EGAT")).toBe(true);
+    expect(isAssignedTo(WO, "Technician2 EGAT", "EGAT")).toBe(false);
+  });
+
+  it("ติ๊กบริษัท outsource → ช่างทุกคนของบริษัทนั้นเห็น", () => {
+    expect(isAssignedTo(WO, "somchai", " หจก.ช่างไทยบริการ ")).toBe(true);
+    expect(isAssignedTo(WO, "somsak", "หจก.ช่างไทยบริการ")).toBe(true);
+  });
+
+  it("ชื่อ vendor ที่มีใบส่งต่อไม่นับเป็นติ๊กทั้งบริษัท — เห็นเฉพาะทีมที่ vendor มอบหมาย", () => {
+    expect(isAssignedTo(WO, "eds.tech1", "EDS")).toBe(true);
+    expect(isAssignedTo(WO, "eds.tech2", "EDS")).toBe(false);
+  });
+
+  it("vendor ติ๊กบริษัท outsource ในแผนรอบ 2 → ช่างทุกคนของบริษัทนั้นเห็น", () => {
+    expect(isAssignedTo(WO, "abc.tech9", "abc outsource")).toBe(true);
+  });
+
+  it("รับ assignees ที่รวมทีม vendor แล้ว (allAssignees) ได้ผลเดียวกัน", () => {
+    const merged = { ...WO, assignees: [...WO.assignees, "eds.tech1", "ABC Outsource"] };
+    expect(isAssignedTo(merged, "eds.tech2", "EDS")).toBe(false);
+    expect(isAssignedTo(merged, "abc.tech9", "ABC Outsource")).toBe(true);
+  });
+
+  it("ไม่มีชื่อ / ไม่มีบริษัท / ใบว่าง", () => {
+    expect(isAssignedTo(WO, "", "")).toBe(false);
+    expect(isAssignedTo(null, "Technician1 EGAT", "EGAT")).toBe(false);
   });
 });
