@@ -1967,7 +1967,7 @@ def job_pdf_cache_path(station_id: str, job_id: str, lang: str, part: str = "") 
     # _v5 = ชื่อสถานียาวไม่ตกบรรทัด — ขยายคอลัมน์ซ้ายของบล็อกข้อมูลงาน (2026-10-22)
     # _v6 = ชื่อเอกสารหัวกระดาษไม่ล้นกรอบ, CCB ข้อ 9 ไม่ขาด, "วันที่ :" ใต้ลายเซ็นตามภาษา (2026-10-22)
     # _v7 = ป้าย/หัวตารางตามภาษาทุกฟอร์ม, ที่อยู่เดียวกัน, วันที่ 22/10/2569, วันที่อนุมัติใต้ลายเซ็น, ผลตรวจ 3 ช่อง (2026-10-22)
-    return pathlib.Path(UPLOADS_ROOT) / "pdf_cache" / "stationPMJob" / station_id / f"{job_id}{suffix}_{lang}_v7.pdf"
+    return pathlib.Path(UPLOADS_ROOT) / "pdf_cache" / "stationPMJob" / station_id / f"{job_id}{suffix}_{lang}_v8.pdf"
 
 
 # การ์ดในหน้ารวมใบ PM สถานี → ส่วนที่อยู่ในการ์ดนั้น (PDF รายการ์ด)

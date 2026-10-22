@@ -52,7 +52,7 @@ def _render(template: str, coll_key: str, report_id: str, lang: str) -> str:
     if not doc:
         raise ValueError(f"ไม่พบใบงาน {report_id} ใน {info['db']}/{coll_key}")
 
-    cache_path = pathlib.Path(UPLOADS_ROOT) / "pdf_cache" / coll_key / f"{report_id}_{lang}_v5.pdf"  # ต้องตรงกับ pdf_routes1 (_v5)
+    cache_path = pathlib.Path(UPLOADS_ROOT) / "pdf_cache" / coll_key / f"{report_id}_{lang}_v6.pdf"  # ต้องตรงกับ pdf_routes1 (_v6)
     if cache_path.exists():
         return str(cache_path)
 
