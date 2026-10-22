@@ -919,7 +919,7 @@ async def open_station_pm_job(
         from routers import pm_scope
         wo = (await pm_scope.wos_by_wonum([wonum])).get(wonum)
         company = pm_scope.company_of(current)
-        # ใบที่ planner ต้นทางยังไม่ได้วางแผน — vendor (เช่น EDS) ยังไม่เห็น จึงเริ่ม PM ไม่ได้
+        # ใบงานที่ไม่ได้มอบให้บริษัทนี้ (รวมใบที่ planner ต้นทางยังไม่วางแผน) — ไม่เห็น จึงเริ่ม PM ไม่ได้
         pm_scope.assert_wo_visible(wo, current)
         if not pm_scope.is_participant(wo, current.role, current.username or current.sub, company):
             raise HTTPException(status_code=403, detail=pm_scope.not_participant_detail(wo, company))
@@ -994,6 +994,9 @@ async def list_station_pm_jobs(
     station_id = station_id.strip()
     jobs = get_stationpmjob_collection_for(station_id)
     docs = await jobs.find({}).sort([("pm_date", -1), ("_id", -1)]).limit(limit).to_list(length=limit)
+    # แต่ละบริษัทเห็นเฉพาะใบงานที่ตัวเองได้รับมอบหมาย (pm_scope.wo_visible)
+    from routers import pm_scope
+    docs = await pm_scope.filter_visible(docs, current)
     chargers = station_chargers(station_id)   # ทุกใบในหน้านี้เป็นสถานีเดียวกัน
     plans = await planned_keys_by_wonum([str(j.get("wonum") or "") for j in docs])
     items = [
@@ -1022,6 +1025,7 @@ async def find_station_pm_job_by_wonum(
     job = await get_stationpmjob_collection_for(station_id).find_one({"wonum": wonum})
     if not job:
         return {"id": "", "my_started": False}
+    await _assert_job_visible(job, current)
     # ฝ่ายของคนที่กดยังไม่ได้เริ่ม PM → หน้า PM List พาไปหน้าใบงาน (ปุ่ม "เริ่ม PM") แทนหน้ารวม
     job_out = _serialize_job(job, await _section_states(job), await job_planned_keys(job))
     await _with_ownership([job_out], current)
@@ -1040,9 +1044,24 @@ async def get_station_pm_job(
     job = await jobs.find_one({"_id": pm_flow.to_oid(job_id)})
     if not job:
         raise HTTPException(status_code=404, detail=f"ไม่พบใบ PM สถานี id={job_id}")
+    await _assert_job_visible(job, current)
     job_out = _serialize_job(job, await _section_states(job), await job_planned_keys(job))
     await _with_ownership([job_out], current)
     return {"job": job_out}
+
+
+async def _assert_job_visible(job: dict, current: UserClaims) -> None:
+    """ใบ PM สถานีของใบงานที่ไม่ได้มอบให้บริษัทนี้ = เปิดตรงด้วยลิงก์ / job_id ไม่ได้ (หน้า list ซ่อนไว้แล้ว)"""
+    wonum = str((job or {}).get("wonum") or "").strip()
+    if not wonum:
+        return
+    from routers import pm_scope
+    viewer = pm_scope.wo_viewer(current)
+    if viewer.bypass:
+        return
+    wo = (await pm_scope.wos_by_wonum([wonum])).get(wonum)
+    if not pm_scope.wo_visible(wo, viewer):
+        raise HTTPException(status_code=403, detail=pm_scope.not_visible_detail(wo))
 
 
 # ══════════════════════════════════════════════════════════════════

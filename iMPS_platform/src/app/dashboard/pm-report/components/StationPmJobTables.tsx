@@ -25,7 +25,7 @@ import {
   Button, Card, CardBody, CardHeader, Dialog, DialogBody, DialogFooter, DialogHeader, Input, Typography,
 } from "@material-tailwind/react";
 import {
-  ArrowLeftIcon, CheckCircleIcon, ClipboardDocumentListIcon, DocumentArrowDownIcon, LockClosedIcon, PencilSquareIcon, PlusIcon, XMarkIcon,
+  ArrowLeftIcon, CheckCircleIcon, ClipboardDocumentListIcon, DocumentArrowDownIcon, LockClosedIcon, PencilSquareIcon, PlusIcon, UserIcon, XMarkIcon,
 } from "@heroicons/react/24/outline";
 import { discardOpenFormDraft } from "@/app/dashboard/pm-report/lib/discardDraft";
 import { sectionLockPath, useEditLock } from "@/app/dashboard/pm-report/lib/lock";
@@ -365,6 +365,10 @@ const T = {
   rejectReason: { th: "เหตุผลที่ตีกลับ", en: "Reason" },
   rejected: { th: "ถูกตีกลับให้แก้:", en: "Sent back for fixes:" },
   approved: { th: "อนุมัติแล้วโดย", en: "Approved by" },
+  // ผู้ปฏิบัติงานที่เลือกตอนปิดใบงาน / ส่งงานของฝ่าย — โชว์หลังส่งงานแล้ว (รออนุมัติ / Closed)
+  workersTitle: { th: "ผู้ปฏิบัติงาน", en: "Performed by" },
+  submittedByLabel: { th: "ส่งงานโดย", en: "Submitted by" },
+  workTimeLabel: { th: "เวลาทำงาน", en: "Work time" },
   maximoTitle: { th: "ส่งเข้า Maximo", en: "Sent to Maximo" },
   maximoPending: { th: "ยังไม่ได้ส่ง", en: "Not sent" },
   maximoResync: { th: "ส่งเข้า Maximo ใหม่", en: "Resend to Maximo" },
@@ -467,6 +471,19 @@ function fmtDate(iso: string, lang: Lang) {
   return d.toLocaleDateString(lang === "en" ? "en-GB" : "th-TH-u-ca-gregory", {
     day: "2-digit", month: "short", year: "numeric", timeZone: "UTC",
   });
+}
+
+/** เวลาทำงานที่กรอกตอนปิดใบงาน ("YYYY-MM-DDTHH:mm") — วันเดียวกันไม่พิมพ์วันที่ซ้ำ */
+function fmtWorkTime(start: string, finish: string, lang: Lang) {
+  const split = (v: string) => {
+    const m = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2})/.exec(v || "");
+    return m ? { date: fmtDate(m[1], lang), time: m[2] } : null;
+  };
+  const a = split(start);
+  const b = split(finish);
+  if (!a && !b) return "";
+  if (a && b && a.date === b.date) return `${a.date} ${a.time} – ${b.time}`;
+  return `${a ? `${a.date} ${a.time}` : "-"} – ${b ? `${b.date} ${b.time}` : "-"}`;
 }
 
 /** ชื่อสถานะของ 1 ส่วนที่คนอ่านรู้เรื่อง — ใบเก่าเก็บเป็น "submitted" */
@@ -1641,8 +1658,64 @@ export default function StationPmJobTables() {
                 </div>
               );
             })()}
+            {/* ผู้ปฏิบัติงาน — คนที่เลือกตอนปิดใบงาน (ฝ่ายละแถว ถ้าแบ่งงาน) + คนกดส่ง + เวลาทำงาน
+                ใบรุ่นก่อนมี work_entries ใช้ค่าที่เก็บไว้ที่ตัวใบแทน */}
+            {job.status !== "draft" && (() => {
+              const entries = (job.work_entries ?? []).filter((e) => e.submitted);
+              const rows: Omit<WorkEntry, "submitted" | "submitted_at">[] = entries.length > 0
+                ? entries
+                : (job.submitted_by || job.maximo_labor?.length || job.imps_labor?.length)
+                  ? [{
+                      key: "_job", party: "",
+                      work_start: job.work_start ?? "", work_finish: job.work_finish ?? "",
+                      maximo_labor: job.maximo_labor ?? [], maximo_contractor: job.maximo_contractor ?? "",
+                      imps_labor: job.imps_labor ?? [], submitted_by: job.submitted_by ?? "",
+                    }]
+                  : [];
+              if (rows.length === 0) return null;
+              const showParty = rows.length > 1 || !!job.split;
+              // laborcode ของ Maximo → ชื่อช่าง (รายชื่อเดียวกับหน้าต่างปิดใบงาน) / รหัสผู้รับเหมา → ชื่อที่กรอก
+              const workerNames = (r: (typeof rows)[number]) => [
+                ...(r.maximo_labor ?? []).map((code) => {
+                  const o = laborOptions.find((x) => x.laborcode === code);
+                  if (o?.needs_name && r.maximo_contractor) return r.maximo_contractor;
+                  return o?.name || code;
+                }),
+                ...(r.imps_labor ?? []),
+              ];
+              return (
+                <div className="tw-mt-4 tw-space-y-2 tw-text-sm tw-text-gray-700">
+                  {rows.map((r) => {
+                    const names = workerNames(r);
+                    const time = fmtWorkTime(r.work_start, r.work_finish, lang);
+                    const party = job.parties?.find((p) => p.key === r.key);
+                    const partyName = party ? partyLabel(party) : (r.party || t("ownTeam", lang));
+                    return (
+                      <div key={r.key} className="tw-flex tw-items-start tw-gap-2">
+                        <UserIcon className="tw-h-5 tw-w-5 tw-shrink-0 tw-text-gray-500" />
+                        <div className="tw-min-w-0 [overflow-wrap:anywhere]">
+                          <div>
+                            <span className="tw-font-semibold">
+                              {t("workersTitle", lang)}{showParty ? ` (${partyName})` : ""}
+                            </span>{" "}
+                            {names.length > 0 ? names.join(", ") : (r.submitted_by || "-")}
+                          </div>
+                          {(r.submitted_by || time) && (
+                            <div className="tw-text-xs tw-text-gray-500">
+                              {r.submitted_by && <>{t("submittedByLabel", lang)} {r.submitted_by}</>}
+                              {r.submitted_by && time && " · "}
+                              {time && <>{t("workTimeLabel", lang)} {time}</>}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
             {job.status === "Closed" && job.approved_by && (
-              <div className="tw-mt-4 tw-flex tw-items-start tw-gap-2 tw-text-sm tw-text-green-700">
+              <div className="tw-mt-3 tw-flex tw-items-start tw-gap-2 tw-text-sm tw-text-green-700">
                 <CheckCircleIcon className="tw-h-5 tw-w-5 tw-shrink-0" />
                 <span className="tw-min-w-0 [overflow-wrap:anywhere]">{t("approved", lang)} {job.approved_by}</span>
               </div>

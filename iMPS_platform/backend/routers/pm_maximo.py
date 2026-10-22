@@ -1058,12 +1058,13 @@ async def list_maximo_pm_open(
             ]
         })
 
-    # vendor ที่เห็นงานตามยี่ห้อ (เช่น EDS) ยังไม่เห็นใบงานที่ planner ต้นทาง (EGAT) ยังไม่ได้วางแผน
+    # แต่ละบริษัทเห็นเฉพาะใบงานที่ตัวเองได้รับมอบหมาย (pm_scope.wo_visible — แก้ 2026-10-22)
+    # vendor / outsource ไม่เห็นใบที่ยังไม่วางแผน และไม่เห็นใบที่ไม่ได้มอบงานให้ตัวเอง
     # กรองใน query ไม่ใช่หลังดึง — ไม่งั้นใบที่ซ่อนจะกินโควตา limit ไป
     from routers import pm_scope
-    gated = pm_scope.plan_gated_company(current)
-    if gated:
-        and_clauses.append(pm_scope.visible_wo_clause(gated))
+    visible = pm_scope.visible_wo_clause(pm_scope.wo_viewer(current))
+    if visible:
+        and_clauses.append(visible)
 
     q: dict[str, Any] = {"$and": and_clauses} if and_clauses else {}
 
@@ -1539,6 +1540,8 @@ async def pm_wo_sync_status(
     wo = await _find_open_wo(wonum)
     if not wo:
         raise HTTPException(status_code=404, detail=f"ไม่พบใบงาน wonum={wonum}")
+    from routers import pm_scope
+    pm_scope.assert_wo_visible(wo, current)
 
     inbound = dict(wo.get("maximo_inbound") or {})
     if isinstance(inbound.get("at"), datetime):

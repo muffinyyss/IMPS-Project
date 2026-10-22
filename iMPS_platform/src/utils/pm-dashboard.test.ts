@@ -234,7 +234,7 @@ describe("groupByMonthByBrand", () => {
     expect(series.flatMap((s) => s.data).reduce((sum, v) => sum + v, 0)).toBe(5);
   });
 
-  it("success rate par vendor = Complete ÷ total, ใบยกเลิกนับเป็นตัวหาร (สูตรเดียวกับโดนัท)", () => {
+  it("success rate par vendor = Complete ÷ งานที่ไม่ยกเลิก, ใบยกเลิกไม่นับในตัวหาร (สูตรเดียวกับโดนัท)", () => {
     const rows = [
       wo({ pm_date: "2026-01-15", charger_brand: "Delta", planning_status: "pending" }),
       report({ pm_date: "2026-01-25", charger_brand: "Delta", status: "Closed" }),
@@ -247,13 +247,15 @@ describe("groupByMonthByBrand", () => {
     const { stats, series } = groupByMonthByBrand(rows);
     const delta = stats.get("Delta")!;
 
-    // ม.ค.: Complete 2 จาก 4 (open 1 + complete 2 + ยกเลิก 1)
-    expect(delta.months[0]).toMatchObject({ open: 1, inProgress: 0, completed: 2, cancelled: 1, total: 4, rate: 50 });
-    // ก.พ.: มีแต่ใบยกเลิก → 0% (ไม่มีแท่ง แต่มีตัวหาร)
-    expect(delta.months[1]).toMatchObject({ completed: 0, cancelled: 1, total: 1, rate: 0 });
+    // ม.ค.: Complete 2 จาก 3 (open 1 + complete 2) — ใบยกเลิก 1 ใบไม่นับ
+    expect(delta.months[0]).toMatchObject({ open: 1, inProgress: 0, completed: 2, cancelled: 1, total: 3 });
+    expect(delta.months[0].rate).toBeCloseTo(66.67, 1);
+    // ก.พ.: มีแต่ใบยกเลิก → ไม่มีตัวหาร = null (ไม่ใช่ 0%)
+    expect(delta.months[1]).toMatchObject({ completed: 0, cancelled: 1, total: 0, rate: null });
     // เดือนที่ไม่มีงาน = null ไม่ใช่ 0%
     expect(delta.months[2]).toMatchObject({ total: 0, rate: null });
-    expect(delta.overall).toMatchObject({ completed: 2, total: 5, rate: 40 });
+    expect(delta.overall).toMatchObject({ completed: 2, cancelled: 2, total: 3 });
+    expect(delta.overall.rate).toBeCloseTo(66.67, 1);
 
     expect(stats.get(FLEXXFAST_BRAND)!.overall.rate).toBe(0);
     // แท่งของ Delta ม.ค. = 3 (ไม่รวมใบยกเลิก) · ก.พ. = 0 (มีแต่ใบยกเลิก)

@@ -295,9 +295,10 @@ export function groupByMonth(rows: PmRow[]): { open: number[]; inProgress: numbe
 }
 
 /**
- * อัตราสำเร็จ (%) = Complete ÷ งานทั้งหมดรวมใบยกเลิก/เลื่อนแผน
+ * อัตราสำเร็จ (%) = Complete ÷ งานที่ไม่ยกเลิก (Open + In Progress + Complete)
+ * ใบยกเลิก/เลื่อนแผนไม่นับทั้งตัวตั้งและตัวหาร
  * สูตรเดียวกับโดนัท « PM Success Rate » — กรอง Brand + เดือนเดียวกันแล้วตัวเลขต้องตรงกัน
- * ไม่มีงานเลย = null (ไม่ใช่ 0%)
+ * ไม่มีงาน (ที่ไม่ยกเลิก) เลย = null (ไม่ใช่ 0%)
  */
 export function successRate(completed: number, total: number): number | null {
   return total > 0 ? (completed / total) * 100 : null;
@@ -309,7 +310,7 @@ export type VendorStat = {
   inProgress: number;
   completed: number;
   cancelled: number;
-  /** รวมใบยกเลิกด้วย = ตัวหารของ rate */
+  /** งานที่ไม่ยกเลิก (Open + In Progress + Complete) = ตัวหารของ rate — ใบยกเลิกอยู่ใน `cancelled` แยกต่างหาก */
   total: number;
   rate: number | null;
 };
@@ -325,7 +326,8 @@ export type VendorMonthData = {
 };
 
 function makeVendorStat(open: number, inProgress: number, completed: number, cancelled: number): VendorStat {
-  const total = open + inProgress + completed + cancelled;
+  // ใบยกเลิกไม่เข้าตัวหาร — เก็บไว้แค่โชว์ใน tooltip
+  const total = open + inProgress + completed;
   return { open, inProgress, completed, cancelled, total, rate: successRate(completed, total) };
 }
 
@@ -333,7 +335,7 @@ function makeVendorStat(open: number, inProgress: number, completed: number, can
  * จำนวนงานรายเดือน (ม.ค.–ธ.ค.) แยกตามยี่ห้อตู้ — 1 vendor = 1 ชุด = 1 ก้อนในแท่งซ้อนของเดือน
  * (ไม่แตก Open / In Progress / Complete เป็นก้อนย่อย — รายละเอียดสถานะอยู่ใน `stats` สำหรับ tooltip)
  *
- * ใบยกเลิกไม่มีแท่ง (เหมือนกราฟหลัก) แต่ถูกนับไว้ใน `stats` เพื่อเป็นตัวหารของ success rate
+ * ใบยกเลิกไม่มีแท่ง (เหมือนกราฟหลัก) และไม่นับใน success rate — นับไว้ใน `stats.cancelled` เพื่อโชว์ใน tooltip เท่านั้น
  */
 export function groupByMonthByBrand(rows: PmRow[]): VendorMonthData {
   const perBrand = new Map<string, { open: number[]; inProgress: number[]; completed: number[]; cancelled: number[] }>();

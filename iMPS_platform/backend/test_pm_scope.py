@@ -167,25 +167,67 @@ def main() -> int:
         failed += 1
         print("FAIL items_by_party ต้องข้ามอุปกรณ์ที่ระบุไม่ได้")
 
-    # ใบงานที่ planner ต้นทางยังไม่ได้วางแผน — vendor (EDS) ยังไม่เห็น
-    fresh = {"wonum": "WO1", "planning_status": "pending"}          # Maximo เพิ่งเปิดมา
-    planned = {"wonum": "WO2", "planning_status": "planned", "planner_company": "EGAT"}
+    # ใครเห็นใบงานไหน — แต่ละบริษัทเห็นเฉพาะใบงานที่ตัวเองได้รับมอบหมาย (2026-10-22)
+    V = pm_scope.WoViewer
+    egat = V(False, "egat_pl", "EGAT", False)                 # บริษัทต้นทาง
+    other_owner = V(False, "x_pl", "OtherOwner", False)
+    eds = V(False, "eds_pl", "EDS", True)                     # vendor
+    os_co = V(False, "os1", "OS Co", True)                    # outsource ของ EGAT
+    sub = V(False, "sub1", "SubCo", True)                     # outsource ที่ EDS มอบหมาย
+    stranger = V(False, "x1", "Stranger OS", True)
+    nobody = V(False, "", "", False)
+    admin = V(True)
+    fresh = {"wonum": "WO1", "planning_status": "pending"}                       # Maximo เพิ่งเปิดมา
+    egat_only = {"wonum": "WO2", "planning_status": "planned", "planner_company": "EGAT",
+                 "selected_equipment": [{"type": "station"}, {"type": "charger", "sn": "SN1"}],
+                 "assignees": ["egat_tech"]}
     eds_own = {"wonum": "PM1", "planning_status": "pending", "planner_company": "EDS"}  # EDS เปิดเอง
-    gate_cases = [
-        (fresh, "EDS", True),
-        (fresh, " eds ", True),
-        ({"wonum": "WO3"}, "EDS", True),       # ไม่มี planning_status = ยังไม่วางแผน
-        (planned, "EDS", False),
-        ({**planned, "planning_status": " Planned "}, "EDS", False),
-        (eds_own, "EDS", False),
-        (fresh, "", False),                    # ไม่ถูกจำกัด (EGAT / admin)
-        (None, "EDS", False),
+    legacy = {"wonum": "WO9", "planning_status": "planned", "assignees": ["eds_tech"]}  # ไม่มี planner_company
+    WO_P = {**WO, "wonum": "WO5", "planning_status": "planned"}
+    pending_tick = {"wonum": "WO6", "planning_status": "pending", "planner_company": "EGAT",
+                    "assignees": ["OS Co"]}                   # ยังวางแผนไม่เสร็จ
+    vis_cases = [
+        (fresh, egat, True), (fresh, eds, False), (fresh, os_co, False), (fresh, nobody, True),
+        (fresh, admin, True),
+        (egat_only, egat, True), (egat_only, eds, False), (egat_only, os_co, False),
+        (egat_only, other_owner, False), (egat_only, admin, True),
+        (egat_only, V(False, "egat_tech", "", False), True),  # ติ๊กชื่อไว้แม้ company ว่าง
+        (eds_own, eds, True), (eds_own, egat, False), (eds_own, V(False, "e", " eds ", True), True),
+        (WO_P, egat, True), (WO_P, eds, True), (WO_P, os_co, True), (WO_P, sub, True),
+        (WO_P, V(False, "os2", "Other OS", True), True), (WO_P, stranger, False),
+        (WO_P, V(False, "eds_tech", "", False), True),
+        (pending_tick, os_co, False), (pending_tick, egat, True),
+        (legacy, egat, True), (legacy, eds, False), (legacy, V(False, "eds_tech", "EDS", True), True),
+        (None, eds, True),
     ]
-    for wo, company, expected in gate_cases:
-        got = pm_scope.awaiting_origin_plan(wo, company)
+    for wo, viewer, expected in vis_cases:
+        got = pm_scope.wo_visible(wo, viewer)
         if got != expected:
             failed += 1
-            print(f"FAIL awaiting_origin_plan({wo}, {company!r}): got {got}, want {expected}")
+            print(f"FAIL wo_visible({(wo or {}).get('wonum')}, {viewer.username}@{viewer.company}): "
+                  f"got {got}, want {expected}")
+    if pm_scope.visible_wo_clause(admin) is not None:
+        failed += 1
+        print("FAIL visible_wo_clause(admin) ต้องเป็น None")
+
+    # query (Mongo) ต้องได้ผลเดียวกับ wo_visible — ต้องมี mongomock (pip install mongomock) ไม่มีก็ข้าม
+    try:
+        import mongomock
+    except ImportError:
+        mongomock = None
+        print("ข้ามการเทียบ visible_wo_clause กับ Mongo (ไม่มี mongomock)")
+    if mongomock:
+        coll = mongomock.MongoClient().db.wo
+        docs = [d for d in {id(w): w for w, _v, _e in vis_cases if w}.values()]
+        coll.insert_many([dict(d) for d in docs])
+        for viewer in (egat, other_owner, eds, os_co, sub, stranger, nobody,
+                       V(False, "egat_tech", "", False), V(False, "eds_tech", "EDS", True)):
+            clause = pm_scope.visible_wo_clause(viewer) or {}
+            got = sorted(d["wonum"] for d in coll.find(clause))
+            want = sorted(d["wonum"] for d in docs if pm_scope.wo_visible(d, viewer))
+            if got != want:
+                failed += 1
+                print(f"FAIL visible_wo_clause({viewer.username}@{viewer.company}): got {got}, want {want}")
 
     print("ผ่านทั้งหมด" if not failed else f"ไม่ผ่าน {failed} ข้อ")
     return 1 if failed else 0
