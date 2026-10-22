@@ -473,17 +473,7 @@ async def guard(
                     status_code=409,
                     detail=f"ฟอร์มนี้ยังรอ planner ของ {owner} อนุมัติ — แก้ไขได้หลัง {owner} อนุมัติแล้ว",
                 )
-    # ฟอร์มตู้ชาร์จที่ planner ของ vendor อนุมัติแล้ว (routers/pmreport_station_job.py vendor-approve)
-    # ช่างแก้ต่อไม่ได้ — ต้องให้ planner ตีกลับก่อน (planner แก้ก่อนอนุมัติได้เหมือนเดิม)
-    if _norm(section) == CHARGER_SECTION and _norm(current.role) != "planner":
-        owner = section_owner(wo, section, sn)
-        entry = next(
-            (e for e in (job or {}).get("work_entries") or []
-             if isinstance(e, dict) and _norm(e.get("key")) == _norm(owner)),
-            None,
-        )
-        if entry and entry.get("submitted") and entry.get("vendor_approved"):
-            raise HTTPException(
-                status_code=409,
-                detail=f"ฟอร์มนี้ planner ของ {owner} อนุมัติแล้ว — แก้ไขไม่ได้ จนกว่าจะถูกตีกลับ",
-            )
+    # (เลิกใช้ 2026-10-22) เดิม: ฟอร์มตู้ชาร์จที่ planner ของ vendor อนุมัติแล้ว ช่างแก้ไม่ได้จนกว่าจะถูกตีกลับ
+    # → ใบขึ้น Wait for approve ได้ก็ต่อเมื่อ vendor อนุมัติแล้ว ช่าง vendor (EDS) จึงแก้ฟอร์มตัวเองไม่ได้เลย
+    # ขณะที่ช่าง EGAT แก้ได้ — ตอนนี้ช่างของ vendor แก้ได้เหมือนทีมต้นทางจนกว่าใบจะ Closed
+    # (ผลอนุมัติของ planner vendor ยังอยู่ ใบไม่เปลี่ยนสถานะ — planner ต้นทางตรวจข้อมูลล่าสุดตอนอนุมัติ)

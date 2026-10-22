@@ -277,7 +277,7 @@ const T = {
   cancel: { th: "ยกเลิก", en: "Cancel" },
   create: { th: "เปิดใบ", en: "Create" },
 
-  jobTitle: { th: "ใบบำรุงรักษาสถานี (PM)", en: "Station PM document" },
+  jobTitle: { th: "ใบงานบำรุงรักษาสถานี (PM)", en: "Station PM document" },
   station: { th: "สถานี", en: "Station" },
   docNo: { th: "เลขที่เอกสาร", en: "Issue ID" },
   docName: { th: "ชื่อเอกสาร", en: "Document" },
@@ -1258,8 +1258,7 @@ export default function StationPmJobTables() {
     const sectionRejectRemark = sectionStatus === "draft" ? (openedSection?.reject_remark ?? "") : "";
     const canEditSent = viewing && PM_EDIT_SENT_ROLES.includes(me?.role ?? "") && !!openedSection?.report_id
       && openedSection?.editable !== false
-      // planner ของ vendor อนุมัติฟอร์มตู้ชาร์จนี้แล้ว — ช่างแก้ไม่ได้จนกว่าจะถูกตีกลับ (backend กันซ้ำ)
-      && !(openedSection?.vendor_review === "approved" && !roleCanApprove)
+      // (2026-10-22) ฟอร์มตู้ชาร์จที่ planner ของ vendor อนุมัติแล้ว ช่างของ vendor (EDS) ยังแก้ได้เหมือนช่างทีมต้นทาง
       && !inUseByOther(openedSection)
       && !["closed", "submitted"].includes(sectionStatus)
       // ใบรออนุมัติ (Wait for approve) ช่างยังแก้ฟอร์มของตัวเองได้จนกว่า planner จะอนุมัติปิดใบ (2026-10-22)
