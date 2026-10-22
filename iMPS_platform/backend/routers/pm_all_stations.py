@@ -444,6 +444,10 @@ async def get_all_station_pm_reports(
     await _apply_job_status(all_reports, chargers)
     # หลัง _apply_job_status — ใบลูกของใบ PM สถานีเพิ่งได้ wonum จากใบแม่ตรงนั้น
     await _apply_wo_origin(all_reports)
+    # แต่ละบริษัทเห็นเฉพาะใบงานที่ตัวเองได้รับมอบหมาย — เอกสารของใบงานที่ไม่ได้มอบให้บริษัทนี้ตัดออก
+    # (หลัง _apply_job_status เพราะใบลูกของใบ PM สถานีเพิ่งได้ wonum ตรงนั้น) — pm_scope.wo_visible
+    from routers import pm_scope
+    all_reports = await pm_scope.filter_visible(all_reports, current)
 
     if pm_type:
         all_reports = [r for r in all_reports if r.get("pm_type") == pm_type]

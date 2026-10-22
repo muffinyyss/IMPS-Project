@@ -29,6 +29,9 @@ planner ต้นทางจึงเลือก "ผู้ทำ PM" ให�
   - คนนอกใบงาน (ไม่ได้อยู่ในข้อไหนเลย เช่น planner/ช่าง EDS ในใบที่ EGAT ทำเองทั้งหมด) → กรอกไม่ได้เลย
       และกด "เริ่ม PM" ไม่ได้ (is_participant — แก้ 2026-10-22)
   - ใบที่ไม่ได้ผูกใบงาน / ใบงานรุ่นก่อนที่ไม่มี planner_company → ไม่จำกัด (เหมือนเดิม)
+
+กติกาการเห็นใบงาน (wo_visible — แก้ 2026-10-22): แต่ละบริษัทเห็นเฉพาะใบงานที่ตัวเองได้รับมอบหมาย
+  ดูหัวข้อ "ใครเห็นใบงานไหน" ด้านล่าง
 """
 from __future__ import annotations
 
@@ -155,54 +158,171 @@ def is_participant(wo: dict | None, role: str, username: str, company: str) -> b
 
 
 # ──────────────────────────────────────────────────────────────────
-# ใบงานที่ planner ต้นทางยังไม่ได้วางแผน — vendor ยังไม่เห็น (แก้ 2026-10-22)
-#   ปัญหาเดิม: planner EDS เห็นทุกใบงานของสถานีที่มีตู้ FlexxFast ทันทีที่ Maximo เปิดมา
-#   ทั้งที่ planner EGAT ยังไม่ได้วางแผน/ยังไม่ได้ส่งงานให้ EDS
-#   ตอนนี้: คนของบริษัทที่เห็นงานตามยี่ห้อ (brand_scope — เช่น EDS) เห็นใบงานได้ต่อเมื่อ
-#   planning_status = planned หรือเป็นใบที่บริษัทตัวเองวางแผน/เปิดเอง (planner_company)
-#   admin / owner / super_admin และ EGAT (ไม่มี brand scope) เห็นทุกใบเหมือนเดิม
+# ใครเห็นใบงานไหน — แต่ละบริษัทเห็นเฉพาะใบงานที่ตัวเองได้รับมอบหมาย (แก้ 2026-10-22)
+#   เดิม: vendor ที่เห็นงานตามยี่ห้อ (EDS) เห็นทุกใบงานที่วางแผนแล้วของสถานีที่มีตู้ FlexxFast
+#         (แม้ planner EGAT ให้ EGAT ทำเองทั้งหมด) ส่วน outsource / EGAT เห็นทุกใบ
+#   ตอนนี้ (planner / technician / cs — admin / owner / super_admin เห็นทุกใบเหมือนเดิม) เห็นใบงานเมื่อ
+#     1. planner_company = บริษัทตัวเอง (บริษัทตัวเองวางแผน / เปิดใบเอง) หรือ
+#     2. ใบวางแผนแล้ว และบริษัทตัวเอง (หรือชื่อผู้ใช้) ถูกมอบงาน — ผู้ทำ PM ของอุปกรณ์
+#        (selected_equipment.by) / ใบส่งต่อ (vendor_plans.vendor) / ทีมที่ vendor มอบหมาย
+#        (vendor_plans.assignees) / ผู้รับผิดชอบที่ planner ติ๊ก (assignees)
+#     3. บริษัทต้นทาง (ไม่ได้เป็น vendor / outsource ในหน้า Company เช่น EGAT) เห็นใบที่ยังไม่มีเจ้าของด้วย
+#        (planner_company ว่าง = Maximo เพิ่งเปิดมา ยังไม่มีใครวางแผน / ใบรุ่นก่อน) — ไม่งั้นไม่มีใครวางแผนได้
+#   vendor / outsource = ชื่ออยู่ในแท็บ Vendor / Outsource ของหน้า Company และไม่ได้อยู่ในแท็บ Owner
+#   (+ บริษัทใน brand_scope.COMPANY_BRAND_SCOPE เช่น EDS เผื่อหน้า Company ยังไม่ได้กรอก)
+#   กติกาเดียวกัน 2 รูป: wo_visible (Python) และ visible_wo_clause (Mongo) — ต้องแก้คู่กัน
 # ──────────────────────────────────────────────────────────────────
 
 def is_planned(wo: dict | None) -> bool:
     return _norm((wo or {}).get("planning_status")) == "planned"
 
 
-def plan_gated_company(current: UserClaims) -> str:
-    """company ของ vendor ที่ต้องรอ planner ต้นทางวางแผนก่อนถึงจะเห็นใบงาน — "" = ไม่ถูกจำกัด"""
-    if getattr(current, "is_super_admin", False):
-        return ""
-    from brand_scope import BRAND_SCOPED_ROLES, COMPANY_BRAND_SCOPE
-    if _norm(current.role) not in BRAND_SCOPED_ROLES:
-        return ""
+_ASSIGNEE_ONLY_TTL_SECONDS = 60
+_assignee_only_cache: list = []   # [(monotonic, frozenset)]
+
+
+def assignee_only_companies() -> frozenset:
+    """ชื่อบริษัท (ตัวพิมพ์เล็ก) ที่เป็น vendor / outsource — เห็นเฉพาะใบงานที่ได้รับมอบ"""
+    import time
+    from brand_scope import COMPANY_BRAND_SCOPE
+
+    now = time.monotonic()
+    if _assignee_only_cache and now - _assignee_only_cache[0][0] < _ASSIGNEE_ONLY_TTL_SECONDS:
+        return _assignee_only_cache[0][1]
+    names: set[str] = set(COMPANY_BRAND_SCOPE)
+    owners: set[str] = set()
+    try:
+        from config import companies_collection
+        for d in companies_collection.find(
+            {"type": {"$in": ["owner", "vendor", "outsource"]}}, {"_id": 0, "type": 1, "name": 1, "vendors": 1}
+        ):
+            kind = _norm(d.get("type"))
+            if kind == "owner":
+                owners.add(_norm(d.get("name")))
+            elif kind == "outsource":
+                names.add(_norm(d.get("name")))
+            elif kind == "vendor":   # 1 doc = owner 1 ราย ถือรายชื่อ vendor ไว้ข้างใน
+                names |= {_norm(v.get("name")) for v in (d.get("vendors") or []) if isinstance(v, dict)}
+    except Exception as e:
+        # อ่านไม่ได้ = ใช้แค่ COMPANY_BRAND_SCOPE (ไม่ cache — ลองใหม่ request หน้า)
+        log.warning(f"  ⚠️ อ่านรายชื่อ vendor / outsource ไม่สำเร็จ: {e}")
+        return frozenset(names - {""})
+    result = frozenset(names - owners - {""})
+    _assignee_only_cache[:] = [(now, result)]
+    return result
+
+
+def invalidate_assignee_only() -> None:
+    """ล้าง cache รายชื่อ vendor / outsource — เรียกหลังแก้หน้า Company"""
+    _assignee_only_cache.clear()
+
+
+class WoViewer:
+    """คนที่กำลังดูใบงาน — bypass = เห็นทุกใบ, assignee_only = vendor / outsource (ไม่เห็นใบที่ยังไม่มีเจ้าของ)"""
+    __slots__ = ("bypass", "username", "company", "assignee_only")
+
+    def __init__(self, bypass: bool, username: str = "", company: str = "", assignee_only: bool = False):
+        self.bypass = bypass
+        self.username = (username or "").strip()
+        self.company = (company or "").strip()
+        self.assignee_only = assignee_only
+
+
+def wo_viewer(current: UserClaims) -> WoViewer:
+    if getattr(current, "is_super_admin", False) or _norm(current.role) in BYPASS_ROLES:
+        return WoViewer(True)
     company = company_of(current)
-    return company if _norm(company) in COMPANY_BRAND_SCOPE else ""
+    return WoViewer(
+        False,
+        current.username or current.sub or "",
+        company,
+        bool(_norm(company)) and _norm(company) in assignee_only_companies(),
+    )
 
 
-def awaiting_origin_plan(wo: dict | None, company: str) -> bool:
-    """ใบงานนี้ยังซ่อนจาก vendor `company` ไหม (company ว่าง = ไม่ถูกจำกัด)"""
-    if not wo or not _norm(company) or is_planned(wo):
+def is_assigned(wo: dict | None, username: str, company: str) -> bool:
+    """บริษัท / ผู้ใช้นี้ได้รับมอบงานในใบนี้ไหม (ข้อ 1–2 ด้านบน)"""
+    u, c = _norm(username), _norm(company)
+    if not wo or not (u or c):
         return False
-    return _norm(wo.get("planner_company")) != _norm(company)
+    if c and _norm(wo.get("planner_company")) == c:
+        return True
+    if not is_planned(wo):
+        return False
+    companies = {_norm(e.get("by")) for e in (wo.get("selected_equipment") or []) if isinstance(e, dict)}
+    people = {_norm(a) for a in (wo.get("assignees") or [])}
+    for v in wo.get("vendor_plans") or []:
+        if isinstance(v, dict):
+            companies.add(_norm(v.get("vendor")))
+            people |= {_norm(a) for a in (v.get("assignees") or [])}
+    companies.discard("")
+    people.discard("")
+    return bool((c and (c in companies or c in people)) or (u and u in people))
 
 
-def visible_wo_clause(company: str) -> dict:
-    """เงื่อนไข Mongo ของ awaiting_origin_plan (ฝั่งที่เห็นได้) — ใช้กรองตอน list ใบงาน"""
+def wo_visible(wo: dict | None, viewer: WoViewer) -> bool:
+    if viewer.bypass or not wo:
+        return True
+    if is_assigned(wo, viewer.username, viewer.company):
+        return True
+    return not viewer.assignee_only and not _norm(wo.get("planner_company"))
+
+
+def _exact_ci(name: str) -> dict:
     import re
-    name_re = {"$regex": f"^\\s*{re.escape(company.strip())}\\s*$", "$options": "i"}
-    return {"$or": [
-        {"planning_status": {"$regex": "^\\s*planned\\s*$", "$options": "i"}},
-        {"planner_company": name_re},
-    ]}
+    return {"$regex": f"^\\s*{re.escape(name.strip())}\\s*$", "$options": "i"}
+
+
+def visible_wo_clause(viewer: WoViewer) -> Optional[dict]:
+    """เงื่อนไข Mongo ของ wo_visible — ใช้กรองตอน list ใบงาน (None = ไม่ต้องกรอง)"""
+    if viewer.bypass:
+        return None
+    ors: list[dict] = []
+    assigned: list[dict] = []
+    if viewer.company:
+        c = _exact_ci(viewer.company)
+        ors.append({"planner_company": c})
+        assigned += [
+            {"selected_equipment.by": c}, {"vendor_plans.vendor": c},
+            {"vendor_plans.assignees": c}, {"assignees": c},
+        ]
+    if viewer.username:
+        u = _exact_ci(viewer.username)
+        assigned += [{"vendor_plans.assignees": u}, {"assignees": u}]
+    if assigned:
+        ors.append({"$and": [{"planning_status": _exact_ci("planned")}, {"$or": assigned}]})
+    if not viewer.assignee_only:
+        ors += [{"planner_company": {"$in": [None, ""]}}, {"planner_company": {"$regex": "^\\s*$"}}]
+    if not ors:
+        return {"_id": {"$exists": False}}   # ไม่มีอะไรให้เทียบ = ไม่เห็นใบไหนเลย
+    return {"$or": ors}
+
+
+def not_visible_detail(wo: dict | None) -> str:
+    if not _norm((wo or {}).get("planner_company")):
+        return "ใบงานนี้ planner ต้นทางยังไม่ได้วางแผน — ยังไม่ได้ส่งงานให้บริษัทของคุณ"
+    return "ใบงานนี้ไม่ได้มอบหมายงานให้บริษัทของคุณ"
 
 
 def assert_wo_visible(wo: dict | None, current: UserClaims) -> None:
-    """กันยิงตรงด้วย wonum ของใบงานที่ planner ต้นทางยังไม่ได้วางแผน (หน้า list ซ่อนไว้แล้ว)"""
-    if awaiting_origin_plan(wo, plan_gated_company(current)):
-        raise HTTPException(
-            status_code=403,
-            detail="ใบงานนี้ planner ต้นทางยังไม่ได้วางแผน — ยังไม่ได้ส่งงานให้บริษัทของคุณ",
-        )
+    """กันยิงตรงด้วย wonum / job_id ของใบงานที่ไม่ได้มอบให้บริษัทตัวเอง (หน้า list ซ่อนไว้แล้ว)"""
+    if not wo_visible(wo, wo_viewer(current)):
+        raise HTTPException(status_code=403, detail=not_visible_detail(wo))
 
+
+async def filter_visible(rows: list[dict], current: UserClaims, key: str = "wonum") -> list[dict]:
+    """
+    ตัดแถว (เอกสาร PM / ใบ PM สถานี) ที่ผูกกับใบงานที่ผู้ใช้ไม่เห็นออก
+    แถวที่ไม่ผูกใบงาน / หาใบงานไม่เจอ (ใบเก่า / ใบเปิดเองรุ่นก่อน) ไม่ถูกตัด
+    """
+    viewer = wo_viewer(current)
+    if viewer.bypass or not rows:
+        return rows
+    wos = await wos_by_wonum(str(r.get(key) or "") for r in rows)
+    return [
+        r for r in rows
+        if wo_visible(wos.get(str(r.get(key) or "").strip()), viewer)
+    ]
 
 def not_participant_detail(wo: dict | None, company: str) -> str:
     origin = str((wo or {}).get("planner_company") or "").strip() or "planner ต้นทาง"

@@ -359,7 +359,7 @@ export default function PMDashboardPage() {
       clickToFilter: "คลิกที่ส่วนของกราฟเพื่อกรอง",
       cancelHint: "(คลิกอีกครั้งเพื่อยกเลิก)",
       barHint: "คลิกที่แท่งกราฟเพื่อเลือกเดือน",
-      donutCenterLabel: "งานทั้งหมด",
+      donutCenterLabel: "งาน (ไม่รวมยกเลิก)",
       cardTotal: "งานทั้งหมด",
       cardCompleted: "แล้วเสร็จ",
       cardNotCompleted: "ยังไม่แล้วเสร็จ",
@@ -392,9 +392,9 @@ export default function PMDashboardPage() {
       errorPrefix: "โหลดข้อมูลไม่สำเร็จ",
       taskUnit: "งาน",
       successLabel: "สำเร็จ",
-      vendorRateHint: "% บนแท่ง = อัตราสำเร็จของ vendor ในเดือนนั้น (Complete ÷ งานทั้งหมดรวมยกเลิก — สูตรเดียวกับ PM Success Rate) · % ข้างชื่อ vendor = รวมทุกเดือนในกราฟ",
+      vendorRateHint: "% บนแท่ง = อัตราสำเร็จของ vendor ในเดือนนั้น (Complete ÷ งานที่ไม่ยกเลิก — สูตรเดียวกับ PM Success Rate) · % ข้างชื่อ vendor = รวมทุกเดือนในกราฟ",
       vendorRateChipTitle: (brand: string, done: number, total: number) =>
-        `${brand}: Complete ${done} จาก ${total} งาน (รวมยกเลิก) — รวมทุกเดือนในกราฟ`,
+        `${brand}: Complete ${done} จาก ${total} งาน (ไม่รวมยกเลิก) — รวมทุกเดือนในกราฟ`,
       volumeWarning: (limit: number) => `ใบงาน Maximo แสดงผลได้สูงสุด ${limit.toLocaleString()} ใบ — กราฟอาจไม่ครบทั้งหมด`,
     },
     en: {
@@ -408,7 +408,7 @@ export default function PMDashboardPage() {
       clickToFilter: "Click on the chart to filter",
       cancelHint: "(click again to cancel)",
       barHint: "Click on a bar to select the month",
-      donutCenterLabel: "All jobs",
+      donutCenterLabel: "Jobs (excl. cancelled)",
       cardTotal: "All jobs",
       cardCompleted: "Completed",
       cardNotCompleted: "Not completed",
@@ -441,9 +441,9 @@ export default function PMDashboardPage() {
       errorPrefix: "Failed to load",
       taskUnit: "jobs",
       successLabel: "Success",
-      vendorRateHint: "% on each bar = the vendor's success rate that month (Complete ÷ all jobs incl. cancelled — same formula as PM Success Rate) · % next to the vendor name = all months shown",
+      vendorRateHint: "% on each bar = the vendor's success rate that month (Complete ÷ non-cancelled jobs — same formula as PM Success Rate) · % next to the vendor name = all months shown",
       vendorRateChipTitle: (brand: string, done: number, total: number) =>
-        `${brand}: ${done} of ${total} jobs complete (incl. cancelled) — all months shown`,
+        `${brand}: ${done} of ${total} jobs complete (excl. cancelled) — all months shown`,
       volumeWarning: (limit: number) => `Maximo work orders are capped at ${limit.toLocaleString()} — charts may be incomplete`,
     },
   }[lang]), [lang]);
@@ -462,12 +462,13 @@ export default function PMDashboardPage() {
     { bucket: "cancelled", label: t.cardCancelled, value: bucketStats.cancelled, color: "linear-gradient(135deg,#f87171,#dc2626)", accent: "#dc2626", Icon: NoSymbolIcon },
   ], [t, bucketStats]);
 
-  /** Parts du donut = les 3 buckets réels (la carte « งานทั้งหมด » est leur somme) */
+  /** ส่วนของโดนัท = แล้วเสร็จ + ยังไม่แล้วเสร็จ เท่านั้น — ใบยกเลิก/เลื่อนแผนไม่นับใน Success Rate
+   *  (ยังเห็นจำนวนได้ที่การ์ด « ยกเลิก / เลื่อนแผน » และการ์ด « งานทั้งหมด » ยังรวมใบยกเลิก) */
   const donutSlices = useMemo(
-    () => bucketCards.filter((c) => c.bucket !== null) as (BucketCard & { bucket: PmBucket })[],
+    () => bucketCards.filter((c) => c.bucket !== null && c.bucket !== "cancelled") as (BucketCard & { bucket: PmBucket })[],
     [bucketCards]
   );
-  const donutTotal = bucketStats.total;
+  const donutTotal = bucketStats.completed + bucketStats.notCompleted;
 
   const bucketLabel: Record<PmBucket, string> = {
     completed: t.cardCompleted,
@@ -574,7 +575,7 @@ export default function PMDashboardPage() {
   const vendorChartKey = useMemo(
     () => JSON.stringify([
       displayedVendorMonthlySeries.map((s) => [s.name, s.data]),
-      Array.from(vendorMonthData.stats, ([brand, st]) => [brand, st.months.map((x) => x.total)]),
+      Array.from(vendorMonthData.stats, ([brand, st]) => [brand, st.months.map((x) => [x.total, x.cancelled])]),
     ]),
     [displayedVendorMonthlySeries, vendorMonthData.stats]
   );
@@ -599,15 +600,15 @@ export default function PMDashboardPage() {
         const rate = vendorMonthData.stats.get(s.brand)?.months[m]?.rate;
         return rate == null ? "" : `${Math.round(rate)}%`;
       },
-      style: { fontSize: "10px", fontWeight: 700, colors: ["#ffffff"] },
+      style: { fontSize: "13px", fontWeight: 800, colors: ["#ffffff"] },
       // เงาบาง ๆ ให้ตัวขาวอ่านออกบนสีอ่อน (เหลือง/เทาของ Unknown)
       dropShadow: { enabled: true, top: 0, left: 0, blur: 1.5, color: "#0f172a", opacity: 0.55 },
     },
     grid: { borderColor: "#f1f5f9" },
     // ก้อนที่เตี้ยเกินกว่าตัวอักษร Apex ซ่อนป้ายเอง — ยังอ่าน % ได้จาก tooltip
-    plotOptions: { bar: { borderRadius: 3, columnWidth: "45%", dataLabels: { hideOverflowingLabels: true } } },
+    plotOptions: { bar: { borderRadius: 3, columnWidth: "55%", dataLabels: { hideOverflowingLabels: true } } },
     tooltip: {
-      // tooltip ต่อก้อน vendor: % สำเร็จ + แยกจำนวนทุกสถานะ รวมใบยกเลิกที่ไม่มีแท่ง (ตัวหารของ %)
+      // tooltip ต่อก้อน vendor: % สำเร็จ + แยกจำนวนทุกสถานะ — ใบยกเลิกโชว์เป็นข้อมูลประกอบ ไม่อยู่ในตัวหารของ %
       custom: ({ seriesIndex, dataPointIndex }: { seriesIndex: number; dataPointIndex: number }) => {
         const s = displayedVendorMonthlySeries[seriesIndex];
         const st = s ? vendorMonthData.stats.get(s.brand)?.months[dataPointIndex] : undefined;
@@ -989,7 +990,7 @@ export default function PMDashboardPage() {
                   options={vendorMonthlyBarOptions}
                   series={displayedVendorMonthlySeries}
                   width="100%"
-                  height={360}
+                  height={400}
                 />
                 <p className="tw-mt-1 tw-text-center tw-text-[11px] tw-leading-snug tw-text-blue-gray-400">{t.vendorRateHint}</p>
               </>

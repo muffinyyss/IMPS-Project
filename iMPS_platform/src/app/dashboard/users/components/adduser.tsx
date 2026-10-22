@@ -17,7 +17,7 @@ import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
 import { apiFetch } from "@/utils/api";
 import { UserRole } from "@/utils/roles";
 import useLanguage, { type Lang } from "@/utils/useLanguage";
-import { CompanySelect, CompanySuggestions, type CompanyOption } from "./company_field";
+import { CompanyCombobox, type CompanyOption } from "./company_field";
 
 const T = {
     saving: { th: "กำลังบันทึก...", en: "Saving..." },
@@ -220,32 +220,31 @@ export default function AddUserModal({
                             crossOrigin={undefined}
                         />
                         {companyOptions ? (
-                            <CompanySelect
+                            <CompanyCombobox
                                 options={companyOptions}
                                 label="Company"
                                 lang={lang}
                                 value={form.company_name ?? ""}
-                                onChange={(e) => onChange("company_name", e.target.value)}
+                                onChange={(v) => onChange("company_name", v)}
+                            />
+                        ) : companySuggestions?.length ? (
+                            <CompanyCombobox
+                                freeText
+                                options={companySuggestions}
+                                label="Company"
+                                lang={lang}
+                                value={form.company_name ?? ""}
+                                onChange={(v) => onChange("company_name", v)}
                             />
                         ) : (
-                            <>
-                                <Input
-                                    label="Company"
-                                    required
-                                    autoComplete="off"
-                                    list={companySuggestions?.length ? "add-user-company-suggestions" : undefined}
-                                    value={form.company_name}
-                                    onChange={(e) => onChange("company_name", e.target.value)}
-                                    crossOrigin={undefined}
-                                />
-                                {!!companySuggestions?.length && (
-                                    <CompanySuggestions
-                                        id="add-user-company-suggestions"
-                                        options={companySuggestions}
-                                        lang={lang}
-                                    />
-                                )}
-                            </>
+                            <Input
+                                label="Company"
+                                required
+                                autoComplete="off"
+                                value={form.company_name}
+                                onChange={(e) => onChange("company_name", e.target.value)}
+                                crossOrigin={undefined}
+                            />
                         )}
                         <div>
                             <div className="tw-flex tw-items-center tw-gap-1">

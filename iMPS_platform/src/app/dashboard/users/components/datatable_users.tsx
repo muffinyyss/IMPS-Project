@@ -42,8 +42,7 @@ import {
 // components
 import AddUser, { NewUserPayload } from "@/app/dashboard/users/components/adduser";
 import {
-  CompanySelect,
-  CompanySuggestions,
+  CompanyCombobox,
   parseCompanyOptions,
   withCurrentCompany,
   type CompanyOption,
@@ -885,28 +884,34 @@ export default function SearchDataTables() {
               <Input name="username" label={t("username", lang)} defaultValue={editingRow?.username ?? ""} required crossOrigin={undefined} />
               <Input name="email" label={t("email", lang)} type="email" defaultValue={editingRow?.email ?? ""} required crossOrigin={undefined} />
               {isPlanner && !editingSelf ? (
-                <CompanySelect
+                <CompanyCombobox
+                  key={editingRow?.id}
                   name="company"
                   options={editCompanyChoices}
                   label={t("company", lang)}
                   lang={lang}
                   defaultValue={editingRow?.company ?? ""}
                 />
+              ) : isAdmin && !!companyOptions?.length ? (
+                <CompanyCombobox
+                  key={editingRow?.id}
+                  freeText
+                  required={false}
+                  name="company"
+                  options={companyOptions}
+                  label={t("company", lang)}
+                  lang={lang}
+                  defaultValue={editingRow?.company ?? ""}
+                />
               ) : (
-                <>
-                  <Input
-                    name="company"
-                    label={t("company", lang)}
-                    autoComplete="off"
-                    list={isAdmin && companyOptions?.length ? "edit-user-company-suggestions" : undefined}
-                    defaultValue={editingRow?.company ?? ""}
-                    disabled={isPlanner && editingSelf}
-                    crossOrigin={undefined}
-                  />
-                  {isAdmin && !!companyOptions?.length && (
-                    <CompanySuggestions id="edit-user-company-suggestions" options={companyOptions} lang={lang} />
-                  )}
-                </>
+                <Input
+                  name="company"
+                  label={t("company", lang)}
+                  autoComplete="off"
+                  defaultValue={editingRow?.company ?? ""}
+                  disabled={isPlanner && editingSelf}
+                  crossOrigin={undefined}
+                />
               )}
               <Input name="tel" label={t("tel", lang)} defaultValue={editingRow?.tel ?? ""} crossOrigin={undefined} />
               {/* <Input name="password" label="New Password (optional)" type="password" /> */}
