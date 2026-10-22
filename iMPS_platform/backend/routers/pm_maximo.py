@@ -1252,6 +1252,22 @@ def _planned_vendors(wo: dict) -> list[str]:
     ]
 
 
+async def _vendor_party_started(wo: dict, vendor: str) -> bool:
+    """ช่างของ vendor รายนี้กด "เริ่ม PM" แล้วหรือยัง (นับรายฝ่ายใน stationPMJob.party_starts)"""
+    station_id = _station_id_of_wo(wo)
+    wonum = str(wo.get("wonum") or "").strip()
+    if not station_id or not wonum:
+        return True  # หาใบไม่ได้ — ยึดกติกาเดิม (เริ่มแล้ว = แก้ไม่ได้)
+    try:
+        from routers.pmreport_station_job import wo_party_started
+        hit = await wo_party_started(station_id, wonum, vendor)
+        # ไม่มีใบ PM สถานี แต่มีเอกสาร PM ผูก wonum (flow รายใบรุ่นก่อน) — บอกไม่ได้ว่าของฝ่ายไหน
+        return True if hit is None else hit
+    except Exception as e:
+        log.warning(f"  ⚠️ เช็คการเริ่ม PM ของ {vendor} ใน {wonum} ไม่สำเร็จ: {e}")
+        return True
+
+
 async def _plan_edit_state(wo: dict, current: UserClaims, *, started: Optional[bool] = None) -> dict:
     """
     ใครแก้แผนอะไรได้บ้างตอนนี้ — หน้าวางแผนใช้ตัดสินว่าจะโชว์ปุ่ม "แก้ไขแผน" หรือไม่
@@ -1286,8 +1302,10 @@ async def _plan_edit_state(wo: dict, current: UserClaims, *, started: Optional[b
         vendor_reason = "เฉพาะ planner ที่วางแผนใบงานได้"
     elif not mine or str(mine.get("status") or "").strip().lower() != "planned":
         vendor_reason = "ยังไม่ได้วางแผนของบริษัทคุณ"
-    elif started:
-        vendor_reason = "ช่างกดเริ่ม PM แล้ว แก้แผนไม่ได้"
+    elif started and await _vendor_party_started(wo, str(mine.get("vendor") or "")):
+        # ดูเฉพาะฝ่ายของ vendor เอง — ทีมต้นทางกดเริ่ม PM ไปก่อน (เปิดใบ PM สถานีแล้ว)
+        # ยังไม่ใช่เหตุให้ vendor แก้ทีม/กำหนดการของตัวเองไม่ได้ จนกว่าช่างของ vendor จะเริ่มเอง
+        vendor_reason = f"ช่างของ {mine.get('vendor')} กดเริ่ม PM แล้ว แก้แผนไม่ได้"
 
     return {
         "started": started,
