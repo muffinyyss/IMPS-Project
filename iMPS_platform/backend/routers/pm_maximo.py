@@ -950,8 +950,20 @@ def _attach_owner_info(items: list[dict]) -> None:
         str(s.get("station_id") or ""): str(s.get("station_name") or "") for s in stations
     }
 
+    # ชื่อตู้ในแผนที่บันทึกไว้ก่อนแก้ (เป็น name / chargeBoxID) → "Charger N" ให้ตรงกับตอนเลือก
+    try:
+        no_labels = _charger_no_labels(station_ids)
+    except Exception as e:
+        log.warning(f"  ⚠️ หาหมายเลขตู้ของใบงาน Maximo ไม่สำเร็จ: {e}")
+        no_labels = {}
+
     for i in items:
         sid = str(i.get("station_id") or "").strip()
+        for eq in i.get("selected_equipment") or []:
+            if str(eq.get("type") or "").strip().lower() == "charger":
+                lbl = no_labels.get((sid, str(eq.get("sn") or "").strip()))
+                if lbl:
+                    eq["label"] = lbl
         i["charger_brand"] = sn_brand.get(str(i.get("sn") or "").strip()) or station_brand.get(sid, "")
         if not str(i.get("company") or "").strip():
             i["company"] = station_company.get(sid, "")
@@ -1579,6 +1591,34 @@ async def pm_sync_retry(
     return {"ok": True, "result": result, "interfaces": _serialize_sync(fresh)}
 
 
+def _charger_no_labels(station_ids) -> dict[tuple[str, str], str]:
+    """
+    (station_id, SN) → "Charger N" — ชื่อตู้ชุดเดียวกับรายการตัวเลือกตอนวางแผน (_station_equipment_choices)
+
+    ใช้ทั้งตอนบันทึกแผนและตอนอ่านใบงาน ให้ชื่อตู้ก่อน/หลังวางแผนตรงกัน
+    (เดิมตอนบันทึกเปลี่ยนเป็น name / chargeBoxID ของตู้ → หลังวางแผนชื่อตู้ไม่ตรงกับตอนเลือก)
+    ไม่มี chargerNo ไล่ตามลำดับในสถานีเหมือนรายการตัวเลือก
+    """
+    ids = sorted({str(x or "").strip() for x in station_ids} - {""})
+    out: dict[tuple[str, str], str] = {}
+    if not ids:
+        return out
+    cursor = charger_collection.find(
+        {"station_id": {"$in": ids}},
+        {"_id": 0, "SN": 1, "station_id": 1, "chargerNo": 1},
+    ).sort([("chargerNo", 1), ("SN", 1)])
+    seq: dict[str, int] = {}
+    for c in cursor:
+        sid = str(c.get("station_id") or "").strip()
+        # นับทุกตู้รวมตู้ไม่มี SN — ลำดับเดียวกับ enumerate ใน _station_equipment_choices
+        seq[sid] = seq.get(sid, 0) + 1
+        sn = str(c.get("SN") or "").strip()
+        if not sn or sn == "-":
+            continue
+        out[(sid, sn)] = f"Charger {c.get('chargerNo') or seq[sid]}"
+    return out
+
+
 def _station_equipment_choices(station_id: str) -> tuple[list[dict], list[dict]]:
     """
     (ตู้ชาร์จ, อุปกรณ์ระดับสถานี) ที่เลือก PM ได้ในสถานีหนึ่ง
@@ -1625,6 +1665,7 @@ def _build_equipment_items(station_id: str, equipment: list["EquipmentItem"]) ->
     """
     items: list[dict] = []
     seen: set[str] = set()
+    no_labels: dict[tuple[str, str], str] | None = None  # หาเมื่อมีตู้ชาร์จในแผน
     for e in equipment:
         etype = _norm_equip_type(e.type)
         if etype not in EQUIP_TYPES:
@@ -1660,8 +1701,11 @@ def _build_equipment_items(station_id: str, equipment: list["EquipmentItem"]) ->
                 )
             item["sn"] = sn
             item["location"] = (charger.get("maximo_location") or "").strip() or None
+            if no_labels is None:
+                no_labels = _charger_no_labels([station_id])
             item["label"] = (
-                charger.get("name")
+                no_labels.get((station_id, sn))
+                or charger.get("name")
                 or charger.get("charger_name")
                 or charger.get("chargeBoxID")
                 or sn

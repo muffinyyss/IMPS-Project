@@ -1098,7 +1098,22 @@ def _draw_header(
     pdf.rect(xr, y_top + h_right_half, col_right, h_right_half)
     pdf.set_xy(xr, y_top + h_right_half + 1)
     pdf.set_font(base_font, "B", FONT_MAIN - 2)
-    pdf.multi_cell(col_right, 4.5, f"{label_doc_name}\n{doc_name}", align="C")
+    pdf.multi_cell(col_right, 4.5, f"{label_doc_name}", align="C")
+    # ชื่อเอกสารยาว (เช่น 7Eleven_Banklangmueang_5/2026) เคยตัดบรรทัดล้นกรอบลงไปทับตาราง
+    # → ย่อฟอนต์ให้พอดีบรรทัดเดียว ถ้ายังไม่พอที่ 6pt ค่อยตัด 2 บรรทัดเล็ก ๆ ในกรอบ
+    _dn = str(doc_name)
+    _fs = FONT_MAIN - 2
+    while _fs > 6 and pdf.get_string_width(_dn) > col_right - 2:
+        _fs -= 0.5
+        pdf.set_font(base_font, "B", _fs)
+    pdf.set_xy(xr, y_top + h_right_half + 1 + 4.5)
+    if pdf.get_string_width(_dn) <= col_right - 2:
+        pdf.cell(col_right, 4.5, _dn, align="C")
+    else:
+        pdf.multi_cell(col_right, 2.5, _dn, align="C")
+    pdf.set_font(base_font, "B", FONT_MAIN - 2)
+    # ตำแหน่ง y หลังหัวกระดาษต้องเท่ากับของเดิม (multi_cell 2 บรรทัด) — เนื้อหาถัดไปเริ่มจาก get_y()
+    pdf.set_xy(xr + col_right, y_top + h_right_half + 1 + 2 * 4.5)
 
     return y_top + h_all
 

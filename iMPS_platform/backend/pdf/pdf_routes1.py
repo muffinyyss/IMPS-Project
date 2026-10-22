@@ -376,9 +376,9 @@ async def export_pdf(
         ver = data.get("updatedAt") or data.get("createdAt") or ""
         ver_str = "".join(ch for ch in str(ver) if ch.isalnum())[:20] or "0"
         maximo_ver = str(data.get("_maximo_failure_codes_version") or "0")
-        cache_name = f"{id}_{lang}_{ver_str}_{maximo_ver}_cm-v7.pdf"
+        cache_name = f"{id}_{lang}_{ver_str}_{maximo_ver}_cm-v8.pdf"
     else:
-        cache_name = f"{id}_{lang}.pdf"
+        cache_name = f"{id}_{lang}_v2.pdf"  # _v2 = แก้ฟอนต์ checklist ค้าง 6pt (2026-10-22)
     cache_path = pathlib.Path(UPLOADS_ROOT) / "pdf_cache" / (coll_key or "unknown") / cache_name
     cache_path.parent.mkdir(parents=True, exist_ok=True)
 
