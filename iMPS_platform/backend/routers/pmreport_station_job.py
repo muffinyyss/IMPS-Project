@@ -704,9 +704,6 @@ def is_origin_approver(wo: dict | None, current: UserClaims, company: str) -> bo
 #                 | vendor_review (รอ planner ของ vendor) | submitted (ส่งครบ พร้อมให้ planner ต้นทาง)
 # ══════════════════════════════════════════════════════════════════
 
-PARTY_TODO_STATES = {"not_started", "in_progress", "ready", "rejected"}
-
-
 def _party_state(
     key: str, party: dict, entries: list[dict], wo: dict | None, started: bool, job_status: str,
 ) -> str:
@@ -746,34 +743,6 @@ def party_summaries(
             "total": len(p["states"]),
         })
     return out
-
-
-def waiting_on_user(
-    job_status: str, summaries: list[dict], wo: dict | None, current: UserClaims, company: str,
-) -> bool:
-    """
-    ใบนี้รอคนที่ login ทำอะไรอยู่ไหม (ตัวกรอง "รอฉัน" ของหน้า PM List)
-      planner / admin: รออนุมัติทั้งใบ (planner ต้นทาง) หรือรออนุมัติงานตู้ของฝ่ายตัวเอง (planner vendor)
-      คนอื่น (ช่าง / outsource / owner): ฝ่ายของตัวเองยังต้องกรอก / แก้ / กดส่งงาน
-    """
-    role = (current.role or "").strip().lower()
-    if role in pm_flow.PM_APPROVE_ROLES:
-        reviewer = vendor_reviewer_key(wo, current, company)
-        if reviewer:
-            return job_status == pm_flow.PM_STATUS_DRAFT and any(
-                p["key"] == reviewer and p["state"] == "vendor_review" for p in summaries
-            )
-        if job_status != pm_flow.PM_STATUS_WAIT_APPROVE:
-            return False
-        from routers import pm_scope
-        origin = _pkey((wo or {}).get("planner_company") or "")
-        return role in pm_scope.BYPASS_ROLES or not origin or _pkey(company) == origin
-    if job_status != pm_flow.PM_STATUS_DRAFT:
-        return False
-    my_key = user_party_key(wo, current, company)
-    if not my_key and not any(p["key"] == "" for p in summaries):
-        return False
-    return any(p["key"] == my_key and p["state"] in PARTY_TODO_STATES for p in summaries)
 
 
 async def _job_wo(job: dict) -> dict | None:
