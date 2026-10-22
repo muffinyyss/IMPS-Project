@@ -84,7 +84,7 @@ export const PM_CONFIRM = {
   /** อนุมัติทั้งใบ (หน้ารวมใบ PM สถานี) */
   approveJob: {
     title: { th: "อนุมัติใบงาน", en: "Approve work order" },
-    body: { th: "ยืนยันอนุมัติทั้งใบ? ใบงานจะเข้าสถานะ Closed", en: "Approve the whole document? It will move to Closed." },
+    body: { th: "ยืนยันอนุมัติใบงานนี้? ใบงานจะเปลี่ยนเป็นสถานะ Closed", en: "Approve this work order? It will move to Closed." },
     confirm: { th: "ยืนยันอนุมัติ", en: "Confirm approve" },
     color: COLOR.green,
   },

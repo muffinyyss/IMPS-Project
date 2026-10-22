@@ -1309,7 +1309,7 @@ def _fit_station_split(pdf: FPDF, base_font: str, w: float, col_split: float, la
                        station: str, right_values: list) -> float:
     """
     ตำแหน่งเส้นแบ่งคอลัมน์ของบล็อกข้อมูลงาน ที่ทำให้ชื่อสถานีอยู่บรรทัดเดียว
-    ชื่อพอดีช่องเดิม = ใช้ col_split เดิม (ตรงกับเส้นแบ่งของตารางด้านล่าง)
+    ชื่อพอดีช่องเดิม = ใช้ col_split เดิม (ค่าเริ่มต้น = กึ่งกลาง ซ้าย/ขวากว้างเท่ากัน)
     ยาวเกิน = ขยับเส้นไปทางขวาเท่าที่จำเป็น แต่คอลัมน์ขวาต้องยังใส่ค่าของมันได้ครบ
     (ยาวกว่านั้นอีก ผู้เรียกจะตัดบรรทัดตามเดิม)
     """
@@ -1803,7 +1803,7 @@ def make_pm_report_html_pdf_bytes(
     y += TITLE_H
 
     # แสดงข้อมูลงานใต้หัวเรื่อง — เลื่อนเส้นแบ่งคอลัมน์ให้ตรงกับเส้นแบ่ง Item | Result ของตารางด้านล่าง
-    y = _draw_job_info_block(pdf, base_font, x0, y, page_w, station_name, pm_date, label_station, label_pm_date, col_split=EDGE_ALIGN_FIX + ITEM_W)
+    y = _draw_job_info_block(pdf, base_font, x0, y, page_w, station_name, pm_date, label_station, label_pm_date)
 
     # ตารางรายการ
     x_table = x0 + EDGE_ALIGN_FIX
