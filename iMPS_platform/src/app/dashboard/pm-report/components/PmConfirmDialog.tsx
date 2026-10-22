@@ -22,6 +22,7 @@ const COLOR = {
   dark: "tw-bg-gray-800 hover:tw-bg-blue-600",
   amber: "tw-bg-amber-600 hover:tw-bg-amber-700",
   green: "tw-bg-green-600 hover:tw-bg-green-700",
+  red: "tw-bg-red-600 hover:tw-bg-red-700",
 };
 
 export const PM_CONFIRM = {
@@ -94,6 +95,60 @@ export const PM_CONFIRM = {
     confirm: { th: "ยืนยันส่ง", en: "Confirm send" },
     color: COLOR.dark,
   },
+  /** ปุ่ม "ยกเลิก" ตอนกำลังแก้ไขแผนที่ Assign ไปแล้ว → ทิ้งสิ่งที่แก้ กลับไปใช้แผนเดิม */
+  cancelPlanEdit: {
+    title: { th: "ยกเลิกการแก้ไขแผน", en: "Cancel plan edit" },
+    body: {
+      th: "ยืนยันยกเลิกการแก้ไข? สิ่งที่แก้ไว้จะไม่ถูกบันทึก และกลับไปใช้แผนเดิม",
+      en: "Discard your changes? Nothing you edited will be saved and the current plan stays.",
+    },
+    confirm: { th: "ยืนยันยกเลิก", en: "Discard changes" },
+    color: COLOR.amber,
+  },
+  /** กดย้อนกลับระหว่างแก้ไขแผน — ออกแล้วสิ่งที่แก้หาย */
+  leavePlanEdit: {
+    title: { th: "ออกโดยไม่บันทึก", en: "Leave without saving" },
+    body: {
+      th: "ยังไม่ได้บันทึกการแก้ไขแผน ออกจากหน้านี้แล้วสิ่งที่แก้ไว้จะหายไป ยืนยันออก?",
+      en: "Your plan changes are not saved. Leave this page and discard them?",
+    },
+    confirm: { th: "ยืนยันออก", en: "Leave" },
+    color: COLOR.amber,
+  },
+  /** ยกเลิก N/A ของส่วนหนึ่งในหน้ารวมใบ PM สถานี */
+  undoNa: {
+    title: { th: "ยกเลิก N/A", en: "Undo N/A" },
+    body: {
+      th: "ยืนยันยกเลิก N/A ของส่วนนี้? ส่วนนี้จะกลับมาต้องกรอกก่อนปิดใบงาน",
+      en: "Undo N/A for this section? It will have to be filled in before the work order can be closed.",
+    },
+    confirm: { th: "ยืนยันยกเลิก N/A", en: "Confirm undo" },
+    color: COLOR.amber,
+  },
+  /** ปุ่ม × ลบรูปในฟอร์มกรอก PM */
+  deletePhoto: {
+    title: { th: "ลบรูป", en: "Delete photo" },
+    body: { th: "ยืนยันลบรูปนี้?", en: "Delete this photo?" },
+    confirm: { th: "ยืนยันลบ", en: "Confirm delete" },
+    color: COLOR.red,
+  },
+  /** ปุ่ม × ลบข้อย่อยที่เพิ่มเอง (Breaker / เบรกเกอร์วงจรย่อย / ปุ่มหยุดฉุกเฉิน / ป้ายเตือน) */
+  deleteItem: {
+    title: { th: "ลบรายการ", en: "Remove item" },
+    body: {
+      th: "ยืนยันลบรายการนี้? ข้อมูลที่กรอกในรายการนี้จะหายไป",
+      en: "Remove this item? Anything entered for it will be discarded.",
+    },
+    confirm: { th: "ยืนยันลบ", en: "Confirm remove" },
+    color: COLOR.red,
+  },
+  /** ลบรายงาน PM (หน้า PM Report All) — {name} = ชื่อเอกสาร */
+  deleteReport: {
+    title: { th: "ลบรายงาน PM", en: "Delete PM report" },
+    body: { th: "ยืนยันลบรายงาน \"{name}\"?", en: "Delete report \"{name}\"?" },
+    confirm: { th: "ยืนยันลบ", en: "Confirm delete" },
+    color: COLOR.red,
+  },
 } satisfies Record<string, Preset>;
 
 export type PmConfirmKind = keyof typeof PM_CONFIRM;
@@ -101,14 +156,14 @@ export type PmConfirmKind = keyof typeof PM_CONFIRM;
 const BACK: Text = { th: "กลับ", en: "Back" };
 const pick = (x: Text, lang: Lang) => x[lang === "en" ? "en" : "th"];
 
-type Pending = { kind: PmConfirmKind; run: () => unknown };
+type Pending = { kind: PmConfirmKind; run: () => unknown; vars?: Record<string, string> };
 
 export function usePmConfirm(lang: Lang) {
   const [pending, setPending] = useState<Pending | null>(null);
 
-  /** เปิดหน้าต่างยืนยัน — กดยืนยันแล้วค่อยเรียก run */
-  const ask = useCallback((kind: PmConfirmKind, run: () => unknown) => {
-    setPending({ kind, run });
+  /** เปิดหน้าต่างยืนยัน — กดยืนยันแล้วค่อยเรียก run; vars แทน {key} ในข้อความ */
+  const ask = useCallback((kind: PmConfirmKind, run: () => unknown, vars?: Record<string, string>) => {
+    setPending({ kind, run, vars });
   }, []);
 
   const close = () => setPending(null);
@@ -120,10 +175,13 @@ export function usePmConfirm(lang: Lang) {
   };
 
   const p = pending ? PM_CONFIRM[pending.kind] : null;
+  const body = p
+    ? Object.entries(pending?.vars ?? {}).reduce((s, [k, v]) => s.split(`{${k}}`).join(v), pick(p.body, lang))
+    : "";
   const dialog = p ? (
     <div
       className="tw-fixed tw-inset-0 tw-z-[9999] tw-flex tw-items-center tw-justify-center tw-bg-black/40 tw-p-4"
-      onClick={close}
+      onClick={(e) => { e.stopPropagation(); close(); }}
     >
       <div
         role="dialog"
@@ -132,7 +190,7 @@ export function usePmConfirm(lang: Lang) {
         onClick={(e) => e.stopPropagation()}
       >
         <h3 className="tw-text-lg tw-font-bold tw-text-blue-gray-800 tw-mb-3">{pick(p.title, lang)}</h3>
-        <p className="tw-text-sm tw-text-blue-gray-600">{pick(p.body, lang)}</p>
+        <p className="tw-text-sm tw-text-blue-gray-600 [overflow-wrap:anywhere]">{body}</p>
         <div className="tw-flex tw-items-center tw-justify-end tw-gap-3 tw-pt-4">
           <Button type="button" variant="outlined" onClick={close} className="tw-border-blue-gray-200 tw-text-blue-gray-700">
             {pick(BACK, lang)}

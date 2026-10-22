@@ -881,6 +881,8 @@ async function compressImage(
         if (fileRef.current) fileRef.current.value = "";
     };
 
+    // ปุ่ม × ลบรูป ต้องยืนยันก่อน
+    const { ask: askDeletePhoto, dialog: deletePhotoDialog } = usePmConfirm(lang);
     const handleRemove = async (id: string) => {
         await delPhoto(draftKey, id);
         setPhotos(prev => { const target = prev.find(p => p.id === id); if (target?.preview) URL.revokeObjectURL(target.preview); return prev.filter(p => p.id !== id); });
@@ -888,6 +890,7 @@ async function compressImage(
 
     return (
         <div id={id} className="tw-space-y-3 tw-transition-all tw-duration-300">
+            {deletePhotoDialog}
             {landscapeWarning && (
                 <div className="tw-fixed tw-inset-0 tw-z-[9999] tw-bg-black/70 tw-flex tw-items-center tw-justify-center tw-p-6" onClick={() => setLandscapeWarning(false)}>
                     <div className="tw-bg-white tw-rounded-2xl tw-p-6 tw-max-w-sm tw-text-center tw-shadow-xl" onClick={e => e.stopPropagation()}>
@@ -920,7 +923,7 @@ async function compressImage(
                         <div key={p.id} className="tw-border tw-rounded-lg tw-overflow-hidden tw-bg-gray-100 tw-shadow-xs tw-flex tw-flex-col">
                             <div className="tw-relative tw-aspect-[4/3] tw-bg-gray-100">
                                 {p.preview && <img src={p.preview} alt={t("photoPreviewAlt", lang)} className="tw-w-full tw-h-full tw-object-contain" />}
-                                <button data-photo-remove onClick={() => { void handleRemove(p.id); }} className="tw-absolute tw-top-2 tw-right-2 tw-bg-red-500 tw-text-white tw-w-6 tw-h-6 tw-rounded-full tw-flex tw-items-center tw-justify-center tw-shadow-md hover:tw-bg-red-600 tw-transition-colors">×</button>
+                                <button data-photo-remove onClick={() => askDeletePhoto("deletePhoto", () => handleRemove(p.id))} className="tw-absolute tw-top-2 tw-right-2 tw-bg-red-500 tw-text-white tw-w-6 tw-h-6 tw-rounded-full tw-flex tw-items-center tw-justify-center tw-shadow-md hover:tw-bg-red-600 tw-transition-colors">×</button>
                             </div>
                         </div>
                     ))}
@@ -1803,7 +1806,7 @@ export default function MDBPMForm() {
                                         onRemarkChange={v => setRows({ ...rows, [item.key]: { ...(rows[item.key] ?? { pf: "" }), remark: v } })}
                                         pfButtonsId={getPfIdFromKey(item.key)} remarkId={getRemarkIdFromKey(item.key)}
                                         inlineLeft={onRemove && cfg.items.length > 1 ? (
-                                            <button type="button" onClick={() => onRemove(idx)} className="tw-h-6 tw-w-6 tw-flex tw-items-center tw-justify-center tw-rounded tw-bg-red-50 tw-text-red-600 hover:tw-bg-red-100">
+                                            <button type="button" onClick={() => askConfirm("deleteItem", () => onRemove(idx))} className="tw-h-6 tw-w-6 tw-flex tw-items-center tw-justify-center tw-rounded tw-bg-red-50 tw-text-red-600 hover:tw-bg-red-100">
                                                 <svg className="tw-w-3.5 tw-h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" /></svg>
                                             </button>
                                         ) : undefined}

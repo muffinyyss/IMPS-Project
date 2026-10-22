@@ -1502,6 +1502,8 @@ function PhotoMultiInput({
         if (fileRef.current) fileRef.current.value = "";
     };
 
+    // ปุ่ม × ลบรูป ต้องยืนยันก่อน
+    const { ask: askDeletePhoto, dialog: deletePhotoDialog } = usePmConfirm(lang);
     const handleRemove = async (id: string) => {
         await delPhoto(draftKey, id);
         setPhotos((prev) => {
@@ -1513,6 +1515,7 @@ function PhotoMultiInput({
 
     return (
         <div id={id} className="tw-space-y-3 tw-transition-all tw-duration-300">
+            {deletePhotoDialog}
             {/* Landscape warning modal */}
             {landscapeWarning && (
                 <div className="tw-fixed tw-inset-0 tw-z-[9999] tw-bg-black/70 tw-flex tw-items-center tw-justify-center tw-p-6" onClick={() => setLandscapeWarning(false)}>
@@ -1579,7 +1582,7 @@ function PhotoMultiInput({
                                         {p.location && <span className="tw-block tw-opacity-80 tw-truncate">📍 {p.location}</span>}
                                     </span>
                                 )} */}
-                                <button data-photo-remove onClick={() => { void handleRemove(p.id); }}
+                                <button data-photo-remove onClick={() => askDeletePhoto("deletePhoto", () => handleRemove(p.id))}
                                     className="tw-absolute tw-top-2 tw-right-2 tw-bg-red-500 tw-text-white tw-w-6 tw-h-6 tw-rounded-full tw-flex tw-items-center tw-justify-center tw-shadow-md hover:tw-bg-red-600 tw-transition-colors">×</button>
                             </div>
                         </div>
@@ -2508,9 +2511,9 @@ export default function ChargerPMForm() {
                     {q.no === 16 && <PhotoRemarkSection qKey={q.key} qNo={q.no} middleContent={renderMeasureGrid(q.no)} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} draftKey={postKey} lang={lang} />}
                     {q.no === 3 && fixedItems && <DynamicItemsSection qNo={3} items={fixedItems} editable={false} countLabel={t("cableCount", lang)} count={job.chargingCables} countUnit={t("cable", lang)} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} draftKey={postKey} lang={lang} />}
                     {q.no === 4 && fixedItems && <DynamicItemsSection qNo={4} items={fixedItems} editable={false} countLabel={t("connectorCount", lang)} count={job.chargingCables} countUnit={t("connector", lang)} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} draftKey={postKey} lang={lang} />}
-                    {q.no === 5 && <DynamicItemsSection qNo={5} items={q5Items} addItem={addQ5Item} removeItem={removeQ5Item} addButtonLabel={t("addEmergencyStop", lang)} countLabel={t("emergencyStopCount", lang)} count={q5Items.length} countUnit={t("button", lang)} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} draftKey={postKey} lang={lang} />}
+                    {q.no === 5 && <DynamicItemsSection qNo={5} items={q5Items} addItem={addQ5Item} removeItem={(i: number) => askConfirm("deleteItem", () => removeQ5Item(i))} addButtonLabel={t("addEmergencyStop", lang)} countLabel={t("emergencyStopCount", lang)} count={q5Items.length} countUnit={t("button", lang)} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} draftKey={postKey} lang={lang} />}
                     {q.no === 6 && fixedItems && <DynamicItemsSection qNo={6} items={fixedItems} editable={false} countLabel={t("qrCodeCount", lang)} count={job.chargingCables} countUnit={t("qrUnit", lang)} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} draftKey={postKey} lang={lang} />}
-                    {q.no === 7 && <DynamicItemsSection qNo={7} items={q7Items} addItem={addQ7Item} removeItem={removeQ7Item} addButtonLabel={t("addWarningSign", lang)} countLabel={t("warningSignCount", lang)} count={q7Items.length} countUnit={t("sign", lang)} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} draftKey={postKey} lang={lang} />}
+                    {q.no === 7 && <DynamicItemsSection qNo={7} items={q7Items} addItem={addQ7Item} removeItem={(i: number) => askConfirm("deleteItem", () => removeQ7Item(i))} addButtonLabel={t("addWarningSign", lang)} countLabel={t("warningSignCount", lang)} count={q7Items.length} countUnit={t("sign", lang)} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} draftKey={postKey} lang={lang} />}
                     {q.no === 8 && fixedItems && <DynamicItemsSection qNo={8} items={fixedItems} editable={false} countLabel={t("ventilationSignCount", lang)} count={2} countUnit={t("sign", lang)} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} draftKey={postKey} lang={lang} />}
                     {q.no === 10 && fixedItems && (
                         <DynamicItemsSection qNo={10} items={fixedItems} editable={false} countLabel={t("cpVoltageCount", lang)} count={job.chargingCables} countUnit={t("cable", lang)} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} draftKey={postKey} lang={lang}
