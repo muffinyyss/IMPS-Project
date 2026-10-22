@@ -1027,6 +1027,34 @@ class HTML2PDF(FPDF, HTMLMixin):
 
 
 # -------------------- Header --------------------
+def _draw_doc_name_fit(pdf: FPDF, base_font: str, x: float, y: float, w: float, h: float,
+                       text: str, max_fs: float) -> None:
+    """
+    วาดชื่อเอกสารให้อยู่ในกรอบ (x, y, w, h) เสมอ จัดกลางทั้งแนวนอน/แนวตั้ง
+    ใช้ฟอนต์ใหญ่ที่สุดที่ใส่ได้ — บรรทัดเดียวก่อน ไม่พอค่อยหลายบรรทัดตามความสูงกรอบ
+    เล็กสุด 5pt แล้วยังไม่พอ ตัดบรรทัดเกินทิ้ง (ไม่ล้นกรอบ)
+    """
+    text = text or "-"
+    inner_w = w - 2
+    fs = max_fs
+    while True:
+        pdf.set_font(base_font, "B", fs)
+        lh = fs * 0.3528 * 1.2  # pt → mm (เผื่อสระล่าง/ขีดล่างของฟอนต์ไทย ไม่ให้ชนเส้นกรอบ)
+        max_lines = max(1, int(h // lh))
+        try:
+            lines = pdf.multi_cell(inner_w, lh, text, align="C", split_only=True)
+        except TypeError:  # fpdf รุ่นเก่า
+            lines = [text]
+        if len(lines) <= max_lines or fs <= 5:
+            lines = lines[:max_lines]
+            break
+        fs -= 0.5
+    start_y = y + max(0.0, (h - len(lines) * lh) / 2)
+    for i, line in enumerate(lines):
+        pdf.set_xy(x + 1, start_y + i * lh)
+        pdf.cell(inner_w, lh, line, align="C")
+
+
 def _draw_header(
     pdf: FPDF,
     base_font: str,
@@ -1099,18 +1127,9 @@ def _draw_header(
     pdf.set_xy(xr, y_top + h_right_half + 1)
     pdf.set_font(base_font, "B", FONT_MAIN - 2)
     pdf.multi_cell(col_right, 4.5, f"{label_doc_name}", align="C")
-    # ชื่อเอกสารยาว (เช่น 7Eleven_Banklangmueang_5/2026) เคยตัดบรรทัดล้นกรอบลงไปทับตาราง
-    # → ย่อฟอนต์ให้พอดีบรรทัดเดียว ถ้ายังไม่พอที่ 6pt ค่อยตัด 2 บรรทัดเล็ก ๆ ในกรอบ
-    _dn = str(doc_name)
-    _fs = FONT_MAIN - 2
-    while _fs > 6 and pdf.get_string_width(_dn) > col_right - 2:
-        _fs -= 0.5
-        pdf.set_font(base_font, "B", _fs)
-    pdf.set_xy(xr, y_top + h_right_half + 1 + 4.5)
-    if pdf.get_string_width(_dn) <= col_right - 2:
-        pdf.cell(col_right, 4.5, _dn, align="C")
-    else:
-        pdf.multi_cell(col_right, 2.5, _dn, align="C")
+    # ชื่อเอกสารยาว (เช่น ชื่อสถานียาว_10/2026) ต้องอยู่ในกรอบ — ไม่ล้นลงไปทับแถบชื่อเรื่อง
+    _draw_doc_name_fit(pdf, base_font, xr, y_top + h_right_half + 5.0, col_right,
+                       h_all - h_right_half - 5.2, str(doc_name), FONT_MAIN - 2)
     pdf.set_font(base_font, "B", FONT_MAIN - 2)
     # ตำแหน่ง y หลังหัวกระดาษต้องเท่ากับของเดิม (multi_cell 2 บรรทัด) — เนื้อหาถัดไปเริ่มจาก get_y()
     pdf.set_xy(xr + col_right, y_top + h_right_half + 1 + 2 * 4.5)

@@ -1295,18 +1295,21 @@ export default function StationPmJobTables() {
         <CheckCircleIcon className="tw-h-4 tw-w-4" /> {t("vendorApprove", lang).replace("{p}", vendorParty.name || t("ownTeam", lang))}
       </Button>
     ) : null;
+    const backButton = (
+      <Button
+        type="button"
+        variant="outlined"
+        disabled={acting}
+        onClick={backToHub}
+        className="tw-text-sm tw-py-2.5 tw-w-full sm:tw-w-auto tw-border-blue-gray-300 tw-text-blue-gray-700 hover:tw-border-blue-gray-500 hover:tw-bg-blue-gray-50 tw-flex tw-items-center tw-justify-center tw-gap-1.5"
+      >
+        <ArrowLeftIcon className="tw-h-4 tw-w-4" /> {t("back", lang)}
+      </Button>
+    );
     // ปุ่มชุดผู้อนุมัติ: ย้อนกลับ · ตีกลับ · แก้ไข · อนุมัติ (planner vendor) (เรียงซ้าย→ขวา)
     const reviewActions = approving ? (
       <>
-        <Button
-          type="button"
-          variant="outlined"
-          disabled={acting}
-          onClick={backToHub}
-          className="tw-text-sm tw-py-2.5 tw-w-full sm:tw-w-auto tw-border-blue-gray-300 tw-text-blue-gray-700 hover:tw-border-blue-gray-500 hover:tw-bg-blue-gray-50 tw-flex tw-items-center tw-justify-center tw-gap-1.5"
-        >
-          <ArrowLeftIcon className="tw-h-4 tw-w-4" /> {t("back", lang)}
-        </Button>
+        {backButton}
         <Button
           type="button"
           variant="outlined"
@@ -1320,7 +1323,13 @@ export default function StationPmJobTables() {
         {editButton}
         {vendorApproveButton}
       </>
-    ) : editButton;
+    ) : editButton ? (
+      // ช่างเปิดดูส่วนที่ส่งแล้ว: กลับ · แก้ไข
+      <>
+        {backButton}
+        {editButton}
+      </>
+    ) : null;
     // กำลังแก้ส่วนที่ส่งแล้ว (เข้ามาจากปุ่ม "แก้ไข") — ยกเลิกได้ ทิ้งสิ่งที่แก้ในเครื่องแล้วกลับหน้าดู
     // (ส่วนที่ยังเป็น draft เช่นโดนตีกลับ ไม่ได้มาจากปุ่มนี้ ใช้ปุ่มย้อนกลับตามเดิม)
     const editingSent = !viewing && !!openedSection?.report_id && sectionStatus === "wait for approve";

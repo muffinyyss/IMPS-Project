@@ -747,13 +747,21 @@ async def _with_ownership(jobs: list[dict], current: UserClaims) -> list[dict]:
         started: dict[str, dict | None] = {
             key: party_started(j, key, p, len(parties), origin_key, entries) for key, p in parties.items()
         }
+        my_key = user_party_key(wo, current, company)
+        bypass = (current.role or "").strip().lower() in pm_scope.BYPASS_ROLES
         for key, p in parties.items():
             review = vendor_review_state(key, p, entries, wo)
             entry = next((e for e in entries if e.get("key") == key), None) or {}
             # ฟอร์มตู้ชาร์จของฝ่ายนี้รอ / ผ่าน planner ของ vendor แล้ว — หน้ารวม/ฟอร์มใช้ตัดสินว่าใครตรวจได้
+            # ยังไม่ผ่าน planner ของ vendor (waiting / pending) = ฝ่ายอื่น (planner ต้นทาง) ดูได้อย่างเดียว
+            # ไม่มีปุ่มแก้ไข จนกว่า planner ของ vendor จะอนุมัติ (2026-10-22) — admin/owner ยังทำแทนได้
+            hold = (review in ("waiting", "pending") and key != my_key and not bypass
+                    and j.get("status") == pm_flow.PM_STATUS_DRAFT)
             for s in p["states"]:
                 if s.get("section") == CHARGER_SECTION:
                     s["vendor_review"] = review
+                    if hold:
+                        s["editable"] = False
             out_parties.append({
                 "key": key,
                 "name": p["name"],
@@ -769,7 +777,7 @@ async def _with_ownership(jobs: list[dict], current: UserClaims) -> list[dict]:
                 "started_by": (started[key] or {}).get("by") or "",
             })
         j["parties"] = out_parties
-        j["my_party"] = user_party_key(wo, current, company)
+        j["my_party"] = my_key
         # มีงานในใบนี้ไหม — ไม่มี = ดูได้อย่างเดียว (ไม่มีปุ่มเริ่ม PM / ส่งงาน)
         j["participant"] = pm_scope.is_participant(wo, current.role, current.username or current.sub, company)
         # ฝ่ายของคนที่ login ยังไม่ได้กด "เริ่ม PM" — หน้า PM List พาไปหน้าใบงานก่อน / หน้ารวมขึ้นปุ่มให้
@@ -1905,7 +1913,10 @@ def job_pdf_cache_path(station_id: str, job_id: str, lang: str, part: str = "") 
     # _v2 = ช่องลายเซ็นมี planner ต้นทางเป็นพยานของตู้ vendor (2026-10-22) — ไฟล์รุ่นก่อนไม่ถูกใช้ต่อ
     # _v3 = แก้ขนาดตัวอักษรในตาราง checklist เพี้ยนเป็น 6pt หลังแถวแรก (2026-10-22)
     # _v4 = PDF ทั้งใบเรียงตู้ชาร์จก่อน แล้วตามด้วยอุปกรณ์ไฟฟ้า Station/MDB/CCB/CB_BOX (2026-10-22)
-    return pathlib.Path(UPLOADS_ROOT) / "pdf_cache" / "stationPMJob" / station_id / f"{job_id}{suffix}_{lang}_v4.pdf"
+    # _v5 = ชื่อสถานียาวไม่ตกบรรทัด — ขยายคอลัมน์ซ้ายของบล็อกข้อมูลงาน (2026-10-22)
+    # _v6 = ชื่อเอกสารหัวกระดาษไม่ล้นกรอบ, CCB ข้อ 9 ไม่ขาด, "วันที่ :" ใต้ลายเซ็นตามภาษา (2026-10-22)
+    # _v7 = ป้าย/หัวตารางตามภาษาทุกฟอร์ม, ที่อยู่เดียวกัน, วันที่ 22/10/2569, วันที่อนุมัติใต้ลายเซ็น, ผลตรวจ 3 ช่อง (2026-10-22)
+    return pathlib.Path(UPLOADS_ROOT) / "pdf_cache" / "stationPMJob" / station_id / f"{job_id}{suffix}_{lang}_v7.pdf"
 
 
 # การ์ดในหน้ารวมใบ PM สถานี → ส่วนที่อยู่ในการ์ดนั้น (PDF รายการ์ด)
@@ -1915,10 +1926,27 @@ PDF_PARTS: dict[str, set[str]] = {
 }
 
 
-async def _charger_vendor_approvers(job: dict, states: list[dict]) -> dict[str, str]:
+def _approval_date(value) -> str:
+    """เวลาอนุมัติ (เก็บเป็น UTC) → "YYYY-MM-DD" ตามเวลาไทย สำหรับวันที่ใต้ลายเซ็นใน PDF — ไม่มี = "" """
+    from datetime import timedelta
+    if not value:
+        return ""
+    if isinstance(value, str):
+        try:
+            value = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return value[:10]
+    if not isinstance(value, datetime):
+        return ""
+    if value.tzinfo is None:  # Mongo คืน datetime แบบไม่มี tz แต่เป็น UTC
+        value = value.replace(tzinfo=timezone.utc)
+    return (value.astimezone(timezone(timedelta(hours=7)))).strftime("%Y-%m-%d")
+
+
+async def _charger_vendor_approvers(job: dict, states: list[dict]) -> dict[str, tuple[str, str]]:
     """
-    {sn: ชื่อ planner ของ vendor ที่อนุมัติตู้นั้น} — เฉพาะตู้ที่มอบให้ vendor ที่มี planner ของตัวเอง (เช่น EDS)
-    และ planner คนนั้นอนุมัติแล้ว ใช้ใส่ช่อง "ผู้อนุมัติ" ใน PDF ของตู้นั้น
+    {sn: (ชื่อ planner ของ vendor ที่อนุมัติตู้นั้น, วันที่อนุมัติ)} — เฉพาะตู้ที่มอบให้ vendor ที่มี planner ของตัวเอง
+    (เช่น EDS) และ planner คนนั้นอนุมัติแล้ว ใช้ใส่ช่อง "ผู้อนุมัติ" ใน PDF ของตู้นั้น
     """
     from routers import pm_scope
 
@@ -1932,7 +1960,7 @@ async def _charger_vendor_approvers(job: dict, states: list[dict]) -> dict[str, 
         return {}
     vendors = review_vendors(wo)
     entries = {e.get("key"): e for e in job.get("work_entries") or [] if isinstance(e, dict)}
-    out: dict[str, str] = {}
+    out: dict[str, tuple[str, str]] = {}
     for s in states:
         sn = s.get("sn") or ""
         if s.get("section") != CHARGER_SECTION or not sn:
@@ -1940,7 +1968,7 @@ async def _charger_vendor_approvers(job: dict, states: list[dict]) -> dict[str, 
         key = _pkey(pm_scope.section_owner(wo, CHARGER_SECTION, sn))
         entry = entries.get(key) or {}
         if key in vendors and entry.get("vendor_approved"):
-            out[sn] = str(entry.get("vendor_approved_by") or "")
+            out[sn] = (str(entry.get("vendor_approved_by") or ""), _approval_date(entry.get("vendor_approved_at")))
     return out
 
 
@@ -2016,6 +2044,7 @@ async def build_job_pdf(job: dict, station_id: str, lang: str, part: str = "") -
     states.sort(key=lambda s: 0 if s["section"] == CHARGER_SECTION else 1)
     vendor_approvers = await _charger_vendor_approvers(job, states)
     job_approver = str(job.get("approved_by") or "") if closed else ""
+    job_approved_date = _approval_date(job.get("approved_at")) if closed else ""
 
     parts: list[tuple[dict, dict, dict]] = []
     included: list[str] = []
@@ -2032,13 +2061,16 @@ async def build_job_pdf(job: dict, station_id: str, lang: str, part: str = "") -
         # ให้ทุกส่วนพิมพ์เลขที่/ชื่อเอกสารของใบแม่ — เป็นเอกสารใบเดียวกัน
         # ช่องลายเซ็น: ตู้ของ vendor ที่มี planner เอง (อนุมัติ 2 ชั้น) = Approved by planner vendor
         # + Witnessed by planner ต้นทางที่อนุมัติปิดใบ / ส่วนอื่น = Approved by planner ต้นทาง, Witnessed ว่าง
-        vendor_approver = vendor_approvers.get(state.get("sn") or "") or ""
+        vendor_approver, vendor_approved_date = vendor_approvers.get(state.get("sn") or "") or ("", "")
         doc = {**doc, "issue_id": job.get("issue_id") or doc.get("issue_id"),
                "doc_name": job.get("doc_name") or doc.get("doc_name"),
                "_signers": {
                    "performed": str(doc.get("inspector") or state.get("inspector") or ""),
                    "approved": vendor_approver or job_approver,
                    "witnessed": job_approver if vendor_approver else "",
+                   # วันที่ใต้ลายเซ็น: ผู้ปฏิบัติงาน = วันที่ PM (template ใส่เอง) / ผู้อนุมัติ, ผู้เห็นชอบ = วันที่อนุมัติ
+                   "approved_date": vendor_approved_date if vendor_approver else job_approved_date,
+                   "witnessed_date": job_approved_date if vendor_approver else "",
                }}
         parts.append((state, doc, info))
         included.append(f"{state['section']}:{state['sn']}" if state.get("sn") else state["section"])
