@@ -1433,8 +1433,7 @@ async def delete_section_photo(
     """
     ลบรูปที่อัปโหลดไปแล้วของส่วนหนึ่งในใบ — ใช้ตอนช่างกด "แก้ไข" ส่วนที่ส่งแล้วแล้วเอารูปเดิมออก
 
-    แก้ได้เฉพาะตอนใบยังไม่ได้กด "ปิดใบงาน" (และส่วนนั้นยังไม่ปิด) — หลังจากนั้นเอกสาร
-    อยู่ในมือผู้อนุมัติแล้ว ห้ามเปลี่ยน
+    แก้ได้จนกว่า planner จะอนุมัติปิดใบ (รวมตอน Wait for approve — 2026-10-22) และส่วนนั้นยังไม่ปิด
     """
     from uploads_access import assert_station_access, resolve_upload_path
 
@@ -1445,30 +1444,25 @@ async def delete_section_photo(
     job = await get_stationpmjob_collection_for(station_id).find_one({"_id": pm_flow.to_oid(job_id)})
     if not job:
         raise HTTPException(status_code=404, detail=f"ไม่พบใบ PM สถานี id={job_id}")
-    # กดปิดใบงานแล้ว = อยู่ในมือผู้อนุมัติ — ช่างแก้ไม่ได้ แต่ผู้อนุมัติแก้ก่อนอนุมัติได้
-    # (ปุ่ม "แก้ไข" ในฟอร์มตอนตรวจ) ส่วนที่ปิดแล้วยังห้ามแก้ตามเดิม (เช็คด้านล่าง)
-    if _job_submitted(job) and (current.role or "").strip().lower() not in pm_flow.PM_APPROVE_ROLES:
-        raise HTTPException(status_code=409, detail="ใบนี้กดปิดใบงานแล้ว แก้ไขไม่ได้")
+    # ใบรออนุมัติ (Wait for approve) ช่างยังแก้ฟอร์มของตัวเองได้จนกว่า planner จะอนุมัติปิดใบ (2026-10-22)
+    # — เดิมช่างลบรูปไม่ได้หลังส่งครบ ทั้งที่ปุ่ม "แก้ไข" เปิดให้แล้ว; ใบ/ส่วนที่ปิดแล้วยังห้ามแก้ (เช็คด้านล่าง)
+    if str(job.get("status") or "").strip().lower() == pm_flow.PM_STATUS_CLOSED.lower():
+        raise HTTPException(status_code=409, detail="ใบนี้ปิดแล้ว แก้ไขไม่ได้")
 
     group = (body.group or "").strip()
     url = (body.url or "").strip()
     if not group or "." in group or "$" in group or not url:
         raise HTTPException(status_code=400, detail="Bad photo reference")
 
-    # มีคนอื่นกำลังกรอกส่วนนี้อยู่ = ห้ามแตะรูป
-    from routers import pm_lock
-    await pm_lock.assert_free(
-        get_stationpmjob_collection_for(station_id), {"_id": job["_id"]},
-        pm_lock.section_lock_field(body.section, body.sn), current, "ส่วนนี้",
+    # มีคนอื่นกำลังกรอกส่วนนี้อยู่ / ส่วนนี้เป็นงานของบริษัทอื่น = ห้ามแตะรูป
+    # (2026-10-22 เปลี่ยนจากเช็คแค่ล็อก เป็น pm_scope.guard ตัวเดียวกับบันทึก/อัปโหลดรูป — ช่างลบรูปได้ถึง Wait for approve แล้ว)
+    from routers import pm_scope
+    await pm_scope.guard(
+        current, body.section, section_collection(body.section, station_id, body.sn),
+        job_id=job_id, station_id=station_id, sn=body.sn,
     )
 
-    # ฟอร์มตู้ชาร์จที่ planner ของ vendor อนุมัติแล้ว — ช่างแก้ไม่ได้ (กติกาเดียวกับ pm_scope.guard)
-    if body.section == CHARGER_SECTION and (current.role or "").strip().lower() not in pm_flow.PM_APPROVE_ROLES:
-        from routers import pm_scope
-        owner = _pkey(pm_scope.section_owner(await _job_wo(job), body.section, body.sn))
-        entry = next((e for e in job.get("work_entries") or [] if isinstance(e, dict) and e.get("key") == owner), {})
-        if entry.get("submitted") and entry.get("vendor_approved"):
-            raise HTTPException(status_code=409, detail="ฟอร์มนี้ planner ของ vendor อนุมัติแล้ว แก้ไขไม่ได้")
+    # (เลิกใช้ 2026-10-22) ฟอร์มตู้ชาร์จที่ planner ของ vendor อนุมัติแล้ว ช่างแก้ได้ — กติกาเดียวกับ pm_scope.guard
 
     coll = section_collection(body.section, station_id, body.sn)
     oid = pm_flow.to_oid(body.report_id)
