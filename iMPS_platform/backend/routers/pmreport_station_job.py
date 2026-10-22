@@ -1991,7 +1991,8 @@ def job_pdf_cache_path(station_id: str, job_id: str, lang: str, part: str = "") 
     # _v6 = ชื่อเอกสารหัวกระดาษไม่ล้นกรอบ, CCB ข้อ 9 ไม่ขาด, "วันที่ :" ใต้ลายเซ็นตามภาษา (2026-10-22)
     # _v7 = ป้าย/หัวตารางตามภาษาทุกฟอร์ม, ที่อยู่เดียวกัน, วันที่ 22/10/2569, วันที่อนุมัติใต้ลายเซ็น, ผลตรวจ 3 ช่อง (2026-10-22)
     # _v8 = บล็อกข้อมูลงาน 2 คอลัมน์เท่ากัน / _v9 = เรียงตู้ชาร์จ → Station → CB_BOX → MDB → CCB, ป้าย Pass/Fail/N/A 11pt (2026-10-22)
-    return pathlib.Path(UPLOADS_ROOT) / "pdf_cache" / "stationPMJob" / station_id / f"{job_id}{suffix}_{lang}_v9.pdf"
+    # _v10 = ชื่อเอกสารหัวกระดาษ 9pt (กล่องขวากว้าง 50 มม.) / _v11 = ชื่อในกล่องลายเซ็น + ผู้เห็นชอบ = planner ผู้อนุมัติใบ
+    return pathlib.Path(UPLOADS_ROOT) / "pdf_cache" / "stationPMJob" / station_id / f"{job_id}{suffix}_{lang}_v11.pdf"
 
 
 # การ์ดในหน้ารวมใบ PM สถานี → ส่วนที่อยู่ในการ์ดนั้น (PDF รายการ์ด)
@@ -2134,18 +2135,18 @@ async def build_job_pdf(job: dict, station_id: str, lang: str, part: str = "") -
         if not doc:
             continue
         # ให้ทุกส่วนพิมพ์เลขที่/ชื่อเอกสารของใบแม่ — เป็นเอกสารใบเดียวกัน
-        # ช่องลายเซ็น: ตู้ของ vendor ที่มี planner เอง (อนุมัติ 2 ชั้น) = Approved by planner vendor
-        # + Witnessed by planner ต้นทางที่อนุมัติปิดใบ / ส่วนอื่น = Approved by planner ต้นทาง, Witnessed ว่าง
+        # ช่องลายเซ็น: ตู้ของ vendor ที่มี planner เอง (อนุมัติ 2 ชั้น) = Approved by planner vendor / ส่วนอื่น = planner ต้นทาง
+        # ผู้เห็นชอบ (Witnessed) = planner ต้นทางที่อนุมัติปิดใบ เสมอ (2026-10-22)
         vendor_approver, vendor_approved_date = vendor_approvers.get(state.get("sn") or "") or ("", "")
         doc = {**doc, "issue_id": job.get("issue_id") or doc.get("issue_id"),
                "doc_name": job.get("doc_name") or doc.get("doc_name"),
                "_signers": {
                    "performed": str(doc.get("inspector") or state.get("inspector") or ""),
                    "approved": vendor_approver or job_approver,
-                   "witnessed": job_approver if vendor_approver else "",
+                   "witnessed": job_approver,
                    # วันที่ใต้ลายเซ็น: ผู้ปฏิบัติงาน = วันที่ PM (template ใส่เอง) / ผู้อนุมัติ, ผู้เห็นชอบ = วันที่อนุมัติ
                    "approved_date": vendor_approved_date if vendor_approver else job_approved_date,
-                   "witnessed_date": job_approved_date if vendor_approver else "",
+                   "witnessed_date": job_approved_date,
                }}
         parts.append((state, doc, info))
         included.append(f"{state['section']}:{state['sn']}" if state.get("sn") else state["section"])

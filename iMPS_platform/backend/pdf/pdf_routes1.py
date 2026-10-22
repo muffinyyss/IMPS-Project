@@ -378,7 +378,7 @@ async def export_pdf(
         maximo_ver = str(data.get("_maximo_failure_codes_version") or "0")
         cache_name = f"{id}_{lang}_{ver_str}_{maximo_ver}_cm-v8.pdf"
     else:
-        cache_name = f"{id}_{lang}_v7.pdf"  # _v7 = ป้าย Pass/Fail/N/A 11pt, _v6 = บล็อกข้อมูลงาน 2 คอลัมน์เท่ากัน, _v5 = ป้ายตามภาษา/วันที่/ผลตรวจ 3 ช่อง, _v2 = ฟอนต์ checklist ค้าง 6pt, _v3 = ชื่อสถานีบรรทัดเดียว, _v4 = ชื่อเอกสารไม่ล้นกรอบ/CCB ข้อ 9/วันที่ใต้ลายเซ็น (2026-10-22)
+        cache_name = f"{id}_{lang}_v8.pdf"  # _v8 = ชื่อเอกสารหัวกระดาษ 9pt (กล่องขวากว้างขึ้น), _v7 = ป้าย Pass/Fail/N/A 11pt, _v6 = บล็อกข้อมูลงาน 2 คอลัมน์เท่ากัน, _v5 = ป้ายตามภาษา/วันที่/ผลตรวจ 3 ช่อง, _v2 = ฟอนต์ checklist ค้าง 6pt, _v3 = ชื่อสถานีบรรทัดเดียว, _v4 = ชื่อเอกสารไม่ล้นกรอบ/CCB ข้อ 9/วันที่ใต้ลายเซ็น (2026-10-22)
     cache_path = pathlib.Path(UPLOADS_ROOT) / "pdf_cache" / (coll_key or "unknown") / cache_name
     cache_path.parent.mkdir(parents=True, exist_ok=True)
 

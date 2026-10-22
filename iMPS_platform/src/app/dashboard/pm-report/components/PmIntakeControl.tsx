@@ -13,6 +13,7 @@
 
 import React, { useCallback, useEffect, useState } from "react";
 import { CalendarDaysIcon, ChevronDownIcon, ChevronUpIcon } from "@heroicons/react/24/outline";
+import { Button } from "@material-tailwind/react";
 import { apiFetch } from "@/utils/api";
 import type { Lang } from "@/utils/useLanguage";
 
@@ -48,9 +49,29 @@ const T = {
     lastRun: (m: string, c: number) => `ออกใบงานล่าสุด รอบ ${m}: ${c} ใบ`,
     toClose: "ปิดรับจาก Maximo",
     toOpen: "กลับมารับจาก Maximo",
-    confirmClose: (n: number) =>
-      `ปิดรับใบงาน PM จาก Maximo?\n\n• Maximo ยิงใบงานเข้ามาจะถูกปฏิเสธ\n• iMPS จะออกใบงานเองทุก ${n} เดือนนับจากวัน commissioning ของตู้ — ตู้ที่ครบรอบเดือนนี้จะได้ใบงานทันที\n• ใบงาน Maximo ที่รับไว้แล้วยังส่งปิดงานเข้า Maximo ตามปกติ`,
-    confirmOpen: "กลับมารับใบงาน PM จาก Maximo?\n\nระบบจะหยุดออกใบงานเอง (ใบที่ออกไปแล้วยังอยู่)",
+    dlgClose: {
+      title: "ปิดรับใบงาน PM จาก Maximo",
+      lead: "ยืนยันปิดรับใบงาน PM จาก Maximo?",
+      points: (n: number) => [
+        "Maximo ยิงใบงานเข้ามาจะถูกปฏิเสธ",
+        `iMPS จะออกใบงานเองทุก ${n} เดือนนับจากวัน commissioning ของตู้ — ตู้ที่ครบรอบเดือนนี้จะได้ใบงานทันที`,
+        "ใบงาน Maximo ที่รับไว้แล้วยังส่งปิดงานเข้า Maximo ตามปกติ",
+      ],
+      confirm: "ยืนยันปิดรับ",
+    },
+    dlgOpen: {
+      title: "กลับมารับใบงานจาก Maximo",
+      lead: "ยืนยันกลับมารับใบงาน PM จาก Maximo?",
+      points: () => ["ระบบจะหยุดออกใบงานเอง", "ใบงานที่ระบบออกไปแล้วยังอยู่ตามเดิม"],
+      confirm: "ยืนยันรับใบงาน",
+    },
+    dlgRun: {
+      title: "ออกใบงานเดือนนี้",
+      lead: "ยืนยันออกใบงาน PM ของตู้ที่ครบรอบเดือนนี้ตอนนี้?",
+      points: () => ["สถานีที่มีใบงานเดือนนี้อยู่แล้วจะถูกข้าม ไม่ออกซ้ำ"],
+      confirm: "ยืนยันออกใบงาน",
+    },
+    back: "กลับ",
     runNow: "ออกใบงานเดือนนี้ตอนนี้",
     showDue: "ตู้ที่ครบรอบเดือนนี้",
     hideDue: "ซ่อน",
@@ -72,9 +93,29 @@ const T = {
     lastRun: (m: string, c: number) => `Last run ${m}: ${c} work order(s)`,
     toClose: "Stop receiving from Maximo",
     toOpen: "Receive from Maximo again",
-    confirmClose: (n: number) =>
-      `Stop receiving PM work orders from Maximo?\n\n• Work orders pushed by Maximo will be rejected\n• iMPS issues work orders every ${n} months from each charger's commissioning date — chargers due this month get one right away\n• Maximo work orders already received still close out in Maximo as usual`,
-    confirmOpen: "Receive PM work orders from Maximo again?\n\niMPS stops issuing its own (existing ones stay)",
+    dlgClose: {
+      title: "Stop receiving from Maximo",
+      lead: "Stop receiving PM work orders from Maximo?",
+      points: (n: number) => [
+        "Work orders pushed by Maximo will be rejected",
+        `iMPS issues work orders every ${n} months from each charger's commissioning date — chargers due this month get one right away`,
+        "Maximo work orders already received still close out in Maximo as usual",
+      ],
+      confirm: "Stop receiving",
+    },
+    dlgOpen: {
+      title: "Receive from Maximo again",
+      lead: "Receive PM work orders from Maximo again?",
+      points: () => ["iMPS stops issuing its own work orders", "Work orders it already issued stay as they are"],
+      confirm: "Receive again",
+    },
+    dlgRun: {
+      title: "Issue this month's work orders",
+      lead: "Issue PM work orders for chargers due this month now?",
+      points: () => ["Stations that already have a work order this month are skipped"],
+      confirm: "Issue now",
+    },
+    back: "Back",
     runNow: "Issue this month's work orders now",
     showDue: "Chargers due this month",
     hideDue: "Hide",
@@ -120,6 +161,8 @@ export default function PmIntakeControl({
   const [msg, setMsg] = useState<{ tone: "ok" | "err"; text: string } | null>(null);
   const [open, setOpen] = useState(false);
   const [preview, setPreview] = useState<Preview | null>(null);
+  // หน้าต่างยืนยัน (แทน window.confirm) — close = ปิดรับ, open = กลับมารับ, run = ออกใบงานตอนนี้
+  const [asking, setAsking] = useState<"close" | "open" | "run" | null>(null);
   const canPreview = PREVIEW_ROLES.includes(role);
 
   const load = useCallback(async () => {
@@ -149,10 +192,7 @@ export default function PmIntakeControl({
     if (open) loadPreview();
   };
 
-  const toggle = async () => {
-    if (!state) return;
-    const closing = !state.maximo_intake_closed;
-    if (!window.confirm(closing ? t.confirmClose(state.interval_months) : t.confirmOpen)) return;
+  const toggle = async (closing: boolean) => {
     setBusy(true);
     setMsg(null);
     try {
@@ -187,6 +227,14 @@ export default function PmIntakeControl({
   const closed = state.maximo_intake_closed;
   // รับจาก Maximo ตามปกติ — คนที่สลับไม่ได้ไม่ต้องเห็นอะไร
   if (!closed && !state.can_toggle) return null;
+
+  const dlg = asking === "close" ? t.dlgClose : asking === "open" ? t.dlgOpen : asking === "run" ? t.dlgRun : null;
+  const onConfirm = () => {
+    const what = asking;
+    setAsking(null);
+    if (what === "run") void runNow();
+    else if (what) void toggle(what === "close");
+  };
 
   const stateLabel = (s: PreviewStation["state"]) =>
     s === "generated" ? t.stateGenerated : s === "exists" ? t.stateExists : t.statePending;
@@ -228,7 +276,7 @@ export default function PmIntakeControl({
           )}
           {closed && state.can_toggle && (
             <button
-              type="button" onClick={runNow} disabled={busy}
+              type="button" onClick={() => setAsking("run")} disabled={busy}
               className="tw-inline-flex tw-h-8 tw-items-center tw-rounded-lg tw-border tw-border-indigo-200 tw-bg-white tw-px-3 tw-text-xs tw-font-semibold tw-text-indigo-700 hover:tw-bg-indigo-100 disabled:tw-opacity-50"
             >
               {t.runNow}
@@ -236,7 +284,7 @@ export default function PmIntakeControl({
           )}
           {state.can_toggle && (
             <button
-              type="button" onClick={toggle} disabled={busy} aria-pressed={closed}
+              type="button" onClick={() => setAsking(closed ? "open" : "close")} disabled={busy} aria-pressed={closed}
               className={`tw-inline-flex tw-h-8 tw-items-center tw-rounded-lg tw-px-3 tw-text-xs tw-font-semibold tw-text-white disabled:tw-opacity-50 ${
                 closed ? "tw-bg-gray-700 hover:tw-bg-gray-900" : "tw-bg-indigo-600 hover:tw-bg-indigo-700"
               }`}
@@ -282,6 +330,39 @@ export default function PmIntakeControl({
           {preview.missing.length > 0 && (
             <div className="tw-mt-2 tw-text-xs tw-text-amber-700">{t.missing(preview.missing.length)}</div>
           )}
+        </div>
+      )}
+
+      {dlg && (
+        <div
+          className="tw-fixed tw-inset-0 tw-z-[9999] tw-flex tw-items-center tw-justify-center tw-bg-black/40 tw-p-4"
+          onClick={() => setAsking(null)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="pm-intake-dialog-title"
+            className="tw-w-full tw-max-w-md tw-rounded-2xl tw-bg-white tw-p-6 tw-shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 id="pm-intake-dialog-title" className="tw-mb-3 tw-text-lg tw-font-bold tw-text-blue-gray-800">{dlg.title}</h3>
+            <p className="tw-text-sm tw-font-medium tw-text-blue-gray-700">{dlg.lead}</p>
+            <ul className="tw-mt-2 tw-list-disc tw-space-y-1 tw-pl-5 tw-text-sm tw-text-blue-gray-600">
+              {dlg.points(state.interval_months).map((x) => <li key={x}>{x}</li>)}
+            </ul>
+            <div className="tw-flex tw-items-center tw-justify-end tw-gap-3 tw-pt-5">
+              <Button type="button" variant="outlined" onClick={() => setAsking(null)} className="tw-border-blue-gray-200 tw-text-blue-gray-700">
+                {t.back}
+              </Button>
+              <Button
+                type="button"
+                onClick={onConfirm}
+                className={`tw-text-white ${asking === "close" ? "tw-bg-indigo-600 hover:tw-bg-indigo-700" : "tw-bg-gray-800 hover:tw-bg-gray-900"}`}
+              >
+                {dlg.confirm}
+              </Button>
+            </div>
+          </div>
         </div>
       )}
     </div>

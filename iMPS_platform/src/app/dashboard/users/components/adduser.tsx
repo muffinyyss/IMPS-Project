@@ -227,7 +227,7 @@ export default function AddUserModal({
                                 value={form.company_name ?? ""}
                                 onChange={(v) => onChange("company_name", v)}
                             />
-                        ) : companySuggestions?.length ? (
+                        ) : companySuggestions ? (
                             <CompanyCombobox
                                 freeText
                                 options={companySuggestions}
