@@ -68,6 +68,8 @@ SECTION_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
 
 # ส่วนที่ผูกกับตู้ (keyed ด้วย SN) ไม่ใช่กับสถานี — มีใบย่อยได้หลายใบในส่วนเดียว
 CHARGER_SECTION = "charger"
+# ลำดับส่วนในเล่ม PDF ทั้งใบ (ต่างจาก SECTIONS ที่หน้าเว็บใช้)
+PDF_SECTION_ORDER: dict[str, int] = {"charger": 0, "station": 1, "cbbox": 2, "mdb": 3, "ccb": 4}
 
 SECTION_LABELS: dict[str, dict[str, str]] = {
     "station": {"th": "Station", "en": "Station"},
@@ -917,6 +919,8 @@ async def open_station_pm_job(
         from routers import pm_scope
         wo = (await pm_scope.wos_by_wonum([wonum])).get(wonum)
         company = pm_scope.company_of(current)
+        # ใบที่ planner ต้นทางยังไม่ได้วางแผน — vendor (เช่น EDS) ยังไม่เห็น จึงเริ่ม PM ไม่ได้
+        pm_scope.assert_wo_visible(wo, current)
         if not pm_scope.is_participant(wo, current.role, current.username or current.sub, company):
             raise HTTPException(status_code=403, detail=pm_scope.not_participant_detail(wo, company))
 
@@ -1967,7 +1971,8 @@ def job_pdf_cache_path(station_id: str, job_id: str, lang: str, part: str = "") 
     # _v5 = ชื่อสถานียาวไม่ตกบรรทัด — ขยายคอลัมน์ซ้ายของบล็อกข้อมูลงาน (2026-10-22)
     # _v6 = ชื่อเอกสารหัวกระดาษไม่ล้นกรอบ, CCB ข้อ 9 ไม่ขาด, "วันที่ :" ใต้ลายเซ็นตามภาษา (2026-10-22)
     # _v7 = ป้าย/หัวตารางตามภาษาทุกฟอร์ม, ที่อยู่เดียวกัน, วันที่ 22/10/2569, วันที่อนุมัติใต้ลายเซ็น, ผลตรวจ 3 ช่อง (2026-10-22)
-    return pathlib.Path(UPLOADS_ROOT) / "pdf_cache" / "stationPMJob" / station_id / f"{job_id}{suffix}_{lang}_v8.pdf"
+    # _v8 = บล็อกข้อมูลงาน 2 คอลัมน์เท่ากัน / _v9 = เรียงตู้ชาร์จ → Station → CB_BOX → MDB → CCB, ป้าย Pass/Fail/N/A 11pt (2026-10-22)
+    return pathlib.Path(UPLOADS_ROOT) / "pdf_cache" / "stationPMJob" / station_id / f"{job_id}{suffix}_{lang}_v9.pdf"
 
 
 # การ์ดในหน้ารวมใบ PM สถานี → ส่วนที่อยู่ในการ์ดนั้น (PDF รายการ์ด)
@@ -2069,7 +2074,7 @@ def _render_job_pdf(parts: list[tuple[dict, dict, dict]], lang: str) -> bytes:
 async def build_job_pdf(job: dict, station_id: str, lang: str, part: str = "") -> tuple[bytes, list[str]]:
     """
     PDF ของทั้งใบ — ใช้ template เดิมของแต่ละชนิด เรียง Charger ก่อน (ตู้ละชุด ตามหมายเลขตู้)
-    แล้วตามด้วยอุปกรณ์ไฟฟ้า Station → MDB → CCB → CB_BOX ส่วนที่ยังไม่ได้กรอกจะถูกข้าม
+    แล้วตามด้วยอุปกรณ์ไฟฟ้า Station → CB_BOX → MDB → CCB ส่วนที่ยังไม่ได้กรอกจะถูกข้าม
     part = "station" (Station + MDB + CCB + CB_BOX) / "charger" (ทุกตู้) = PDF ของการ์ดนั้นอย่างเดียว
     ทุกแบบเรียง checklist ของทุกส่วนก่อน แล้วรูปตามหลัง
     ช่องลายเซ็นพิมพ์ชื่อผู้ทำ (inspector ของฟอร์ม) และผู้อนุมัติ
@@ -2090,9 +2095,9 @@ async def build_job_pdf(job: dict, station_id: str, lang: str, part: str = "") -
 
     wanted = PDF_PARTS.get(part) if part else None
     states = [s for s in await _section_states(job) if wanted is None or s["section"] in wanted]
-    # ลำดับในเล่ม: ตู้ชาร์จก่อน แล้วอุปกรณ์ไฟฟ้า — sort แบบ stable จึงคงลำดับตู้และ Station/MDB/CCB/CB_BOX เดิม
-    # (SECTIONS ยังเรียง station ก่อน เพราะหน้าเว็บ/ตารางใช้ลำดับนั้น)
-    states.sort(key=lambda s: 0 if s["section"] == CHARGER_SECTION else 1)
+    # ลำดับในเล่ม: ตู้ชาร์จ → Station → CB_BOX → MDB → CCB — sort แบบ stable จึงคงลำดับตู้เดิม
+    # (SECTIONS ไม่แก้ เพราะหน้าเว็บ/ตารางใช้ลำดับนั้น)
+    states.sort(key=lambda s: PDF_SECTION_ORDER.get(s["section"], len(PDF_SECTION_ORDER)))
     vendor_approvers = await _charger_vendor_approvers(job, states)
     job_approver = str(job.get("approved_by") or "") if closed else ""
     job_approved_date = _approval_date(job.get("approved_at")) if closed else ""

@@ -154,6 +154,56 @@ def is_participant(wo: dict | None, role: str, username: str, company: str) -> b
     return bool((u and u in ticked) or (c and c in ticked))
 
 
+# ──────────────────────────────────────────────────────────────────
+# ใบงานที่ planner ต้นทางยังไม่ได้วางแผน — vendor ยังไม่เห็น (แก้ 2026-10-22)
+#   ปัญหาเดิม: planner EDS เห็นทุกใบงานของสถานีที่มีตู้ FlexxFast ทันทีที่ Maximo เปิดมา
+#   ทั้งที่ planner EGAT ยังไม่ได้วางแผน/ยังไม่ได้ส่งงานให้ EDS
+#   ตอนนี้: คนของบริษัทที่เห็นงานตามยี่ห้อ (brand_scope — เช่น EDS) เห็นใบงานได้ต่อเมื่อ
+#   planning_status = planned หรือเป็นใบที่บริษัทตัวเองวางแผน/เปิดเอง (planner_company)
+#   admin / owner / super_admin และ EGAT (ไม่มี brand scope) เห็นทุกใบเหมือนเดิม
+# ──────────────────────────────────────────────────────────────────
+
+def is_planned(wo: dict | None) -> bool:
+    return _norm((wo or {}).get("planning_status")) == "planned"
+
+
+def plan_gated_company(current: UserClaims) -> str:
+    """company ของ vendor ที่ต้องรอ planner ต้นทางวางแผนก่อนถึงจะเห็นใบงาน — "" = ไม่ถูกจำกัด"""
+    if getattr(current, "is_super_admin", False):
+        return ""
+    from brand_scope import BRAND_SCOPED_ROLES, COMPANY_BRAND_SCOPE
+    if _norm(current.role) not in BRAND_SCOPED_ROLES:
+        return ""
+    company = company_of(current)
+    return company if _norm(company) in COMPANY_BRAND_SCOPE else ""
+
+
+def awaiting_origin_plan(wo: dict | None, company: str) -> bool:
+    """ใบงานนี้ยังซ่อนจาก vendor `company` ไหม (company ว่าง = ไม่ถูกจำกัด)"""
+    if not wo or not _norm(company) or is_planned(wo):
+        return False
+    return _norm(wo.get("planner_company")) != _norm(company)
+
+
+def visible_wo_clause(company: str) -> dict:
+    """เงื่อนไข Mongo ของ awaiting_origin_plan (ฝั่งที่เห็นได้) — ใช้กรองตอน list ใบงาน"""
+    import re
+    name_re = {"$regex": f"^\\s*{re.escape(company.strip())}\\s*$", "$options": "i"}
+    return {"$or": [
+        {"planning_status": {"$regex": "^\\s*planned\\s*$", "$options": "i"}},
+        {"planner_company": name_re},
+    ]}
+
+
+def assert_wo_visible(wo: dict | None, current: UserClaims) -> None:
+    """กันยิงตรงด้วย wonum ของใบงานที่ planner ต้นทางยังไม่ได้วางแผน (หน้า list ซ่อนไว้แล้ว)"""
+    if awaiting_origin_plan(wo, plan_gated_company(current)):
+        raise HTTPException(
+            status_code=403,
+            detail="ใบงานนี้ planner ต้นทางยังไม่ได้วางแผน — ยังไม่ได้ส่งงานให้บริษัทของคุณ",
+        )
+
+
 def not_participant_detail(wo: dict | None, company: str) -> str:
     origin = str((wo or {}).get("planner_company") or "").strip() or "planner ต้นทาง"
     who = (company or "").strip() or "คุณ"
@@ -213,7 +263,7 @@ async def wos_by_wonum(wonums: Iterable[str]) -> dict[str, dict]:
         cursor = client["iMPS"]["maximo_pm_open"].find(
             {"wonum": {"$in": wanted}},
             {"_id": 0, "wonum": 1, "vendor_plans": 1, "planner_company": 1, "selected_equipment": 1, "origin": 1,
-             "assignees": 1},
+             "assignees": 1, "planning_status": 1},
         )
         async for wo in cursor:
             out[str(wo.get("wonum") or "")] = wo

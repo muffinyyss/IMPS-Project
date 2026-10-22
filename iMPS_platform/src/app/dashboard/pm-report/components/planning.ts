@@ -151,6 +151,37 @@ export function allAssignees(wo: Pick<MaximoWorkOrder, "assignees" | "vendor_pla
   return out;
 }
 
+/**
+ * ใบงานนี้มอบหมายให้ผู้ใช้คนนี้ไหม — หน้า PM List ใช้กรองงานของช่าง
+ *
+ *   - ชื่อผู้ใช้ถูกติ๊ก (แผนต้นทาง หรือทีมที่ vendor มอบหมาย)
+ *   - ชื่อบริษัทของผู้ใช้ถูกติ๊ก (กลุ่ม Outsource ในลิสต์ผู้รับผิดชอบ) → ช่างทุกคนของบริษัทนั้นเห็น
+ *     แม้ช่างรายคนจะติ๊กไว้แค่คนเดียว (ตัดสินใจ 2026-10-22)
+ *
+ * ชื่อ vendor ที่มีใบส่งต่อไม่นับเป็น "ติ๊กทั้งบริษัท" — backend เติมชื่อนั้นเข้า assignees เองจาก
+ * ผู้ทำ PM ของอุปกรณ์ (_with_equipment_parties) แล้ว planner ของ vendor เลือกทีมเองในแผนรอบ 2
+ * ช่าง vendor จึงเห็นเมื่อถูกติ๊กชื่อ / ชื่อบริษัทในแผนของ vendor
+ * backend กติกาเดียวกัน (มีงานในใบ): pm_scope.is_participant
+ *
+ * รับได้ทั้ง assignees ดิบของใบงาน และ assignees ที่รวมทีม vendor แล้ว (allAssignees)
+ */
+export function isAssignedTo(
+  wo: Pick<MaximoWorkOrder, "assignees" | "vendor_plans"> | null | undefined,
+  username: string | null | undefined,
+  company: string | null | undefined,
+): boolean {
+  const norm = (v: unknown) => String(v ?? "").trim().toLowerCase();
+  const u = norm(username);
+  const c = norm(company);
+  const plans = wo?.vendor_plans ?? [];
+  const vendorTeams = plans.flatMap((v) => (v.assignees ?? []).map(norm));
+  const ticked = (wo?.assignees ?? []).map(norm);
+  if (u && (ticked.includes(u) || vendorTeams.includes(u))) return true;
+  if (!c) return false;
+  const handoff = new Set(plans.map((v) => norm(v.vendor)));
+  return ticked.some((n) => n === c && !handoff.has(n)) || vendorTeams.includes(c);
+}
+
 export type EquipmentChoices = {
   wonum: string;
   station_id?: string | null;

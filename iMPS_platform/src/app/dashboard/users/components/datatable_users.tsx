@@ -41,6 +41,13 @@ import {
 
 // components
 import AddUser, { NewUserPayload } from "@/app/dashboard/users/components/adduser";
+import {
+  CompanySelect,
+  CompanySuggestions,
+  parseCompanyOptions,
+  withCurrentCompany,
+  type CompanyOption,
+} from "@/app/dashboard/users/components/company_field";
 import { apiFetch, getSessionProfile } from "@/utils/api";
 import type { UserRole } from "@/utils/roles";
 import useLanguage, { type Lang } from "@/utils/useLanguage";
@@ -153,7 +160,8 @@ export default function SearchDataTables() {
   const isAdmin = meRole === "admin";
   // planner: เห็น/เพิ่ม/แก้ได้เฉพาะ technician / cs / planner ของบริษัทตัวเอง + outsource ของตัวเอง (ลบไม่ได้)
   const isPlanner = meRole === "planner";
-  const [companyOptions, setCompanyOptions] = useState<string[] | null>(null);
+  // planner: ตัวเลือก dropdown ช่อง Company | admin: รายชื่อแนะนำของช่องพิมพ์เอง
+  const [companyOptions, setCompanyOptions] = useState<CompanyOption[] | null>(null);
 
   // ตรวจ session + ตั้ง meRole + ปักธง authChecked (และ redirect ถ้าไม่ผ่าน)
   // JWT อยู่ในคุกกี้ HttpOnly: อายุ token ตรวจที่ middleware + backend ส่วน role มากับโปรไฟล์
@@ -169,21 +177,22 @@ export default function SearchDataTables() {
     setAuthChecked(true);
   }, [router]);
 
-  // ตัวเลือกช่อง Company ของ planner (บริษัทตัวเอง + outsource) — admin พิมพ์เองได้อิสระ
+  // ตัวเลือกช่อง Company — planner: บริษัทตัวเอง + vendor + outsource ของตัวเอง (เลือกได้แค่นี้)
+  // admin: พิมพ์เองได้อิสระ แต่มีรายชื่อ owner / vendor / outsource จากเมนู Company เป็นคำแนะนำ
   useEffect(() => {
-    if (!authChecked || !isPlanner) return;
+    if (!authChecked || !(isPlanner || isAdmin)) return;
     let alive = true;
     (async () => {
       try {
         const res = await apiFetch(`/users/manageable-companies`);
         const json = res.ok ? await res.json() : {};
-        if (alive) setCompanyOptions(Array.isArray(json?.companies) ? json.companies : []);
+        if (alive) setCompanyOptions(parseCompanyOptions(json));
       } catch {
         if (alive) setCompanyOptions([]);
       }
     })();
     return () => { alive = false; };
-  }, [authChecked, isPlanner]);
+  }, [authChecked, isPlanner, isAdmin]);
 
   /* --- Table/UI states --- */
   const [data, setData] = useState<UserRow[]>([]);
@@ -330,11 +339,7 @@ export default function SearchDataTables() {
   const plannerNoCompany = isPlanner && companyOptions !== null && companyOptions.length === 0;
   const editingSelf = !!editingRow?.id && editingRow.id === meId;
   // company เดิมที่ไม่อยู่ในลิสต์ (เช่นพิมพ์ต่างตัวพิมพ์) ต้องไม่หายจาก dropdown
-  const editCompanyChoices = (() => {
-    const opts = companyOptions ?? [];
-    const cur = (editingRow?.company ?? "").trim();
-    return cur && cur !== "-" && !opts.includes(cur) ? [cur, ...opts] : opts;
-  })();
+  const editCompanyChoices = withCurrentCompany(companyOptions ?? [], editingRow?.company);
 
   /* -------------------- Handlers -------------------- */
   const handleEdit = (row: UserRow) => {
@@ -802,6 +807,7 @@ export default function SearchDataTables() {
         loading={saving}
         allowedRoles={isPlanner ? PLANNER_ROLES : undefined}
         companyOptions={isPlanner ? companyOptions ?? [] : undefined}
+        companySuggestions={isAdmin ? companyOptions ?? [] : undefined}
       />
 
       {/* Dialog: Edit */}
@@ -879,29 +885,28 @@ export default function SearchDataTables() {
               <Input name="username" label={t("username", lang)} defaultValue={editingRow?.username ?? ""} required crossOrigin={undefined} />
               <Input name="email" label={t("email", lang)} type="email" defaultValue={editingRow?.email ?? ""} required crossOrigin={undefined} />
               {isPlanner && !editingSelf ? (
-                <div className="tw-relative tw-h-10 tw-w-full">
-                  <select
-                    name="company"
-                    required
-                    defaultValue={editingRow?.company ?? ""}
-                    className="tw-h-full tw-w-full tw-cursor-pointer tw-appearance-none tw-rounded-[7px] tw-border tw-border-blue-gray-200 tw-bg-transparent tw-px-3 tw-py-2.5 tw-font-sans tw-text-sm tw-font-normal tw-text-blue-gray-700 tw-outline-none focus:tw-border-2 focus:tw-border-gray-900"
-                  >
-                    {editCompanyChoices.map((c) => (
-                      <option key={c} value={c}>{c}</option>
-                    ))}
-                  </select>
-                  <label className="tw-pointer-events-none tw-absolute tw-left-3 tw--top-1.5 tw-bg-white tw-px-1 tw-text-[11px] tw-font-normal tw-text-blue-gray-400">
-                    {t("company", lang)} *
-                  </label>
-                </div>
-              ) : (
-                <Input
+                <CompanySelect
                   name="company"
+                  options={editCompanyChoices}
                   label={t("company", lang)}
+                  lang={lang}
                   defaultValue={editingRow?.company ?? ""}
-                  disabled={isPlanner && editingSelf}
-                  crossOrigin={undefined}
                 />
+              ) : (
+                <>
+                  <Input
+                    name="company"
+                    label={t("company", lang)}
+                    autoComplete="off"
+                    list={isAdmin && companyOptions?.length ? "edit-user-company-suggestions" : undefined}
+                    defaultValue={editingRow?.company ?? ""}
+                    disabled={isPlanner && editingSelf}
+                    crossOrigin={undefined}
+                  />
+                  {isAdmin && !!companyOptions?.length && (
+                    <CompanySuggestions id="edit-user-company-suggestions" options={companyOptions} lang={lang} />
+                  )}
+                </>
               )}
               <Input name="tel" label={t("tel", lang)} defaultValue={editingRow?.tel ?? ""} crossOrigin={undefined} />
               {/* <Input name="password" label="New Password (optional)" type="password" /> */}

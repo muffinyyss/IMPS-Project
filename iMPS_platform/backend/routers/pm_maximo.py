@@ -1022,6 +1022,13 @@ async def list_maximo_pm_open(
             ]
         })
 
+    # vendor ที่เห็นงานตามยี่ห้อ (เช่น EDS) ยังไม่เห็นใบงานที่ planner ต้นทาง (EGAT) ยังไม่ได้วางแผน
+    # กรองใน query ไม่ใช่หลังดึง — ไม่งั้นใบที่ซ่อนจะกินโควตา limit ไป
+    from routers import pm_scope
+    gated = pm_scope.plan_gated_company(current)
+    if gated:
+        and_clauses.append(pm_scope.visible_wo_clause(gated))
+
     q: dict[str, Any] = {"$and": and_clauses} if and_clauses else {}
 
     cursor = _open_coll().find(q).sort([("pm_date", -1), ("_id", -1)]).limit(limit)
@@ -1211,6 +1218,8 @@ async def lock_pm_plan(wonum: str, current: UserClaims = Depends(get_current_use
     wo = await _find_open_wo((wonum or "").strip())
     if not wo:
         raise HTTPException(status_code=404, detail=f"ไม่พบใบงาน wonum={wonum}")
+    from routers import pm_scope
+    pm_scope.assert_wo_visible(wo, current)
     return await pm_lock.acquire(_open_coll(), {"_id": wo["_id"]}, PLAN_LOCK_FIELD, current)
 
 
@@ -1762,6 +1771,8 @@ async def pm_equipment_choices(
     doc = await _find_open_wo(wonum)
     if not doc:
         raise HTTPException(status_code=404, detail=f"ไม่พบใบงาน wonum={wonum}")
+    from routers import pm_scope
+    pm_scope.assert_wo_visible(doc, current)
 
     station_id = _station_id_of_wo(doc)
     chargers, fixed = _station_equipment_choices(station_id)
@@ -1949,6 +1960,9 @@ async def set_pm_equipment(
     wo = await _find_open_wo(wonum)
     if not wo:
         raise HTTPException(status_code=404, detail=f"PM work order not found: {wonum}")
+    # planner ของ vendor (เช่น EDS) วางแผนแทน planner ต้นทางไม่ได้ — ใบที่ยังไม่วางแผนเป็นของต้นทาง
+    from routers import pm_scope
+    pm_scope.assert_wo_visible(wo, current)
 
     # มี planner คนอื่นเปิดหน้าวางแผนใบนี้ค้างอยู่ (ถือล็อก) = ห้ามบันทึกทับ
     from routers import pm_lock

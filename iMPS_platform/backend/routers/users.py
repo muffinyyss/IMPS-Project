@@ -676,8 +676,8 @@ async def users():
 
 # ─── planner จัดการ account ในขอบเขตของตัวเอง ───────────────────────────────
 # planner เพิ่ม/แก้ account ได้เฉพาะ role สายปฏิบัติงาน (admin / owner ยังเป็นของ admin เท่านั้น)
-# และเฉพาะบริษัทตัวเอง + outsource ที่สังกัดบริษัทตัวเองตรง ๆ (ชุดเดียวกับ /companies/pm-options)
-# ช่างของ outsource login ด้วย company = ชื่อ outsource (ดู routers/pm_scope.py) จึงต้องสร้างให้ได้ด้วย
+# และเฉพาะบริษัทตัวเอง + vendor ใต้บริษัทตัวเอง + outsource ที่สังกัดบริษัทตัวเองตรง ๆ (ชุดเดียวกับ /companies/pm-options)
+# ช่างของ vendor / outsource login ด้วย company = ชื่อนั้น (ดู routers/pm_scope.py) จึงต้องสร้างให้ได้ด้วย
 # ลบ account ยังเป็นของ admin เท่านั้น
 PLANNER_MANAGED_ROLES = frozenset(STAFF_ROLES)
 PLANNER_EDIT_FIELDS = {"username", "email", "password", "tel", "company", "role", "station_id"}
@@ -704,20 +704,62 @@ def _current_company(current: UserClaims) -> str:
     return company
 
 
-def _planner_companies(current: UserClaims) -> List[str]:
-    """บริษัทที่ planner จัดการ account ได้ — ตัวแรกคือบริษัทตัวเองเสมอ, ไม่มี company = []"""
+def _add_option(out: List[dict], name, company_type: str) -> None:
+    """เติมตัวเลือก {name, type} — ชื่อซ้ำ (ไม่สนตัวพิมพ์) เก็บตัวแรก จึงต้องเรียงลำดับความสำคัญก่อน"""
+    name = str(name or "").strip()
+    if name and name.lower() not in {o["name"].lower() for o in out}:
+        out.append({"name": name, "type": company_type})
+
+
+def _sorted_names(names) -> List[str]:
+    return sorted((str(n or "").strip() for n in names if str(n or "").strip()), key=str.lower)
+
+
+def _planner_company_options(current: UserClaims) -> List[dict]:
+    """บริษัทที่ planner จัดการ account ได้ แยกประเภท — ตัวแรกคือบริษัทตัวเองเสมอ, ไม่มี company = []
+
+    ชุดเดียวกับ /companies/pm-options: บริษัทตัวเอง + vendor ที่อยู่ใต้บริษัทตัวเอง
+    (doc type=vendor ที่ name = company) + outsource ที่สังกัดบริษัทตัวเองตรง ๆ
+    ช่างของ vendor / outsource login ด้วย company = ชื่อนั้น planner จึงต้องสร้าง account ให้ได้
+    """
     company = _current_company(current)
     if not company:
         return []
-    names = [company]
-    outsources = companies_collection.find(
-        {"type": "outsource", "company": _ci(company)}, {"name": 1}
-    ).sort("name", 1)
-    for doc in outsources:
-        name = str(doc.get("name") or "").strip()
-        if name and name.lower() not in {n.lower() for n in names}:
-            names.append(name)
-    return names
+    out: List[dict] = []
+    _add_option(out, company, "self")
+    owner_doc = companies_collection.find_one({"type": "vendor", "name": _ci(company)}, {"vendors": 1})
+    for name in _sorted_names(v.get("name") for v in ((owner_doc or {}).get("vendors") or [])):
+        _add_option(out, name, "vendor")
+    outsources = companies_collection.find({"type": "outsource", "company": _ci(company)}, {"name": 1})
+    for name in _sorted_names(d.get("name") for d in outsources):
+        _add_option(out, name, "outsource")
+    return out
+
+
+def _planner_companies(current: UserClaims) -> List[str]:
+    """ชื่อบริษัทที่ planner จัดการ account ได้ — ตัวแรกคือบริษัทตัวเองเสมอ, ไม่มี company = []"""
+    return [o["name"] for o in _planner_company_options(current)]
+
+
+def _all_company_options() -> List[dict]:
+    """รายชื่อจากเมนู Company ทั้งหมด (owner → vendor → outsource) — ใช้เป็นคำแนะนำช่อง Company ของ admin
+
+    doc type=vendor เก็บชื่อ owner ไว้ที่ name และ vendor ไว้ใน vendors[] — ชื่อ owner จึงมาจากทั้งสองแบบ
+    """
+    owners, vendors, outsources = [], [], []
+    for doc in companies_collection.find({}, {"type": 1, "name": 1, "vendors": 1}):
+        kind = doc.get("type")
+        if kind in ("owner", "vendor"):
+            owners.append(doc.get("name"))
+        if kind == "vendor":
+            vendors.extend(v.get("name") for v in (doc.get("vendors") or []))
+        elif kind == "outsource":
+            outsources.append(doc.get("name"))
+    out: List[dict] = []
+    for kind, names in (("owner", owners), ("vendor", vendors), ("outsource", outsources)):
+        for name in _sorted_names(names):
+            _add_option(out, name, kind)
+    return out
 
 
 def _match_company(value, scope: List[str]) -> Optional[str]:
@@ -737,12 +779,22 @@ def _planner_can_manage(doc: dict, scope: List[str]) -> bool:
 
 @router.get("/users/manageable-companies")
 def manageable_companies(current: UserClaims = Depends(get_current_user)):
-    """ตัวเลือกช่อง Company ตอน planner เพิ่ม/แก้ account ในหน้า Users (admin พิมพ์เองได้อิสระ → ลิสต์ว่าง)"""
+    """ตัวเลือกช่อง Company ตอนเพิ่ม/แก้ account ในหน้า Users
+
+    - planner → companies = ขอบเขตที่จัดการได้ (บริษัทตัวเอง + vendor + outsource ของตัวเอง) ช่องเป็น dropdown
+    - admin   → companies ว่าง (พิมพ์ชื่ออะไรก็ได้) แต่ options มีทุกรายชื่อในเมนู Company ไว้เป็นคำแนะนำ
+    options = [{name, type}] — type: self | owner | vendor | outsource ไว้จัดกลุ่มในช่อง Company
+    """
     if current.role == "admin":
-        return {"companies": [], "roles": []}
+        return {"companies": [], "options": _all_company_options(), "roles": []}
     if not _is_planner(current):
         raise HTTPException(status_code=403, detail="forbidden")
-    return {"companies": _planner_companies(current), "roles": list(STAFF_ROLES)}
+    options = _planner_company_options(current)
+    return {
+        "companies": [o["name"] for o in options],
+        "options": options,
+        "roles": list(STAFF_ROLES),
+    }
 
 
 # ผู้ที่วางแผนงาน CM ได้ (เลือกช่างในขั้น Planning) — planner ตาม flow, admin/owner คุมภาพรวม
@@ -838,7 +890,7 @@ async def create_users(users: register, current: UserClaims = Depends(get_curren
 @router.get("/all-users/")
 def all_users(current: UserClaims = Depends(get_current_user)):
     # admin เห็นทุกคน (super_admin ผ่านด้วยเพราะ normalize เป็น admin)
-    # planner เห็นเฉพาะ account ที่ตัวเองจัดการได้ — role สายปฏิบัติงานในบริษัทตัวเอง + outsource ของตัวเอง
+    # planner เห็นเฉพาะ account ที่ตัวเองจัดการได้ — role สายปฏิบัติงานในบริษัทตัวเอง + vendor / outsource ของตัวเอง
     is_admin = current.role == "admin"
     if not is_admin and not _is_planner(current):
         raise HTTPException(status_code=403, detail="forbidden")
@@ -890,7 +942,7 @@ def insert_users(body: addUsers, current: UserClaims = Depends(get_current_user)
     company = (body.company_name or "").strip() or None
     ai_package = body.ai_package.model_dump() if body.ai_package else {"enabled": False}
     if not is_admin:
-        # planner: role สายปฏิบัติงานเท่านั้น และ company ต้องเป็นบริษัทตัวเอง / outsource ของตัวเอง
+        # planner: role สายปฏิบัติงานเท่านั้น และ company ต้องเป็นบริษัทตัวเอง / vendor / outsource ของตัวเอง
         if body.role not in PLANNER_MANAGED_ROLES:
             raise HTTPException(status_code=403, detail="planner can create technician / cs / planner only")
         scope = _planner_companies(current)
@@ -988,7 +1040,7 @@ def update_user(id: str, body: UserUpdate, current: UserClaims = Depends(get_cur
     # ── Permission
     #   admin   → ทุกคน ทุกฟิลด์
     #   ตัวเอง  → profile ตัวเอง (ฟิลด์ชุด SELF) — แก้ตัวเองถือกติกานี้เสมอ แม้เป็น planner
-    #   planner → account สายปฏิบัติงานในบริษัทตัวเอง / outsource ของตัวเอง (PLANNER_EDIT_FIELDS)
+    #   planner → account สายปฏิบัติงานในบริษัทตัวเอง / vendor / outsource ของตัวเอง (PLANNER_EDIT_FIELDS)
     #   อื่น ๆ  → ห้าม (เดิมไม่ได้เช็คเลย ทุก role แก้ username/email/password ของใครก็ได้)
     is_admin = current.role == "admin"
     is_self = bool(current.user_id) and current.user_id == str(oid)

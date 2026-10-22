@@ -47,6 +47,7 @@ FONT_SMALL = 11.0
 LINE_H = 5.0
 ROW_MIN_H = 7
 CHECKBOX_SIZE = 3.5
+RESULT_LABEL_FONT = 11.0  # ป้าย Pass/Fail/N/A ข้างช่องติ๊ก (เดิม 6) — เท่าแถวสรุปผลการตรวจสอบ
 SIG_H = 28
 TITLE_H = 5.5
 CHARGER_ROW_H = 5
@@ -1199,7 +1200,7 @@ def _draw_result_cell(
     label_text = {"pass": "Pass", "fail": "Fail", "na": "N/A"}
 
     _prev_font = (pdf.font_family, pdf.font_style, pdf.font_size_pt)
-    pdf.set_font(base_font, "", 6)
+    pdf.set_font(base_font, "", RESULT_LABEL_FONT)
 
     # วาดเส้นแบ่งคอลัมน์
     for i in range(1, 3):
@@ -1225,11 +1226,12 @@ def _draw_result_cell(
 
             checked = (res == key)
             _draw_check(pdf, start_x, start_y, CHECKBOX_SIZE, checked)
-            pdf.set_xy(start_x + CHECKBOX_SIZE + 1.6, start_y - 0.3)
+            # จัดข้อความให้กึ่งกลางแนวตั้งตรงกับช่องติ๊ก (cell จัดข้อความกลางความสูง LINE_H)
+            pdf.set_xy(start_x + CHECKBOX_SIZE + 1.6, start_y + CHECKBOX_SIZE / 2.0 - LINE_H / 2.0)
             pdf.cell(text_w, LINE_H, lab, border=0, ln=0, align="L")
 
     pdf.set_xy(x + w, y)
-    # คืนฟอนต์เดิม — ไม่ให้ขนาด 6 ของ Pass/Fail/N/A ค้างไปถึงข้อความแถวถัดไป
+    # คืนฟอนต์เดิม — ไม่ให้ขนาดของป้าย Pass/Fail/N/A ค้างไปถึงข้อความแถวถัดไป
     pdf.set_font(_prev_font[0], _prev_font[1], _prev_font[2])
     
 def _extract_row_result(row: dict) -> str:

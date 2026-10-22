@@ -20,7 +20,7 @@ import { DocumentArrowDownIcon, PlusIcon, TrashIcon } from "@heroicons/react/24/
 import { apiFetch } from "@/utils/api";
 import useLanguage from "@/utils/useLanguage";
 import { PM_LIST_ROUTE, PM_ORIGIN_LIST } from "@/app/dashboard/pm-report/lib/origin";
-import { PM_PLANNING_ROLES, allAssignees, myVendorPlan, pendingVendorPlans, type VendorPlan } from "@/app/dashboard/pm-report/components/planning";
+import { PM_PLANNING_ROLES, allAssignees, isAssignedTo, myVendorPlan, pendingVendorPlans, type VendorPlan } from "@/app/dashboard/pm-report/components/planning";
 import { PM_APPROVE_ROLES } from "@/app/dashboard/pm-report/components/flow";
 import { COMPANY_FILTER_OPTIONS, matchesCompanyFilter } from "@/utils/pm-dashboard";
 import { csvDate, csvFilename, downloadCsv, toCsv } from "@/utils/csv";
@@ -640,15 +640,15 @@ export default function PMListPage() {
     (typeFilter ? 1 : 0) + (stageFilter ? 1 : 0) + (originFilter ? 1 : 0) + (stationFilter !== "All" ? 1 : 0) + (companyFilter ? 1 : 0);
 
   // ช่างเห็นเฉพาะงานที่ planner มอบหมายให้ตัวเอง — role อื่นเห็นทุกใบ
+  // มอบหมาย = ติ๊กชื่อตัวเอง หรือติ๊กบริษัทของตัวเอง (กลุ่ม Outsource) → ช่างทุกคนของบริษัทนั้นเห็น
+  // แม้ planner ติ๊กช่างรายคนไว้แค่คนเดียว (isAssignedTo ใน pm-report/components/planning.ts)
   const scopedRows = useMemo(() => {
     if (!me || me.role !== "technician") return rows;
     const uname = me.username.trim().toLowerCase();
     if (!uname) return [];
     const isMine = (v?: string) => String(v ?? "").trim().toLowerCase() === uname;
-    return rows.filter((r) =>
-      (r.assignees ?? []).some(isMine) || isMine(r.technician)
-    );
-  }, [rows, me]);
+    return rows.filter((r) => isAssignedTo(r, me.username, userCompany) || isMine(r.technician));
+  }, [rows, me, userCompany]);
 
   const isEgatCompany = userCompany.trim().toLowerCase() === "egat";
   // EGAT ดูแลทุกบริษัท + super admin — คนบริษัทอื่นเห็นเฉพาะงานของตัวเองอยู่แล้ว ไม่ต้องมีดรอปดาวน์
@@ -658,18 +658,25 @@ export default function PMListPage() {
   // บริษัทอื่น (เช่น vendor EDS) เห็นใบงานเฉพาะ: ใบที่ planner ต้นทางส่งต่อให้บริษัทตัวเอง
   // + ใบงานของสถานี/ตู้ที่บริษัทดูแลอยู่แล้ว (เกณฑ์เดียวกับตัวกรองบริษัท)
   // แถวเอกสารถูกจำกัดตามสถานีที่เห็นได้ที่ backend อยู่แล้ว ไม่ต้องกรองซ้ำ
+  // ช่าง: scopedRows คืองานที่มอบหมายให้แล้ว ไม่ต้องกรองตามบริษัทซ้ำ — ไม่งั้นช่าง outsource ที่ถูกติ๊ก
+  // ในสถานีของบริษัทอื่นหายจากลิสต์ และชื่อบริษัท outsource ที่ถูกติ๊กไม่ใช่ใบส่งต่อ (ไม่ใช้ fallback ของ
+  // myVendorPlan ที่มีไว้ให้ planner ของ vendor) ไม่งั้นแถวค้างสถานะ Open
+  const isTechnician = me?.role === "technician";
   const companyRows = useMemo(() => {
+    const c = userCompany.trim().toLowerCase();
     const withHandoff = scopedRows.map((r) => {
-      const mine = myVendorPlan(r, userCompany);
+      const mine = isTechnician
+        ? (c ? (r.vendor_plans ?? []).find((v) => String(v.vendor ?? "").trim().toLowerCase() === c) : undefined)
+        : myVendorPlan(r, userCompany);
       const pending = !!mine && mine.status !== "planned";
       return pending === !!r.vendor_pending_for_me ? r : { ...r, vendor_pending_for_me: pending };
     });
     if (canSeeAllCompanies) return withHandoff.filter((r) => matchesCompanyFilter(r, companyFilter));
-    if (!userCompany.trim()) return withHandoff;
+    if (isTechnician || !userCompany.trim()) return withHandoff;
     return withHandoff.filter((r) =>
       r.kind !== "wo" || !!myVendorPlan(r, userCompany) || matchesCompanyFilter(r, userCompany)
     );
-  }, [scopedRows, companyFilter, canSeeAllCompanies, userCompany]);
+  }, [scopedRows, companyFilter, canSeeAllCompanies, userCompany, isTechnician]);
 
   const stations = useMemo(() => {
     const names = Array.from(new Set(companyRows.map((r) => r.station_name || r.station_id))).filter(Boolean);
