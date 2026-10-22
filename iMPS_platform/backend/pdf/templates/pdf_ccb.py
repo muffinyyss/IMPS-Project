@@ -274,6 +274,70 @@ def _split_lines(pdf: FPDF, width: float, text: str, line_h: float):
             buf = buf[max_chars:]
     return lines, max(line_h, len(lines) * line_h)
 
+def _wrap_cell_paragraph(pdf: FPDF, paragraph: str, inner_w: float) -> List[str]:
+    """ตัดบรรทัด 1 ย่อหน้าตามความกว้าง (แบบเดียวกับที่ _cell_text_in_box วาดจริง)"""
+    # เก็บ leading spaces ไว้
+    leading_spaces = ""
+    stripped = paragraph.lstrip(" ")
+    if len(paragraph) > len(stripped):
+        leading_spaces = paragraph[:len(paragraph) - len(stripped)]
+
+    # ตรวจสอบว่ามี hanging indent pattern หรือไม่ (เช่น "หมายเหตุ: " หรือ "Remark: ")
+    # ถ้ามี ให้ใช้ hanging indent สำหรับบรรทัดถัดไป
+    # บรรทัดที่ตัดต่อเริ่มที่ระยะย่อหน้าเดียวกับบรรทัดแรก (เช่นชื่อข้อ 9 ที่ยาว 2 บรรทัด)
+    hanging_indent = leading_spaces
+
+    words = stripped.split(" ")
+    lines, cur = [], ""
+    first_line = True
+
+    for wd in words:
+        candidate = wd if not cur else (cur + " " + wd)
+        # บรรทัดแรกใช้ leading_spaces, บรรทัดถัดไปใช้ hanging_indent
+        current_indent = leading_spaces if first_line else hanging_indent
+        if pdf.get_string_width(current_indent + candidate) <= inner_w:
+            cur = candidate
+        else:
+            if cur:
+                # เพิ่ม indent ตามบรรทัด
+                lines.append(current_indent + cur)
+                first_line = False
+            current_indent = leading_spaces if first_line else hanging_indent
+            if pdf.get_string_width(current_indent + wd) <= inner_w:
+                cur = wd
+            else:
+                buf = wd
+                while buf:
+                    k = 1
+                    current_indent = leading_spaces if first_line else hanging_indent
+                    while (
+                        k <= len(buf) and pdf.get_string_width(current_indent + buf[:k]) <= inner_w
+                    ):
+                        k += 1
+                    lines.append(current_indent + buf[: k - 1])
+                    first_line = False
+                    buf = buf[k - 1 :]
+                cur = ""
+    if cur:
+        current_indent = leading_spaces if first_line else hanging_indent
+        lines.append(current_indent + cur)
+    return lines
+
+
+def _cell_line_starts(pdf: FPDF, text: str, w: float) -> List[int]:
+    """
+    บรรทัดที่แสดงจริง (หลังตัดบรรทัด) ที่แต่ละบรรทัดของ text เริ่ม — ใช้วางช่องติ๊กของข้อย่อยให้ตรงแถว
+    เมื่อหัวข้อหลักยาวจนตัดเป็น 2 บรรทัด (w = ความกว้าง cell เหมือนที่ส่งให้ _cell_text_in_box)
+    """
+    inner_w = w - 2 * PADDING_X
+    starts: List[int] = []
+    n = 0
+    for p in str(text or "").replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+        starts.append(n)
+        n += 1 if p == "" else max(1, len(_wrap_cell_paragraph(pdf, p, inner_w)))
+    return starts
+
+
 def _cell_text_in_box(
     pdf: FPDF,
     x: float,
@@ -291,56 +355,6 @@ def _cell_text_in_box(
     text = "" if text is None else str(text)
     text = text.replace("\r\n", "\n").replace("\r", "\n")
 
-    def _wrap_paragraph(paragraph: str) -> List[str]:
-        # เก็บ leading spaces ไว้
-        leading_spaces = ""
-        stripped = paragraph.lstrip(" ")
-        if len(paragraph) > len(stripped):
-            leading_spaces = paragraph[:len(paragraph) - len(stripped)]
-
-        # ตรวจสอบว่ามี hanging indent pattern หรือไม่ (เช่น "หมายเหตุ: " หรือ "Remark: ")
-        # ถ้ามี ให้ใช้ hanging indent สำหรับบรรทัดถัดไป
-        hanging_indent = ""
-        match_label = re.match(r"^(.*?):\s+", stripped)
-        if match_label:
-            # ให้บรรทัดถัดไปเริ่มที่ตำแหน่งเดียวกับ leading spaces เท่านั้น
-            hanging_indent = leading_spaces
-
-        words = stripped.split(" ")
-        lines, cur = [], ""
-        first_line = True
-
-        for wd in words:
-            candidate = wd if not cur else (cur + " " + wd)
-            # บรรทัดแรกใช้ leading_spaces, บรรทัดถัดไปใช้ hanging_indent
-            current_indent = leading_spaces if first_line else hanging_indent
-            if pdf.get_string_width(current_indent + candidate) <= inner_w:
-                cur = candidate
-            else:
-                if cur:
-                    # เพิ่ม indent ตามบรรทัด
-                    lines.append(current_indent + cur)
-                    first_line = False
-                current_indent = leading_spaces if first_line else hanging_indent
-                if pdf.get_string_width(current_indent + wd) <= inner_w:
-                    cur = wd
-                else:
-                    buf = wd
-                    while buf:
-                        k = 1
-                        current_indent = leading_spaces if first_line else hanging_indent
-                        while (
-                            k <= len(buf) and pdf.get_string_width(current_indent + buf[:k]) <= inner_w
-                        ):
-                            k += 1
-                        lines.append(current_indent + buf[: k - 1])
-                        first_line = False
-                        buf = buf[k - 1 :]
-                    cur = ""
-        if cur:
-            current_indent = leading_spaces if first_line else hanging_indent
-            lines.append(current_indent + cur)
-        return lines
 
     paragraphs = text.split("\n")
     lines: List[str] = []
@@ -348,7 +362,7 @@ def _cell_text_in_box(
         if p == "":
             lines.append("")
             continue
-        lines.extend(_wrap_paragraph(p))
+        lines.extend(_wrap_cell_paragraph(pdf, p, inner_w))
 
     content_h = max(lh, len(lines) * lh)
 
@@ -769,8 +783,10 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None, row_titles: dic
                 voltage_horizontal = ', '.join(voltage_lines[:3])
                 lines.append(f"{SUB_INDENT}{voltage_horizontal}")
 
+        sub_line_idx: List[int] = []
         for sub_index, sub_key, stitle in subs:
             lines.append(f"{SUB_INDENT}{idx}.{sub_index}) {stitle}")
+            sub_line_idx.append(len(lines) - 1)
 
             # ข้อ 10 ให้เพิ่ม voltage data ต่อท้ายแต่ละข้อย่อย
             if idx == 10:
@@ -877,6 +893,8 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None, row_titles: dic
                 "remark": remark,
                 "result_offset": result_offset,
                 "result_step": result_step,
+                # บรรทัดของข้อย่อยในข้อความ Item (ก่อนตัดบรรทัด) — ใช้วางช่องติ๊กให้ตรงแม้หัวข้อหลักยาว 2 บรรทัด
+                "result_line_idx": sub_line_idx if subs else None,
             }
         )
 
@@ -892,6 +910,34 @@ def _draw_check(pdf: FPDF, x: float, y: float, size: float, checked: bool):
         pdf.set_line_width(lw_old)
 
 # -------------------- Drawing – header / table header --------------------
+def _draw_doc_name_fit(pdf: FPDF, base_font: str, x: float, y: float, w: float, h: float,
+                       text: str, max_fs: float) -> None:
+    """
+    วาดชื่อเอกสารให้อยู่ในกรอบ (x, y, w, h) เสมอ จัดกลางทั้งแนวนอน/แนวตั้ง
+    ใช้ฟอนต์ใหญ่ที่สุดที่ใส่ได้ — บรรทัดเดียวก่อน ไม่พอค่อยหลายบรรทัดตามความสูงกรอบ
+    เล็กสุด 5pt แล้วยังไม่พอ ตัดบรรทัดเกินทิ้ง (ไม่ล้นกรอบ)
+    """
+    text = text or "-"
+    inner_w = w - 2
+    fs = max_fs
+    while True:
+        pdf.set_font(base_font, "B", fs)
+        lh = fs * 0.3528 * 1.2  # pt → mm (เผื่อสระล่าง/ขีดล่างของฟอนต์ไทย ไม่ให้ชนเส้นกรอบ)
+        max_lines = max(1, int(h // lh))
+        try:
+            lines = pdf.multi_cell(inner_w, lh, text, align="C", split_only=True)
+        except TypeError:  # fpdf รุ่นเก่า
+            lines = [text]
+        if len(lines) <= max_lines or fs <= 5:
+            lines = lines[:max_lines]
+            break
+        fs -= 0.5
+    start_y = y + max(0.0, (h - len(lines) * lh) / 2)
+    for i, line in enumerate(lines):
+        pdf.set_xy(x + 1, start_y + i * lh)
+        pdf.cell(inner_w, lh, line, align="C")
+
+
 def _draw_header(
     pdf: FPDF,
     base_font: str,
@@ -972,18 +1018,9 @@ def _draw_header(
     pdf.set_xy(xr, y_top + h_right_half + 1)
     pdf.set_font(base_font, "B", FONT_MAIN - 2)
     pdf.multi_cell(col_right, 4.5, f"{label_doc_name}", align="C")
-    # ชื่อเอกสารยาว (เช่น 7Eleven_Banklangmueang_5/2026) เคยตัดบรรทัดล้นกรอบลงไปทับตาราง
-    # → ย่อฟอนต์ให้พอดีบรรทัดเดียว ถ้ายังไม่พอที่ 6pt ค่อยตัด 2 บรรทัดเล็ก ๆ ในกรอบ
-    _dn = str(doc_name)
-    _fs = FONT_MAIN - 2
-    while _fs > 6 and pdf.get_string_width(_dn) > col_right - 2:
-        _fs -= 0.5
-        pdf.set_font(base_font, "B", _fs)
-    pdf.set_xy(xr, y_top + h_right_half + 1 + 4.5)
-    if pdf.get_string_width(_dn) <= col_right - 2:
-        pdf.cell(col_right, 4.5, _dn, align="C")
-    else:
-        pdf.multi_cell(col_right, 2.5, _dn, align="C")
+    # ชื่อเอกสารยาว (เช่น ชื่อสถานียาว_10/2026) ต้องอยู่ในกรอบ — ไม่ล้นลงไปทับแถบชื่อเรื่อง
+    _draw_doc_name_fit(pdf, base_font, xr, y_top + h_right_half + 5.0, col_right,
+                       h_all - h_right_half - 5.2, str(doc_name), FONT_MAIN - 2)
     pdf.set_font(base_font, "B", FONT_MAIN - 2)
     # ตำแหน่ง y หลังหัวกระดาษต้องเท่ากับของเดิม (multi_cell 2 บรรทัด) — เนื้อหาถัดไปเริ่มจาก get_y()
     pdf.set_xy(xr + col_right, y_top + h_right_half + 1 + 2 * 4.5)
@@ -1032,8 +1069,8 @@ def _draw_signature_block(
     signer_labels = [label_performed, label_approved, label_witnessed]
     col_widths = [item_w, result_w, remark_w]
 
-    row_h_header = 5
-    row_h_sig = 14
+    row_h_header = 6  # 5 → 6: วรรณยุกต์ของหัวภาษาไทย (ผู้ปฏิบัติงาน) ไม่ชนเส้นบน
+    row_h_sig = 13
     row_h_name = 5
     row_h_date = 5
 
@@ -1088,10 +1125,15 @@ def _draw_signature_block(
 
     # ===== แถววันที่ =====
     x_pos = x_table
+    _col = 0
     for w in col_widths:
         pdf.rect(x_pos, y, w, row_h_date)
         pdf.set_xy(x_pos, y)
-        pdf.cell(w, row_h_date, f"{label_date}  {pm_date_th}", align="C")
+        # ผู้ปฏิบัติงาน = วันที่ PM / ผู้อนุมัติ, ผู้เห็นชอบ = วันที่อนุมัติ (PDF ใบ PM สถานีส่งมาทาง doc["_signers"])
+        _dates = getattr(pdf, "_signer_dates", None)
+        _d = (_dates[_col] if _dates is not None and _col < len(_dates) else pm_date_th) or ""
+        pdf.cell(w, row_h_date, f"{label_date}  {_d}" if _d else label_date, align="C")
+        _col += 1
         x_pos += w
     y += row_h_date
 
@@ -1141,6 +1183,7 @@ def _draw_result_cell(
     result: Union[str, List[str]],
     offset_lines: int = 0,   # บรรทัดที่ต้องข้ามก่อนเริ่มวาด
     line_step: int = 1,      # จำนวนบรรทัดข้อความต่อ 1 row ของ Result
+    line_positions: Optional[List[int]] = None,  # บรรทัดที่แสดงจริงของแต่ละผล (มี = ใช้แทน offset/step)
 ):
    
     pdf.rect(x, y, w, h)
@@ -1155,7 +1198,7 @@ def _draw_result_cell(
     results = [_norm_result(r) for r in results]
     n_lines = max(1, len(results))
 
-    col_w = w / 5.0
+    col_w = w / 3.0  # Pass / Fail / N/A (ดีมาก/ดี/พอใช้ → Pass, ใช้งานไม่ได้ → Fail)
     labels = ["pass", "fail", "na"]
     label_text = {"pass": "Pass", "fail": "Fail", "na": "N/A"}
 
@@ -1163,7 +1206,7 @@ def _draw_result_cell(
     pdf.set_font(base_font, "", 6)
 
     # วาดเส้นแบ่งคอลัมน์แนวตั้งเต็ม cell
-    for i in range(1, 5):
+    for i in range(1, 3):
         sx = x + i * col_w
         pdf.line(sx, y, sx, y + h)
 
@@ -1171,7 +1214,10 @@ def _draw_result_cell(
     base_y = y + PADDING_Y + offset_lines * LINE_H
 
     for row_idx, res in enumerate(results):
-        line_y = base_y + row_idx * line_step * LINE_H
+        if line_positions is not None and row_idx < len(line_positions):
+            line_y = y + PADDING_Y + line_positions[row_idx] * LINE_H
+        else:
+            line_y = base_y + row_idx * line_step * LINE_H
 
         # ถ้าลงล่างเกิน cell แล้วให้หยุด
         if line_y + CHECKBOX_SIZE > y + h - PADDING_Y:
@@ -1362,6 +1408,23 @@ def _draw_photos_row(
     return row_h
 
 # -------------------- Drawing – job / summary blocks --------------------
+def _fit_station_split(pdf: FPDF, base_font: str, w: float, col_split: float, label_w: float,
+                       station: str, right_values: list) -> float:
+    """
+    ตำแหน่งเส้นแบ่งคอลัมน์ของบล็อกข้อมูลงาน ที่ทำให้ชื่อสถานีอยู่บรรทัดเดียว
+    ชื่อพอดีช่องเดิม = ใช้ col_split เดิม (ตรงกับเส้นแบ่งของตารางด้านล่าง)
+    ยาวเกิน = ขยับเส้นไปทางขวาเท่าที่จำเป็น แต่คอลัมน์ขวาต้องยังใส่ค่าของมันได้ครบ
+    (ยาวกว่านั้นอีก ผู้เรียกจะตัดบรรทัดตามเดิม)
+    """
+    pad = 4 + 2 * pdf.c_margin + 0.5  # ระยะ label→ค่า ใน _item + margin ของ cell + เผื่อ
+    pdf.set_font(base_font, "", FONT_MAIN)
+    need_left = label_w + pad + pdf.get_string_width(station)
+    if need_left <= col_split:
+        return col_split
+    need_right = label_w + pad + max((pdf.get_string_width(str(v or "-")) for v in right_values), default=0)
+    return max(col_split, min(need_left, w - need_right))
+
+
 def _draw_job_info_block(
     pdf: FPDF,
     base_font: str,
@@ -1388,6 +1451,10 @@ def _draw_job_info_block(
     # ถ้า station_name ยาวเกินช่อง — wrap หลายบรรทัด แล้วขยายความสูง box
     pdf.set_font(base_font, "", FONT_MAIN)
     station_str = str(station_name or "-")
+    # ชื่อสถานียาวเกินช่อง — ขยายคอลัมน์ซ้ายให้อยู่บรรทัดเดียว (ดู _fit_station_split)
+    col_split = _fit_station_split(pdf, base_font, w, col_split, label_w, station_str, [pm_date])
+    left_w = col_split
+    right_w = w - col_split
     value_w_left = left_w - label_w - 4
     wrapped_station, _ = _split_lines(pdf, value_w_left, station_str, row_h - 3)
     station_lines = max(1, len(wrapped_station))
@@ -1449,6 +1516,8 @@ class ReportPDF(HTML2PDF):
         self._base_font_name = "Arial"
         # Language labels (defaults)
         self._label_page = "Page"
+        self._label_issue_id = "Issue ID"
+        self._label_doc_name = "Doc Name"
         self._addr_line1 = "Electricity Generating Authority of Thailand (EGAT)"
         self._addr_line2 = "53 Moo 2 Charansanitwong Road, Bang Kruai, Nonthaburi 11130, Thailand"
         self._addr_line3 = "Call Center Tel. 02-114-3350"
@@ -1462,6 +1531,8 @@ class ReportPDF(HTML2PDF):
                     issue_id=self.issue_id,
                     doc_name=self._doc_name,
                     label_page=self._label_page, 
+                    label_issue_id=self._label_issue_id,
+                    label_doc_name=self._label_doc_name,
                     addr_line1=self._addr_line1,
                     addr_line2=self._addr_line2, 
                     addr_line3=self._addr_line3)
@@ -1508,7 +1579,7 @@ def make_pm_report_html_pdf_bytes(
     # data
     job = doc.get("job", {}) or {}
     station_name = job.get("station_name", "-")
-    pm_date = _fmt_date_thai_like_sample(doc.get("pm_date", job.get("date", "-")))
+    pm_date = _fmt_date_thai_full(doc.get("pm_date", job.get("date", "-")))  # แบบเดียวกับใต้ลายเซ็น: 22/10/2569
     pm_date_th = _fmt_date_thai_full(doc.get("pm_date", job.get("date", "-")))
     issue_id = str(doc.get("issue_id", "-"))
     doc_name = str(doc.get("doc_name", "-"))
@@ -1545,12 +1616,17 @@ def make_pm_report_html_pdf_bytes(
         label_approved = "Approved by"
         label_witnessed = "Witnessed by"
         label_date = "Date :"
+        label_comment = "Comment :"
+        label_inspection = "Inspection Results :"
+        label_pre_pm = "(Pre-PM)"
 
         # Job info labels
         label_station = "Station"
         label_pm_date = "PM Date"
 
         label_page = "Page"
+        label_issue_id = "Issue ID"
+        label_doc_name = "Doc Name"
         addr_line1 = "Electricity Generating Authority of Thailand (EGAT)"
         addr_line2 = "53 Moo 2 Charansanitwong Road, Bang Kruai, Nonthaburi 11130, Thailand"
         addr_line3 = "Call Center Tel. 02-114-3350"
@@ -1575,12 +1651,17 @@ def make_pm_report_html_pdf_bytes(
         label_approved = "ผู้อนุมัติ"
         label_witnessed = "ผู้เห็นชอบ"
         label_date = "วันที่ :"
+        label_comment = "ความเห็นเพิ่มเติม :"
+        label_inspection = "สรุปผลการตรวจสอบ :"
+        label_pre_pm = "(ก่อน PM)"
 
         # Job info labels
         label_station = "สถานี"
         label_pm_date = "วันที่ PM"
 
         label_page = "หน้า"
+        label_issue_id = "รหัสเอกสาร"
+        label_doc_name = "ชื่อเอกสาร"
         addr_line1 = "การไฟฟ้าฝ่ายผลิตแห่งประเทศไทย (กฟผ.)"
         addr_line2 = "เลขที่ 53 หมู่ 2 ถนนจรัญสนิทวงศ์ ตำบลบางกรวย อำเภอบางกรวย จังหวัดนนทบุรี 11130"
         addr_line3 = "ศูนย์บริการข้อมูล กฟผ. สายด่วน 1416"
@@ -1588,12 +1669,20 @@ def make_pm_report_html_pdf_bytes(
     pdf = ReportPDF(unit="mm", format="A4", issue_id=issue_id, doc_name=doc_name)
     _signers = doc.get("_signers") or {}
     pdf._signer_names = [str(_signers.get(k) or "") for k in ("performed", "approved", "witnessed")]
+    # วันที่ใต้ลายเซ็น: ส่งมาเมื่อเป็นส่วนของใบ PM สถานี — ผู้อนุมัติ/ผู้เห็นชอบใช้วันที่อนุมัติ (ยังไม่อนุมัติ = ว่าง)
+    pdf._signer_dates = (
+        [pm_date_th, _fmt_date_thai_full(_signers.get("approved_date") or ""),
+         _fmt_date_thai_full(_signers.get("witnessed_date") or "")]
+        if "approved_date" in _signers else None
+    )
     pdf._pm_date_th = pm_date_th
     pdf._section = "checklist"
     pdf._show_page_no = show_page_no
 
     # Set language labels for header and footer
     pdf._label_page = label_page
+    pdf._label_issue_id = label_issue_id
+    pdf._label_doc_name = label_doc_name
     pdf._addr_line1 = addr_line1
     pdf._addr_line2 = addr_line2
     pdf._addr_line3 = addr_line3
@@ -1700,7 +1789,7 @@ def make_pm_report_html_pdf_bytes(
 
             # สร้างข้อความ
             lines = []
-            lines.append(f"{idx}) {main_title} (Pre-PM)")  # หัวข้อหลัก ไม่มี indent
+            lines.append(f"{idx}) {main_title} {label_pre_pm}")  # หัวข้อหลัก ไม่มี indent
 
             # ดึง remark ของหัวข้อหลัก
             if idx == 9:
@@ -1820,6 +1909,12 @@ def make_pm_report_html_pdf_bytes(
     # ก่อนเริ่มลูป ให้คำนวณข้อมูลทั้งหมด เพื่อรู้ว่า row ไหนเป็นสุดท้าย
     checks_list = list(checks)
 
+    # ความสูงช่อง ความเห็น + สรุปผล (ต้องเท่ากับที่วาดจริงด้านล่าง) — ข้อสุดท้ายต้องมีที่ให้มันอยู่หน้าเดียวกัน
+    # ไม่พอ = ข้อสุดท้ายขึ้นหน้าใหม่ไปด้วย ไม่ปล่อยหน้าที่มีแต่ความเห็น 2 บรรทัด (+1 = ลายเซ็นจริงสูง 29 แต่ SIG_H = 28)
+    pdf.set_font(base_font, "", FONT_MAIN)
+    _, _comment_lines_h = _split_lines(pdf, result_w + remark_w - 2 * PADDING_X, str(doc.get("summary", "") or "-"), LINE_H)
+    comment_block_h = max(7, _comment_lines_h + 2 * PADDING_Y) + 7 + 1
+
     for idx, it in enumerate(checks_list):
         text = str(it.get("text", ""))
         result_lines = it.get("results") or []
@@ -1860,8 +1955,9 @@ def make_pm_report_html_pdf_bytes(
             min_item_h = max(min_item_h, 5 * LINE_H + 2 * PADDING_Y)
             remark_h = max(remark_h, 5 * LINE_H + 2 * PADDING_Y)
         
-        # ใช้ความสูงที่คำนวณได้
-        item_h = max(item_h, min_item_h)
+        # ใช้ความสูงที่คำนวณได้ — รวม padding บน/ล่างเหมือน template อื่น
+        # (เดิมไม่รวม → ชื่อข้อที่ตัด 2 บรรทัด เช่น ข้อ 9 บรรทัดสุดท้ายถูกตัดทิ้งตอนวาด)
+        item_h = max(item_h + 2 * PADDING_Y, min_item_h)
 
         result_block_h = max(ROW_MIN_H, len(result_lines) * LINE_H)
 
@@ -1879,15 +1975,15 @@ def make_pm_report_html_pdf_bytes(
         if pdf.page == 1:
             y_last_row_end = y + row_h_eff
         
-        _ensure_space(row_h_eff)
+        _ensure_space(row_h_eff + (comment_block_h if is_last_row else 0))
 
-        # ถ้า row นี้เป็นสุดท้าย และอยู่บนหน้าแรก ให้ขยายความสูงให้ชิดลายเซ็น
+        # ถ้า row นี้เป็นสุดท้าย และอยู่บนหน้าแรก ให้ขยายความสูงให้ชิดช่องความเห็น
         if is_last_row and pdf.page == 1:
             # คำนวณพื้นที่ที่เหลือจนถึงลายเซ็น
             page_bottom = pdf.h - pdf.b_margin - SIG_H
-            available_h = page_bottom - y
+            available_h = page_bottom - y - comment_block_h
             
-            # ใช้พื้นที่ที่เหลือทั้งหมด (เพื่อให้ชิดกับลายเซ็น)
+            # ใช้พื้นที่ที่เหลือ (เว้นที่ให้ความเห็น + สรุปผล อยู่หน้าเดียวกัน)
             if available_h > row_h_eff:
                 row_h_eff = available_h
         # ถ้าเป็น row ที่อื่น (ไม่ใช่สุดท้าย) แต่เป็นสุดท้ายของหน้าแรก ก็ต้องขยายด้วย
@@ -1912,8 +2008,15 @@ def make_pm_report_html_pdf_bytes(
                         align="L", lh=LINE_H, valign="top")
         x += item_w
 
+        _line_idx = it.get("result_line_idx")
+        _positions = None
+        if _line_idx:
+            pdf.set_font(base_font, "", FONT_MAIN)
+            _starts = _cell_line_starts(pdf, text, item_w)
+            _positions = [_starts[i] for i in _line_idx if i < len(_starts)]
         _draw_result_cell(pdf, base_font, x, y, result_w, row_h_eff,
-                        result_lines, offset_lines=result_offset, line_step=result_step)
+                        result_lines, offset_lines=result_offset, line_step=result_step,
+                        line_positions=_positions)
         x += result_w
 
         _cell_text_in_box(
@@ -1952,40 +2055,8 @@ def make_pm_report_html_pdf_bytes(
     page_bottom = pdf.h - pdf.b_margin
 
     is_new_page_for_comment = False
-    if pdf.page == 1:
-        # บนหน้าแรก: ไม่มี Comment (row สุดท้ายขยายแล้ว)
-        is_new_page_for_comment = True
-
-        # **วาดเส้นกรอบเชื่อมต่อ** ก่อนขึ้นหน้าใหม่ (จากข้อสุดท้ายไปถึงลายเซ็น)
-        page_bottom_with_sig = pdf.h - pdf.b_margin - SIG_H
-        pdf.line(x_table, y, x_table, page_bottom_with_sig)  # เส้นซ้าย
-        pdf.line(x_table + item_w + result_w + remark_w, y,
-                 x_table + item_w + result_w + remark_w, page_bottom_with_sig)  # เส้นขวา
-
-        pdf.add_page()
-        # header() จะถูกเรียกอัตโนมัติโดย add_page()
-        y = pdf.get_y()
-
-        pdf.set_xy(x0, y)
-        pdf.set_font(base_font, "B", 13)
-        pdf.set_fill_color(255, 230, 100)
-        pdf.cell(
-            page_w,
-            TITLE_H,
-            doc_title_post_cont,
-            border=1,
-            ln=1,
-            align="C",
-            fill=True,
-        )
-        y += TITLE_H
-
-        # เพิ่มเส้นซ้าย-ขวาของตารางต่อลงเมื่อขึ้นหน้าใหม่
-        page_bottom = pdf.h - pdf.b_margin
-        pdf.line(comment_x, y, comment_x, page_bottom)  # เส้นซ้าย
-        pdf.line(comment_x + comment_item_w + comment_result_w + comment_remark_w, y,
-                 comment_x + comment_item_w + comment_result_w + comment_remark_w, page_bottom)  # เส้นขวา
-    elif y + total_h_with_sig > page_bottom:
+    # ไม่พอ (ไม่ควรเกิด — ข้อสุดท้ายเว้นที่ไว้แล้ว) จึงขึ้นหน้าใหม่
+    if y + total_h_with_sig > page_bottom:
         # บนหน้า continued: ตรวจสอบพื้นที่ Comment + Inspection + Signature
         is_new_page_for_comment = True
 
@@ -2024,7 +2095,7 @@ def make_pm_report_html_pdf_bytes(
     # ========== แถว Comment (ขยายตามความสูง) ==========
     pdf.set_font(base_font, "B", 11)
     pdf.set_xy(comment_x, y)
-    pdf.cell(comment_item_w, h_comment, "Comment :", border=0, align="L")
+    pdf.cell(comment_item_w, h_comment, label_comment, border=0, align="L")
 
     # วาดเส้นคั่นระหว่าง "Comment :" และข้อความ (สูงเต็ม h_comment)
     pdf.line(comment_x + comment_item_w, y, comment_x + comment_item_w, y + h_comment)
@@ -2056,7 +2127,7 @@ def make_pm_report_html_pdf_bytes(
 
     pdf.set_xy(comment_x, y)
     pdf.set_font(base_font, "B", 11)
-    pdf.cell(comment_item_w, h_checklist, "Inspection Results :", border=0, align="L")
+    pdf.cell(comment_item_w, h_checklist, label_inspection, border=0, align="L")
 
     # วาดเส้นคั่น
     pdf.line(comment_x + comment_item_w, y, comment_x + comment_item_w, y + h_checklist)

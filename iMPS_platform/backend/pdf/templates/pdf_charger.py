@@ -894,6 +894,34 @@ def _draw_check(pdf: FPDF, x: float, y: float, size: float, checked: bool):
 
 
 # -------------------- Drawing – header / table header --------------------
+def _draw_doc_name_fit(pdf: FPDF, base_font: str, x: float, y: float, w: float, h: float,
+                       text: str, max_fs: float) -> None:
+    """
+    วาดชื่อเอกสารให้อยู่ในกรอบ (x, y, w, h) เสมอ จัดกลางทั้งแนวนอน/แนวตั้ง
+    ใช้ฟอนต์ใหญ่ที่สุดที่ใส่ได้ — บรรทัดเดียวก่อน ไม่พอค่อยหลายบรรทัดตามความสูงกรอบ
+    เล็กสุด 5pt แล้วยังไม่พอ ตัดบรรทัดเกินทิ้ง (ไม่ล้นกรอบ)
+    """
+    text = text or "-"
+    inner_w = w - 2
+    fs = max_fs
+    while True:
+        pdf.set_font(base_font, "B", fs)
+        lh = fs * 0.3528 * 1.2  # pt → mm (เผื่อสระล่าง/ขีดล่างของฟอนต์ไทย ไม่ให้ชนเส้นกรอบ)
+        max_lines = max(1, int(h // lh))
+        try:
+            lines = pdf.multi_cell(inner_w, lh, text, align="C", split_only=True)
+        except TypeError:  # fpdf รุ่นเก่า
+            lines = [text]
+        if len(lines) <= max_lines or fs <= 5:
+            lines = lines[:max_lines]
+            break
+        fs -= 0.5
+    start_y = y + max(0.0, (h - len(lines) * lh) / 2)
+    for i, line in enumerate(lines):
+        pdf.set_xy(x + 1, start_y + i * lh)
+        pdf.cell(inner_w, lh, line, align="C")
+
+
 def _draw_header(
     pdf: FPDF,
     base_font: str,
@@ -974,18 +1002,9 @@ def _draw_header(
     pdf.set_xy(xr, y_top + h_right_half + 1)
     pdf.set_font(base_font, "B", FONT_MAIN - 2)
     pdf.multi_cell(col_right, 4.5, f"{label_doc_name}", align="C")
-    # ชื่อเอกสารยาว (เช่น 7Eleven_Banklangmueang_5/2026) เคยตัดบรรทัดล้นกรอบลงไปทับตาราง
-    # → ย่อฟอนต์ให้พอดีบรรทัดเดียว ถ้ายังไม่พอที่ 6pt ค่อยตัด 2 บรรทัดเล็ก ๆ ในกรอบ
-    _dn = str(doc_name)
-    _fs = FONT_MAIN - 2
-    while _fs > 6 and pdf.get_string_width(_dn) > col_right - 2:
-        _fs -= 0.5
-        pdf.set_font(base_font, "B", _fs)
-    pdf.set_xy(xr, y_top + h_right_half + 1 + 4.5)
-    if pdf.get_string_width(_dn) <= col_right - 2:
-        pdf.cell(col_right, 4.5, _dn, align="C")
-    else:
-        pdf.multi_cell(col_right, 2.5, _dn, align="C")
+    # ชื่อเอกสารยาว (เช่น ชื่อสถานียาว_10/2026) ต้องอยู่ในกรอบ — ไม่ล้นลงไปทับแถบชื่อเรื่อง
+    _draw_doc_name_fit(pdf, base_font, xr, y_top + h_right_half + 5.0, col_right,
+                       h_all - h_right_half - 5.2, str(doc_name), FONT_MAIN - 2)
     pdf.set_font(base_font, "B", FONT_MAIN - 2)
     # ตำแหน่ง y หลังหัวกระดาษต้องเท่ากับของเดิม (multi_cell 2 บรรทัด) — เนื้อหาถัดไปเริ่มจาก get_y()
     pdf.set_xy(xr + col_right, y_top + h_right_half + 1 + 2 * 4.5)
@@ -1045,8 +1064,8 @@ def _draw_signature_block(
     signer_labels = [label_performed, label_approved, label_witnessed]
     col_widths = [item_w, result_w, remark_w]
 
-    row_h_header = 5
-    row_h_sig = 14
+    row_h_header = 6  # 5 → 6: วรรณยุกต์ของหัวภาษาไทย (ผู้ปฏิบัติงาน) ไม่ชนเส้นบน
+    row_h_sig = 13
     row_h_name = 5
     row_h_date = 5
     
@@ -1101,10 +1120,15 @@ def _draw_signature_block(
 
     # ===== แถววันที่ =====
     x_pos = x_table
+    _col = 0
     for w in col_widths:
         pdf.rect(x_pos, y, w, row_h_date)
         pdf.set_xy(x_pos, y)
-        pdf.cell(w, row_h_date, f"Date :  {pm_date_th}", align="C")
+        # ผู้ปฏิบัติงาน = วันที่ PM / ผู้อนุมัติ, ผู้เห็นชอบ = วันที่อนุมัติ (PDF ใบ PM สถานีส่งมาทาง doc["_signers"])
+        _dates = getattr(pdf, "_signer_dates", None)
+        _d = (_dates[_col] if _dates is not None and _col < len(_dates) else pm_date_th) or ""
+        pdf.cell(w, row_h_date, f"{label_date}  {_d}" if _d else label_date, align="C")
+        _col += 1
         x_pos += w
     y += row_h_date
 
@@ -1170,7 +1194,7 @@ def _draw_result_cell(
 
     results = [_norm_result(r) for r in results]
     
-    col_w = w / 5.0
+    col_w = w / 3.0  # Pass / Fail / N/A (ดีมาก/ดี/พอใช้ → Pass, ใช้งานไม่ได้ → Fail)
     labels = ["pass", "fail", "na"]
     label_text = {"pass": "Pass", "fail": "Fail", "na": "N/A"}
 
@@ -1178,7 +1202,7 @@ def _draw_result_cell(
     pdf.set_font(base_font, "", 6)
 
     # วาดเส้นแบ่งคอลัมน์
-    for i in range(1, 5):
+    for i in range(1, 3):
         sx = x + i * col_w
         pdf.line(sx, y, sx, y + h)
 
@@ -1371,6 +1395,23 @@ def _draw_photos_row(
 
 
 # -------------------- Drawing – job / summary blocks --------------------
+def _fit_station_split(pdf: FPDF, base_font: str, w: float, col_split: float, label_w: float,
+                       station: str, right_values: list) -> float:
+    """
+    ตำแหน่งเส้นแบ่งคอลัมน์ของบล็อกข้อมูลงาน ที่ทำให้ชื่อสถานีอยู่บรรทัดเดียว
+    ชื่อพอดีช่องเดิม = ใช้ col_split เดิม (ตรงกับเส้นแบ่งของตารางด้านล่าง)
+    ยาวเกิน = ขยับเส้นไปทางขวาเท่าที่จำเป็น แต่คอลัมน์ขวาต้องยังใส่ค่าของมันได้ครบ
+    (ยาวกว่านั้นอีก ผู้เรียกจะตัดบรรทัดตามเดิม)
+    """
+    pad = 4 + 2 * pdf.c_margin + 0.5  # ระยะ label→ค่า ใน _item + margin ของ cell + เผื่อ
+    pdf.set_font(base_font, "", FONT_MAIN)
+    need_left = label_w + pad + pdf.get_string_width(station)
+    if need_left <= col_split:
+        return col_split
+    need_right = label_w + pad + max((pdf.get_string_width(str(v or "-")) for v in right_values), default=0)
+    return max(col_split, min(need_left, w - need_right))
+
+
 def _draw_job_info_block(
     pdf: FPDF,
     base_font: str,
@@ -1407,6 +1448,10 @@ def _draw_job_info_block(
     # ถ้า station_name ยาวเกินช่อง — wrap หลายบรรทัด แล้วขยายความสูงแถวที่ 1
     pdf.set_font(base_font, "", FONT_MAIN)
     station_str = str(station_name or "-")
+    # ชื่อสถานียาวเกินช่อง — ขยายคอลัมน์ซ้ายให้อยู่บรรทัดเดียว (ดู _fit_station_split)
+    col_split = _fit_station_split(pdf, base_font, w, col_split, label_w, station_str, [charger_no, sn, power])
+    left_w = col_split
+    right_w = w - col_split
     value_w_left = left_w - label_w - 4
     wrapped_station, _ = _split_lines(pdf, value_w_left, station_str, row_h - 3)
     station_lines = max(1, len(wrapped_station))
@@ -1584,6 +1629,10 @@ class ReportPDF(HTML2PDF):
             result_w,
             remark_w,
             self._pm_date_th,
+            label_performed=getattr(self, "_label_performed", "Performed by"),
+            label_approved=getattr(self, "_label_approved", "Approved by"),
+            label_witnessed=getattr(self, "_label_witnessed", "Witnessed by"),
+            label_date=getattr(self, "_label_date", "Date :"),
         )
 
 
@@ -1603,7 +1652,7 @@ def make_pm_report_html_pdf_bytes(
     model = job.get("model", "-")
     power = job.get("power", "-")
     sn = job.get("sn", "-")
-    pm_date = _fmt_date_thai_like_sample(doc.get("pm_date", job.get("date", "-")))
+    pm_date = _fmt_date_thai_full(doc.get("pm_date", job.get("date", "-")))  # แบบเดียวกับใต้ลายเซ็น: 22/10/2569
     pm_date_th = _fmt_date_thai_full(doc.get("pm_date", job.get("date", "-")))
     issue_id = str(doc.get("issue_id", "-"))
     charger_no = doc.get("job", {}).get("chargerNo", "-")
@@ -1730,6 +1779,12 @@ def make_pm_report_html_pdf_bytes(
     pdf = ReportPDF(unit="mm", format="A4", issue_id=issue_id, doc_name=doc_name)
     _signers = doc.get("_signers") or {}
     pdf._signer_names = [str(_signers.get(k) or "") for k in ("performed", "approved", "witnessed")]
+    # วันที่ใต้ลายเซ็น: ส่งมาเมื่อเป็นส่วนของใบ PM สถานี — ผู้อนุมัติ/ผู้เห็นชอบใช้วันที่อนุมัติ (ยังไม่อนุมัติ = ว่าง)
+    pdf._signer_dates = (
+        [pm_date_th, _fmt_date_thai_full(_signers.get("approved_date") or ""),
+         _fmt_date_thai_full(_signers.get("witnessed_date") or "")]
+        if "approved_date" in _signers else None
+    )
     pdf._pm_date_th = pm_date_th
     pdf._section = "checklist"
     pdf._show_page_no = show_page_no
@@ -1746,6 +1801,10 @@ def make_pm_report_html_pdf_bytes(
     pdf._label_page = label_page
     pdf._label_issue_id = label_issue_id
     pdf._label_doc_name = label_doc_name
+    pdf._label_date = label_date
+    pdf._label_performed = label_performed
+    pdf._label_approved = label_approved
+    pdf._label_witnessed = label_witnessed
     pdf._addr_line1 = addr_line1
     pdf._addr_line2 = addr_line2
     pdf._addr_line3 = addr_line3
@@ -1985,14 +2044,14 @@ def make_pm_report_html_pdf_bytes(
             pdf.cell(page_w, TITLE_H, doc_title_post_cont, border=1, ln=1, align="C", fill=True)
             y += TITLE_H
 
-            y = _draw_items_table_header(pdf, base_font, x_table, y, item_w, result_w, remark_w, charger_no)
+            y = _draw_items_table_header(pdf, base_font, x_table, y, item_w, result_w, remark_w, charger_no, header_item, header_result, header_remark)
             pdf.set_font(base_font, "", FONT_MAIN)
 
             pdf._table_start_y = y
             return True  # ขึ้นหน้าใหม่
         return False  # ไม่ได้ขึ้นหน้าใหม่
 
-    y = _draw_items_table_header(pdf, base_font, x_table, y, item_w, result_w, remark_w, charger_no)
+    y = _draw_items_table_header(pdf, base_font, x_table, y, item_w, result_w, remark_w, charger_no, header_item, header_result, header_remark)
     pdf.set_font(base_font, "", FONT_MAIN)
     
     checks_list = list(checks)
@@ -2104,7 +2163,7 @@ def make_pm_report_html_pdf_bytes(
     # ========== แถว Comment ==========
     pdf.set_font(base_font, "B", 11)
     pdf.set_xy(comment_x, y)
-    pdf.cell(comment_item_w, h_comment, "Comment :", border=0, align="L")
+    pdf.cell(comment_item_w, h_comment, label_comment, border=0, align="L")
 
     pdf.line(comment_x + comment_item_w, y, comment_x + comment_item_w, y + h_comment)
 
@@ -2121,7 +2180,7 @@ def make_pm_report_html_pdf_bytes(
 
     pdf.set_xy(comment_x, y)
     pdf.set_font(base_font, "B", 11)
-    pdf.cell(comment_item_w, h_checklist, "Inspection Results :", border=0, align="L")
+    pdf.cell(comment_item_w, h_checklist, label_inspection, border=0, align="L")
 
     pdf.line(comment_x + comment_item_w, y, comment_x + comment_item_w, y + h_checklist)
 

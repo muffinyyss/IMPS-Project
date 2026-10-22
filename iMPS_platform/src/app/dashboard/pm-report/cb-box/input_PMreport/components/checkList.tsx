@@ -2,6 +2,7 @@
 import { usePmConfirm } from "@/app/dashboard/pm-report/components/PmConfirmDialog";
 
 import React, { useMemo, useCallback, useRef, useState, useEffect } from "react";
+import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
 import { Button, Input, Typography, Textarea, Tooltip } from "@material-tailwind/react";
 import { draftKey, saveDraftLocal, loadDraftLocal, clearDraftLocal } from "@/app/dashboard/pm-report/cb-box/input_PMreport/lib/draft";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -986,6 +987,8 @@ export default function CBBOXPMForm() {
     const action = searchParams.get("action");
 
     const [submitting, setSubmitting] = useState(false);
+    // หน้าจออัปโหลดรูปหลังกดบันทึก — แบบเดียวกับฟอร์ม Charger/MDB/CCB
+    const [uploadState, setUploadState] = useState({ show: false, total: 0, completed: 0 });
     const [docName, setDocName] = useState("");
     const [reportId, setReportId] = useState("");
     const [stationId, setStationId] = useState<string | null>(null);
@@ -1397,6 +1400,7 @@ export default function CBBOXPMForm() {
             const res = await fetch(url, { method: "POST", body: form, credentials: "include" });
             if (!res.ok) throw new Error(await res.text());
             uploadedIds.add(p.id);
+            setUploadState(prev => ({ ...prev, completed: prev.completed + 1 }));
             setPhotos(prev => ({ ...prev, [stateKey]: (prev[stateKey as any] || []).map(x => x.id === p.id ? { ...x, uploaded: true } : x) }));
         }
     }
@@ -1407,16 +1411,22 @@ export default function CBBOXPMForm() {
         const sid = stationId;
         if (!sid) throw new Error(t("alertNoStation", lang));
         const uploadedIds = new Set<string>();
-        for (let pass = 1; pass <= 3; pass++) {
-            if (unrecoverablePhotos(photosRef.current as any, uploadedIds).length > 0) {
-                throw new Error(unrecoverableMessage(lang));
+        try {
+            for (let pass = 1; pass <= 3; pass++) {
+                if (unrecoverablePhotos(photosRef.current as any, uploadedIds).length > 0) {
+                    throw new Error(unrecoverableMessage(lang));
+                }
+                const pendingCount = collectPending(photosRef.current as any, uploadedIds).length;
+                if (pendingCount === 0) break;
+                setUploadState({ show: true, total: pendingCount, completed: 0 });
+                // อัปไม่ผ่าน → throw ทะลุขึ้นไป catch ของ handler โดยยังไม่ได้ลบอะไร
+                await Promise.all(
+                    Object.entries(photosRef.current).map(([no, list]) =>
+                        uploadGroupPhotos(reportId, sid, photoGroupKey(no), list || [], no, uploadedIds))
+                );
             }
-            if (collectPending(photosRef.current as any, uploadedIds).length === 0) break;
-            // อัปไม่ผ่าน → throw ทะลุขึ้นไป catch ของ handler โดยยังไม่ได้ลบอะไร
-            await Promise.all(
-                Object.entries(photosRef.current).map(([no, list]) =>
-                    uploadGroupPhotos(reportId, sid, photoGroupKey(no), list || [], no, uploadedIds))
-            );
+        } finally {
+            setUploadState({ show: false, total: 0, completed: 0 });
         }
 
         const stillPending = collectPending(photosRef.current as any, uploadedIds);
@@ -1512,6 +1522,12 @@ export default function CBBOXPMForm() {
 
     return (
         <section className="tw-pb-24">
+            <LoadingOverlay
+                show={uploadState.show}
+                text={lang === "th"
+                    ? `กำลังอัปโหลดรูป Post-PM... ${uploadState.completed}/${uploadState.total} รูป`
+                    : `Uploading Post-PM photos... ${uploadState.completed}/${uploadState.total}`}
+            />
             <div className="tw-mx-auto tw-max-w-6xl tw-flex tw-items-center tw-justify-between tw-mb-4">
                 <Button variant="outlined" size="sm" onClick={goBackToList} title={t("backToList", lang)}><ArrowLeftIcon className="tw-w-4 tw-h-4 tw-stroke-gray-900 tw-stroke-2" /></Button>
             </div>

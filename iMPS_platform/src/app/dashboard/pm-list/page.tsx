@@ -137,6 +137,14 @@ const DELETE_PREFIX: Record<string, string> = {
  *   แถวใบงานที่ยังไม่มีเอกสาร → ลบใบงาน (และใบ PM ที่เปิดค้างไว้แต่ยังไม่ได้กรอก)
  *   เอกสารใบเดี่ยวแบบเก่า → ลบเอกสารใบนั้น
  */
+/** ลิงก์ PDF ตามภาษาที่เลือกบนหน้าเว็บ (ป้าย/หัวตารางใน PDF เปลี่ยนตาม) — ลิงก์ภายนอกหรือที่มี lang แล้วไม่แตะ */
+function pdfUrlOf(fileUrl: string, lang: string): string {
+  if (fileUrl.startsWith("http")) return fileUrl;
+  const url = `${API_BASE}${fileUrl}`;
+  if (/[?&]lang=/.test(url)) return url;
+  return `${url}${url.includes("?") ? "&" : "?"}lang=${encodeURIComponent(lang)}`;
+}
+
 function deleteUrlOf(r: PMRow): string {
   if (r.kind === "wo") return `/maximo/pm/${encodeURIComponent(r.wonum || r.id)}`;
   if (r.job_id) {
@@ -242,7 +250,8 @@ export default function PMListPage() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
-  const [sortKey, setSortKey] = useState<SortKey>("date");
+  // ค่าเริ่มต้น: เรียงตามเลขใบงาน ใบใหม่ (เลขมาก) อยู่บน
+  const [sortKey, setSortKey] = useState<SortKey>("wo");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
 
   const router = useRouter();
@@ -754,8 +763,8 @@ export default function PMListPage() {
       setSortDir((d) => (d === "asc" ? "desc" : "asc"));
     } else {
       setSortKey(key);
-      // วันที่เริ่มจากล่าสุด ข้อความเริ่ม A→Z
-      setSortDir(key === "date" ? "desc" : "asc");
+      // วันที่/เลขใบงานเริ่มจากล่าสุด ข้อความเริ่ม A→Z
+      setSortDir(key === "date" || key === "wo" ? "desc" : "asc");
     }
   };
 
@@ -781,7 +790,7 @@ export default function PMListPage() {
       { header: t.headers.technician, value: (r) => (r.technician === "-" ? "" : r.technician) },
       { header: t.headers.date, value: (r) => csvDate(r.pm_date) },
       { header: t.headers.status, value: (r) => stageLabel[stageOf(r)] },
-      { header: "PDF", value: (r) => (stageOf(r) === "closed" && r.file_url ? (r.file_url.startsWith("http") ? r.file_url : `${API_BASE}${r.file_url}`) : "") },
+      { header: "PDF", value: (r) => (stageOf(r) === "closed" && r.file_url ? pdfUrlOf(r.file_url, lang) : "") },
     ]);
     downloadCsv(csvFilename("pm-list"), csv);
   };
@@ -1050,9 +1059,7 @@ export default function PMListPage() {
                 const stage = stageOf(r);
                 const style = STAGE_STYLE[stage];
                 // PDF ให้โหลดได้เฉพาะใบที่อนุมัติปิดแล้ว (Closed)
-                const pdfHref = stage === "closed" && r.file_url
-                  ? (r.file_url.startsWith("http") ? r.file_url : `${API_BASE}${r.file_url}`)
-                  : "";
+                const pdfHref = stage === "closed" && r.file_url ? pdfUrlOf(r.file_url, lang) : "";
                 return (
                   <tr
                     key={`${r.id}-${r.pm_type}-${i}`}

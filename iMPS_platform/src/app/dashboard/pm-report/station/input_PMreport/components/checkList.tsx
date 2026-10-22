@@ -1,6 +1,7 @@
 "use client";
 import { usePmConfirm } from "@/app/dashboard/pm-report/components/PmConfirmDialog";
 import React, { useMemo, useCallback, useRef, useState, useEffect } from "react";
+import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
 import {
     Button,
     Card,
@@ -975,6 +976,8 @@ export default function StationPMReport() {
     const [me, setMe] = useState<Me | null>(null);
     const router = useRouter();
     const [submitting, setSubmitting] = useState(false);
+    // หน้าจออัปโหลดรูปหลังกดบันทึก — แบบเดียวกับฟอร์ม Charger/MDB/CCB
+    const [uploadState, setUploadState] = useState({ show: false, total: 0, completed: 0 });
     const [docName, setDocName] = useState<string>("");
     const [reportId, setReportId] = useState<string>("");
 
@@ -1437,6 +1440,7 @@ export default function StationPMReport() {
                 ? `รูปข้อ ${getDisplayedRowNo(stateKey.startsWith("q") ? `r${stateKey.substring(1)}` : stateKey)} เกินจำนวนที่ระบบรับได้`
                 : `Too many photos for item ${stateKey}`);
             uploadedIds.add(p.id);
+            setUploadState(prev => ({ ...prev, completed: prev.completed + 1 }));
             setPhotos(prev => ({ ...prev, [stateKey]: ((prev as any)[stateKey] || []).map((x: PhotoItem) => x.id === p.id ? { ...x, uploaded: true } : x) }));
         }
     }
@@ -1447,24 +1451,30 @@ export default function StationPMReport() {
         const sid = stationId;
         if (!sid) throw new Error(t("alertNoStation", lang));
         const uploadedIds = new Set<string>();
-        for (let pass = 1; pass <= 3; pass++) {
-            if (unrecoverablePhotos(photosRef.current as any, uploadedIds).length > 0) {
-                throw new Error(unrecoverableMessage(lang));
-            }
-            if (collectPending(photosRef.current as any, uploadedIds).length === 0) break;
+        try {
+            for (let pass = 1; pass <= 3; pass++) {
+                if (unrecoverablePhotos(photosRef.current as any, uploadedIds).length > 0) {
+                    throw new Error(unrecoverableMessage(lang));
+                }
+                const pendingCount = collectPending(photosRef.current as any, uploadedIds).length;
+                if (pendingCount === 0) break;
+                setUploadState({ show: true, total: pendingCount, completed: 0 });
 
-            const jobs: Promise<void>[] = [];
-            for (const [photoKey, list] of Object.entries(photosRef.current)) {
-                if (!list || list.length === 0) continue;
-                const groupKey = toGroupKey(photoKey);
-                // เดิม continue เฉย ๆ → รูปข้อนี้ไม่ถูกอัปแต่โค้ดไหลไปลบรูปในเครื่องต่อ
-                if (!groupKey) throw new Error(lang === "th"
-                    ? `จับคู่รูปข้อ ${photoKey} กับหัวข้อในฟอร์มไม่ได้ กรุณาแจ้งผู้ดูแลระบบ`
-                    : `Cannot map photo key ${photoKey} to a checklist item. Please contact the administrator.`);
-                jobs.push(uploadGroupPhotos(reportId, sid, groupKey, list, photoKey, uploadedIds));
+                const jobs: Promise<void>[] = [];
+                for (const [photoKey, list] of Object.entries(photosRef.current)) {
+                    if (!list || list.length === 0) continue;
+                    const groupKey = toGroupKey(photoKey);
+                    // เดิม continue เฉย ๆ → รูปข้อนี้ไม่ถูกอัปแต่โค้ดไหลไปลบรูปในเครื่องต่อ
+                    if (!groupKey) throw new Error(lang === "th"
+                        ? `จับคู่รูปข้อ ${photoKey} กับหัวข้อในฟอร์มไม่ได้ กรุณาแจ้งผู้ดูแลระบบ`
+                        : `Cannot map photo key ${photoKey} to a checklist item. Please contact the administrator.`);
+                    jobs.push(uploadGroupPhotos(reportId, sid, groupKey, list, photoKey, uploadedIds));
+                }
+                // อัปไม่ผ่าน → throw ทะลุขึ้นไป catch ของ handler โดยยังไม่ได้ลบอะไร
+                await Promise.all(jobs);
             }
-            // อัปไม่ผ่าน → throw ทะลุขึ้นไป catch ของ handler โดยยังไม่ได้ลบอะไร
-            await Promise.all(jobs);
+        } finally {
+            setUploadState({ show: false, total: 0, completed: 0 });
         }
 
         const stillPending = collectPending(photosRef.current as any, uploadedIds);
@@ -1672,6 +1682,12 @@ export default function StationPMReport() {
 
     return (
         <section className="tw-pb-24">
+            <LoadingOverlay
+                show={uploadState.show}
+                text={lang === "th"
+                    ? `กำลังอัปโหลดรูป Post-PM... ${uploadState.completed}/${uploadState.total} รูป`
+                    : `Uploading Post-PM photos... ${uploadState.completed}/${uploadState.total}`}
+            />
             <div className="tw-mx-auto tw-max-w-6xl tw-flex tw-items-center tw-justify-between tw-mb-4">
                 <Button variant="outlined" size="sm" onClick={goBackToList} title={t("backToList", lang)}>
                     <ArrowLeftIcon className="tw-w-4 tw-h-4 tw-stroke-gray-900 tw-stroke-2" />
