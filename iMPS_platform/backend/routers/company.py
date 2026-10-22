@@ -1,6 +1,6 @@
 """Company CRUD — รายชื่อบริษัทแยกประเภท owner / vendor / outsource (เมนู Company)
 
-สิทธิ์: admin/super_admin จัดการได้ทุกประเภท — planner เพิ่ม/แก้ได้เฉพาะ vendor และ outsource
+สิทธิ์: admin/super_admin จัดการได้ทุกประเภท — planner เพิ่ม/แก้/ลบได้เฉพาะ vendor และ outsource
 ของบริษัทตัวเอง (ขอบเขตเดียวกับที่ /pm-options ส่งให้ฟอร์ม PM) ส่วนแท็บ Owner ยังเป็นของ admin
 
 โครงของ type=vendor ต่างจากอีกสองประเภท: 1 document = owner 1 ราย ที่ถือรายการ vendor ไว้ข้างใน
@@ -435,3 +435,38 @@ async def update_company(
 
     doc.update(updates)
     return _serialize(doc)
+
+
+@router.delete("/{company_id}")
+async def delete_company(company_id: str, current: UserClaims = Depends(get_current_user)):
+    """ลบ record ออกจากเมนู Company
+
+    planner ลบได้เฉพาะ vendor / outsource ของบริษัทตัวเอง (ขอบเขตเดียวกับ PUT)
+    owner ที่ยังมี record vendor / outsource อ้างชื่ออยู่ห้ามลบ — ไม่งั้นจะเหลือ record ลอย
+    ใบงาน PM เดิมเก็บชื่อ outsource เป็นข้อความ จึงไม่กระทบ แค่ชื่อนี้จะไม่ขึ้นเป็นตัวเลือกอีก
+    """
+    _require_company_editor(current)
+    oid = _to_object_id(company_id)
+    doc = await companies_coll_async.find_one({"_id": oid})
+    if not doc:
+        raise HTTPException(status_code=404, detail="company not found")
+
+    company_type = doc.get("type", "")
+    scope = await _editor_scope(current, company_type)
+    if scope is not None:
+        owner_value = str(doc.get(_owner_field(company_type)) or "").strip()
+        if owner_value.lower() != scope.lower():
+            raise HTTPException(status_code=403, detail="not your company")
+
+    if company_type == "owner":
+        name = str(doc.get("name") or "").strip()
+        if name and await companies_coll_async.find_one({
+            "$or": [
+                {"type": "vendor", "name": _ci(name)},
+                {"type": "outsource", "company": _ci(name)},
+            ]
+        }):
+            raise HTTPException(status_code=409, detail="owner still has vendor / outsource records")
+
+    await companies_coll_async.delete_one({"_id": oid})
+    return {"ok": True, "id": company_id}

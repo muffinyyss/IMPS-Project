@@ -13,8 +13,9 @@ import {
   Tooltip,
   Typography,
 } from "@material-tailwind/react";
-import { PencilSquareIcon } from "@heroicons/react/24/solid";
+import { PencilSquareIcon, TrashIcon } from "@heroicons/react/24/solid";
 import { apiFetch } from "@/utils/api";
+import ConfirmDialog from "@/app/dashboard/stations/components/ConfirmDialog";
 import useLanguage, { type Lang } from "@/utils/useLanguage";
 
 type TabId = "Owner" | "Vendor" | "Outsource";
@@ -62,6 +63,18 @@ const T = {
   removeOutsource: { th: "ลบ Outsource นี้", en: "Remove this outsource" },
   remove: { th: "ลบ", en: "Remove" },
   edit: { th: "แก้ไข", en: "Edit" },
+  manageOutsource: { th: "แก้ไข / เพิ่ม / ลบ Outsource ของบริษัทนี้", en: "Edit / add / remove this company's outsources" },
+  deleteOutsource: { th: "ลบ Outsource", en: "Delete outsource" },
+  deleteConfirmTitle: { th: "ยืนยันการลบ Outsource", en: "Delete this outsource?" },
+  deleteConfirmMsg: {
+    th: "ชื่อนี้จะไม่ขึ้นเป็นตัวเลือกผู้รับผิดชอบงาน PM อีก (ใบงานเดิมไม่กระทบ)",
+    en: "It will no longer appear as a PM assignee option (existing work orders are unaffected)",
+  },
+  deleteFailed: { th: "ลบไม่สำเร็จ กรุณาลองใหม่", en: "Delete failed, please try again" },
+  pendingDelete: { th: "รายการที่จะถูกลบเมื่อกดบันทึก", en: "Will be deleted when you save" },
+  undo: { th: "เอาคืน", en: "Undo" },
+  companyUnit: { th: "บริษัท", en: "companies" },
+  outsourceUnit: { th: "Outsource", en: "outsources" },
   tel: { th: "เบอร์โทร", en: "Tel" },
   email: { th: "อีเมล", en: "Email" },
   address: { th: "ที่อยู่", en: "Address" },
@@ -108,6 +121,27 @@ type Company = {
   created_by: string;
   created_at: string | null;
 };
+
+/** แถวในฟอร์ม Outsource — id=null คือรายการใหม่, orig ไว้เทียบว่าชื่อถูกแก้หรือไม่ */
+type OutsourceItem = { id: string | null; name: string; orig: string };
+const emptyOutsource = (): OutsourceItem => ({ id: null, name: "", orig: "" });
+
+/** แท็บ Outsource แสดงแบบรวมกลุ่มตาม company — 1 company มีได้หลาย outsource */
+type OutsourceGroup = { company: string; items: Company[] };
+
+function groupOutsources(list: Company[]): OutsourceGroup[] {
+  const groups = new Map<string, OutsourceGroup>();
+  for (const c of list) {
+    const company = (c.company || "").trim();
+    const key = company.toLowerCase();
+    if (!groups.has(key)) groups.set(key, { company, items: [] });
+    groups.get(key)!.items.push(c);
+  }
+  const byName = (a: string, b: string) => a.localeCompare(b, "th", { sensitivity: "base" });
+  return Array.from(groups.values())
+    .map(g => ({ ...g, items: [...g.items].sort((a, b) => byName(a.name, b.name)) }))
+    .sort((a, b) => byName(a.company || "￿", b.company || "￿"));
+}
 
 function slugToTab(slug: string | null): TabId {
   switch (slug) {
@@ -382,9 +416,46 @@ export default function CompanyPage() {
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [vendors, setVendors] = useState<VendorEntry[]>([emptyVendor()]);
-  const [outsourceNames, setOutsourceNames] = useState<string[]>([""]);
+  const [outsourceItems, setOutsourceItems] = useState<OutsourceItem[]>([emptyOutsource()]);
+  // outsource เดิมที่กด ✕ ในฟอร์ม — ยังไม่ลบจริงจนกว่าจะกดบันทึก
+  const [removedOutsources, setRemovedOutsources] = useState<OutsourceItem[]>([]);
+  // company ของกลุ่มที่กำลังแก้ (null = เพิ่มใหม่) — ใช้ดูว่าผู้ใช้ย้ายทั้งกลุ่มไป company อื่นหรือไม่
+  const [editGroupCompany, setEditGroupCompany] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState("");
+  const isEditing = editId !== null || editGroupCompany !== null;
+
+  const outsourceGroups = useMemo(
+    () => (isOutsourceTab ? groupOutsources(companies) : []),
+    [isOutsourceTab, companies]
+  );
+
+  // ─── ลบ outsource ทีละรายจากตาราง ───
+  const [deleteTarget, setDeleteTarget] = useState<Company | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [actionError, setActionError] = useState("");
+
+  useEffect(() => { setActionError(""); }, [activeType]);
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      const res = await apiFetch(`/companies/${deleteTarget.id}`, { method: "DELETE", credentials: "include" });
+      // 404 = มีคนลบไปก่อนแล้ว — ถือว่าสำเร็จ แค่โหลดใหม่
+      if (res.ok || res.status === 404) {
+        setActionError("");
+        setReloadKey(k => k + 1);
+      } else {
+        setActionError(t("deleteFailed", lang));
+      }
+    } catch {
+      setActionError(t("deleteFailed", lang));
+    } finally {
+      setDeleting(false);
+      setDeleteTarget(null);
+    }
+  };
 
   // owner ที่ผูกไว้อาจถูกลบออกจากแท็บ Owner ไปแล้ว — คงไว้ใน dropdown ไม่ให้ค่าหาย
   const ownerChoices = useMemo(() => {
@@ -418,24 +489,46 @@ export default function CompanyPage() {
         setVendors(list => [...list.filter(v => v.name || v.brands.length), emptyVendor()]);
         return;
       }
+      // outsource ของบริษัทตัวเองมีอยู่แล้ว — เปิดกลุ่มเดิมพร้อมช่องว่างให้เพิ่มต่อ จะได้เห็นชื่อที่มีครบ
+      if (isOutsourceTab && outsourceGroups.length) {
+        openEditGroup(outsourceGroups[0], true);
+        return;
+      }
       setEditId(null);
+      setEditGroupCompany(null);
       setForm({ ...EMPTY_FORM, name: isVendorTab ? myCompany : "", company: isOutsourceTab ? myCompany : "" });
       setVendors([emptyVendor()]);
-      setOutsourceNames([""]);
+      setOutsourceItems([emptyOutsource()]);
+      setRemovedOutsources([]);
       setFormError("");
       setAddOpen(true);
       return;
     }
     setEditId(null);
+    setEditGroupCompany(null);
     setForm({ ...EMPTY_FORM });
     setVendors([emptyVendor()]);
-    setOutsourceNames([""]);
+    setOutsourceItems([emptyOutsource()]);
+    setRemovedOutsources([]);
+    setFormError("");
+    setAddOpen(true);
+  };
+
+  /** แก้ทั้งกลุ่มของ company เดียว: เปลี่ยนชื่อ / ลบ / เพิ่ม outsource / ย้าย company ได้ในฟอร์มเดียว */
+  const openEditGroup = (g: OutsourceGroup, withBlankRow = false) => {
+    setEditId(null);
+    setEditGroupCompany(g.company);
+    setForm({ ...EMPTY_FORM, company: g.company });
+    const items = g.items.map(c => ({ id: c.id, name: c.name, orig: c.name }));
+    setOutsourceItems(withBlankRow ? [...items, emptyOutsource()] : items.length ? items : [emptyOutsource()]);
+    setRemovedOutsources([]);
     setFormError("");
     setAddOpen(true);
   };
 
   const openEdit = (c: Company) => {
     setEditId(c.id);
+    setEditGroupCompany(null);
     setForm({ name: c.name, tel: c.tel, email: c.email, address: c.address, company: c.company || "" });
     // หยิบมาเฉพาะ 2 ฟิลด์ที่ใช้ — record เก่าอาจมีฟิลด์ติดต่อที่เลิกใช้แล้วติดมาด้วย
     setVendors(
@@ -443,7 +536,8 @@ export default function CompanyPage() {
         ? c.vendors.map(v => ({ name: v.name || "", brands: [...(v.brands || [])] }))
         : [emptyVendor()]
     );
-    setOutsourceNames([c.name]);
+    setOutsourceItems([emptyOutsource()]);
+    setRemovedOutsources([]);
     setFormError("");
     setAddOpen(true);
   };
@@ -459,29 +553,124 @@ export default function CompanyPage() {
   const removeVendor = (idx: number) =>
     setVendors(list => (list.length > 1 ? list.filter((_, i) => i !== idx) : list));
 
-  const removeOutsource = (idx: number) =>
-    setOutsourceNames(list => (list.length > 1 ? list.filter((_, i) => i !== idx) : list));
+  const removeOutsource = (idx: number) => {
+    const item = outsourceItems[idx];
+    if (!item) return;
+    // รายการเดิมเก็บไว้ลบตอนกดบันทึก — กดเอาคืนได้ถ้ากดผิด
+    if (item.id) setRemovedOutsources(list => [...list, item]);
+    setOutsourceItems(list => {
+      const next = list.filter((_, i) => i !== idx);
+      return next.length ? next : [emptyOutsource()];
+    });
+  };
 
-  const submitAdd = async () => {
-    // แท็บ Outsource ต้องเลือก company ก่อน จึงเช็คก่อนชื่อเพื่อให้ error ไล่ตามลำดับช่องในฟอร์ม
-    if (isOutsourceTab && !form.company.trim()) {
+  const undoRemoveOutsource = (item: OutsourceItem) => {
+    setRemovedOutsources(list => list.filter(r => r.id !== item.id));
+    setOutsourceItems(list => {
+      const kept = list.filter(i => i.id || i.name.trim()); // ตัดช่องว่างที่เติมไว้ตอนลบจนหมด
+      return [...kept, { ...item, name: item.orig }];
+    });
+  };
+
+  const saveCompany = (payload: object, id: string | null = null) => apiFetch(id ? `/companies/${id}` : "/companies/", {
+    method: id ? "PUT" : "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(payload),
+  });
+
+  /** บันทึกแท็บ Outsource: ลบ → แก้ชื่อ/ย้าย company → เพิ่มใหม่ (ลบก่อน จะได้นำชื่อที่ลบมาใช้ซ้ำได้) */
+  const submitOutsource = async () => {
+    const company = form.company.trim();
+    if (!company) {
       setFormError(t("companyRequired", lang));
       return;
     }
-    const cleanOutsourceNames = outsourceNames.map(name => name.trim()).filter(Boolean);
-    if (isOutsourceTab && !cleanOutsourceNames.length) {
+    // รายการเดิมที่ถูกล้างชื่อจนว่าง — ไม่รู้ว่าตั้งใจลบหรือพิมพ์ค้าง ให้กด ✕ แทน
+    if (outsourceItems.some(i => i.id && !i.name.trim())) {
       setFormError(t("outsourceNameRequired", lang));
       return;
     }
-    if (!isOutsourceTab && !form.name.trim()) {
-      setFormError(
-        t(
-          isVendorTab ? "ownerRequired"
-            : isOutsourceTab ? "outsourceNameRequired"
-            : "ownerNameRequired",
-          lang
-        )
-      );
+    const filled = outsourceItems.filter(i => i.name.trim());
+    if (!filled.length && !removedOutsources.length) {
+      setFormError(t("outsourceNameRequired", lang));
+      return;
+    }
+    const seen = new Set<string>();
+    for (const i of filled) {
+      const key = i.name.trim().toLowerCase();
+      if (seen.has(key)) {
+        setFormError(t("duplicateOutsource", lang));
+        return;
+      }
+      seen.add(key);
+    }
+
+    const companyChanged = editGroupCompany !== null && company !== editGroupCompany;
+    setSaving(true);
+    setFormError("");
+    let failed: Response | null = null;
+    let changed = false;
+    try {
+      const stillRemoved: OutsourceItem[] = [];
+      for (const item of removedOutsources) {
+        const res = await apiFetch(`/companies/${item.id}`, { method: "DELETE", credentials: "include" });
+        if (res.ok || res.status === 404) changed = true;
+        else { failed ??= res; stillRemoved.push(item); }
+      }
+
+      const nextItems: OutsourceItem[] = [];
+      for (const item of outsourceItems) {
+        const name = item.name.trim();
+        if (!item.id) {
+          if (!name) continue; // ช่องว่างที่กดเพิ่มไว้แต่ไม่ได้กรอก
+          const res = await saveCompany({ name, type: "outsource", company });
+          if (res.ok) {
+            const created = await res.json();
+            changed = true;
+            nextItems.push({ id: String(created.id), name, orig: name });
+          } else {
+            failed ??= res;
+            nextItems.push(item);
+          }
+        } else if (name !== item.orig || companyChanged) {
+          const res = await saveCompany({ name, company }, item.id);
+          if (res.ok) {
+            changed = true;
+            nextItems.push({ ...item, name, orig: name });
+          } else {
+            failed ??= res;
+            nextItems.push(item);
+          }
+        } else {
+          nextItems.push(item);
+        }
+      }
+
+      if (changed) setReloadKey(k => k + 1);
+      if (!failed) {
+        setAddOpen(false);
+        return;
+      }
+      // บางรายการผ่านแล้ว — เก็บสถานะล่าสุดไว้ กดบันทึกซ้ำจะไม่สร้าง/ลบซ้ำ
+      setRemovedOutsources(stillRemoved);
+      setOutsourceItems(nextItems.length ? nextItems : [emptyOutsource()]);
+      setFormError(t(failed.status === 409 ? "duplicateOutsource" : "saveFailed", lang));
+    } catch {
+      if (changed) setReloadKey(k => k + 1);
+      setFormError(t("saveFailed", lang));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const submitAdd = async () => {
+    if (isOutsourceTab) {
+      await submitOutsource();
+      return;
+    }
+    if (!form.name.trim()) {
+      setFormError(t(isVendorTab ? "ownerRequired" : "ownerNameRequired", lang));
       return;
     }
     const cleanVendors = vendors
@@ -495,34 +684,17 @@ export default function CompanyPage() {
     setSaving(true);
     setFormError("");
     try {
-      const saveCompany = (payload: object, id: string | null = null) => apiFetch(id ? `/companies/${id}` : "/companies/", {
-        method: id ? "PUT" : "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify(payload),
-      });
-      const outsourcePayload = (name: string) => ({ name, type: activeType, company: form.company.trim() });
-      const responses = isOutsourceTab
-        ? editId
-          ? await Promise.all([
-              saveCompany(outsourcePayload(cleanOutsourceNames[0]), editId),
-              ...cleanOutsourceNames.slice(1).map(name => saveCompany(outsourcePayload(name))),
-            ])
-          : await Promise.all(cleanOutsourceNames.map(name => saveCompany(outsourcePayload(name))))
-        : [await saveCompany(
-            isVendorTab
-              ? { name: form.name.trim(), type: activeType, vendors: cleanVendors }
-              : { ...form, name: form.name.trim(), type: activeType },
-            editId
-          )];
-      const res = responses.find(response => !response.ok) || responses[0];
-      if (responses.every(response => response.ok)) {
+      const res = await saveCompany(
+        isVendorTab
+          ? { name: form.name.trim(), type: activeType, vendors: cleanVendors }
+          : { ...form, name: form.name.trim(), type: activeType },
+        editId
+      );
+      if (res.ok) {
         setAddOpen(false);
         setReloadKey(k => k + 1);
       } else if (res.status === 409) {
-        setFormError(
-          t(isVendorTab ? "duplicateOwner" : isOutsourceTab ? "duplicateOutsource" : "duplicate", lang)
-        );
+        setFormError(t(isVendorTab ? "duplicateOwner" : "duplicate", lang));
       } else {
         setFormError(t("saveFailed", lang));
       }
@@ -545,6 +717,30 @@ export default function CompanyPage() {
     </Tooltip>
   );
 
+  const groupEditButton = (g: OutsourceGroup) => (
+    <Tooltip content={t("manageOutsource", lang)}>
+      <button
+        onClick={() => openEditGroup(g)}
+        aria-label={t("manageOutsource", lang)}
+        className="tw-group/btn tw-rounded-lg tw-bg-blue-50 tw-p-2 tw-shadow-sm tw-ring-1 tw-ring-blue-200/60 tw-transition-all tw-duration-200 hover:tw-bg-blue-600 hover:tw-shadow-md hover:tw-ring-blue-600"
+      >
+        <PencilSquareIcon className="tw-h-4 tw-w-4 tw-text-blue-600 tw-transition-colors group-hover/btn:tw-text-white" />
+      </button>
+    </Tooltip>
+  );
+
+  const deleteButton = (c: Company) => (
+    <Tooltip content={t("deleteOutsource", lang)}>
+      <button
+        onClick={() => setDeleteTarget(c)}
+        aria-label={`${t("deleteOutsource", lang)} ${c.name}`}
+        className="tw-group/del tw-rounded-lg tw-bg-red-50 tw-p-2 tw-shadow-sm tw-ring-1 tw-ring-red-200/60 tw-transition-all tw-duration-200 hover:tw-bg-red-600 hover:tw-shadow-md hover:tw-ring-red-600"
+      >
+        <TrashIcon className="tw-h-4 tw-w-4 tw-text-red-500 tw-transition-colors group-hover/del:tw-text-white" />
+      </button>
+    </Tooltip>
+  );
+
   const brandBadges = (brands: string[]) =>
     brands.length ? (
       <div className="tw-flex tw-flex-wrap tw-gap-1.5">
@@ -561,7 +757,7 @@ export default function CompanyPage() {
       <span className="tw-text-gray-300">-</span>
     );
 
-  const columnCount = isVendorTab ? 5 : isOutsourceTab ? 4 : 3;
+  const columnCount = isVendorTab || isOutsourceTab ? 5 : 3;
 
   const messageRow = (msg: string, isError = false) => (
     <tr>
@@ -598,16 +794,41 @@ export default function CompanyPage() {
       ));
     });
 
+  /** แท็บ Outsource: รวมกลุ่มตาม company (rowSpan) — 1 แถว = outsource 1 ราย พร้อมปุ่มลบรายตัว */
+  const outsourceRows = () =>
+    outsourceGroups.map((g, i) =>
+      g.items.map((c, j) => (
+        <tr
+          key={c.id}
+          className={`${j === 0 ? "tw-border-t tw-border-gray-200" : "tw-border-t tw-border-gray-50"} hover:tw-bg-blue-50/30`}
+        >
+          {j === 0 && (
+            <>
+              <td rowSpan={g.items.length} className="tw-px-4 tw-py-3 tw-align-top tw-text-gray-400">{i + 1}</td>
+              <td rowSpan={g.items.length} className="tw-px-4 tw-py-3 tw-align-top">
+                <div className="tw-font-medium tw-text-gray-800">{g.company || "-"}</div>
+                <div className="tw-mt-1 tw-text-[11px] tw-text-gray-400">
+                  {g.items.length} {t("outsourceUnit", lang)}
+                </div>
+              </td>
+            </>
+          )}
+          <td className="tw-px-4 tw-py-2.5 tw-text-gray-600">{c.name}</td>
+          <td className="tw-px-2 tw-py-2.5 tw-text-right">{deleteButton(c)}</td>
+          {j === 0 && (
+            <td rowSpan={g.items.length} className="tw-border-l tw-border-gray-100 tw-px-4 tw-py-3 tw-align-top">
+              {groupEditButton(g)}
+            </td>
+          )}
+        </tr>
+      ))
+    );
+
   const plainRows = () =>
     companies.map((c, i) => (
       <tr key={c.id} className="tw-border-t tw-border-gray-100 hover:tw-bg-blue-50/30">
         <td className="tw-px-4 tw-py-3 tw-text-gray-400">{i + 1}</td>
-        {isOutsourceTab && (
-          <td className="tw-px-4 tw-py-3 tw-font-medium tw-text-gray-800">{c.company || "-"}</td>
-        )}
-        <td className={`tw-px-4 tw-py-3 ${isOutsourceTab ? "tw-text-gray-600" : "tw-font-medium tw-text-gray-800"}`}>
-          {c.name}
-        </td>
+        <td className="tw-px-4 tw-py-3 tw-font-medium tw-text-gray-800">{c.name}</td>
         <td className="tw-px-4 tw-py-3">{editButton(c)}</td>
       </tr>
     ));
@@ -617,7 +838,7 @@ export default function CompanyPage() {
     if (plannerWithoutCompany) return messageRow(t("noMyCompany", lang), true);
     if (loadError) return messageRow(t("loadFailed", lang), true);
     if (!companies.length) return messageRow(t("empty", lang));
-    return isVendorTab ? vendorRows() : plainRows();
+    return isVendorTab ? vendorRows() : isOutsourceTab ? outsourceRows() : plainRows();
   };
 
   return (
@@ -660,7 +881,9 @@ export default function CompanyPage() {
               <h2 className="tw-text-base tw-font-bold tw-text-gray-800">{active}</h2>
               {!loading && !loadError && !plannerWithoutCompany && (
                 <p className="tw-mt-0.5 tw-text-xs tw-text-gray-500">
-                  {companies.length} {t("count", lang)}
+                  {isOutsourceTab
+                    ? `${outsourceGroups.length} ${t("companyUnit", lang)} · ${companies.length} ${t("outsourceUnit", lang)}`
+                    : `${companies.length} ${t("count", lang)}`}
                   {isPlanner && myCompany && ` · ${t("scopeHint", lang)} ${myCompany}`}
                 </p>
               )}
@@ -674,6 +897,14 @@ export default function CompanyPage() {
               + {t("add", lang)}
             </Button>
           </div>
+
+          {actionError && (
+            <div className="tw-mx-4 tw-mt-3 tw-flex tw-items-center tw-gap-3 tw-rounded-xl tw-bg-red-50 tw-px-4 tw-py-2.5 tw-text-sm tw-text-red-700 tw-ring-1 tw-ring-red-200/70">
+              <span>⚠️</span>
+              <span className="tw-flex-1">{actionError}</span>
+              <button type="button" onClick={() => setActionError("")} aria-label={t("cancel", lang)} className="tw-text-red-400 hover:tw-text-red-600">✕</button>
+            </div>
+          )}
 
           <div className="tw-overflow-x-auto">
             <table className={`tw-w-full ${isVendorTab ? "tw-min-w-[760px]" : "tw-min-w-[640px]"} tw-table-auto tw-text-left tw-text-sm`}>
@@ -690,6 +921,7 @@ export default function CompanyPage() {
                     <>
                       <th className={TH_CLASS}>{t("company", lang)}</th>
                       <th className={TH_CLASS}>{t("outsourceName", lang)}</th>
+                      <th className={`${TH_CLASS} tw-w-16`} />
                     </>
                   ) : (
                     <th className={TH_CLASS}>{t("ownerName", lang)}</th>
@@ -716,7 +948,7 @@ export default function CompanyPage() {
           <div className="tw-flex tw-w-full tw-items-center tw-justify-between">
             <div className="tw-flex tw-items-center tw-gap-2.5 sm:tw-gap-3.5">
               <Typography variant="h5" className="!tw-text-base !tw-font-bold !tw-leading-tight !tw-tracking-tight !tw-text-white sm:!tw-text-lg">
-                {t(editId ? "editCompany" : "addCompany", lang)} — {active}
+                {t(isEditing ? "editCompany" : "addCompany", lang)} — {active}
               </Typography>
             </div>
             <button
@@ -875,37 +1107,65 @@ export default function CompanyPage() {
                   </div>
                 )}
                 <div className="tw-space-y-3">
-                  {outsourceNames.map((name, idx) => (
-                    <div key={idx} className="tw-flex tw-items-start tw-gap-2">
-                      <Input
-                        label={`${t("outsourceName", lang)} ${idx + 1}`}
-                        required
-                        value={name}
-                        onChange={(e) => setOutsourceNames(list => list.map((value, i) => i === idx ? e.target.value : value))}
-                        crossOrigin={undefined}
-                      />
-                      {outsourceNames.length > 1 && (
+                  {outsourceItems.map((item, idx) => (
+                    <div key={item.id ?? `new-${idx}`} className="tw-flex tw-items-start tw-gap-2">
+                      <div className="tw-min-w-0 tw-flex-1">
+                        <Input
+                          label={`${t("outsourceName", lang)} ${idx + 1}`}
+                          required
+                          value={item.name}
+                          onChange={(e) => {
+                            const name = e.target.value;
+                            setOutsourceItems(list => list.map((v, i) => (i === idx ? { ...v, name } : v)));
+                          }}
+                          crossOrigin={undefined}
+                        />
+                      </div>
+                      {(outsourceItems.length > 1 || item.id) && (
                         <button
                           type="button"
                           onClick={() => removeOutsource(idx)}
                           title={t("removeOutsource", lang)}
-                          className="tw-mt-1 tw-flex tw-h-10 tw-w-10 tw-shrink-0 tw-items-center tw-justify-center tw-rounded-lg tw-text-red-400 tw-transition-colors hover:tw-bg-red-500 hover:tw-text-white"
+                          aria-label={t("removeOutsource", lang)}
+                          className="tw-flex tw-h-10 tw-w-10 tw-shrink-0 tw-items-center tw-justify-center tw-rounded-lg tw-text-red-400 tw-transition-colors hover:tw-bg-red-500 hover:tw-text-white"
                         >
-                          ✕
+                          {item.id ? <TrashIcon className="tw-h-4 tw-w-4" /> : "✕"}
                         </button>
                       )}
                     </div>
                   ))}
-                  {isOutsourceTab && (
-                    <button
-                      type="button"
-                      onClick={() => setOutsourceNames(list => [...list, ""])}
-                      className="tw-text-sm tw-font-semibold tw-text-blue-600 hover:tw-text-blue-800"
-                    >
-                      + {t("addOutsource", lang)}
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => setOutsourceItems(list => [...list, emptyOutsource()])}
+                    className="tw-text-sm tw-font-semibold tw-text-blue-600 hover:tw-text-blue-800"
+                  >
+                    + {t("addOutsource", lang)}
+                  </button>
                 </div>
+                {removedOutsources.length > 0 && (
+                  <div className="tw-rounded-xl tw-bg-red-50/60 tw-px-4 tw-py-3 tw-ring-1 tw-ring-red-200/70">
+                    <p className="tw-mb-2 tw-text-xs tw-font-semibold tw-text-red-700">
+                      🗑️ {t("pendingDelete", lang)} ({removedOutsources.length})
+                    </p>
+                    <div className="tw-flex tw-flex-wrap tw-gap-1.5">
+                      {removedOutsources.map(item => (
+                        <span
+                          key={item.id}
+                          className="tw-inline-flex tw-items-center tw-gap-1.5 tw-rounded-md tw-bg-white tw-px-2 tw-py-0.5 tw-text-[11px] tw-font-semibold tw-text-red-600 tw-shadow-sm tw-ring-1 tw-ring-red-200"
+                        >
+                          <span className="tw-line-through">{item.orig}</span>
+                          <button
+                            type="button"
+                            onClick={() => undoRemoveOutsource(item)}
+                            className="tw-text-blue-600 hover:tw-text-blue-800"
+                          >
+                            {t("undo", lang)}
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </section>
           ) : (
@@ -963,6 +1223,18 @@ export default function CompanyPage() {
           </div>
         </DialogFooter>
       </Dialog>
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onClose={() => !deleting && setDeleteTarget(null)}
+        onConfirm={confirmDelete}
+        loading={deleting}
+        variant="danger"
+        title={`${t("deleteConfirmTitle", lang)}${deleteTarget ? ` "${deleteTarget.name}"` : ""}`}
+        message={`${deleteTarget?.company ? `${t("company", lang)}: ${deleteTarget.company} — ` : ""}${t("deleteConfirmMsg", lang)}`}
+        confirmLabel={t("remove", lang)}
+        cancelLabel={t("cancel", lang)}
+      />
     </div>
   );
 }
