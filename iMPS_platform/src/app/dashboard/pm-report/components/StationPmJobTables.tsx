@@ -186,6 +186,8 @@ type Job = {
   my_party?: string;
   /** ฝ่ายของคนที่ login กด "เริ่ม PM" แล้ว (false = ยังไม่เริ่ม เช่น ช่าง EDS ที่ทีมต้นทางเปิดใบไปก่อน) */
   my_started?: boolean;
+  /** มีงานในใบนี้ไหม — false = คนนอกใบงาน ดูได้อย่างเดียว (ไม่มีปุ่มเริ่ม PM / ส่งงาน) */
+  participant?: boolean;
   split?: boolean;
   work_entries?: WorkEntry[];
   /** คนที่ login เป็น planner ของ vendor ในใบนี้ → key ฝ่ายที่ต้องตรวจฟอร์มตู้ชาร์จ ("" = ไม่ใช่) */
@@ -1279,7 +1281,7 @@ export default function StationPmJobTables() {
     }
     // ฟอร์มวางปุ่มนี้ตรงตำแหน่งปุ่ม "บันทึก" ของหน้ากรอก (ผ่าน PmReviewActionContext) หน้าตาเดียวกับปุ่มบันทึก
     const editButton = canEditSent ? (
-      <Button type="button" onClick={startEdit} className="tw-text-sm tw-py-2.5 tw-bg-gray-800 hover:tw-bg-gray-900 tw-w-full sm:tw-w-auto tw-flex tw-items-center tw-justify-center tw-gap-1.5">
+      <Button type="button" onClick={() => askConfirm("editReport", startEdit)} className="tw-text-sm tw-py-2.5 tw-bg-gray-800 hover:tw-bg-gray-900 tw-w-full sm:tw-w-auto tw-flex tw-items-center tw-justify-center tw-gap-1.5">
         <PencilSquareIcon className="tw-h-4 tw-w-4" /> {t("edit", lang)}
       </Button>
     ) : null;
@@ -1362,6 +1364,8 @@ export default function StationPmJobTables() {
             <SectionForm key={viewing ? "view" : "edit"} />
           </PmCancelEditContext.Provider>
         </PmReviewActionContext.Provider>
+        {/* ยืนยันก่อนกด "แก้ไข" — หน้าฟอร์ม return แยกจากหน้ารวม จึงต้องวาง dialog ตรงนี้ด้วย */}
+        {confirmDialog}
         {vendorParty && vendorApproveDialog(backToHub)}
         {/* modal รูปแบบเดียวกับหน้า CM (overlay + กล่อง max-w-md) — ไม่ใช้ Dialog ของ Material Tailwind ที่บังคับความกว้าง/ฟอนต์เอง */}
         {cancelEditOpen && editingSent && (
@@ -1518,7 +1522,7 @@ export default function StationPmJobTables() {
     // planner ของ vendor ที่กำลังตรวจงานฝ่ายตัวเองอยู่ — เหลือแค่ปุ่มอนุมัติ ไม่ต้องมีปุ่ม "แก้ไขงานที่ส่ง" ซ้อน
     // (ถ้าต้องให้แก้ ใช้ตีกลับรายฟอร์มแทน)
     const reviewingOwnParty = !!myParty && vendorTargets.some((p) => p.key === myParty.key);
-    const showCloseButton = job.status === "draft" && !reviewingOwnParty
+    const showCloseButton = job.status === "draft" && !reviewingOwnParty && job.participant !== false
       && (!job.split || !!myParty || canPickAny);
     const closeJobButton = showCloseButton && (
       <span title={closeHint}>

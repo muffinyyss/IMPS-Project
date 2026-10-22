@@ -173,6 +173,9 @@ export type PlanEditState = {
   plan_reason: string;
   can_edit_vendor_plan: boolean;
   vendor_plan_reason: string;
+  /** มีงานในใบนี้ไหม — false = คนนอกใบงาน (เช่น planner EDS ในใบที่ EGAT ทำเองทั้งหมด) เริ่ม PM ไม่ได้ */
+  can_start?: boolean;
+  start_reason?: string;
 };
 
 export type TechnicianOption = {

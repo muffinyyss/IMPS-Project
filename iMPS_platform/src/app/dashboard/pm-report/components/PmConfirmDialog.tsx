@@ -32,6 +32,16 @@ export const PM_CONFIRM = {
     confirm: { th: "ยืนยันบันทึก", en: "Confirm save" },
     color: COLOR.dark,
   },
+  /** ปุ่ม "แก้ไข" ตอนเปิดดูฟอร์ม PM ที่ส่งแล้ว (หน้ารวมใบ PM สถานี) → เข้าโหมดแก้ไข */
+  editReport: {
+    title: { th: "แก้ไขรายงาน PM", en: "Edit PM report" },
+    body: {
+      th: "ยืนยันแก้ไขรายงาน PM นี้? แก้เสร็จแล้วกด \"บันทึก\" เพื่อส่งใหม่ หรือ \"ยกเลิกการแก้ไข\" เพื่อกลับไปใช้ข้อมูลเดิม",
+      en: "Edit this PM report? Press \"Save\" to resubmit when done, or \"Cancel edit\" to keep the current data.",
+    },
+    confirm: { th: "ยืนยันแก้ไข", en: "Confirm edit" },
+    color: COLOR.dark,
+  },
   /** มอบหมายงานตามแผน (ผู้วางแผน / planner ของ vendor) */
   assign: {
     title: { th: "มอบหมายงาน", en: "Assign work order" },

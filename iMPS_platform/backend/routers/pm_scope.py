@@ -24,9 +24,11 @@ planner ต้นทางจึงเลือก "ผู้ทำ PM" ให�
   - คนของผู้ทำ PM รายใดรายหนึ่ง (company = ชื่อนั้น หรืออยู่ในทีมที่ vendor รายนั้นมอบหมาย)
       → กรอกได้เฉพาะส่วนที่ planner เลือกให้รายนั้น
       (ผู้รับผิดชอบที่ไม่ได้ถูกเลือกให้ส่วนไหนเลย = นับเป็นทีมต้นทาง)
-  - คนอื่น (ทีมต้นทาง) → ทุกส่วนยกเว้นส่วนที่เลือกให้คนอื่นทำ
+  - ทีมต้นทาง (company เดียวกับ planner_company หรือถูกติ๊กเป็นผู้รับผิดชอบ) → ทุกส่วนยกเว้นส่วนที่เลือกให้คนอื่นทำ
       (ให้คนอื่นทำทุกส่วน = ทีมต้นทางกรอกไม่ได้เลย เหลือ planner ต้นทางตรวจ/อนุมัติ)
-  - ใบที่ไม่มีส่วนไหนเลือกผู้ทำ PM เป็นคนอื่น / ไม่ได้ผูกใบงาน → ไม่จำกัด (เหมือนเดิม)
+  - คนนอกใบงาน (ไม่ได้อยู่ในข้อไหนเลย เช่น planner/ช่าง EDS ในใบที่ EGAT ทำเองทั้งหมด) → กรอกไม่ได้เลย
+      และกด "เริ่ม PM" ไม่ได้ (is_participant — แก้ 2026-10-22)
+  - ใบที่ไม่ได้ผูกใบงาน / ใบงานรุ่นก่อนที่ไม่มี planner_company → ไม่จำกัด (เหมือนเดิม)
 """
 from __future__ import annotations
 
@@ -125,6 +127,39 @@ def user_party(wo: dict | None, username: str, company: str) -> Optional[str]:
     return None
 
 
+def is_participant(wo: dict | None, role: str, username: str, company: str) -> bool:
+    """
+    ผู้ใช้คนนี้มีงานในใบงานนี้ไหม — ไม่มี = เปิด/เริ่ม PM/กรอกไม่ได้ (ดูได้อย่างเดียว)
+
+    ปัญหาเดิม (2026-10-22): ใครที่ไม่ใช่ vendor ในใบถูกนับเป็น "ทีมต้นทาง" หมด
+    → planner EDS เห็นสถานีที่มีตู้ของ EDS แล้วกด "เริ่ม PM" ใบที่ planner EGAT ให้ EGAT ทำเองทั้งหมดได้
+    (และการกดนั้นถูกจดเป็นการเริ่มงานของฝ่าย EGAT)
+
+    มีงาน = admin / owner | company เดียวกับ planner ต้นทาง | ผู้ทำ PM ที่ได้รับอุปกรณ์ / มีใบส่งต่อ /
+    อยู่ในทีมที่ vendor มอบหมาย | ถูกติ๊กเป็นผู้รับผิดชอบของแผนต้นทาง (ชื่อผู้ใช้ หรือชื่อบริษัท outsource)
+    ใบที่ไม่ได้ผูกใบงาน / ใบงานรุ่นก่อนที่ไม่มี planner_company = ไม่จำกัด (บอกไม่ได้ว่าใครเป็นทีมต้นทาง)
+    """
+    if _norm(role) in BYPASS_ROLES:
+        return True
+    origin = _norm((wo or {}).get("planner_company"))
+    if not wo or not origin:
+        return True
+    u, c = _norm(username), _norm(company)
+    if c and c == origin:
+        return True
+    if user_party(wo, username, company) is not None:
+        return True
+    ticked = {_norm(a) for a in (wo.get("assignees") or [])}
+    ticked.discard("")
+    return bool((u and u in ticked) or (c and c in ticked))
+
+
+def not_participant_detail(wo: dict | None, company: str) -> str:
+    origin = str((wo or {}).get("planner_company") or "").strip() or "planner ต้นทาง"
+    who = (company or "").strip() or "คุณ"
+    return f"ใบงานนี้ {origin} ไม่ได้มอบหมายงานให้ {who} — ดูได้อย่างเดียว เริ่ม PM / กรอกไม่ได้"
+
+
 def section_owner(wo: dict | None, section: str, sn: str = "") -> str:
     """ชื่อบริษัทเจ้าของส่วนนั้น — ผู้ทำ PM ที่รับส่วนนั้น หรือบริษัทของ planner ต้นทาง ("" = ไม่ทราบ)"""
     vendor = scoped_items(wo).get(item_key(section, sn))
@@ -139,9 +174,12 @@ def can_edit_section(wo: dict | None, role: str, username: str, company: str, se
     # planner ต้นทางดูแลทั้งใบ (ตรวจ/แก้ก่อนอนุมัติได้ทุกส่วน รวมตู้ของ vendor)
     if _norm(role) == "planner" and company and _norm(company) == _norm((wo or {}).get("planner_company")):
         return True
+    # คนนอกใบงาน (เช่น EDS ในใบที่ EGAT ทำเองทั้งหมด) — ไม่ได้นับเป็นทีมต้นทางอีกต่อไป
+    if not is_participant(wo, role, username, company):
+        return False
     scope = scoped_items(wo)
     if not scope:
-        return True  # ไม่มีส่วนที่ให้คนอื่นทำ = ไม่จำกัด
+        return True  # ไม่มีส่วนที่ให้คนอื่นทำ = ทีมต้นทาง/ผู้รับผิดชอบที่ติ๊กไว้กรอกได้ทุกส่วน
     party = user_party(wo, username, company)
     party_of_section = scope.get(item_key(section, sn))
     if party is not None:
@@ -174,7 +212,8 @@ async def wos_by_wonum(wonums: Iterable[str]) -> dict[str, dict]:
     try:
         cursor = client["iMPS"]["maximo_pm_open"].find(
             {"wonum": {"$in": wanted}},
-            {"_id": 0, "wonum": 1, "vendor_plans": 1, "planner_company": 1, "selected_equipment": 1, "origin": 1},
+            {"_id": 0, "wonum": 1, "vendor_plans": 1, "planner_company": 1, "selected_equipment": 1, "origin": 1,
+             "assignees": 1},
         )
         async for wo in cursor:
             out[str(wo.get("wonum") or "")] = wo
