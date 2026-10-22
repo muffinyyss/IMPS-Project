@@ -1307,9 +1307,16 @@ async def _plan_edit_state(wo: dict, current: UserClaims, *, started: Optional[b
         # ยังไม่ใช่เหตุให้ vendor แก้ทีม/กำหนดการของตัวเองไม่ได้ จนกว่าช่างของ vendor จะเริ่มเอง
         vendor_reason = f"ช่างของ {mine.get('vendor')} กดเริ่ม PM แล้ว แก้แผนไม่ได้"
 
+    # มีงานในใบนี้ไหม — ไม่มี (เช่น planner EDS ในใบที่ EGAT ทำเองทั้งหมด) = ไม่มีปุ่ม "เริ่ม PM"
+    # backend กันซ้ำที่ /stationpmjob/open (routers/pmreport_station_job.py)
+    from routers import pm_scope
+    participant = pm_scope.is_participant(wo, role, current.username or current.sub, company)
+
     return {
         "started": started,
         "planned": planned,
+        "can_start": participant,
+        "start_reason": "" if participant else pm_scope.not_participant_detail(wo, company),
         # planner ต้นทางแก้แผนที่บันทึกแล้วได้ไหม (ยังไม่วางแผน = วางแผนครั้งแรก ไม่ใช่การแก้)
         "can_edit_plan": planned and not plan_reason,
         "plan_reason": plan_reason,

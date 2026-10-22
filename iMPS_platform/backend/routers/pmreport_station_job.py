@@ -57,7 +57,7 @@ log = logging.getLogger("uvicorn.error")
 
 router = APIRouter()
 
-# ฟอร์มจริง 5 ชนิดของใบ PM — ลำดับนี้ใช้เรียงหน้าใน PDF
+# ฟอร์มจริง 5 ชนิดของใบ PM — ลำดับในหน้าเว็บ (PDF ทั้งใบเรียงตู้ชาร์จก่อน ดู build_job_pdf)
 SECTIONS: tuple[str, ...] = ("station", "mdb", "ccb", "cbbox", "charger")
 
 # กลุ่มที่แสดงในหน้าเว็บ — ยุบ MDB/CCB/CB_BOX เข้าใต้ Station
@@ -509,9 +509,15 @@ def job_parties(sections: list[dict], wo: dict | None) -> dict[str, dict]:
 
 
 def user_party_key(wo: dict | None, current: UserClaims, company: str) -> str:
-    """ฝ่ายของผู้ใช้คนนี้ในใบ — ผู้ทำ PM ที่ได้รับตู้ / ทีมต้นทาง (บริษัทของ planner)"""
+    """
+    ฝ่ายของผู้ใช้คนนี้ในใบ — ผู้ทำ PM ที่ได้รับตู้ / ทีมต้นทาง (บริษัทของ planner)
+    คนนอกใบงาน (pm_scope.is_participant) = "" — ไม่ถูกนับเป็นทีมต้นทาง (เดิม planner EDS กดเริ่ม PM
+    ใบที่ EGAT ทำเองทั้งหมดได้ และถูกจดเป็นการเริ่มของฝ่าย EGAT)
+    """
     from routers import pm_scope
 
+    if not pm_scope.is_participant(wo, current.role, current.username or current.sub, company):
+        return ""
     if pm_scope.scoped_items(wo):
         party = pm_scope.user_party(wo, current.username or current.sub, company)
         if party:
@@ -553,6 +559,8 @@ async def _record_party_start(jobs, job: dict, current: UserClaims) -> None:
     wonum = str(job.get("wonum") or "").strip()
     wo = (await pm_scope.wos_by_wonum([wonum])).get(wonum) if wonum else None
     key = user_party_key(wo, current, pm_scope.company_of(current))
+    if not key:
+        return  # คนนอกใบงาน / admin ที่ไม่มีฝ่าย — ไม่จดเป็นการเริ่มของฝ่ายไหน
     if any(isinstance(e, dict) and e.get("key") == key for e in job.get("party_starts") or []):
         return
     party = pm_scope.user_party(wo, current.username or current.sub, pm_scope.company_of(current)) \
@@ -762,6 +770,8 @@ async def _with_ownership(jobs: list[dict], current: UserClaims) -> list[dict]:
             })
         j["parties"] = out_parties
         j["my_party"] = user_party_key(wo, current, company)
+        # มีงานในใบนี้ไหม — ไม่มี = ดูได้อย่างเดียว (ไม่มีปุ่มเริ่ม PM / ส่งงาน)
+        j["participant"] = pm_scope.is_participant(wo, current.role, current.username or current.sub, company)
         # ฝ่ายของคนที่ login ยังไม่ได้กด "เริ่ม PM" — หน้า PM List พาไปหน้าใบงานก่อน / หน้ารวมขึ้นปุ่มให้
         # ไม่มีส่วนของตัวเองในใบ / ใบที่ส่งงานไปแล้ว = ไม่ต้องเริ่ม
         j["my_started"] = (
@@ -842,6 +852,14 @@ async def open_station_pm_job(
 
     wonum = (body.wonum or "").strip()
     jobs = get_stationpmjob_collection_for(station_id)
+
+    # คนนอกใบงาน (เช่น planner/ช่าง EDS ในใบที่ planner EGAT ให้ EGAT ทำเองทั้งหมด) เริ่ม PM ไม่ได้
+    if wonum:
+        from routers import pm_scope
+        wo = (await pm_scope.wos_by_wonum([wonum])).get(wonum)
+        company = pm_scope.company_of(current)
+        if not pm_scope.is_participant(wo, current.role, current.username or current.sub, company):
+            raise HTTPException(status_code=403, detail=pm_scope.not_participant_detail(wo, company))
 
     existing = await jobs.find_one(
         {"wonum": wonum} if wonum else {"pm_date": pm_date, "wonum": {"$in": ["", None]}}
@@ -1886,7 +1904,8 @@ def job_pdf_cache_path(station_id: str, job_id: str, lang: str, part: str = "") 
     suffix = f"_{part}" if part else ""
     # _v2 = ช่องลายเซ็นมี planner ต้นทางเป็นพยานของตู้ vendor (2026-10-22) — ไฟล์รุ่นก่อนไม่ถูกใช้ต่อ
     # _v3 = แก้ขนาดตัวอักษรในตาราง checklist เพี้ยนเป็น 6pt หลังแถวแรก (2026-10-22)
-    return pathlib.Path(UPLOADS_ROOT) / "pdf_cache" / "stationPMJob" / station_id / f"{job_id}{suffix}_{lang}_v3.pdf"
+    # _v4 = PDF ทั้งใบเรียงตู้ชาร์จก่อน แล้วตามด้วยอุปกรณ์ไฟฟ้า Station/MDB/CCB/CB_BOX (2026-10-22)
+    return pathlib.Path(UPLOADS_ROOT) / "pdf_cache" / "stationPMJob" / station_id / f"{job_id}{suffix}_{lang}_v4.pdf"
 
 
 # การ์ดในหน้ารวมใบ PM สถานี → ส่วนที่อยู่ในการ์ดนั้น (PDF รายการ์ด)
@@ -1970,8 +1989,8 @@ def _render_job_pdf(parts: list[tuple[dict, dict, dict]], lang: str) -> bytes:
 
 async def build_job_pdf(job: dict, station_id: str, lang: str, part: str = "") -> tuple[bytes, list[str]]:
     """
-    PDF ของทั้งใบ — ใช้ template เดิมของแต่ละชนิด เรียง Station → MDB → CCB → CB_BOX → Charger
-    (ตู้ละชุด ตามหมายเลขตู้) ส่วนที่ยังไม่ได้กรอกจะถูกข้าม
+    PDF ของทั้งใบ — ใช้ template เดิมของแต่ละชนิด เรียง Charger ก่อน (ตู้ละชุด ตามหมายเลขตู้)
+    แล้วตามด้วยอุปกรณ์ไฟฟ้า Station → MDB → CCB → CB_BOX ส่วนที่ยังไม่ได้กรอกจะถูกข้าม
     part = "station" (Station + MDB + CCB + CB_BOX) / "charger" (ทุกตู้) = PDF ของการ์ดนั้นอย่างเดียว
     ทุกแบบเรียง checklist ของทุกส่วนก่อน แล้วรูปตามหลัง
     ช่องลายเซ็นพิมพ์ชื่อผู้ทำ (inspector ของฟอร์ม) และผู้อนุมัติ
@@ -1992,6 +2011,9 @@ async def build_job_pdf(job: dict, station_id: str, lang: str, part: str = "") -
 
     wanted = PDF_PARTS.get(part) if part else None
     states = [s for s in await _section_states(job) if wanted is None or s["section"] in wanted]
+    # ลำดับในเล่ม: ตู้ชาร์จก่อน แล้วอุปกรณ์ไฟฟ้า — sort แบบ stable จึงคงลำดับตู้และ Station/MDB/CCB/CB_BOX เดิม
+    # (SECTIONS ยังเรียง station ก่อน เพราะหน้าเว็บ/ตารางใช้ลำดับนั้น)
+    states.sort(key=lambda s: 0 if s["section"] == CHARGER_SECTION else 1)
     vendor_approvers = await _charger_vendor_approvers(job, states)
     job_approver = str(job.get("approved_by") or "") if closed else ""
 

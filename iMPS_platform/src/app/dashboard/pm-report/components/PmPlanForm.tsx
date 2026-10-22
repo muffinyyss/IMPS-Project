@@ -155,6 +155,10 @@ const T = {
   save: { th: "Assign", en: "Assign" },
 
   vendorSection: { th: "แผนของ", en: "Plan by" },
+  notAssigned: {
+    th: "ใบงานนี้ไม่ได้มอบหมายงานให้บริษัทของคุณ — ดูได้อย่างเดียว เริ่ม PM ไม่ได้",
+    en: "This work order has no work assigned to your company — view only, PM cannot be started",
+  },
   waitVendor: {
     th: "รอ {v} วางแผนส่งทีม/ช่างเข้าหน้างานก่อน — ใบงานยังเป็น Open และยังเริ่ม PM ไม่ได้",
     en: "Waiting for {v} to plan and dispatch its team — the work order stays Open and PM cannot start yet",
@@ -517,7 +521,9 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
   const vendorFormOpen = vendorTurn || vEditing;
   // ช่างเห็นปุ่มเสมอ ส่วน planner/admin กรอกเองได้หลังวางแผนเสร็จแล้ว (ก่อนนั้นต้องกด Assign ก่อน)
   // planner ของ vendor ที่ใบงานส่งต่อมาให้: ต้องวางแผนของบริษัทตัวเองก่อน — แผนต้นทางเสร็จแล้วยังไม่พอ
-  const showStart = !!onStart && !vendorTurn && !editing && !vEditing
+  // คนนอกใบงาน (เช่น planner EDS ในใบที่ planner EGAT ให้ EGAT ทำเองทั้งหมด) ไม่มีปุ่ม — backend กันซ้ำที่ /stationpmjob/open
+  const notParticipant = planState?.can_start === false;
+  const showStart = !!onStart && !vendorTurn && !editing && !vEditing && !notParticipant
     && (!canPlan || (alreadyPlanned && PM_PLANNER_FILL_ROLES.includes(myRole)));
   // ส่งต่อให้ vendor แล้วแต่ vendor ยังไม่ได้วางแผน = ยังไม่มีทีมเข้าหน้างาน เริ่มไม่ได้
   const waitingVendors = pendingVendorPlans(wo).map((v) => v.vendor).filter(Boolean);
@@ -647,6 +653,14 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
             <div className="tw-mb-4 tw-flex tw-items-start tw-gap-3 tw-px-4 tw-py-3 tw-rounded-lg tw-bg-amber-50 tw-border tw-border-amber-200">
               <ExclamationTriangleIcon className="tw-w-5 tw-h-5 tw-text-amber-500 tw-mt-0.5 tw-flex-shrink-0" />
               <p className="tw-text-sm tw-text-amber-800">{t("waitVendor", lang).replace("{v}", waitingVendors.join(", "))}</p>
+            </div>
+          )}
+
+          {/* ใบงานนี้ไม่ได้มอบหมายงานให้บริษัทของคุณ — ดูได้อย่างเดียว */}
+          {!loading && alreadyPlanned && notParticipant && (
+            <div className="tw-mb-4 tw-flex tw-items-start tw-gap-3 tw-px-4 tw-py-3 tw-rounded-lg tw-bg-blue-gray-50 tw-border tw-border-blue-gray-200">
+              <ExclamationTriangleIcon className="tw-w-5 tw-h-5 tw-text-blue-gray-500 tw-mt-0.5 tw-flex-shrink-0" />
+              <p className="tw-text-sm tw-text-blue-gray-700">{t("notAssigned", lang)}</p>
             </div>
           )}
 

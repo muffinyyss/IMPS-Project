@@ -410,7 +410,7 @@ export default function PMListPage() {
       noWonum: "เอกสารนี้ไม่ได้ผูกกับใบงาน Maximo",
       sortAsc: "เรียงจากน้อยไปมาก", sortDesc: "เรียงจากมากไปน้อย",
       headers: {
-        station: "สถานี", wo: "WO (Maximo)",
+        station: "สถานี", wo: "WO",
         technician: "ผู้ตรวจสอบ", date: "PM Plan", status: "สถานะ",
       },
       stage: { open: "Open", in_progress: "In Progress", rejected: "Reject", wait_approve: "Wait for approve", closed: "Closed" },
@@ -458,7 +458,7 @@ export default function PMListPage() {
       noWonum: "This document is not linked to a Maximo work order",
       sortAsc: "Sort ascending", sortDesc: "Sort descending",
       headers: {
-        station: "Station", wo: "WO (Maximo)",
+        station: "Station", wo: "WO",
         technician: "Inspector", date: "PM Plan", status: "Status",
       },
       stage: { open: "Open", in_progress: "In Progress", rejected: "Reject", wait_approve: "Wait for approve", closed: "Closed" },

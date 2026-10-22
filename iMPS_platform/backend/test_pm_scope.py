@@ -23,6 +23,8 @@ WO = {
         {"type": "charger", "sn": "SN3"},
         {"type": "charger", "sn": "SN4", "by": "OS Co"},
     ],
+    # ผู้รับผิดชอบที่ planner ต้นทางติ๊ก (outsource ที่ไม่ได้รับตู้เฉพาะ) + ผู้ทำ PM ของอุปกรณ์
+    "assignees": ["egat_tech", "Other OS", "EDS", "OS Co"],
     "vendor_plans": [
         {"vendor": "EDS", "status": "planned", "assignees": ["eds_tech", "SubCo"]},
     ],
@@ -43,7 +45,8 @@ CASES = [
     ("technician", "os1", "OS Co", "charger", "SN3", False),
     ("technician", "os1", "OS Co", "station", "", False),
     ("technician", "egat_tech", "EGAT", "charger", "SN4", False),   # ตู้ของ outsource
-    ("technician", "os2", "Other OS", "station", "", True),         # outsource ที่ไม่ได้รับตู้ = ทีมต้นทาง
+    ("technician", "os2", "Other OS", "station", "", True),         # outsource ที่ติ๊กแต่ไม่ได้รับตู้ = ทีมต้นทาง
+    ("technician", "x1", "Stranger OS", "station", "", False),      # outsource ที่ไม่ได้ติ๊กเลย = คนนอกใบงาน
     ("admin", "a", "", "charger", "SN1", True),
     ("owner", "o", "", "station", "", True),
 ]
@@ -64,6 +67,38 @@ def main() -> int:
         if not pm_scope.can_edit_section(wo, "technician", "eds_tech", "EDS", "station", ""):
             failed += 1
             print(f"FAIL no-scope job should be unrestricted: {wo}")
+
+    # ใบที่ planner EGAT ให้ EGAT ทำเองทั้งหมด — EDS (planner/ช่าง) เป็นคนนอกใบงาน เริ่ม/กรอกไม่ได้ (2026-10-22)
+    egat_only = {
+        "planner_company": "EGAT",
+        "selected_equipment": [{"type": "station"}, {"type": "charger", "sn": "SN1"}],
+        "assignees": ["egat_tech"],
+    }
+    own = [
+        ("planner", "eds_pl", "EDS", "station", "", False),
+        ("planner", "eds_pl", "EDS", "charger", "SN1", False),
+        ("technician", "eds_tech", "EDS", "charger", "SN1", False),
+        ("technician", "egat_tech", "EGAT", "charger", "SN1", True),
+        ("technician", "egat_tech2", "EGAT", "station", "", True),     # ทีม EGAT ที่ไม่ได้ติ๊ก ยังเป็นทีมต้นทาง
+        ("technician", "egat_tech", "", "station", "", True),          # ไม่มี company แต่ถูกติ๊กชื่อ
+        ("planner", "egat_pl", "EGAT", "station", "", True),
+        ("admin", "a", "", "station", "", True),
+    ]
+    for role, user, company, section, sn, expected in own:
+        got = pm_scope.can_edit_section(egat_only, role, user, company, section, sn)
+        if got != expected:
+            failed += 1
+            print(f"FAIL [egat-only] {role}/{user}@{company} {section}: got {got}, want {expected}")
+    if pm_scope.is_participant(egat_only, "planner", "eds_pl", "EDS"):
+        failed += 1
+        print("FAIL is_participant: planner EDS ต้องไม่มีงานในใบที่ EGAT ทำเองทั้งหมด")
+    if not pm_scope.is_participant(WO, "planner", "eds_pl", "EDS"):
+        failed += 1
+        print("FAIL is_participant: planner EDS ที่ได้รับตู้ต้องมีงานในใบ")
+    # ใบงานรุ่นก่อนไม่มี planner_company — บอกไม่ได้ว่าใครเป็นทีมต้นทาง จึงไม่จำกัด
+    if not pm_scope.is_participant({"selected_equipment": []}, "planner", "eds_pl", "EDS"):
+        failed += 1
+        print("FAIL is_participant: ใบรุ่นก่อนต้องไม่จำกัด")
 
     if (pm_scope.section_owner(WO, "charger", "sn1") != "EDS"
             or pm_scope.section_owner(WO, "charger", "SN4") != "OS Co"
