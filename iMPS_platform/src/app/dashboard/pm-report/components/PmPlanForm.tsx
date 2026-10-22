@@ -533,6 +533,12 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
   const vendorPlans: VendorPlan[] =
     mine && !storedVendorPlans.includes(mine) ? [...storedVendorPlans, mine] : storedVendorPlans;
 
+  // ย้อนกลับระหว่างแก้แผน = ทิ้งสิ่งที่แก้ → ถามก่อน (ไม่ได้แก้อยู่ก็ออกเลย)
+  const leave = () => {
+    if (editing || vEditing) askConfirm("leavePlanEdit", onCancel);
+    else onCancel();
+  };
+
   return (
     <section className="tw-pb-24">
       {/* ปุ่มย้อนกลับ — ไอคอนอย่างเดียว ชิดซ้าย เหมือนฟอร์ม CM */}
@@ -540,7 +546,7 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
         <Button
           variant="outlined"
           size="sm"
-          onClick={onCancel}
+          onClick={leave}
           title={t("backToList", lang)}
           aria-label={t("backToList", lang)}
           className="tw-border-blue-gray-200 tw-text-blue-gray-700 hover:tw-border-blue-gray-300"
@@ -1005,7 +1011,7 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
                 <div className="tw-flex tw-items-center tw-gap-3">
                   <Button
                     variant="outlined"
-                    onClick={onCancel}
+                    onClick={leave}
                     className="tw-border-blue-gray-200 tw-text-blue-gray-700 hover:tw-border-blue-gray-300"
                   >
                     {t("backToList", lang)}
@@ -1036,7 +1042,7 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
                       type="button"
                       variant="outlined"
                       disabled={saving}
-                      onClick={() => { void load(); }}
+                      onClick={() => askConfirm("cancelPlanEdit", () => { void load(); })}
                       className="tw-border-blue-gray-200 tw-text-blue-gray-700 hover:tw-border-blue-gray-300"
                     >
                       {t("cancelEdit", lang)}

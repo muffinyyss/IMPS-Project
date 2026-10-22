@@ -697,6 +697,85 @@ def is_origin_approver(wo: dict | None, current: UserClaims, company: str) -> bo
     return not vendor_reviewer_key(wo, current, company)
 
 
+# ══════════════════════════════════════════════════════════════════
+# สรุปสถานะรายฝ่าย (2026-10-22) — หน้า PM List / หน้ารวมใช้โชว์บรรทัดรอง "รอใคร" ใต้สถานะหลัก
+#   สถานะหลักของใบยังเป็นชุดเดิม (In Progress / Wait for approve / Closed) ตรงกับ Maximo
+#   state ของฝ่าย: not_started | in_progress | ready (กรอกครบ ยังไม่กดส่งงาน) | rejected (มีฟอร์มโดนตีกลับ)
+#                 | vendor_review (รอ planner ของ vendor) | submitted (ส่งครบ พร้อมให้ planner ต้นทาง)
+# ══════════════════════════════════════════════════════════════════
+
+PARTY_TODO_STATES = {"not_started", "in_progress", "ready", "rejected"}
+
+
+def _party_state(
+    key: str, party: dict, entries: list[dict], wo: dict | None, started: bool, job_status: str,
+) -> str:
+    if job_status != pm_flow.PM_STATUS_DRAFT:
+        return "submitted"
+    if _party_cleared(key, party, entries, wo):
+        return "submitted"
+    if vendor_review_state(key, party, entries, wo) == "pending":
+        return "vendor_review"
+    states = party["states"]
+    if any(s.get("report_id") and not s.get("sent") and str(s.get("reject_remark") or "").strip() for s in states):
+        return "rejected"
+    if states and all(s.get("sent") for s in states):
+        return "ready"
+    if started or any(s.get("report_id") for s in states):
+        return "in_progress"
+    return "not_started"
+
+
+def party_summaries(
+    sections: list[dict], wo: dict | None, job_out: dict, entries: list[dict], job_status: str,
+) -> list[dict]:
+    """
+    [{key, name, state, done, total}] ของทุกฝ่ายในใบ — sections ต้องผ่าน _mark_plan มาก่อน
+    job_out ต้องมี party_starts (None = ใบรุ่นก่อน) / createdAt สำหรับ party_started
+    """
+    parties = job_parties(sections, wo)
+    origin_key = _pkey((wo or {}).get("planner_company") or "")
+    out = []
+    for key, p in parties.items():
+        started = party_started(job_out, key, p, len(parties), origin_key, entries) is not None
+        out.append({
+            "key": key,
+            "name": p["name"],
+            "state": _party_state(key, p, entries, wo, started, job_status),
+            "done": sum(1 for s in p["states"] if s.get("sent")),
+            "total": len(p["states"]),
+        })
+    return out
+
+
+def waiting_on_user(
+    job_status: str, summaries: list[dict], wo: dict | None, current: UserClaims, company: str,
+) -> bool:
+    """
+    ใบนี้รอคนที่ login ทำอะไรอยู่ไหม (ตัวกรอง "รอฉัน" ของหน้า PM List)
+      planner / admin: รออนุมัติทั้งใบ (planner ต้นทาง) หรือรออนุมัติงานตู้ของฝ่ายตัวเอง (planner vendor)
+      คนอื่น (ช่าง / outsource / owner): ฝ่ายของตัวเองยังต้องกรอก / แก้ / กดส่งงาน
+    """
+    role = (current.role or "").strip().lower()
+    if role in pm_flow.PM_APPROVE_ROLES:
+        reviewer = vendor_reviewer_key(wo, current, company)
+        if reviewer:
+            return job_status == pm_flow.PM_STATUS_DRAFT and any(
+                p["key"] == reviewer and p["state"] == "vendor_review" for p in summaries
+            )
+        if job_status != pm_flow.PM_STATUS_WAIT_APPROVE:
+            return False
+        from routers import pm_scope
+        origin = _pkey((wo or {}).get("planner_company") or "")
+        return role in pm_scope.BYPASS_ROLES or not origin or _pkey(company) == origin
+    if job_status != pm_flow.PM_STATUS_DRAFT:
+        return False
+    my_key = user_party_key(wo, current, company)
+    if not my_key and not any(p["key"] == "" for p in summaries):
+        return False
+    return any(p["key"] == my_key and p["state"] in PARTY_TODO_STATES for p in summaries)
+
+
 async def _job_wo(job: dict) -> dict | None:
     from routers import pm_scope
 
@@ -770,6 +849,9 @@ async def _with_ownership(jobs: list[dict], current: UserClaims) -> list[dict]:
                             for s in p["states"] if not s.get("sent")],
                 "submitted": _party_done(key, p, entries),
                 "vendor_review": review,
+                "state": _party_state(key, p, entries, wo, started[key] is not None, j.get("status") or ""),
+                "done": sum(1 for s in p["states"] if s.get("sent")),
+                "total": len(p["states"]),
                 "vendor_approved_by": (entry.get("vendor_approved_by") or "") if review == "approved" else "",
                 # กด "เริ่ม PM" แล้ว — เวลาเริ่มตั้งต้นตอนส่งงานของฝ่ายนี้
                 "started": started[key] is not None,

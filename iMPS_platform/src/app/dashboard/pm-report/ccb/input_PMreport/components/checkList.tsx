@@ -1217,6 +1217,8 @@ function PhotoMultiInput({ photos, setPhotos, max = 10, draftKey, qNo, lang, id,
         if (fileRef.current) fileRef.current.value = "";
     };
 
+    // ปุ่ม × ลบรูป ต้องยืนยันก่อน
+    const { ask: askDeletePhoto, dialog: deletePhotoDialog } = usePmConfirm(lang);
     const handleRemove = async (id: string) => {
         await delPhoto(draftKey, id);
         setPhotos((prev) => { const target = prev.find((p) => p.id === id); if (target?.preview) URL.revokeObjectURL(target.preview); return prev.filter((p) => p.id !== id); });
@@ -1224,6 +1226,7 @@ function PhotoMultiInput({ photos, setPhotos, max = 10, draftKey, qNo, lang, id,
 
     return (
         <div id={id} className="tw-space-y-2 sm:tw-space-y-3 tw-transition-all tw-duration-300">
+            {deletePhotoDialog}
             {landscapeWarning && (
                 <div className="tw-fixed tw-inset-0 tw-z-[9999] tw-bg-black/70 tw-flex tw-items-center tw-justify-center tw-p-6" onClick={() => setLandscapeWarning(false)}>
                     <div className="tw-bg-white tw-rounded-2xl tw-p-6 tw-max-w-sm tw-text-center tw-shadow-xl" onClick={e => e.stopPropagation()}>
@@ -1256,7 +1259,7 @@ function PhotoMultiInput({ photos, setPhotos, max = 10, draftKey, qNo, lang, id,
             )}
             {photos.length > 0 ? (
                 <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 md:tw-grid-cols-4 tw-gap-2 sm:tw-gap-3">
-                    {photos.map((p) => (<div key={p.id} className="tw-border tw-rounded-lg tw-overflow-hidden tw-bg-white tw-shadow-xs tw-flex tw-flex-col"><div className="tw-relative tw-aspect-[4/3] tw-bg-blue-gray-50">{p.preview && <img src={p.preview} alt={t("photoPreviewAlt", lang)} className="tw-w-full tw-h-full tw-object-cover" />}<button data-photo-remove onClick={() => { void handleRemove(p.id); }} className="tw-absolute tw-top-1.5 tw-right-1.5 sm:tw-top-2 sm:tw-right-2 tw-bg-red-500 tw-text-white tw-w-5 tw-h-5 sm:tw-w-6 sm:tw-h-6 tw-rounded-full tw-flex tw-items-center tw-justify-center tw-shadow-md hover:tw-bg-red-600 tw-transition-colors tw-text-xs sm:tw-text-sm">×</button></div></div>))}
+                    {photos.map((p) => (<div key={p.id} className="tw-border tw-rounded-lg tw-overflow-hidden tw-bg-white tw-shadow-xs tw-flex tw-flex-col"><div className="tw-relative tw-aspect-[4/3] tw-bg-blue-gray-50">{p.preview && <img src={p.preview} alt={t("photoPreviewAlt", lang)} className="tw-w-full tw-h-full tw-object-cover" />}<button data-photo-remove onClick={() => askDeletePhoto("deletePhoto", () => handleRemove(p.id))} className="tw-absolute tw-top-1.5 tw-right-1.5 sm:tw-top-2 sm:tw-right-2 tw-bg-red-500 tw-text-white tw-w-5 tw-h-5 sm:tw-w-6 sm:tw-h-6 tw-rounded-full tw-flex tw-items-center tw-justify-center tw-shadow-md hover:tw-bg-red-600 tw-transition-colors tw-text-xs sm:tw-text-sm">×</button></div></div>))}
                 </div>
             ) : (<Typography variant="small" className="!tw-text-blue-gray-500 tw-text-xs sm:tw-text-sm">{t("noPhotos", lang)}</Typography>)}
         </div>
@@ -2218,7 +2221,7 @@ export default function CCBPMReport() {
                                             <div className="tw-flex tw-items-center tw-justify-between tw-mb-3">
                                                 <Typography className="tw-font-semibold tw-text-sm tw-text-gray-800">{breakerLabel}</Typography>
                                                 {subBreakerCount > 1 && (
-                                                    <button type="button" onClick={() => removeSubBreaker(i)}
+                                                    <button type="button" onClick={() => askConfirm("deleteItem", () => removeSubBreaker(i))}
                                                         className="tw-h-6 tw-w-6 tw-flex tw-items-center tw-justify-center tw-rounded tw-bg-red-50 tw-text-red-600 hover:tw-bg-red-100 hover:tw-text-red-700 tw-transition-all tw-duration-200"
                                                         aria-label={t("removeItem", lang)}>
                                                         <svg className="tw-w-3.5 tw-h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

@@ -160,7 +160,7 @@ _PM_TYPE_TO_SECTION = {
 }
 
 
-async def _apply_job_status(reports: list[dict], chargers: list[dict]) -> None:
+async def _apply_job_status(reports: list[dict], chargers: list[dict], current: UserClaims | None = None) -> None:
     """
     เอกสารที่เป็นส่วนหนึ่งของใบ PM สถานี (มี job_id) → แสดงสถานะของทั้งใบแทนสถานะของส่วนนั้น
     ไม่งั้นช่างส่งส่วน Station ส่วนเดียว แถวนั้นก็ขึ้น Wait for approve ทั้งที่ใบยังทำไม่ครบแผน
@@ -171,6 +171,7 @@ async def _apply_job_status(reports: list[dict], chargers: list[dict]) -> None:
     # import ตรงนี้ กัน import วน (router ของแต่ละชนิดก็ import แบบนี้)
     from routers.pmreport_station_job import (
         derive_job_status, planned_keys_by_wonum, section_key, SECTIONS, CHARGER_SECTION,
+        _mark_plan, party_summaries, waiting_on_user,
     )
     from routers import pm_flow
 
@@ -204,6 +205,7 @@ async def _apply_job_status(reports: list[dict], chargers: list[dict]) -> None:
     # ใบงานที่มีตู้ของ vendor (มี planner ของตัวเอง) — ใช้บอกว่าใบไหนรอ planner ของ vendor อนุมัติ
     from routers import pm_scope
     wos = await pm_scope.wos_by_wonum(r.get("wonum") or "" for rows in groups.values() for r in rows)
+    company = pm_scope.company_of(current) if current else ""
 
     for (station_id, _job_id), rows in groups.items():
         job = job_docs.get((station_id, _job_id)) or {}
@@ -227,7 +229,8 @@ async def _apply_job_status(reports: list[dict], chargers: list[dict]) -> None:
             key = section_key(section, sn)
             if key in states and not states[key]["report_id"]:
                 # กรอกแล้ว = ไม่ใช่ N/A (กติกาเดียวกับ _state_row)
-                states[key].update(report_id=r.get("id") or "", status=r.get("status") or "", na=False)
+                states[key].update(report_id=r.get("id") or "", status=r.get("status") or "", na=False,
+                                   reject_remark=r.get("reject_remark") or "")
 
         wonum = next((str(r.get("wonum") or "").strip() for r in rows if r.get("wonum")), "")
         job_status = derive_job_status(
@@ -250,8 +253,20 @@ async def _apply_job_status(reports: list[dict], chargers: list[dict]) -> None:
         )
         # อนุมัติปิดแล้ว แต่ส่งปิดงานเข้า Maximo ยังไม่ผ่าน (auto-retry กำลังลองอยู่ / หยุดลองแล้ว)
         maximo_pending = bool(job.get("maximo_pending")) and job_status == pm_flow.PM_STATUS_CLOSED
+        # สรุปรายฝ่าย — บรรทัดรอง "รอใคร" ใต้สถานะหลัก + ตัวกรอง "รอฉัน" (2026-10-22)
+        state_rows = list(states.values())
+        _mark_plan(state_rows, plans.get(wonum))
+        wo = wos.get(wonum)
+        try:
+            parties = party_summaries(state_rows, wo, job, job.get("work_entries") or [], job_status)
+            waiting_on_me = bool(current) and waiting_on_user(job_status, parties, wo, current, company)
+        except Exception:
+            traceback.print_exc()
+            parties, waiting_on_me = [], False
         for r in rows:
             r["status"] = job_status
+            r["parties"] = parties
+            r["waiting_on_me"] = waiting_on_me
             r["reject_remark"] = reject_remark
             r["vendor_review"] = vendor_review
             r["maximo_pending"] = maximo_pending
@@ -317,7 +332,7 @@ async def _job_docs(keys) -> dict[tuple[str, str], dict]:
         try:
             cursor = get_stationpmjob_collection_for(station_id).find(
                 {"_id": {"$in": ids}}, {"_id": 1, "wonum": 1, "submitted_at": 1, "na_sections": 1, "reject_remark": 1, "work_entries": 1,
-                 "maximo_pending": 1}
+                 "maximo_pending": 1, "party_starts": 1, "createdAt": 1}
             )
             return [((station_id, str(d["_id"])), d) async for d in cursor]
         except Exception:
@@ -429,7 +444,7 @@ async def get_all_station_pm_reports(
     # ✅ กรอง pre ออก
     all_reports = [r for r in all_reports if r.get("side") not in ("pre", "Pre", "PRE")]
 
-    await _apply_job_status(all_reports, chargers)
+    await _apply_job_status(all_reports, chargers, current)
     # หลัง _apply_job_status — ใบลูกของใบ PM สถานีเพิ่งได้ wonum จากใบแม่ตรงนั้น
     await _apply_wo_origin(all_reports)
 

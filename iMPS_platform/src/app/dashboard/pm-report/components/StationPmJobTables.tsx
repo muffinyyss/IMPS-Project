@@ -47,6 +47,7 @@ import MDBPMForm from "@/app/dashboard/pm-report/mdb/input_PMreport/components/c
 import CCBPMForm from "@/app/dashboard/pm-report/ccb/input_PMreport/components/checkList";
 import CBBOXPMForm from "@/app/dashboard/pm-report/cb-box/input_PMreport/components/checkList";
 import ChargerPMForm from "@/app/dashboard/pm-report/charger/input_PMreport/components/checkList";
+import { partyChipText, partyTone, type PartyState } from "@/app/dashboard/pm-report/lib/partyStatus";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
@@ -210,6 +211,10 @@ type JobParty = {
   started?: boolean;
   started_at?: string;
   started_by?: string;
+  /** สรุปสถานะของฝ่าย (backend _party_state) + จำนวนส่วนที่ส่งแล้ว / ทั้งหมด — ไม่มี = backend รุ่นก่อน */
+  state?: PartyState;
+  done?: number;
+  total?: number;
 };
 
 type WorkEntry = {
@@ -821,11 +826,11 @@ export default function StationPmJobTables() {
   };
 
   /** กด/ยกเลิก N/A ของส่วนหนึ่ง — ส่วนที่ N/A ไม่ต้องกรอก ไม่นับเป็นส่วนที่ขาดตอนปิดใบงาน */
-  // กด N/A ต้องยืนยันใน pop-up ก่อน (ยกเลิก N/A ทำได้ทันที ไม่ต้องถาม)
+  // กด N/A ต้องยืนยันใน pop-up ก่อน · ยกเลิก N/A ก็ถามยืนยันเหมือนกัน (ส่วนนั้นจะกลับมาต้องกรอก)
   const toggleNa = (job: Job, s: SectionState, na: boolean) => {
     if (acting) return;
     if (na) { setNaError(""); setNaConfirm({ job, state: s }); return; }
-    void saveNa(job, s, false);
+    askConfirm("undoNa", () => { void saveNa(job, s, false); });
   };
 
   const saveNa = async (job: Job, s: SectionState, na: boolean) => {
@@ -1648,6 +1653,28 @@ export default function StationPmJobTables() {
                 <div className="tw-flex tw-flex-wrap tw-gap-2 tw-text-xs">
                   {(job.parties ?? []).map((p) => {
                     const entry = job.work_entries?.find((e) => e.key === p.key);
+                    // backend ส่ง state มาแล้ว (2026-10-22) — ชิปบอกละเอียดขึ้น: กำลังกรอก x/y / ตีกลับ / รอ planner vendor
+                    if (p.state) {
+                      const tone = partyTone(p.state);
+                      const cls = {
+                        red: "tw-border-red-200 tw-bg-red-50 tw-text-red-700",
+                        amber: "tw-border-amber-200 tw-bg-amber-50 tw-text-amber-800",
+                        green: "tw-border-green-200 tw-bg-green-50 tw-text-green-700",
+                        gray: "tw-border-gray-200 tw-bg-gray-50 tw-text-gray-600",
+                      }[tone];
+                      const icon = tone === "green" ? "✓" : tone === "red" ? "!" : tone === "gray" ? "○" : "⏳";
+                      const title = p.state === "submitted"
+                        ? `${entry?.submitted_by ?? ""} · ${entry?.work_start?.replace("T", " ") ?? ""} – ${entry?.work_finish?.replace("T", " ") ?? ""}`
+                        : p.missing.map((m) => pick(m, lang)).join(", ");
+                      return (
+                        <span key={p.key} title={title} className={`tw-rounded-full tw-border tw-px-2.5 tw-py-1 tw-font-semibold ${cls}`}>
+                          {icon} {partyLabel(p)} · {partyChipText(p, lang)}
+                          {p.state === "submitted" && p.vendor_review === "approved" && (
+                            <> · {t("vendorApproved", lang).replace("{p}", partyLabel(p))}</>
+                          )}
+                        </span>
+                      );
+                    }
                     const state = p.submitted ? "sent" : p.ready ? "waiting" : "notReady";
                     // ส่งแล้วแต่ยังรอ planner ของ vendor = ยังไม่ถึง planner ต้นทาง (สีเหลือง)
                     const vendorWait = state === "sent" && p.vendor_review === "pending";

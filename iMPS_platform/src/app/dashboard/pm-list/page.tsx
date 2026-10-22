@@ -25,6 +25,7 @@ import { PM_APPROVE_ROLES } from "@/app/dashboard/pm-report/components/flow";
 import { COMPANY_FILTER_OPTIONS, matchesCompanyFilter } from "@/utils/pm-dashboard";
 import { csvDate, csvFilename, downloadCsv, toCsv } from "@/utils/csv";
 import CsvExportButton from "@/components/CsvExportButton";
+import { partyLine, type PartySummary } from "@/app/dashboard/pm-report/lib/partyStatus";
 
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 500;
@@ -51,6 +52,8 @@ type PMRow = {
   charger_brand?: string;
   side: string;
   created_at: string;
+  /** เวลาที่เปิดใบงาน — ใบงาน = receivedAt, เอกสาร = receivedAt ของใบงานต้นทาง (ไม่มีก็ใช้ created_at) */
+  opened_at?: string;
   file_url: string;
   /** แถวใบงาน Maximo ที่ยังไม่มีเอกสาร PM — ด่าน Open ของ flow */
   kind?: "report" | "wo";
@@ -74,6 +77,12 @@ type PMRow = {
   maximo_pending?: boolean;
   /** ใบงานส่งต่อมาให้บริษัทของคนที่ดูอยู่ และยังไม่ได้วางแผน — สำหรับคนนี้ใบนี้ยังเป็น Open */
   vendor_pending_for_me?: boolean;
+  /** สรุปรายฝ่ายของใบ PM สถานี — บรรทัดรอง "รอใคร" ใต้สถานะหลัก (backend: party_summaries) */
+  parties?: PartySummary[];
+  /** ใบนี้รอคนที่ login ทำต่อ (กรอก / แก้ / ส่งงาน / อนุมัติ) — backend คิดให้ (waiting_on_user) */
+  waiting_on_me?: boolean;
+  /** บริษัทของ planner ต้นทางของใบงาน (แถวใบงานที่ยังไม่มีเอกสาร) — ใช้กับตัวกรอง "รอฉัน" */
+  planner_company?: string;
 };
 
 type WoOrigin = "maximo" | "manual";
@@ -199,7 +208,17 @@ const TYPE_TO_TAB: Record<string, string> = {
   STATION: "station",
 };
 
-type SortKey = "station" | "wo" | "technician" | "date" | "status";
+// "opened" = ค่าเริ่มต้นของหน้า (ไม่มีหัวคอลัมน์ให้กด)
+type SortKey = "station" | "wo" | "technician" | "date" | "status" | "opened";
+
+/** เวลาเป็นมิลลิวินาที — ค่าจาก Mongo ที่ไม่มี timezone เป็น UTC จึงเติม Z ก่อน parse */
+function toTs(v?: string): number | "" {
+  const s = String(v || "").trim();
+  if (!s || s === "-") return "";
+  const hasTz = /(Z|[+-]\d{2}:?\d{2})$/i.test(s);
+  const t = Date.parse(hasTz || !s.includes("T") ? s : `${s}Z`);
+  return Number.isFinite(t) ? t : "";
+}
 type SortDir = "asc" | "desc";
 
 const STAGE_RANK: Record<PmStage, number> = { open: 0, in_progress: 1, rejected: 2, wait_approve: 3, closed: 4 };
@@ -243,6 +262,8 @@ export default function PMListPage() {
   const [stageFilter, setStageFilter] = useState<PmStage | null>(null);
   // แท็บที่มาของใบงาน — null = ทั้งหมด
   const [originFilter, setOriginFilter] = useState<WoOrigin | null>(null);
+  // ตัวกรอง "รอฉัน" — ใบที่ติดอยู่ที่คนที่ login (ดู isWaitingOnMe)
+  const [mineOnly, setMineOnly] = useState(false);
   // แถวที่กำลังจะลบ — รอยืนยันใน pop-up (super admin เท่านั้น)
   const [deleteTarget, setDeleteTarget] = useState<PMRow | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -250,8 +271,8 @@ export default function PMListPage() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
-  // ค่าเริ่มต้น: เรียงตามเลขใบงาน ใบใหม่ (เลขมาก) อยู่บน
-  const [sortKey, setSortKey] = useState<SortKey>("wo");
+  // ค่าเริ่มต้น: ใบงานที่เปิดล่าสุดอยู่บนสุด
+  const [sortKey, setSortKey] = useState<SortKey>("opened");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
 
   const router = useRouter();
@@ -326,16 +347,20 @@ export default function PMListPage() {
           // เพื่อให้กรองงานของช่างได้ทั้งแถว WO และแถวเอกสาร
           const assigneesByWonum = new Map<string, string[]>();
           const vendorPlansByWonum = new Map<string, VendorPlan[]>();
+          // เวลาเปิดใบงาน — ให้แถวเอกสารเรียงตามเวลาที่ใบงานต้นทางถูกเปิด
+          const openedByWonum = new Map<string, string>();
           for (const w of items) {
             const wn = String(w?.wonum || "").trim();
             // ช่างของ planner ต้นทาง + ช่างที่ vendor มอบหมายเพิ่ม — ช่างของ vendor กรองงานตัวเองได้ด้วย
             if (wn) assigneesByWonum.set(wn, allAssignees(w));
+            if (wn && w?.receivedAt) openedByWonum.set(wn, String(w.receivedAt));
             if (wn && Array.isArray(w?.vendor_plans) && w.vendor_plans.length) vendorPlansByWonum.set(wn, w.vendor_plans);
           }
           for (const r of reports) {
             const wn = String(r.wonum || "").trim();
             if (wn && assigneesByWonum.has(wn)) r.assignees = assigneesByWonum.get(wn);
             if (wn && vendorPlansByWonum.has(wn)) r.vendor_plans = vendorPlansByWonum.get(wn);
+            if (wn && openedByWonum.has(wn)) r.opened_at = openedByWonum.get(wn);
           }
           woRows = items
             .filter((w) => !withReport.has(String(w?.wonum || "").trim()))
@@ -362,8 +387,10 @@ export default function PMListPage() {
               charger_brand: String(w?.charger_brand || ""),
               side: "",
               created_at: String(w?.receivedAt || ""),
+              opened_at: String(w?.receivedAt || ""),
               file_url: "",
               exists_in_maximo: w?.exists_in_maximo ?? null,
+              planner_company: String(w?.planner_company || ""),
               wo_origin: String(w?.origin || "").trim().toLowerCase() === MANUAL_WO_ORIGIN ? "manual" as const : "maximo" as const,
             }));
         }
@@ -423,7 +450,9 @@ export default function PMListPage() {
         technician: "ผู้ตรวจสอบ", date: "PM Plan", status: "สถานะ",
       },
       stage: { open: "Open", in_progress: "In Progress", rejected: "Reject", wait_approve: "Wait for approve", closed: "Closed" },
-      vendorWait: "รอ {p} อนุมัติ",
+      vendorWait: "รอ planner {p} อนุมัติ",
+      mineOnly: "รอฉัน",
+      mineOnlyTitle: "ใบที่รอคุณทำต่อ — วางแผน / เริ่ม PM / กรอก / แก้ฟอร์มที่ตีกลับ / ส่งงาน / อนุมัติ",
       maximoPending: "ยังไม่ปิดใน Maximo",
       maximoPendingTitle: "ส่งปิดงานเข้า Maximo ไม่ผ่าน ระบบกำลังลองส่งใหม่ — เปิดใบ PM เพื่อดูสถานะหรือกดส่งใหม่",
     },
@@ -471,7 +500,9 @@ export default function PMListPage() {
         technician: "Inspector", date: "PM Plan", status: "Status",
       },
       stage: { open: "Open", in_progress: "In Progress", rejected: "Reject", wait_approve: "Wait for approve", closed: "Closed" },
-      vendorWait: "Waiting for {p} approval",
+      vendorWait: "Waiting for {p} planner approval",
+      mineOnly: "Waiting on me",
+      mineOnlyTitle: "Documents waiting on you — plan / start PM / fill in / fix rejected forms / submit / approve",
       maximoPending: "Not closed in Maximo",
       maximoPendingTitle: "Closing in Maximo failed and is being retried — open the PM document to see the status or resend",
     },
@@ -608,6 +639,7 @@ export default function PMListPage() {
   };
 
   const clearAll = () => {
+    setMineOnly(false);
     setTypeFilter(null);
     setStageFilter(null);
     setOriginFilter(null);
@@ -617,7 +649,7 @@ export default function PMListPage() {
     setPage(0);
   };
   const activeFilterCount =
-    (typeFilter ? 1 : 0) + (stageFilter ? 1 : 0) + (originFilter ? 1 : 0) + (stationFilter !== "All" ? 1 : 0) + (companyFilter ? 1 : 0);
+    (mineOnly ? 1 : 0) + (typeFilter ? 1 : 0) + (stageFilter ? 1 : 0) + (originFilter ? 1 : 0) + (stationFilter !== "All" ? 1 : 0) + (companyFilter ? 1 : 0);
 
   // ช่างเห็นเฉพาะงานที่ planner มอบหมายให้ตัวเอง — role อื่นเห็นทุกใบ
   const scopedRows = useMemo(() => {
@@ -680,6 +712,28 @@ export default function PMListPage() {
     });
   }, [companyRows, stationFilter, yearSel, monthSel, weekSel]);
 
+  /**
+   * ใบนี้รอคนที่ login ทำต่อไหม (ตัวกรอง "รอฉัน")
+   *   แถวเอกสาร: backend คิดให้แล้ว (waiting_on_me) — ตามฝ่ายของผู้ใช้ / planner ที่ต้องอนุมัติ
+   *   แถวใบงาน (ยังไม่มีเอกสาร): Open → planner ที่ต้องวางแผน (ต้นทาง หรือ vendor ที่ได้ใบส่งต่อ)
+   *                             In Progress → ช่างที่ได้รับมอบ (ยังไม่กดเริ่ม PM)
+   */
+  const isWaitingOnMe = useCallback((r: PMRow): boolean => {
+    if (r.kind !== "wo") return !!r.waiting_on_me;
+    const role = me?.role ?? "";
+    const stage = stageOf(r);
+    if (stage === "open") {
+      if (!PM_PLANNING_ROLES.includes(role)) return false;
+      if (r.vendor_pending_for_me) return true;
+      if (pendingVendorPlans(r).length > 0) return false;   // รอ vendor รายอื่นวางแผน
+      if (role === "admin" || isSuperAdmin) return true;
+      const origin = String(r.planner_company ?? "").trim().toLowerCase();
+      return !origin || origin === userCompany.trim().toLowerCase();
+    }
+    // ช่างเห็นเฉพาะใบที่ได้รับมอบอยู่แล้ว (scopedRows)
+    return stage === "in_progress" && role === "technician";
+  }, [me, isSuperAdmin, userCompany]);
+
   const applySearch = useCallback((list: PMRow[]) => {
     const q = search.trim().toLowerCase();
     if (!q) return list;
@@ -691,33 +745,45 @@ export default function PMListPage() {
 
   const searchFiltered = useMemo(() => {
     let list = periodRows;
+    if (mineOnly) list = list.filter(isWaitingOnMe);
     if (originFilter) list = list.filter((r) => originOf(r) === originFilter);
     if (typeFilter) list = list.filter((r) => hasPmType(r, typeFilter));
     if (stageFilter) list = list.filter((r) => stageOf(r) === stageFilter);
     return applySearch(list);
-  }, [periodRows, originFilter, typeFilter, stageFilter, applySearch]);
+  }, [periodRows, mineOnly, isWaitingOnMe, originFilter, typeFilter, stageFilter, applySearch]);
+
+  // ตัวนับบนปุ่ม "รอฉัน" — ตามตัวกรองอื่นทั้งหมด
+  const mineCount = useMemo(() => {
+    let base = periodRows.filter(isWaitingOnMe);
+    if (originFilter) base = base.filter((r) => originOf(r) === originFilter);
+    if (typeFilter) base = base.filter((r) => hasPmType(r, typeFilter));
+    if (stageFilter) base = base.filter((r) => stageOf(r) === stageFilter);
+    return applySearch(base).length;
+  }, [periodRows, isWaitingOnMe, originFilter, typeFilter, stageFilter, applySearch]);
 
   // ตัวนับบนปุ่มสถานะ — ไม่ขึ้นกับตัวกรองสถานะที่เลือกอยู่ (เหมือน CM List)
   const stageCounts = useMemo(() => {
     let base = periodRows;
+    if (mineOnly) base = base.filter(isWaitingOnMe);
     if (originFilter) base = base.filter((r) => originOf(r) === originFilter);
     if (typeFilter) base = base.filter((r) => hasPmType(r, typeFilter));
     base = applySearch(base);
     const counts: Record<PmStage, number> = { open: 0, in_progress: 0, rejected: 0, wait_approve: 0, closed: 0 };
     for (const r of base) counts[stageOf(r)]++;
     return counts;
-  }, [periodRows, originFilter, typeFilter, applySearch]);
+  }, [periodRows, mineOnly, isWaitingOnMe, originFilter, typeFilter, applySearch]);
 
   // ตัวนับบนแท็บที่มา — ไม่ขึ้นกับแท็บที่เลือกอยู่ แต่ตามตัวกรองอื่นทั้งหมด
   const originCounts = useMemo(() => {
     let base = periodRows;
+    if (mineOnly) base = base.filter(isWaitingOnMe);
     if (typeFilter) base = base.filter((r) => hasPmType(r, typeFilter));
     if (stageFilter) base = base.filter((r) => stageOf(r) === stageFilter);
     base = applySearch(base);
     const counts: Record<WoOrigin, number> = { maximo: 0, manual: 0 };
     for (const r of base) counts[originOf(r)]++;
     return counts;
-  }, [periodRows, typeFilter, stageFilter, applySearch]);
+  }, [periodRows, mineOnly, isWaitingOnMe, typeFilter, stageFilter, applySearch]);
 
   const sortValue = useCallback((r: PMRow, key: SortKey): string | number => {
     switch (key) {
@@ -726,6 +792,8 @@ export default function PMListPage() {
       case "technician": return (r.technician || "").toLowerCase();
       case "date": return r.pm_date || "";
       case "status": return STAGE_RANK[stageOf(r)];
+      // ใบงานที่ปิดไปแล้ว (ไม่อยู่ในรายการใบงานเปิด) ใช้เวลาสร้างเอกสารแทน
+      case "opened": return toTs(r.opened_at) || toTs(r.created_at);
       default: return "";
     }
   }, []);
@@ -763,8 +831,8 @@ export default function PMListPage() {
       setSortDir((d) => (d === "asc" ? "desc" : "asc"));
     } else {
       setSortKey(key);
-      // วันที่/เลขใบงานเริ่มจากล่าสุด ข้อความเริ่ม A→Z
-      setSortDir(key === "date" || key === "wo" ? "desc" : "asc");
+      // วันที่เริ่มจากล่าสุด ข้อความเริ่ม A→Z
+      setSortDir(key === "date" ? "desc" : "asc");
     }
   };
 
@@ -940,6 +1008,17 @@ export default function PMListPage() {
           })}
         </div>
 
+        {/* รอฉัน — ใบที่ติดอยู่ที่คนที่ login (กดซ้ำเพื่อยกเลิก) */}
+        <button
+          type="button"
+          onClick={() => { setMineOnly((v) => !v); setPage(0); }}
+          aria-pressed={mineOnly}
+          title={t.mineOnlyTitle}
+          className={`tw-whitespace-nowrap tw-rounded-full tw-px-3 tw-py-1 tw-text-xs tw-font-semibold tw-transition-all ${mineOnly ? "tw-bg-blue-600 tw-text-white tw-shadow-sm" : "tw-bg-blue-50 tw-text-blue-700 hover:tw-brightness-95"}`}
+        >
+          {`${t.mineOnly} (${mineCount})`}
+        </button>
+
         <div className="tw-flex tw-items-center tw-gap-1.5" role="group" aria-label={t.statusFilterLabel}>
           {(["open", "in_progress", "rejected", "wait_approve", "closed"] as const).map((key) => {
             const isActive = stageFilter === key;
@@ -1102,10 +1181,8 @@ export default function PMListPage() {
                         className="tw-whitespace-nowrap tw-rounded-full tw-px-2.5 tw-py-0.5 tw-text-xs tw-font-medium tw-transition-all hover:tw-opacity-80"
                         style={{ background: style.bg, color: style.text, outline: stageFilter === stage ? `2px solid ${style.text}` : "none" }}
                       >
-                        {/* In Progress ที่ฝ่าย vendor ส่งงานตู้ชาร์จแล้ว รอ planner ของ vendor อนุมัติก่อนถึงต้นทาง */}
-                        {stage === "in_progress" && r.vendor_review?.length
-                          ? t.vendorWait.replace("{p}", r.vendor_review.join(", "))
-                          : stageLabel[stage]}
+                        {/* ป้ายหลักเป็นชุดสถานะคงที่ (ตรงกับ Maximo) — รอใครอยู่ไปอยู่บรรทัดรองข้างล่าง */}
+                        {stageLabel[stage]}
                       </button>
                       {stage === "closed" && r.maximo_pending && (
                         <span
@@ -1115,6 +1192,23 @@ export default function PMListPage() {
                           {t.maximoPending}
                         </span>
                       )}
+                      {/* บรรทัดรอง: ใบหลายฝ่าย — ส่งแล้วกี่ฝ่าย / ติดอยู่ที่ใคร */}
+                      {(() => {
+                        if (stage !== "in_progress" && stage !== "rejected") return null;
+                        const line = partyLine(r.parties, lang);
+                        // backend รุ่นก่อน (ไม่มี parties[].state) — ใช้ vendor_review เดิม
+                        const text = line?.text
+                          ?? (r.vendor_review?.length ? t.vendorWait.replace("{p}", r.vendor_review.join(", ")) : "");
+                        if (!text) return null;
+                        return (
+                          <div
+                            title={text}
+                            className={`tw-mt-1 tw-max-w-[280px] tw-text-[11px] tw-leading-snug ${line?.tone === "red" ? "tw-font-semibold tw-text-red-600" : "tw-text-amber-700"}`}
+                          >
+                            {text}
+                          </div>
+                        );
+                      })()}
                     </td>
                     <td className="tw-px-4 tw-py-3 tw-text-center">
                       {pdfHref ? (

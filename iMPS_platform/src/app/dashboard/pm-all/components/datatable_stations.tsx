@@ -21,6 +21,7 @@ import { isStaffRole, staffChargerPath } from "@/utils/roles";
 import { DocumentArrowDownIcon } from "@heroicons/react/24/outline";
 import { startVisiblePoll } from "@/utils/visible-poll";
 import TableSkeletonRows from "@/components/TableSkeletonRows";
+import { usePmConfirm } from "@/app/dashboard/pm-report/components/PmConfirmDialog";
 
 // const API_BASE = "http://localhost:8000";
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "";
@@ -483,8 +484,12 @@ export function SearchDataTables() {
         return `${mLabel} ${yLabel}`;
     }, [lang, selectedYear, selectedMonth]);
 
-    const handleDeleteReport = async (report: PMReportData, stationId: string) => {
-        if (!confirm(lang === "th" ? `ลบรายงาน "${report.document_name}" ใช่หรือไม่?` : `Delete report "${report.document_name}"?`)) return;
+    // ลบรายงานต้องยืนยันใน pop-up แบบเดียวกับหน้า PM อื่น (เดิมใช้ confirm() ของเบราว์เซอร์)
+    const { ask: askConfirm, dialog: pmConfirmDialog } = usePmConfirm(lang);
+    const handleDeleteReport = (report: PMReportData, stationId: string) => {
+        askConfirm("deleteReport", () => deleteReport(report, stationId), { name: report.document_name ?? "" });
+    };
+    const deleteReport = async (report: PMReportData, stationId: string) => {
 
         setDeletingReportId(report.id);
         try {
@@ -1563,6 +1568,7 @@ export function SearchDataTables() {
                     </DialogFooter>
                 </form>
             </Dialog>
+            {pmConfirmDialog}
         </>
     );
 }
