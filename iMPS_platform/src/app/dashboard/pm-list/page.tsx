@@ -499,15 +499,39 @@ export default function PMListPage() {
     //              และอนุมัติ/ตีกลับทำทั้งใบที่หน้ารวม ไม่ใช่รายส่วน
     //   แถวใบงาน : In Progress แต่ยังไม่มีส่วนไหนถูกกรอก ต้องถามหาใบจาก wonum
     //              ไม่เจอ = ช่างยังไม่กด "เริ่ม PM" ไปหน้าใบงานตามเดิม
+    //   ช่าง (ไม่ใช่ผู้วางแผน) ที่ฝ่ายตัวเองยังไม่กด "เริ่ม PM" — เช่น ช่าง EGAT เปิดใบไปก่อน ช่าง EDS ยังไม่เริ่ม
+    //              → หน้าใบงานที่มีปุ่ม "เริ่ม PM" เหมือนช่างฝ่ายแรก (กดแล้ว backend หยิบใบเดิม + จดเวลาเริ่มของฝ่าย)
+    //   planner ของ vendor (เช่น EDS) ที่วางแผนแล้ว แต่ช่างของบริษัทตัวเองยังไม่เริ่ม → หน้าวางแผนเหมือนกัน
+    //              ให้ยังกด "แก้ไขแผนของบริษัทคุณ" ได้ (เหมือน planner ต้นทางก่อนช่างเริ่ม PM)
+    const isTech = !PM_PLANNING_ROLES.includes(me?.role ?? "");
+    const isVendorPlanner = !isTech && myVendorPlan(r, userCompany)?.status === "planned";
+    const toPlanFirst = isTech || isVendorPlanner;
     if (r.station_id && (r.kind === "report" ? !!r.job_id : stageOf(r) === "in_progress")) {
       let jobId = r.kind === "report" ? (r.job_id || "") : "";
-      if (!jobId && r.kind === "wo" && r.wonum) {
+      let myStarted = true;
+      const wonum = String(r.wonum || "").trim();
+      const draft = r.kind === "wo" || ["in_progress", "rejected"].includes(stageOf(r));
+      if (wonum && (!jobId || (toPlanFirst && draft))) {
         try {
           const res = await apiFetch(
-            `/stationpmjob/by-wonum?station_id=${encodeURIComponent(r.station_id)}&wonum=${encodeURIComponent(r.wonum)}`
+            `/stationpmjob/by-wonum?station_id=${encodeURIComponent(r.station_id)}&wonum=${encodeURIComponent(wonum)}`
           );
-          if (res.ok) jobId = String((await res.json())?.id || "");
+          if (res.ok) {
+            const j = await res.json();
+            jobId = jobId || String(j?.id || "");
+            if (j?.id && j?.my_started === false) myStarted = false;
+          }
         } catch { /* หาไม่ได้ก็เปิดหน้าใบงานตามเดิม */ }
+      }
+      if (jobId && toPlanFirst && !myStarted) {
+        window.dispatchEvent(new CustomEvent(tab === "charger" && r.sn && r.sn !== "-" ? "charger:selected" : "station:selected"));
+        if (tab === "charger" && r.sn && r.sn !== "-") localStorage.setItem("selected_sn", r.sn);
+        const params = new URLSearchParams({
+          tab, view: "form", wonum, from: PM_ORIGIN_LIST, planning: "1", station_id: r.station_id,
+        });
+        if (tab === "charger" && r.sn && r.sn !== "-") params.set("sn", r.sn);
+        router.push(`/dashboard/pm-report?${params.toString()}`);
+        return;
       }
       if (jobId) {
         window.dispatchEvent(new CustomEvent("station:selected"));
@@ -547,7 +571,7 @@ export default function PMListPage() {
     if (tab === "charger" && r.sn && r.sn !== "-") params.set("sn", r.sn);
     else if (r.station_id) params.set("station_id", r.station_id);
     router.push(`/dashboard/pm-report?${params.toString()}`);
-  }, [router, me]);
+  }, [router, me, userCompany]);
 
   const confirmDelete = async () => {
     const r = deleteTarget;

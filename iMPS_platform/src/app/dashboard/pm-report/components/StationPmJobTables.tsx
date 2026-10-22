@@ -39,6 +39,7 @@ import PmPlanForm from "@/app/dashboard/pm-report/components/PmPlanForm";
 import PmWorkOrderInfo from "@/app/dashboard/pm-report/components/PmWorkOrderInfo";
 import { usePmConfirm } from "@/app/dashboard/pm-report/components/PmConfirmDialog";
 import { pmBackRoute } from "@/app/dashboard/pm-report/lib/origin";
+import { PM_PLANNING_ROLES } from "@/app/dashboard/pm-report/components/planning";
 
 // ฟอร์มกรอกของแต่ละส่วน — ของเดิมทั้งหมด ไม่ได้แก้เนื้อ checklist
 import StationPMForm from "@/app/dashboard/pm-report/station/input_PMreport/components/checkList";
@@ -183,6 +184,8 @@ type Job = {
   parties?: JobParty[];
   /** ฝ่ายของคนที่ login อยู่ (key ของ parties) */
   my_party?: string;
+  /** ฝ่ายของคนที่ login กด "เริ่ม PM" แล้ว (false = ยังไม่เริ่ม เช่น ช่าง EDS ที่ทีมต้นทางเปิดใบไปก่อน) */
+  my_started?: boolean;
   split?: boolean;
   work_entries?: WorkEntry[];
   /** คนที่ login เป็น planner ของ vendor ในใบนี้ → key ฝ่ายที่ต้องตรวจฟอร์มตู้ชาร์จ ("" = ไม่ใช่) */
@@ -201,6 +204,10 @@ type JobParty = {
   /** ฟอร์มตู้ชาร์จของฝ่ายนี้ต้องผ่าน planner ของ vendor ก่อน (ดู SectionState.vendor_review) */
   vendor_review?: VendorReview;
   vendor_approved_by?: string;
+  /** ฝ่ายนี้กด "เริ่ม PM" แล้ว + เวลาที่กด — ค่าเริ่มต้นของเวลาเริ่ม PM ตอนส่งงานของฝ่ายนี้ */
+  started?: boolean;
+  started_at?: string;
+  started_by?: string;
 };
 
 type WorkEntry = {
@@ -299,6 +306,13 @@ const T = {
   partySent: { th: "ส่งแล้ว", en: "Submitted" },
   partyWaiting: { th: "รอส่งงาน", en: "Waiting" },
   partyNotReady: { th: "ยังกรอกไม่ครบ", en: "Not complete" },
+  partyNotStarted: { th: "ยังไม่เริ่ม PM", en: "Not started" },
+  startPmTitle: { th: "{p} ยังไม่ได้กดเริ่ม PM", en: "{p} has not started PM yet" },
+  startPmBody: {
+    th: "ใบ PM นี้เปิดไว้แล้ว — กด \"เริ่ม PM\" เพื่อเริ่มงานส่วนของ {p} (เวลาที่กดเป็นเวลาเริ่ม PM ตั้งต้นตอนส่งงาน)",
+    en: "This PM document is already open — press \"Start PM\" to begin {p}'s part (used as the default start time when submitting)",
+  },
+  startPm: { th: "เริ่ม PM", en: "Start PM" },
   ownTeam: { th: "ทีมต้นทาง", en: "Origin team" },
   submitPartyHint: {
     th: "ใบนี้แบ่งงานหลายฝ่าย — แต่ละฝ่ายส่งงานพร้อมเวลาทำงานของตัวเอง ครบทุกฝ่ายแล้วใบจึงส่งให้อนุมัติ",
@@ -911,6 +925,26 @@ export default function StationPmJobTables() {
     }
   };
 
+  /** ใบเปิดไว้แล้วแต่ฝ่ายของช่างคนนี้ยังไม่เริ่ม → จดเวลาเริ่ม PM ของฝ่าย (backend หยิบใบเดิม ไม่เปิดใหม่) */
+  const startMyParty = async (job: Job) => {
+    if (acting) return;
+    setActing(true);
+    try {
+      const res = await apiFetch("/stationpmjob/open", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ station_id: job.station_id, pm_date: job.pm_date, wonum: job.wonum || null }),
+      });
+      const json = await res.json().catch(() => ({} as any));
+      if (!res.ok) throw new Error(json?.detail || t("errCreate", lang));
+      await loadJobs();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : t("errCreate", lang));
+    } finally {
+      setActing(false);
+    }
+  };
+
   /**
    * ช่างกด "ปิดใบงาน" → เปิดหน้าต่างกรอกเวลาทำงาน + ช่างที่ลงเวลา Maximo (เติมค่าเดิมถ้าเคยกรอก)
    * ยังไม่เคยกรอก: เริ่ม = วันนี้ + เวลาที่กดรับงาน, เสร็จ = ตอนนี้
@@ -920,7 +954,9 @@ export default function StationPmJobTables() {
     // ฝ่ายนี้เคยส่งแล้ว (แก้ / โดนตีกลับ) = เติมค่าที่ส่งไว้ ไม่งั้นใช้ค่าของใบ (ใบฝ่ายเดียวรุ่นก่อน)
     const e = job.work_entries?.find((x) => x.key === partyKey);
     const fallback = job.split ? undefined : job;
-    setWorkStart(e?.work_start || fallback?.work_start || defaultWorkStart(job.createdAt, now));
+    // เวลาที่ฝ่ายนี้กด "เริ่ม PM" — ใบรุ่นก่อน/ฝ่ายที่ไม่มีเวลาเริ่ม ใช้เวลาเปิดใบเหมือนเดิม
+    const startedAt = job.parties?.find((p) => p.key === partyKey)?.started_at || job.createdAt;
+    setWorkStart(e?.work_start || fallback?.work_start || defaultWorkStart(startedAt, now));
     setWorkFinish(e?.work_finish || fallback?.work_finish || toLocalDatetimeInput(now));
     setMaximoLabor(e?.maximo_labor || fallback?.maximo_labor || []);
     setMaximoContractor(e?.maximo_contractor || fallback?.maximo_contractor || "");
@@ -1617,7 +1653,8 @@ export default function StationPmJobTables() {
                     return (
                       <span key={p.key} title={title} className={`tw-rounded-full tw-border tw-px-2.5 tw-py-1 tw-font-semibold ${cls}`}>
                         {state === "sent" && !vendorWait ? "✓" : "⏳"} {partyLabel(p)} ·{" "}
-                        {t(state === "sent" ? "partySent" : state === "waiting" ? "partyWaiting" : "partyNotReady", lang)}
+                        {t(state === "sent" ? "partySent" : state === "waiting" ? "partyWaiting"
+                          : p.started === false ? "partyNotStarted" : "partyNotReady", lang)}
                         {vendorWait && <> · {t("vendorPending", lang).replace("{p}", partyLabel(p))}</>}
                         {state === "sent" && p.vendor_review === "approved" && (
                           <> · {t("vendorApproved", lang).replace("{p}", partyLabel(p))}</>
@@ -1660,6 +1697,26 @@ export default function StationPmJobTables() {
             )}
           </CardBody>
         </Card>
+
+        {/* ฝ่ายของช่างที่ login ยังไม่ได้กดเริ่ม PM (ทีมอื่นเปิดใบไปก่อน เช่น EGAT เปิด ช่าง EDS ยังไม่เริ่ม)
+            — ปกติหน้า PM List พาไปหน้าใบงานให้กดเริ่มก่อนแล้ว ตรงนี้กันเข้าทางอื่น (bookmark / ตาราง tab)
+            ผู้วางแผน / admin ไม่ต้องกด (เข้ามาตรวจ/ดูแล ไม่ใช่เริ่มงาน) */}
+        {job.status === "draft" && job.my_started === false && !PM_PLANNING_ROLES.includes(me?.role ?? "") && (
+          <div className="tw-mb-5 tw-flex tw-flex-col tw-gap-3 tw-rounded-lg tw-border tw-border-amber-200 tw-bg-amber-50 tw-px-4 tw-py-3 sm:tw-flex-row sm:tw-items-center sm:tw-justify-between">
+            <div className="tw-text-sm tw-text-amber-800">
+              <p className="tw-font-semibold">{t("startPmTitle", lang).replace("{p}", partyLabel(myParty))}</p>
+              <p className="tw-mt-0.5">{t("startPmBody", lang).replace("{p}", partyLabel(myParty))}</p>
+            </div>
+            <Button
+              size="sm"
+              disabled={acting}
+              onClick={() => askConfirm("startPm", () => { void startMyParty(job); })}
+              className="tw-shrink-0 tw-bg-amber-500 hover:tw-bg-amber-600 tw-text-white tw-font-semibold"
+            >
+              {t("startPm", lang)}
+            </Button>
+          </div>
+        )}
 
         {/* 2 ส่วนหลัก — Station รวม 4 แบบตรวจเดิม ส่วน Charger แตกเป็นใบย่อยรายตู้ */}
         {/* หัวข้อ + ตัวนับอยู่แถวเดียวกันเสมอ — คำอธิบายลงบรรทัดใหม่บนมือถือ (เดิมตัวนับหลุดไปอยู่บรรทัดเดี่ยว) */}

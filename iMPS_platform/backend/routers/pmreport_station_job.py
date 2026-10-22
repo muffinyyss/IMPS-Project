@@ -429,7 +429,19 @@ def _serialize_job(job: dict, sections: list[dict], required: set[SectionKey] | 
         "maximo_sync": _serialize_maximo_sync(job),
         # เวลาทำงาน + ผู้ลงเวลาที่แต่ละฝ่ายส่ง (ใบที่แบ่งงาน EGAT / vendor / outsource ส่งแยกกัน)
         "work_entries": [_serialize_entry(e) for e in job.get("work_entries") or [] if isinstance(e, dict)],
+        # ฝ่ายที่กด "เริ่ม PM" แล้ว — None = ใบรุ่นก่อนมีการเริ่มรายฝ่าย (_with_ownership ใช้ตัดสิน)
+        "party_starts": _serialize_starts(job),
     }
+
+
+def _serialize_starts(job: dict) -> list[dict] | None:
+    starts = job.get("party_starts")
+    if not isinstance(starts, list):
+        return None
+    return [
+        {"key": e.get("key") or "", "party": e.get("party") or "", "by": e.get("by") or "", "at": _iso(e.get("at"))}
+        for e in starts if isinstance(e, dict)
+    ]
 
 
 def _serialize_entry(e: dict) -> dict:
@@ -505,6 +517,111 @@ def user_party_key(wo: dict | None, current: UserClaims, company: str) -> str:
         if party:
             return _pkey(party)
     return _pkey((wo or {}).get("planner_company") or "")
+
+
+# ══════════════════════════════════════════════════════════════════
+# เริ่ม PM รายฝ่าย (2026-10-22)
+#   เดิมมีแค่คนแรกที่กด "เริ่ม PM" (ปกติช่างทีมต้นทาง) ที่ได้ผ่านหน้าใบงาน — ใบ PM สถานีเปิดแล้ว
+#   ช่างฝ่ายอื่น (เช่น EDS) กดจาก PM List ก็เด้งเข้าหน้ารวมเลย ไม่มีปุ่มเริ่มงานของตัวเอง
+#   และเวลาเริ่มตั้งต้นตอนส่งงานก็ยืมเวลาที่ทีมต้นทางรับงาน
+#   ตอนนี้: แต่ละฝ่ายกด "เริ่ม PM" ของตัวเอง → stationPMJob.party_starts[] = {key, party, by, at}
+# ══════════════════════════════════════════════════════════════════
+
+def party_started(
+    job_out: dict, key: str, party: dict, n_parties: int, origin_key: str, entries: list[dict]
+) -> dict | None:
+    """
+    เวลาที่ฝ่ายนี้กดเริ่ม PM {"by", "at"} — None = ยังไม่เริ่ม
+    ใบรุ่นก่อน (ไม่มี party_starts): ทีมต้นทาง / ใบฝ่ายเดียว ถือว่าเริ่มตอนเปิดใบ
+    ฝ่ายที่บันทึกส่วนของตัวเองหรือส่งงานไปแล้ว ถือว่าเริ่มแล้ว (ใบที่ทำค้างไว้ก่อนมีปุ่มนี้)
+    """
+    starts = job_out.get("party_starts")
+    hit = next((e for e in starts or [] if e.get("key") == key), None)
+    if hit:
+        return {"by": hit.get("by") or "", "at": hit.get("at") or ""}
+    if starts is None and (key == origin_key or n_parties <= 1):
+        return {"by": "", "at": job_out.get("createdAt") or ""}
+    if any(s.get("report_id") for s in party["states"]) or any(e.get("key") == key for e in entries):
+        return {"by": "", "at": ""}
+    return None
+
+
+async def _record_party_start(jobs, job: dict, current: UserClaims) -> None:
+    """จดว่าฝ่ายของคนที่กด "เริ่ม PM" เริ่มงานแล้ว — กดซ้ำ/ฝ่ายเดิมกดอีกคนไม่ทับเวลาแรก"""
+    from routers import pm_scope
+
+    wonum = str(job.get("wonum") or "").strip()
+    wo = (await pm_scope.wos_by_wonum([wonum])).get(wonum) if wonum else None
+    key = user_party_key(wo, current, pm_scope.company_of(current))
+    if any(isinstance(e, dict) and e.get("key") == key for e in job.get("party_starts") or []):
+        return
+    party = pm_scope.user_party(wo, current.username or current.sub, pm_scope.company_of(current)) \
+        if pm_scope.scoped_items(wo) else None
+    entry = {
+        "key": key,
+        "party": party or str((wo or {}).get("planner_company") or "").strip(),
+        "by": current.username or current.sub,
+        "at": datetime.now(timezone.utc),
+    }
+    if not isinstance(job.get("party_starts"), list):
+        # ใบรุ่นก่อน: ฝ่ายที่ถือว่าเริ่มตอนเปิดใบ (ทีมต้นทาง / ใบฝ่ายเดียว) ต้องจดไว้ก่อน
+        # ไม่งั้นพอมี party_starts แล้ว ฝ่ายนั้นจะกลายเป็น "ยังไม่เริ่ม"
+        sections = await _section_states(job)
+        _mark_plan(sections, await job_planned_keys(job))
+        parties = job_parties(sections, wo)
+        origin_key = _pkey((wo or {}).get("planner_company") or "")
+        seed = [
+            {"key": k, "party": p["name"], "by": job.get("created_by") or "", "at": job.get("createdAt")}
+            for k, p in parties.items()
+            if k != key and (k == origin_key or len(parties) <= 1)
+        ]
+        res = await jobs.update_one(
+            {"_id": job["_id"], "party_starts": {"$exists": False}},
+            {"$set": {"party_starts": seed + [entry]}},
+        )
+        if res.modified_count:
+            job["party_starts"] = seed + [entry]
+            return
+        job["party_starts"] = (await jobs.find_one({"_id": job["_id"]}, {"party_starts": 1}) or {}).get("party_starts") or []
+    # key อาจมีจุด (ชื่อบริษัท) จึงเก็บเป็น array แทน sub-document; กันซ้ำด้วย $ne ตอนเขียน
+    res = await jobs.update_one(
+        {"_id": job["_id"], "party_starts.key": {"$ne": key}},
+        {"$push": {"party_starts": entry}},
+    )
+    if res.modified_count and not any(e.get("key") == key for e in job["party_starts"] if isinstance(e, dict)):
+        job["party_starts"].append(entry)
+
+
+async def wo_party_started(station_id: str, wonum: str, party: str) -> bool | None:
+    """
+    ฝ่ายนี้ (เช่น vendor EDS) กด "เริ่ม PM" ในใบ PM สถานีของใบงานนี้แล้วหรือยัง
+    — หน้าวางแผนใช้ตัดสินว่า planner ของ vendor ยังแก้แผนของบริษัทตัวเองได้ไหม
+    (ทีมต้นทางเปิดใบไปก่อน ไม่ได้แปลว่าทีมของ vendor เริ่มงานแล้ว)
+    None = ยังไม่มีใบ PM สถานีของใบงานนี้ (ให้คนเรียกตัดสินเอง); ใบที่ส่งงานไปแล้ว = ถือว่าเริ่มแล้ว
+    """
+    station_id = (station_id or "").strip()
+    wonum = (wonum or "").strip()
+    key = _pkey(party)
+    if not station_id or not wonum or not key:
+        return None
+    job = await get_stationpmjob_collection_for(station_id).find_one({"wonum": wonum})
+    if not job:
+        return None
+    if _job_submitted(job):
+        return True
+    if any(isinstance(e, dict) and e.get("key") == key for e in job.get("party_starts") or []):
+        return True
+    sections = await _section_states(job)
+    _mark_plan(sections, await job_planned_keys(job))
+    wo = await _job_wo(job)
+    parties = job_parties(sections, wo)
+    p = parties.get(key)
+    if p is None:
+        # ไม่มีส่วนของฝ่ายนี้ในใบ (เช่น N/A หมด) — นับจากที่จดไว้เท่านั้น
+        return False
+    origin_key = _pkey((wo or {}).get("planner_company") or "")
+    entries = job.get("work_entries") or []
+    return party_started(job, key, p, len(parties), origin_key, entries) is not None
 
 
 def _party_done(key: str, party: dict, entries: list[dict]) -> bool:
@@ -618,6 +735,10 @@ async def _with_ownership(jobs: list[dict], current: UserClaims) -> list[dict]:
         for s in j.get("sections") or []:
             s["vendor_review"] = ""
         out_parties = []
+        origin_key = _pkey((wo or {}).get("planner_company") or "")
+        started: dict[str, dict | None] = {
+            key: party_started(j, key, p, len(parties), origin_key, entries) for key, p in parties.items()
+        }
         for key, p in parties.items():
             review = vendor_review_state(key, p, entries, wo)
             entry = next((e for e in entries if e.get("key") == key), None) or {}
@@ -634,9 +755,20 @@ async def _with_ownership(jobs: list[dict], current: UserClaims) -> list[dict]:
                 "submitted": _party_done(key, p, entries),
                 "vendor_review": review,
                 "vendor_approved_by": (entry.get("vendor_approved_by") or "") if review == "approved" else "",
+                # กด "เริ่ม PM" แล้ว — เวลาเริ่มตั้งต้นตอนส่งงานของฝ่ายนี้
+                "started": started[key] is not None,
+                "started_at": (started[key] or {}).get("at") or "",
+                "started_by": (started[key] or {}).get("by") or "",
             })
         j["parties"] = out_parties
         j["my_party"] = user_party_key(wo, current, company)
+        # ฝ่ายของคนที่ login ยังไม่ได้กด "เริ่ม PM" — หน้า PM List พาไปหน้าใบงานก่อน / หน้ารวมขึ้นปุ่มให้
+        # ไม่มีส่วนของตัวเองในใบ / ใบที่ส่งงานไปแล้ว = ไม่ต้องเริ่ม
+        j["my_started"] = (
+            j["my_party"] not in started
+            or started[j["my_party"]] is not None
+            or j.get("status") != pm_flow.PM_STATUS_DRAFT
+        )
         j["split"] = len(parties) > 1
         # planner ของ vendor = ตรวจ/อนุมัติเฉพาะฟอร์มตู้ชาร์จของฝ่ายตัวเอง / อนุมัติทั้งใบเป็นของ planner ต้นทาง
         j["vendor_reviewer"] = vendor_reviewer_key(wo, current, company)
@@ -715,6 +847,8 @@ async def open_station_pm_job(
         {"wonum": wonum} if wonum else {"pm_date": pm_date, "wonum": {"$in": ["", None]}}
     )
     if existing:
+        # ใบเปิดไว้แล้ว (เช่น ช่างทีมต้นทางกดไปก่อน) — ฝ่ายของคนที่กดตอนนี้เริ่มงานของตัวเอง
+        await _record_party_start(jobs, existing, current)
         job_out = _serialize_job(existing, await _section_states(existing), await job_planned_keys(existing))
         await _with_ownership([job_out], current)
         # ใบที่เปิดไว้ก่อนมีกติกานี้ (INPRG ยังค้างรอ vendor) — ตามยิงให้ตอนมีคนเปิดใบ
@@ -756,9 +890,12 @@ async def open_station_pm_job(
         "inspector": (body.inspector or "").strip(),
         "created_by": current.username or current.sub,
         "createdAt": datetime.now(timezone.utc),
+        # มีตั้งแต่เปิดใบ (ว่างได้) = ใบรุ่นใหม่ ฝ่ายอื่นต้องกด "เริ่ม PM" ของตัวเอง
+        "party_starts": [],
     }
     res = await jobs.insert_one(doc)
     saved = await jobs.find_one({"_id": res.inserted_id}) or {**doc, "_id": res.inserted_id}
+    await _record_party_start(jobs, saved, current)
     log.info(f"  ✅ เปิดใบ PM สถานี {issue_id} ({station_id}, wonum={wonum or '-'})")
     _start_in_progress(saved, current.username or current.sub)
     job_out = _serialize_job(saved, await _section_states(saved), await job_planned_keys(saved))
@@ -801,8 +938,13 @@ async def find_station_pm_job_by_wonum(
     wonum = wonum.strip()
     if not station_id or not wonum:
         return {"id": ""}
-    job = await get_stationpmjob_collection_for(station_id).find_one({"wonum": wonum}, {"_id": 1})
-    return {"id": str(job["_id"]) if job else ""}
+    job = await get_stationpmjob_collection_for(station_id).find_one({"wonum": wonum})
+    if not job:
+        return {"id": "", "my_started": False}
+    # ฝ่ายของคนที่กดยังไม่ได้เริ่ม PM → หน้า PM List พาไปหน้าใบงาน (ปุ่ม "เริ่ม PM") แทนหน้ารวม
+    job_out = _serialize_job(job, await _section_states(job), await job_planned_keys(job))
+    await _with_ownership([job_out], current)
+    return {"id": str(job["_id"]), "my_started": bool(job_out.get("my_started", True))}
 
 
 @router.get("/stationpmjob/{job_id}")

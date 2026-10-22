@@ -140,8 +140,12 @@ const T = {
     en: "Editing the plan — press \"Save changes\" to confirm or \"Cancel\" to keep the current plan",
   },
   vendorEditableNotice: {
-    th: "แผนของบริษัทคุณยังแก้ไขได้จนกว่าช่างจะกดเริ่ม PM",
-    en: "Your company's plan can still be edited until a technician starts PM",
+    th: "แผนของบริษัทคุณยังแก้ไขได้จนกว่าช่างของบริษัทคุณจะกดเริ่ม PM (กด \"แก้ไขแผนของบริษัทคุณ\")",
+    en: "Your company's plan can still be edited until your technicians start PM (press \"Edit your company's plan\")",
+  },
+  vendorPlannedNotice: {
+    th: "แผนของบริษัทคุณบันทึกแล้ว — ข้อมูลเป็นแบบอ่านอย่างเดียว",
+    en: "Your company's plan is saved — fields are read-only",
   },
   editPlan: { th: "แก้ไขแผน", en: "Edit plan" },
   editVendorPlan: { th: "แก้ไขแผนของบริษัทคุณ", en: "Edit your company's plan" },
@@ -596,7 +600,29 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
           <PmLockBanner lockedBy={planLockedBy} kind="plan" lang={lang} />
 
           {/* วางแผนแล้ว — อ่านอย่างเดียว / ยังแก้ได้ / กำลังแก้ */}
-          {!loading && canPlan && alreadyPlanned && !vendorTurn && (
+          {/* planner ของ vendor (เช่น EDS) — สถานะการแก้แผนของบริษัทตัวเอง ไม่ใช่ของแผนต้นทาง */}
+          {!loading && canPlan && alreadyPlanned && !vendorTurn && mine?.status === "planned" && (
+            <div className={`tw-mb-4 tw-flex tw-items-start tw-gap-3 tw-px-4 tw-py-3 tw-rounded-lg tw-border ${vEditing ? "tw-bg-amber-50 tw-border-amber-200" : "tw-bg-blue-50 tw-border-blue-200"}`}>
+              <ExclamationTriangleIcon className={`tw-w-5 tw-h-5 tw-mt-0.5 tw-flex-shrink-0 ${vEditing ? "tw-text-amber-500" : "tw-text-blue-500"}`} />
+              <div className={`tw-text-sm ${vEditing ? "tw-text-amber-800" : "tw-text-blue-800"}`}>
+                <p>
+                  {vEditing
+                    ? t("editingNotice", lang)
+                    : canEditVendorPlan
+                      ? t("vendorEditableNotice", lang)
+                      : `${t("vendorPlannedNotice", lang)}${planState?.vendor_plan_reason ? ` (${planState.vendor_plan_reason})` : ""}`}
+                </p>
+                {mine.edited_by && (
+                  <p className="tw-mt-1 tw-text-xs tw-opacity-80">
+                    {t("editedBy", lang)} {mine.edited_by} · {toDateTimeLocalValue(mine.edited_at).replace("T", " ")}
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* วางแผนแล้ว — อ่านอย่างเดียว / ยังแก้ได้ / กำลังแก้ (planner ต้นทาง) */}
+          {!loading && canPlan && alreadyPlanned && !vendorTurn && mine?.status !== "planned" && (
             <div className={`tw-mb-4 tw-flex tw-items-start tw-gap-3 tw-px-4 tw-py-3 tw-rounded-lg tw-border ${editing ? "tw-bg-amber-50 tw-border-amber-200" : "tw-bg-blue-50 tw-border-blue-200"}`}>
               <ExclamationTriangleIcon className={`tw-w-5 tw-h-5 tw-mt-0.5 tw-flex-shrink-0 ${editing ? "tw-text-amber-500" : "tw-text-blue-500"}`} />
               <div className={`tw-text-sm ${editing ? "tw-text-amber-800" : "tw-text-blue-800"}`}>
@@ -607,7 +633,6 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
                       ? t("plannedEditableNotice", lang)
                       : `${t("plannedNotice", lang)}${planState?.plan_reason ? ` (${planState.plan_reason})` : ""}`}
                 </p>
-                {canEditVendorPlan && !vEditing && <p className="tw-mt-1">{t("vendorEditableNotice", lang)}</p>}
                 {wo?.plan_edited_by && (
                   <p className="tw-mt-1 tw-text-xs tw-opacity-80">
                     {t("editedBy", lang)} {wo.plan_edited_by} · {toDateTimeLocalValue(wo.plan_edited_at).replace("T", " ")}
