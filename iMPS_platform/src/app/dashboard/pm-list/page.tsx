@@ -26,6 +26,7 @@ import { COMPANY_FILTER_OPTIONS, matchesCompanyFilter } from "@/utils/pm-dashboa
 import { csvDate, csvFilename, downloadCsv, toCsv } from "@/utils/csv";
 import CsvExportButton from "@/components/CsvExportButton";
 import { partyLine, type PartySummary } from "@/app/dashboard/pm-report/lib/partyStatus";
+import PmIntakeControl from "@/app/dashboard/pm-report/components/PmIntakeControl";
 
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 500;
@@ -247,6 +248,8 @@ export default function PMListPage() {
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // เพิ่มทีละ 1 = โหลดรายการใหม่ (ระบบออกใบงาน PM อัตโนมัติให้แล้ว — PmIntakeControl)
+  const [reloadKey, setReloadKey] = useState(0);
 
   const [yearSel, setYearSel] = useState<number | "all">("all");
   const [monthSel, setMonthSel] = useState<number | "all">("all");
@@ -396,7 +399,7 @@ export default function PMListPage() {
         setLoading(false);
       }
     })();
-  }, []);
+  }, [reloadKey]);
 
   const t = useMemo(() => ({
     th: {
@@ -857,6 +860,11 @@ export default function PMListPage() {
           <span className="tw-text-base">⚠️</span>
           <span>{`${t.errorPrefix}: `}<strong>{error}</strong></span>
         </div>
+      )}
+
+      {/* ปิดรับใบงานจาก Maximo / iMPS ออกใบงานเองตามรอบ commissioning (admin สลับได้) */}
+      {me && (
+        <PmIntakeControl role={me.role} lang={lang} onGenerated={() => setReloadKey((k) => k + 1)} />
       )}
 
       {/* ── Header ── */}
