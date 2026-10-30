@@ -1097,11 +1097,11 @@ def _draw_signature_block(
     names = list(getattr(pdf, "_signer_names", None) or [])
     if getattr(pdf, "_signer_dates", None) is not None:
         # ใบ PM สถานี: ไม่เว้นช่องเซ็น — พิมพ์ชื่อในกล่องใหญ่เลย (รวมกล่องเซ็น + แถวชื่อเป็นกล่องเดียว ความสูงเท่าเดิม)
-        box_h = row_h_sig + row_h_name
+        # ชื่อในกล่องบน (13 มม.) + แถว "(Role)" มีเส้นแบ่งแบบแถววันที่ (2026-10-30) — ความสูงรวมเท่าเดิม
         roles = list(getattr(pdf, "_signer_roles", None) or [])
         x_pos = x_table
         for i, w in enumerate(col_widths):
-            pdf.rect(x_pos, y, w, box_h)
+            pdf.rect(x_pos, y, w, row_h_sig)
             name = str(names[i]).strip() if i < len(names) and names[i] else ""
             if name:
                 fs = FONT_MAIN + 1
@@ -1114,24 +1114,26 @@ def _draw_signature_block(
                     while len(text) > 1 and pdf.get_string_width(text + "…") > w - 4:
                         text = text[:-1]
                     text += "…"
-                role = str(roles[i]).strip() if i < len(roles) and roles[i] else ""
-                if role:
-                    # มี role → ชื่อบรรทัดบน + "(Role)" บรรทัดล่าง ตัวปกติ (2026-10-30)
-                    pdf.set_xy(x_pos, y + 2)
-                    pdf.cell(w, 7, text, align="C")
-                    role_text = f"({role})"
-                    pdf.set_font(base_font, "", FONT_MAIN)
-                    if pdf.get_string_width(role_text) > w - 4:
-                        while len(role) > 1 and pdf.get_string_width(f"({role}…)") > w - 4:
-                            role = role[:-1]
-                        role_text = f"({role}…)"
-                    pdf.set_xy(x_pos, y + 9.5)
-                    pdf.cell(w, 6, role_text, align="C")
-                else:
-                    pdf.set_xy(x_pos, y)
-                    pdf.cell(w, box_h, text, align="C")
+                pdf.set_xy(x_pos, y)
+                pdf.cell(w, row_h_sig, text, align="C")
             x_pos += w
-        y += box_h
+        y += row_h_sig
+
+        pdf.set_font(base_font, "", FONT_MAIN)
+        x_pos = x_table
+        for i, w in enumerate(col_widths):
+            pdf.rect(x_pos, y, w, row_h_name)
+            role = str(roles[i]).strip() if i < len(roles) and roles[i] else ""
+            if role:
+                role_text = f"({role})"
+                if pdf.get_string_width(role_text) > w - 4:
+                    while len(role) > 1 and pdf.get_string_width(f"({role}…)") > w - 4:
+                        role = role[:-1]
+                    role_text = f"({role}…)"
+                pdf.set_xy(x_pos, y)
+                pdf.cell(w, row_h_name, role_text, align="C")
+            x_pos += w
+        y += row_h_name
         pdf.set_font(base_font, "", FONT_MAIN)
     else:
         # ฟอร์มเดี่ยว (ไม่มีชื่อส่งมา): เว้นกล่องไว้เซ็น + วงเล็บไว้เขียนชื่อเอง
