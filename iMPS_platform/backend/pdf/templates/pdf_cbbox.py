@@ -880,6 +880,7 @@ def _draw_signature_block(
     if getattr(pdf, "_signer_dates", None) is not None:
         # ใบ PM สถานี: ไม่เว้นช่องเซ็น — พิมพ์ชื่อในกล่องใหญ่เลย (รวมกล่องเซ็น + แถวชื่อเป็นกล่องเดียว ความสูงเท่าเดิม)
         box_h = row_h_sig + row_h_name
+        roles = list(getattr(pdf, "_signer_roles", None) or [])
         x_pos = x_table
         for i, w in enumerate(col_widths):
             pdf.rect(x_pos, y, w, box_h)
@@ -895,8 +896,22 @@ def _draw_signature_block(
                     while len(text) > 1 and pdf.get_string_width(text + "…") > w - 4:
                         text = text[:-1]
                     text += "…"
-                pdf.set_xy(x_pos, y)
-                pdf.cell(w, box_h, text, align="C")
+                role = str(roles[i]).strip() if i < len(roles) and roles[i] else ""
+                if role:
+                    # มี role → ชื่อบรรทัดบน + "(Role)" บรรทัดล่าง ตัวปกติ (2026-10-30)
+                    pdf.set_xy(x_pos, y + 2)
+                    pdf.cell(w, 7, text, align="C")
+                    role_text = f"({role})"
+                    pdf.set_font(base_font, "", FONT_MAIN)
+                    if pdf.get_string_width(role_text) > w - 4:
+                        while len(role) > 1 and pdf.get_string_width(f"({role}…)") > w - 4:
+                            role = role[:-1]
+                        role_text = f"({role}…)"
+                    pdf.set_xy(x_pos, y + 9.5)
+                    pdf.cell(w, 6, role_text, align="C")
+                else:
+                    pdf.set_xy(x_pos, y)
+                    pdf.cell(w, box_h, text, align="C")
             x_pos += w
         y += box_h
         pdf.set_font(base_font, "", FONT_MAIN)
@@ -1513,6 +1528,8 @@ def make_pm_report_html_pdf_bytes(
     pdf = ReportPDF(unit="mm", format="A4", issue_id=issue_id, doc_name=doc_name)
     _signers = doc.get("_signers") or {}
     pdf._signer_names = [str(_signers.get(k) or "") for k in ("performed", "approved", "witnessed")]
+    # role ของผู้ลงชื่อ (เช่น Technician / Planner) — พิมพ์ในวงเล็บใต้ชื่อ
+    pdf._signer_roles = [str(_signers.get(f"{k}_role") or "") for k in ("performed", "approved", "witnessed")]
     # วันที่ใต้ลายเซ็น: ส่งมาเมื่อเป็นส่วนของใบ PM สถานี — ผู้อนุมัติ/ผู้เห็นชอบใช้วันที่อนุมัติ (ยังไม่อนุมัติ = ว่าง)
     pdf._signer_dates = (
         [pm_date_th, _fmt_date_thai_full(_signers.get("approved_date") or ""),
