@@ -7,6 +7,7 @@
            หรือคอลัมน์เดียวแบบ "13.7563, 100.5018" (พิกัด / coordinates / lat,long)
 ชื่อหัวคอลัมน์ไม่ต้องตรงเป๊ะ สคริปต์เดาให้ — หรือระบุเองด้วย --key-col / --lat-col / --lng-col / --coord-col
 
+    (อ่าน MONGO_URI จาก environment ก่อน ถ้าไม่มีจะอ่านจาก backend/.env ให้เอง)
     set MONGO_URI=mongodb://<user>:<pass>@<host>:27017/?authSource=admin
     python import_station_coords.py stations.csv              # dry-run — แสดงผลการจับคู่อย่างเดียว
     python import_station_coords.py stations.csv --apply      # เขียนจริง
@@ -17,6 +18,7 @@
 import argparse
 import csv
 import os
+import pathlib
 import re
 import sys
 
@@ -65,6 +67,22 @@ def in_th(lat, lng):
     return TH_LAT[0] <= lat <= TH_LAT[1] and TH_LNG[0] <= lng <= TH_LNG[1]
 
 
+def read_uri() -> str:
+    uri = os.getenv("MONGO_URI")
+    if uri:
+        return uri
+    env = pathlib.Path(__file__).resolve().parent.parent / ".env"
+    if env.exists():
+        for line in env.read_text(encoding="utf-8").splitlines():
+            if line.strip().startswith("MONGO_URI="):
+                return line.split("=", 1)[1].strip().strip('"').strip("'")
+    return "mongodb://localhost:27017/"
+
+
+def masked(uri: str) -> str:
+    return re.sub(r"://[^@/]*@", "://***@", uri)
+
+
 def key_norm(v):
     # ไม่สนช่องว่าง/ตัวพิมพ์ — ชื่อสถานีใน Excel กับในระบบมักเว้นวรรคไม่ตรงกัน
     return re.sub(r"\s+", "", str(v or "")).lower()
@@ -107,8 +125,9 @@ def main():
     print(f"[i] จับคู่ด้วย '{key_col}' → stations.{key_field}")
     print(f"[i] พิกัดจาก " + (f"'{lat_col}' + '{lng_col}'" if lat_col and lng_col else f"'{coord_col}'"))
 
-    uri = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
-    stations = MongoClient(uri)["iMPS"]["stations"]
+    uri = read_uri()
+    print(f"[i] MongoDB: {masked(uri)}")
+    stations = MongoClient(uri, serverSelectionTimeoutMS=10000)["iMPS"]["stations"]
     index = {}
     for d in stations.find({}, {"station_id": 1, "station_name": 1, "maximo_location": 1, "maximo_desc": 1,
                                 "latitude": 1, "longitude": 1}):
