@@ -17,7 +17,7 @@ import {
   BoltIcon, CpuChipIcon, PhotoIcon,
 } from "@heroicons/react/24/solid";
 import { useRouter } from "next/navigation";
-import AddStation, { type NewStationPayload, MaximoLocationSelect, type MaximoLocation } from "@/app/dashboard/stations/components/addstations";
+import AddStation, { type NewStationPayload, MaximoLocationSelect, fetchMaximoLocations, type MaximoLocation } from "@/app/dashboard/stations/components/addstations";
 import { WARRANTY_STATUS_OPTIONS, INVESTMENT_SCOPE_OPTIONS, MultiSelectDropdown, VendorSelect, LatLngInput, parseLatLng, toLatLngText, type LatLngText } from "@/app/dashboard/stations/components/stationOptions";
 import { apiFetch, getSessionProfile } from "@/utils/api";
 import { isStaffRole, staffChargerPath } from "@/utils/roles";
@@ -368,35 +368,32 @@ export function SearchDataTables() {
   // ── Maximo locations (สำหรับ dropdown ใน edit/add) ──
   const [stationLocations, setStationLocations] = useState<MaximoLocation[]>([]);
   const [chargerLocations, setChargerLocations] = useState<MaximoLocation[]>([]);
-  const [maximoLoading, setMaximoLoading] = useState(false);
+  const [stationLocLoading, setStationLocLoading] = useState(false);
+  const [chargerLocLoading, setChargerLocLoading] = useState(false);
+
+  // โหลดเฉพาะ level ที่ dialog ใช้ (แก้สถานี → station, เพิ่ม/แก้ตู้ → charger)
+  // ผ่าน fetchMaximoLocations ซึ่ง cache ไว้ทั้งหน้า — เปิด dialog ครั้งถัดไปได้ทันที
+  useEffect(() => {
+    if (!openEditStation || stationLocations.length) return;
+    let cancelled = false;
+    setStationLocLoading(true);
+    fetchMaximoLocations("station")
+      .then((locs) => { if (!cancelled) setStationLocations(locs); })
+      .catch((e) => console.error("Failed to fetch Maximo station locations:", e))
+      .finally(() => { if (!cancelled) setStationLocLoading(false); });
+    return () => { cancelled = true; };
+  }, [openEditStation, stationLocations.length]);
 
   useEffect(() => {
-    const needed = openEditStation || openEditCharger || openAddCharger;
-    if (!needed || stationLocations.length || chargerLocations.length || maximoLoading) return;
+    if (!(openEditCharger || openAddCharger) || chargerLocations.length) return;
     let cancelled = false;
-    (async () => {
-      setMaximoLoading(true);
-      try {
-        const [stRes, chRes] = await Promise.all([
-          apiFetch(`/maximo/locations?level=station`),
-          apiFetch(`/maximo/locations?level=charger`),
-        ]);
-        if (!cancelled && stRes.ok) {
-          const json = await stRes.json();
-          if (Array.isArray(json?.locations)) setStationLocations(json.locations);
-        }
-        if (!cancelled && chRes.ok) {
-          const json = await chRes.json();
-          if (Array.isArray(json?.locations)) setChargerLocations(json.locations);
-        }
-      } catch (e) {
-        console.error("Failed to fetch Maximo locations:", e);
-      } finally {
-        if (!cancelled) setMaximoLoading(false);
-      }
-    })();
+    setChargerLocLoading(true);
+    fetchMaximoLocations("charger")
+      .then((locs) => { if (!cancelled) setChargerLocations(locs); })
+      .catch((e) => console.error("Failed to fetch Maximo charger locations:", e))
+      .finally(() => { if (!cancelled) setChargerLocLoading(false); });
     return () => { cancelled = true; };
-  }, [openEditStation, openEditCharger, openAddCharger]);
+  }, [openEditCharger, openAddCharger, chargerLocations.length]);
 
   // maximo_location ของสถานีแม่ (ใช้กรอง charger ให้อยู่ใต้สถานีเดียวกัน)
   const editChargerStationMaximo = useMemo(
@@ -1233,7 +1230,7 @@ export function SearchDataTables() {
                     label={t.maximoLocation}
                     value={editStationForm.maximo_location}
                     options={stationLocations}
-                    loading={maximoLoading}
+                    loading={stationLocLoading}
                     disabled={false}
                     searchPlaceholder={t.maximoSearch}
                     emptyLabel={t.maximoEmpty}
@@ -1394,7 +1391,7 @@ export function SearchDataTables() {
                       label={t.maximoLocation}
                       value={editChargerForm.maximo_location}
                       options={editChargerOptions}
-                      loading={maximoLoading}
+                      loading={chargerLocLoading}
                       disabled={false}
                       searchPlaceholder={t.maximoSearch}
                       emptyLabel={t.maximoEmpty}
@@ -1422,15 +1419,14 @@ export function SearchDataTables() {
                   <Input label={t.numberOfCables} type="number" min={1} max={10} value={editChargerForm.numberOfCables} onChange={(e) => setEditChargerForm(s => ({ ...s, numberOfCables: parseInt(e.target.value) || 1 }))} crossOrigin={undefined} />
                   <Select label={t.status} value={String(editChargerForm.is_active)} onChange={(v) => setEditChargerForm(s => ({ ...s, is_active: v === "true" }))}><Option value="true">{t.active}</Option><Option value="false">{t.inactive}</Option></Select>
                 </div>
-                {isFlexxfast(editChargerForm.brand) && (
-                  <div className="tw-pt-3 sm:tw-pt-4 tw-border-t tw-border-gray-100">
-                    <p className="tw-text-[10px] sm:tw-text-[11px] tw-font-bold tw-text-purple-500 tw-uppercase tw-tracking-widest tw-mb-2.5 sm:tw-mb-3">{t.ocppSection}</p>
-                    <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 tw-gap-2.5 sm:tw-gap-3">
-                      <Input label={t.chargerBoxId} required value={editChargerForm.chargeBoxID} onChange={(e) => setEditChargerForm(s => ({ ...s, chargeBoxID: e.target.value }))} crossOrigin={undefined} />
-                      <Input label={t.ocppUrl} value={editChargerForm.ocppUrl} onChange={(e) => setEditChargerForm(s => ({ ...s, ocppUrl: e.target.value }))} crossOrigin={undefined} />
-                    </div>
+                {/* OCPP — แสดงทุกยี่ห้อ (แก้ CBID ได้ทุกยี่ห้อ); บังคับกรอก CBID เฉพาะ Flexxfast ให้ตรงกับหน้าเพิ่มสถานี */}
+                <div className="tw-pt-3 sm:tw-pt-4 tw-border-t tw-border-gray-100">
+                  <p className="tw-text-[10px] sm:tw-text-[11px] tw-font-bold tw-text-purple-500 tw-uppercase tw-tracking-widest tw-mb-2.5 sm:tw-mb-3">{t.ocppSection}</p>
+                  <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 tw-gap-2.5 sm:tw-gap-3">
+                    <Input label={t.chargerBoxId} required={isFlexxfast(editChargerForm.brand)} value={editChargerForm.chargeBoxID} onChange={(e) => setEditChargerForm(s => ({ ...s, chargeBoxID: e.target.value }))} crossOrigin={undefined} />
+                    <Input label={t.ocppUrl} value={editChargerForm.ocppUrl} onChange={(e) => setEditChargerForm(s => ({ ...s, ocppUrl: e.target.value }))} crossOrigin={undefined} />
                   </div>
-                )}
+                </div>
                 <div className="tw-pt-3 sm:tw-pt-4 tw-border-t tw-border-gray-100">
                   <p className="tw-text-[10px] sm:tw-text-[11px] tw-font-bold tw-text-blue-gray-500 tw-uppercase tw-tracking-widest tw-mb-2.5 sm:tw-mb-3">📷 {t.chargerImages}</p>
                   <div className="tw-grid tw-grid-cols-1 tw-gap-2.5 sm:tw-grid-cols-2 sm:tw-gap-3">
@@ -1482,7 +1478,7 @@ export function SearchDataTables() {
                       label={t.maximoLocation}
                       value={addChargerForm.maximo_location}
                       options={addChargerOptions}
-                      loading={maximoLoading}
+                      loading={chargerLocLoading}
                       disabled={false}
                       searchPlaceholder={t.maximoSearch}
                       emptyLabel={t.maximoEmpty}
@@ -1504,23 +1500,20 @@ export function SearchDataTables() {
                     <Input label={t.plcFirmware} required value={addChargerForm.PLCFirmware} onChange={(e) => setAddChargerForm(s => ({ ...s, PLCFirmware: e.target.value }))} crossOrigin={undefined} />
                     <Input label={t.piFirmware} required value={addChargerForm.PIFirmware} onChange={(e) => setAddChargerForm(s => ({ ...s, PIFirmware: e.target.value }))} crossOrigin={undefined} />
                     <Input label={t.routerFirmware} required value={addChargerForm.RTFirmware} onChange={(e) => setAddChargerForm(s => ({ ...s, RTFirmware: e.target.value }))} crossOrigin={undefined} />
-                    <Input label={t.chargerBoxId} required value={addChargerForm.chargeBoxID} onChange={(e) => setAddChargerForm(s => ({ ...s, chargeBoxID: e.target.value }))} crossOrigin={undefined} />
-                    <Input label={t.ocppUrl} value={addChargerForm.ocppUrl} onChange={(e) => setAddChargerForm(s => ({ ...s, ocppUrl: e.target.value }))} crossOrigin={undefined} />
                   </>)}
                   <Input label={t.commissioningDate} type="date" required value={addChargerForm.commissioningDate} onChange={(e) => setAddChargerForm(s => ({ ...s, commissioningDate: e.target.value }))} crossOrigin={undefined} />
                   <Input label={t.warrantyYears} type="number" min={1} max={10} required value={addChargerForm.warrantyYears} onChange={(e) => setAddChargerForm(s => ({ ...s, warrantyYears: parseInt(e.target.value) || 1 }))} crossOrigin={undefined} />
                   <Input label={t.numberOfCables} type="number" min={1} max={10} required value={addChargerForm.numberOfCables} onChange={(e) => setAddChargerForm(s => ({ ...s, numberOfCables: parseInt(e.target.value) || 1 }))} crossOrigin={undefined} />
                   <Select label={t.status} value={String(addChargerForm.is_active)} onChange={(v) => setAddChargerForm(s => ({ ...s, is_active: v === "true" }))}><Option value="true">{t.active}</Option><Option value="false">{t.inactive}</Option></Select>
                 </div>
-                {isFlexxfast(addChargerForm.brand) && (
-                  <div className="tw-pt-3 sm:tw-pt-4 tw-border-t tw-border-gray-100">
-                    <p className="tw-text-[10px] sm:tw-text-[11px] tw-font-bold tw-text-purple-500 tw-uppercase tw-tracking-widest tw-mb-2.5 sm:tw-mb-3">{t.ocppSection}</p>
-                    <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 tw-gap-2.5 sm:tw-gap-3">
-                      <Input label={t.chargerBoxId} required value={addChargerForm.chargeBoxID} onChange={(e) => setAddChargerForm(s => ({ ...s, chargeBoxID: e.target.value }))} crossOrigin={undefined} />
-                      <Input label={t.ocppUrl} value={addChargerForm.ocppUrl} onChange={(e) => setAddChargerForm(s => ({ ...s, ocppUrl: e.target.value }))} crossOrigin={undefined} />
-                    </div>
+                {/* OCPP — แสดงทุกยี่ห้อ (แก้ CBID ได้ทุกยี่ห้อ); บังคับกรอก CBID เฉพาะ Flexxfast ให้ตรงกับหน้าเพิ่มสถานี */}
+                <div className="tw-pt-3 sm:tw-pt-4 tw-border-t tw-border-gray-100">
+                  <p className="tw-text-[10px] sm:tw-text-[11px] tw-font-bold tw-text-purple-500 tw-uppercase tw-tracking-widest tw-mb-2.5 sm:tw-mb-3">{t.ocppSection}</p>
+                  <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 tw-gap-2.5 sm:tw-gap-3">
+                    <Input label={t.chargerBoxId} required={isFlexxfast(addChargerForm.brand)} value={addChargerForm.chargeBoxID} onChange={(e) => setAddChargerForm(s => ({ ...s, chargeBoxID: e.target.value }))} crossOrigin={undefined} />
+                    <Input label={t.ocppUrl} value={addChargerForm.ocppUrl} onChange={(e) => setAddChargerForm(s => ({ ...s, ocppUrl: e.target.value }))} crossOrigin={undefined} />
                   </div>
-                )}
+                </div>
                 <div className="tw-pt-3 sm:tw-pt-4 tw-border-t tw-border-gray-100">
                   <p className="tw-text-[10px] sm:tw-text-[11px] tw-font-bold tw-text-blue-gray-500 tw-uppercase tw-tracking-widest tw-mb-2.5 sm:tw-mb-3">📷 {t.chargerImages}</p>
                   <div className="tw-grid tw-grid-cols-1 tw-gap-2.5 sm:tw-grid-cols-2 sm:tw-gap-3">

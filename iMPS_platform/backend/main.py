@@ -190,8 +190,13 @@ async def lifespan(app: FastAPI):
     # ปิดรับใบงาน PM จาก Maximo อยู่ → ออกใบงานเองตามรอบ commissioning ของตู้ (services/pm_auto_wo.py)
     from services import pm_auto_wo
     pm_auto_wo_task = asyncio.create_task(pm_auto_wo.run_forever())
+    # โหลดรายการ Maximo location (dropdown หน้า EV Stations) ไว้ใน cache ก่อน — ไม่ต้องรอตอนเปิด dialog
+    from routers.stations import warm_maximo_locations
+    maximo_loc_task = asyncio.create_task(warm_maximo_locations())
 
     yield
+
+    maximo_loc_task.cancel()
 
     pm_retry_task.cancel()
     pm_auto_wo_task.cancel()
