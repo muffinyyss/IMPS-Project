@@ -1019,20 +1019,31 @@ async def list_maximo_pm_open(
     verify: bool = Query(True, description="เช็คกับ Maximo ว่า wonum มีอยู่จริงไหม"),
     # หน้า PM List ดึงรวมทุกสถานีในครั้งเดียว จึงต้องเพดานสูงกว่าหน้า tab เดี่ยว
     limit: int = Query(50, ge=1, le=1000),
+    wonum: Optional[str] = Query(
+        None, description="หาใบงานใบเดียวตามเลข — ไม่สน source/identifier และตัวกรองอุปกรณ์"
+    ),
     current: UserClaims = Depends(get_current_user),
 ):
     """
     อ่านใบงาน PM ที่ Maximo เปิดเข้ามาทาง IN06 (protected — ต้อง login)
 
-    กรองได้ 2 แบบ:
+    กรองได้ 3 แบบ:
       - source + identifier — ใช้จากหน้า PM report แต่ละ tab (charger ส่ง SN มา
         ระบบจะ map กลับเป็นสถานีให้เอง เพราะใบงาน IN06 เป็นระดับสถานี)
       - location / station_id — กรองตรง ๆ
+      - wonum — หน้าวางแผน / หน้าข้อมูลใบงาน หาใบที่เปิดอยู่ใบเดียว (แก้ 2026-10-30)
+        เดิมหาจากรายการตาม source+identifier แล้ว .find() เอา — ใบที่ iMPS ออกเอง (sn ว่าง)
+        เข้ามาเป็น tab charger ไม่มี SN → ไม่กรองสถานี → ได้ทุกใบทั้งระบบแค่ 50 ใบแรกตาม pm_date
+        ใบที่ตกขอบ 50 ใบจึงขึ้น "ไม่พบใบงานนี้"
     ไม่ส่งอะไรมาเลย = เอาทุกใบ
     """
     and_clauses: list[dict[str, Any]] = []
+    wonum_q = (wonum or "").strip()
 
-    if source and (identifier or "").strip():
+    if wonum_q:
+        # เลขใบงานไม่ซ้ำ — ไม่ต้องกรองสถานี/ตู้ (SN ใน localStorage ที่ค้างจากตู้อื่นจะทำให้หาไม่เจอ)
+        and_clauses.append({"wonum": wonum_q})
+    elif source and (identifier or "").strip():
         sid, station_location = _station_scope(source, identifier.strip())
         if not (sid or station_location):
             # อุปกรณ์/สถานีนี้ยังผูกกับ Maximo ไม่ได้ — ไม่มีใบงานให้แสดง
@@ -1076,7 +1087,8 @@ async def list_maximo_pm_open(
     # ในสถานี ทั้งที่ planner เลือก PM แค่บางตัว
     #   ยังไม่ได้วางแผน (selected_equipment ว่าง) → โชว์ทุก tab ให้ planner หาเจอ
     #   วางแผนแล้ว → โชว์เฉพาะ tab/ตู้ ที่ถูกเลือก
-    if source:
+    #   หาใบเดียวตาม wonum → ไม่กรอง (หน้าวางแผนต้องเปิดใบได้ ไม่ว่าเข้ามาจาก tab ไหน)
+    if source and not wonum_q:
         want = _norm_equip_type(source)
         ident = (identifier or "").strip()
 

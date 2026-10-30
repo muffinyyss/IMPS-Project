@@ -118,7 +118,9 @@ export default function PmWorkOrderInfo({ source, identifier, wonum, onStart, on
     try {
       const res = await apiFetch(
         `/maximo/pm/open?source=${encodeURIComponent(source)}` +
-        `&identifier=${encodeURIComponent(identifier ?? "")}&only_open=true`
+        `&identifier=${encodeURIComponent(identifier ?? "")}&only_open=true` +
+        // หาใบเดียวตามเลข — ใบที่ iMPS ออกเอง (ไม่มี SN) เคยตกขอบ 50 ใบแรกแล้วขึ้น "ไม่พบใบงานนี้"
+        `&wonum=${encodeURIComponent(wonum)}`
       );
       const j = await res.json().catch(() => ({} as any));
       const found: MaximoWorkOrder | undefined = (Array.isArray(j?.items) ? j.items : [])

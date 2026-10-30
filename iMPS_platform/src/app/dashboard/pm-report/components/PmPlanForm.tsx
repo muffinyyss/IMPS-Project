@@ -266,7 +266,9 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
         apiFetch("/me"),
         apiFetch(
           `/maximo/pm/open?source=${encodeURIComponent(source)}` +
-          `&identifier=${encodeURIComponent(identifier ?? "")}&only_open=true`
+          `&identifier=${encodeURIComponent(identifier ?? "")}&only_open=true` +
+          // หาใบเดียวตามเลข — ใบที่ iMPS ออกเอง (ไม่มี SN) เคยตกขอบ 50 ใบแรกแล้วขึ้น "ไม่พบใบงานนี้"
+          `&wonum=${encodeURIComponent(wonum)}`
         ),
         apiFetch(`/maximo/pm/${encodeURIComponent(wonum)}/equipment-choices`),
       ]);
