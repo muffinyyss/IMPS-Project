@@ -1003,6 +1003,11 @@ def delete_user(user_id: str, current: UserClaims = Depends(get_current_user)):
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid user id")
 
+    # super admin ลบจากหน้า Users ไม่ได้ (admin คนอื่นต้องไม่ลบ super admin ทิ้ง)
+    target = users_collection.find_one({"_id": oid}, {"role": 1})
+    if target and canonical_role(target.get("role")) == SUPER_ADMIN_ROLE:
+        raise HTTPException(status_code=403, detail="cannot delete super admin")
+
     res = users_collection.delete_one({"_id": oid})
     if res.deleted_count == 0:
         raise HTTPException(status_code=404, detail="User not found")
@@ -1075,6 +1080,10 @@ def update_user(id: str, body: UserUpdate, current: UserClaims = Depends(get_cur
     if not payload:
         # raise HTTPException(status_code=400, detailฟแ="no permitted fields to update")
         raise HTTPException(status_code=400, detail="no permitted fields to update")
+
+    # ── role ของ super admin เปลี่ยนผ่าน endpoint นี้ไม่ได้ (กันลดสิทธิ์ตัวเอง / admin อื่นมาลดสิทธิ์)
+    if "role" in payload and canonical_role(doc.get("role")) == SUPER_ADMIN_ROLE:
+        raise HTTPException(status_code=403, detail="cannot change super admin role")
 
     # ── planner: ย้าย role / company ได้แค่ภายในขอบเขตของตัวเอง
     if planner_scope is not None:

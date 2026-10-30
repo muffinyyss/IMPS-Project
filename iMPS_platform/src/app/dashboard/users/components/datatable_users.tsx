@@ -108,6 +108,7 @@ const T = {
   userNotFound: { th: "ไม่พบผู้ใช้นี้", en: "User not found" },
   networkError: { th: "เกิดข้อผิดพลาดของเครือข่าย/เซิร์ฟเวอร์", en: "Network/Server error" },
   forbidden: { th: "ไม่มีสิทธิ์ทำรายการนี้", en: "You don't have permission for this action" },
+  superAdminRoleLocked: { th: "เปลี่ยน role ของ super admin ไม่ได้", en: "super admin role can't be changed" },
   plannerNoCompany: {
     th: "บัญชีของคุณยังไม่ได้ระบุบริษัท จึงเพิ่มผู้ใช้ไม่ได้ — กรุณาติดต่อ admin",
     en: "Your account has no company set, so you can't add users — please contact an admin",
@@ -116,6 +117,9 @@ const T = {
 
 // role ที่ planner เพิ่ม/แก้ได้ — ต้องตรงกับ PLANNER_MANAGED_ROLES ใน backend/routers/users.py
 const PLANNER_ROLES: UserRole[] = ["technician", "cs", "planner"];
+// role ของ super admin ตัวจริงใน DB — ต้องตรงกับ SUPER_ADMIN_ROLE ใน backend/config.py
+// account นี้เปลี่ยน role / ลบจากหน้า Users ไม่ได้ (กันเผลอลดสิทธิ์ตัวเองหรือ admin อื่นมาลดสิทธิ์)
+const SUPER_ADMIN_ROLE = "super_admin";
 const EDIT_ROLE_OPTIONS: { value: UserRole; label: string }[] = [
   { value: "admin", label: "admin" },
   { value: "owner", label: "owner" },
@@ -157,7 +161,9 @@ export default function SearchDataTables() {
   const [authChecked, setAuthChecked] = useState(false);
   const [meRole, setMeRole] = useState<string>("user");
   const [meId, setMeId] = useState<string>("");
-  const isAdmin = meRole === "admin";
+  // super_admin ได้สิทธิ์ admin ทุกอย่าง (backend normalize เป็น admin, sidebar ก็นับเป็น admin)
+  // — เดิมเช็คแค่ "admin" ทำให้ super admin ไม่เห็น dropdown Role / ปุ่มลบในหน้านี้
+  const isAdmin = meRole === "admin" || meRole === SUPER_ADMIN_ROLE;
   // planner: เห็น/เพิ่ม/แก้ได้เฉพาะ technician / cs / planner ของบริษัทตัวเอง + outsource ของตัวเอง (ลบไม่ได้)
   const isPlanner = meRole === "planner";
   // planner: ตัวเลือก dropdown ช่อง Company | admin: รายชื่อแนะนำของช่องพิมพ์เอง
@@ -348,6 +354,9 @@ export default function SearchDataTables() {
 
   const plannerNoCompany = isPlanner && companyOptions !== null && companyOptions.length === 0;
   const editingSelf = !!editingRow?.id && editingRow.id === meId;
+  const editingSuperAdmin = editingRow?.role === SUPER_ADMIN_ROLE;
+  // ช่อง Role: admin แก้ได้ทุกคนยกเว้น super admin, planner แก้ได้เฉพาะคนอื่นในขอบเขต
+  const canEditRole = !editingSuperAdmin && (isAdmin || (isPlanner && !editingSelf));
   // company เดิมที่ไม่อยู่ในลิสต์ (เช่นพิมพ์ต่างตัวพิมพ์) ต้องไม่หายจาก dropdown
   const editCompanyChoices = withCurrentCompany(companyOptions ?? [], editingRow?.company);
 
@@ -592,6 +601,7 @@ export default function SearchDataTables() {
       cell: (i: any) => {
         const role = i.getValue() as string;
         const colorMap: Record<string, string> = {
+          super_admin: "tw-bg-fuchsia-50 tw-text-fuchsia-700 tw-ring-1 tw-ring-fuchsia-200",
           admin: "tw-bg-purple-50 tw-text-purple-700 tw-ring-1 tw-ring-purple-200",
           owner: "tw-bg-blue-50 tw-text-blue-700 tw-ring-1 tw-ring-blue-200",
           technician: "tw-bg-amber-50 tw-text-amber-700 tw-ring-1 tw-ring-amber-200",
@@ -620,7 +630,7 @@ export default function SearchDataTables() {
           >
             <PencilSquareIcon className="tw-h-4 tw-w-4 tw-text-blue-600 group-hover/btn:tw-text-white tw-transition-colors" />
           </button>
-          {isAdmin && (
+          {isAdmin && row.original.role !== SUPER_ADMIN_ROLE && (
             <button
               title={t("deleteUser", lang)}
               onClick={() => handleDelete(row.original)}
@@ -862,7 +872,8 @@ export default function SearchDataTables() {
             };
 
             // planner แก้ profile ตัวเองได้แค่ข้อมูลส่วนตัว — role / company ของตัวเองให้ admin เปลี่ยน
-            if (isAdmin || (isPlanner && !editingSelf)) payload.role = roleValue;
+            // super admin: ไม่ส่ง role (backend รับเฉพาะ admin/owner/technician/cs/planner และห้ามเปลี่ยน role ของ super admin)
+            if (canEditRole) payload.role = roleValue;
             if (isPlanner && editingSelf) delete payload.company;
             // Always send station_id (empty array if technician with no stations, or if not technician)
             if (roleValue === "technician") {
@@ -927,7 +938,13 @@ export default function SearchDataTables() {
               <Input name="tel" label={t("tel", lang)} defaultValue={editingRow?.tel ?? ""} crossOrigin={undefined} />
               {/* <Input name="password" label="New Password (optional)" type="password" /> */}
 
-              {(isAdmin || (isPlanner && !editingSelf)) && (
+              {editingSuperAdmin && (
+                <Typography variant="small" className="!tw-text-blue-gray-500">
+                  {t("role", lang)}: <strong>{SUPER_ADMIN_ROLE}</strong> — {t("superAdminRoleLocked", lang)}
+                </Typography>
+              )}
+
+              {canEditRole && (
                 <Select label={t("role", lang)} value={roleValue} onChange={(v) => {
                   setRoleValue(v ?? "user");
                   // รีเซ็ต stations เมื่อเปลี่ยน role
