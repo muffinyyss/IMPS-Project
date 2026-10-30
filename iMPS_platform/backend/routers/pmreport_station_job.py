@@ -1986,7 +1986,8 @@ def job_pdf_cache_path(station_id: str, job_id: str, lang: str, part: str = "") 
     # _v7 = ป้าย/หัวตารางตามภาษาทุกฟอร์ม, ที่อยู่เดียวกัน, วันที่ 22/10/2569, วันที่อนุมัติใต้ลายเซ็น, ผลตรวจ 3 ช่อง (2026-10-22)
     # _v8 = บล็อกข้อมูลงาน 2 คอลัมน์เท่ากัน / _v9 = เรียงตู้ชาร์จ → Station → CB_BOX → MDB → CCB, ป้าย Pass/Fail/N/A 11pt (2026-10-22)
     # _v10 = ชื่อเอกสารหัวกระดาษ 9pt (กล่องขวากว้าง 50 มม.) / _v11 = ชื่อในกล่องลายเซ็น + ผู้เห็นชอบ = planner ผู้อนุมัติใบ
-    return pathlib.Path(UPLOADS_ROOT) / "pdf_cache" / "stationPMJob" / station_id / f"{job_id}{suffix}_{lang}_v11.pdf"
+    # _v12 = role ในวงเล็บใต้ชื่อในกล่องลายเซ็น
+    return pathlib.Path(UPLOADS_ROOT) / "pdf_cache" / "stationPMJob" / station_id / f"{job_id}{suffix}_{lang}_v12.pdf"
 
 
 # การ์ดในหน้ารวมใบ PM สถานี → ส่วนที่อยู่ในการ์ดนั้น (PDF รายการ์ด)
@@ -2011,6 +2012,40 @@ def _approval_date(value) -> str:
     if value.tzinfo is None:  # Mongo คืน datetime แบบไม่มี tz แต่เป็น UTC
         value = value.replace(tzinfo=timezone.utc)
     return (value.astimezone(timezone(timedelta(hours=7)))).strftime("%Y-%m-%d")
+
+
+# role ที่พิมพ์ในวงเล็บใต้ชื่อในช่องลายเซ็น PDF (2026-10-30) — role อื่นที่ไม่อยู่ในนี้แสดงตามที่เก็บ
+_ROLE_LABELS = {
+    "technician": "Technician",
+    "planner": "Planner",
+    "cs": "CS",
+    "admin": "Admin",
+    "super_admin": "Admin",
+    "owner": "Owner",
+}
+
+
+async def _signer_roles(usernames: set[str]) -> dict[str, str]:
+    """{username (ตัวเล็ก): ชื่อ role สำหรับ PDF} — ไม่พบผู้ใช้ = ไม่มีใน dict (ช่องลายเซ็นแสดงชื่ออย่างเดียว)"""
+    from config import canonical_role, users_collection
+
+    names = sorted({n.strip() for n in usernames if n and n.strip()})
+    if not names:
+        return {}
+
+    def _load() -> dict[str, str]:
+        out: dict[str, str] = {}
+        for u in users_collection.find({"username": {"$in": names}}, {"username": 1, "role": 1}):
+            role = canonical_role(u.get("role")) or ""
+            if role:
+                out[str(u.get("username") or "").strip().lower()] = _ROLE_LABELS.get(role.lower(), role)
+        return out
+
+    try:
+        return await asyncio.to_thread(_load)
+    except Exception as e:
+        log.warning(f"  ⚠️ อ่าน role ของผู้ลงชื่อใน PDF ไม่สำเร็จ: {e}")
+        return {}
 
 
 async def _charger_vendor_approvers(job: dict, states: list[dict]) -> dict[str, tuple[str, str]]:
@@ -2118,6 +2153,7 @@ async def build_job_pdf(job: dict, station_id: str, lang: str, part: str = "") -
 
     parts: list[tuple[dict, dict, dict]] = []
     included: list[str] = []
+    pending_signers: list[dict] = []
     for state in states:
         if not state["report_id"]:
             continue
@@ -2142,8 +2178,15 @@ async def build_job_pdf(job: dict, station_id: str, lang: str, part: str = "") -
                    "approved_date": vendor_approved_date if vendor_approver else job_approved_date,
                    "witnessed_date": job_approved_date,
                }}
+        pending_signers.append(doc["_signers"])
         parts.append((state, doc, info))
         included.append(f"{state['section']}:{state['sn']}" if state.get("sn") else state["section"])
+
+    # role ในวงเล็บใต้ชื่อ (performed_role / approved_role / witnessed_role) — อ่าน users ครั้งเดียวทั้งเล่ม
+    roles = await _signer_roles({s[k] for s in pending_signers for k in ("performed", "approved", "witnessed")})
+    for s in pending_signers:
+        for k in ("performed", "approved", "witnessed"):
+            s[f"{k}_role"] = roles.get(str(s.get(k) or "").strip().lower(), "")
 
     if not parts:
         raise HTTPException(
