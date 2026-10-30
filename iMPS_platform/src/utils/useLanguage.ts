@@ -39,10 +39,10 @@ export const mdbFormTranslations = {
     th: "Electricity Generating Authority of Thailand (EGAT)",
     en: "Electricity Generating Authority of Thailand (EGAT)"
   },
-  docName: { th: "Document Name.", en: "Document Name." },
+  docName: { th: "Document Name", en: "Document Name" },
   
   // Form labels
-  issueId: { th: "Issue id", en: "Issue ID" },
+  issueId: { th: "Issue ID", en: "Issue ID" },
   location: { th: "Location / สถานที่", en: "Location" },
   inspector: { th: "Inspector / ผู้ตรวจสอบ", en: "Inspector" },
   pmDate: { th: "PM Date / วันที่ตรวจสอบ", en: "PM Date" },
@@ -77,13 +77,13 @@ export const mdbFormTranslations = {
   breakerMainCount: { th: "จำนวน Breaker Main:", en: "Breaker Main count:" },
   unit: { th: "ตัว", en: "units" },
   addBreakerMain: { th: "เพิ่ม Breaker Main", en: "Add Breaker Main" },
-  chargerCountLabel: { th: "จำนวนตู้ชาร์จใน Station นี้:", en: "Chargers in this station:" },
+  chargerCountLabel: { th: "จำนวนเครื่องอัดประจุไฟฟ้าใน Station นี้:", en: "Chargers in this station:" },
   chargerUnit: { th: "ตู้", en: "chargers" },
   breakerCCBCount: { th: "จำนวน Breaker CCB:", en: "Breaker CCB count:" },
   breakerCCBMax: { th: "ตัว (สูงสุด 4 ตัว)", en: "units (max 4)" },
   addBreakerCCB: { th: "เพิ่ม Breaker CCB", en: "Add Breaker CCB" },
-  rcdCount: { th: "จำนวน RCD (ตามจำนวนตู้ชาร์จ):", en: "RCD count (per charger):" },
-  breakerChargerCount: { th: "จำนวน Breaker Charger (ตามจำนวนตู้ชาร์จ):", en: "Breaker Charger (per charger):" },
+  rcdCount: { th: "จำนวน RCD (ตามจำนวนเครื่องอัดประจุไฟฟ้า):", en: "RCD count (per charger):" },
+  breakerChargerCount: { th: "จำนวน Breaker Charger (ตามจำนวนเครื่องอัดประจุไฟฟ้า):", en: "Breaker Charger (per charger):" },
   
   // Validation sections
   validationPhotoTitle: { th: "1) ตรวจสอบการแนบรูปภาพ (ทุกข้อ)", en: "1) Photo attachment (all items)" },
@@ -152,7 +152,7 @@ export const mdbQuestions = {
   q11_tooltip: { th: "กดปุ่ม Test เพื่อทดสอบกลไกการตัดวงจรของ Breaker Main", en: "Press Test button to test Breaker Main trip mechanism" },
   
   q12: { th: "12) ตรวจสอบจุดต่อทางไฟฟ้า", en: "12) Check electrical connections" },
-  q12_tooltip: { th: "ตรวจสอบการขันแน่นของน็อตและตรวจเช็ครอยไหม้ด้วยกล้องถ่ายภาพความร้อน", en: "Check bolt tightness and inspect for burns with thermal camera" },
+  q12_tooltip: { th: "ตรวจสอบการขันแน่นของนอตและตรวจรอยไหม้ด้วยกล้องถ่ายภาพความร้อน", en: "Check bolt tightness and inspect for burns with thermal camera" },
   
   q13: { th: "13) ทำความสะอาดตู้ MDB", en: "13) Clean MDB cabinet" },
   q13_tooltip: { th: "ทำความสะอาดโดยการขจัดฝุ่นและสิ่งสกปรกภายในตู้ด้วยเครื่องดูดฝุ่นหรือเป่าลมแห้ง", en: "Clean by removing dust inside cabinet with vacuum or dry air" },

@@ -151,7 +151,7 @@ export function DashboardNavbar() {
       } catch { /* ignore */ }
       window.location.reload();
     } catch (e: any) {
-      alert((lang === "th" ? "สลับ role ไม่สำเร็จ: " : "Failed to switch role: ") + (e?.message || e));
+      alert((lang === "th" ? "สลับบทบาทไม่สำเร็จ: " : "Failed to switch role: ") + (e?.message || e));
       setSwitching(false);
     }
   };
@@ -178,7 +178,7 @@ export function DashboardNavbar() {
   else if (segs[1] === "pm-list") title = "PM List";
   else if (segs[1] === "test-dashboard") title = "Test Dashboard";
   else if (segs[1] === "test-list") title = "Test List";
-  else if (segs[1] === "cbm") title = "Condition-base";
+  else if (segs[1] === "cbm") title = "Condition-based Monitoring";
   else if (segs[1] === "stations") title = "Stations";
   else if (segs[1] === "solar-plant") title = "Solar Plant";
   else if (segs[1] === "power-plant") title = "Power Plant";
@@ -212,7 +212,7 @@ export function DashboardNavbar() {
   const hasChargerSelected = !!selectedSN;
 
   // บนหน้า CM Report: ถ้าเข้ามาจาก CM Dashboard จะไม่มี SN (CM เป็นราย "สถานี") → ยังโชว์ชื่อสถานีได้
-  // แต่ถ้ามีตู้ชาร์จที่เลือกไว้ ให้โชว์ badge SN เหมือนหน้าอื่น ๆ
+  // แต่ถ้ามีเครื่องอัดประจุไฟฟ้าที่เลือกไว้ ให้โชว์ badge SN เหมือนหน้าอื่น ๆ
   const isCmReportPage = pathname.startsWith("/dashboard/cm-report");
   const stationDisplay = selectedStationName || selectedStationId;
   const showStationPill = hasChargerSelected || (isCmReportPage && !!stationDisplay);
@@ -266,8 +266,8 @@ export function DashboardNavbar() {
 
   const t = {
     currentStation: lang === "th" ? "สถานี" : "Station",
-    currentCharger: lang === "th" ? "ตู้ชาร์จ" : "Charger",
-    goToStations: lang === "th" ? "เลือกตู้ชาร์จ" : "Select Charger",
+    currentCharger: lang === "th" ? "เครื่องอัดประจุไฟฟ้า" : "Charger",
+    goToStations: lang === "th" ? "เลือกเครื่องอัดประจุไฟฟ้า" : "Select Charger",
     notifications: lang === "th" ? "การแจ้งเตือน" : "Notifications",
   };
 
@@ -426,7 +426,7 @@ export function DashboardNavbar() {
                                     {t.currentCharger}
                                   </p>
                                   <p className="tw-font-medium tw-text-gray-800 tw-text-sm tw-truncate">
-                                    {selectedChargerNo ? `${lang === "th" ? "ตู้" : "Box"} ${selectedChargerNo} • ` : ""}
+                                    {selectedChargerNo ? `${lang === "th" ? "ตู้" : "Charger"} ${selectedChargerNo} • ` : ""}
                                     {selectedSN}
                                   </p>
                                 </div>
@@ -482,7 +482,7 @@ export function DashboardNavbar() {
                     value={effectiveRole}
                     onChange={(e) => handleSwitchRole(e.target.value)}
                     disabled={switching}
-                    title={lang === "th" ? "สลับ role (Super Admin)" : "Switch role (Super Admin)"}
+                    title={lang === "th" ? "สลับบทบาท (Super Admin)" : "Switch role (Super Admin)"}
                     className="tw-h-8 tw-rounded-full tw-bg-gray-900 hover:tw-bg-gray-700 tw-text-white tw-text-xs tw-font-medium tw-pl-3 tw-pr-2 tw-border-0 focus:tw-outline-none tw-cursor-pointer tw-shadow-sm disabled:tw-opacity-60"
                   >
                     {SWITCH_ROLES.map((r) => (

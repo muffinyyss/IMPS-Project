@@ -74,7 +74,7 @@ export default function PricingPage() {
                     Monthly
                   </Tab>
                   <Tab value="annual" className="tw-py-2" onClick={() => setIsAnnual(true)}>
-                    Annualy
+                    Annually
                   </Tab>
                 </TabsHeader>
               </Tabs>

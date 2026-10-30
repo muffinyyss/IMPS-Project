@@ -72,7 +72,7 @@ type PMRow = {
   vendor_plans?: VendorPlan[];
   /** เหตุผลที่ planner ตีกลับ — มีค่า + status เป็น draft = Reject (รอช่างแก้แล้วส่งใหม่) */
   reject_remark?: string;
-  /** vendor ที่ส่งงานตู้ชาร์จแล้ว รอ planner ของ vendor อนุมัติก่อนถึง planner ต้นทาง (เช่น ["EDS"]) */
+  /** vendor ที่ส่งงานเครื่องอัดประจุไฟฟ้าแล้ว รอ planner ของ vendor อนุมัติก่อนถึง planner ต้นทาง (เช่น ["EDS"]) */
   vendor_review?: string[];
   /** อนุมัติปิดแล้ว แต่ส่งปิดงานเข้า Maximo ยังไม่ผ่าน (ระบบลองส่งใหม่เองเป็นระยะ) */
   maximo_pending?: boolean;
@@ -427,7 +427,7 @@ export default function PMListPage() {
       deleteAction: "ลบ",
       deleting: "กำลังลบ…",
       cancel: "ยกเลิก",
-      deleteJobBody: "ลบทั้งใบ — เอกสารทุกส่วน (Station / MDB / CCB / CB_BOX / ตู้ชาร์จ) และใบงานต้นทาง จะถูกลบถาวร กู้คืนไม่ได้",
+      deleteJobBody: "ลบทั้งใบ — เอกสารทุกส่วน (Station / MDB / CCB / CB_BOX / เครื่องอัดประจุไฟฟ้า) และใบงานต้นทาง จะถูกลบถาวร กู้คืนไม่ได้",
       deleteWoBody: "ลบใบงานนี้ออกจาก iMPS ถาวร กู้คืนไม่ได้ — ใบงานจาก Maximo จะกลับมาอีกถ้า Maximo ยังส่งมาตอน sync",
       deleteReportBody: "ลบเอกสาร PM ใบนี้ถาวร กู้คืนไม่ได้",
       addWorkOrder: "เพิ่มใบงาน",

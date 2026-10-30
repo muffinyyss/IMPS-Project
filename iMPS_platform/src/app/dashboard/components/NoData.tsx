@@ -5,7 +5,7 @@ import { ExclamationTriangleIcon, InboxIcon } from "@heroicons/react/24/solid";
 
 /**
  * Shared "empty state" card — มาตรฐานเดียวกับหน้า Device
- * ใช้เมื่อหน้ายังไม่ได้เลือกตู้ชาร์จ (no-station) หรือยังไม่ได้ config pipeline /
+ * ใช้เมื่อหน้ายังไม่ได้เลือกเครื่องอัดประจุไฟฟ้า (no-station) หรือยังไม่ได้ config pipeline /
  * ไม่มีข้อมูลส่งเข้ามา (no-data)
  */
 
@@ -33,7 +33,7 @@ export default function NoData({
   const t = useMemo(() => {
     const translations = {
       th: {
-        noStationSelected: "กรุณาเลือกตู้ชาร์จก่อน",
+        noStationSelected: "กรุณาเลือกเครื่องอัดประจุไฟฟ้าก่อน",
         noData: "ไม่มีข้อมูล",
         stationId: "Station ID",
       },

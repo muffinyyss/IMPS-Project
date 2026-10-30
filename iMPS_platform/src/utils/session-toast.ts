@@ -16,22 +16,22 @@ export type SessionProblem =
 const MESSAGES: Record<SessionProblem, { th: string; en: string; icon: string }> = {
   token_expired: {
     th: "เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่",
-    en: "Session expired. Please log in again.",
+    en: "Session expired. Please sign in again.",
     icon: "⏰",
   },
   session_idle_timeout: {
     th: "ไม่มีการใช้งานเป็นเวลานาน กรุณาเข้าสู่ระบบใหม่",
-    en: "Inactive for too long. Please log in again.",
+    en: "Inactive for too long. Please sign in again.",
     icon: "💤",
   },
   refresh_token_expired: {
     th: "เซสชันหมดอายุถาวร กรุณาเข้าสู่ระบบใหม่",
-    en: "Session fully expired. Please log in again.",
+    en: "Session fully expired. Please sign in again.",
     icon: "🔒",
   },
   not_authenticated: {
     th: "กรุณาเข้าสู่ระบบก่อนใช้งาน",
-    en: "Please log in to continue.",
+    en: "Please sign in to continue.",
     icon: "🔑",
   },
   network_error: {
@@ -41,7 +41,7 @@ const MESSAGES: Record<SessionProblem, { th: string; en: string; icon: string }>
   },
   unknown: {
     th: "เกิดข้อผิดพลาด กรุณาเข้าสู่ระบบใหม่",
-    en: "Something went wrong. Please log in again.",
+    en: "Something went wrong. Please sign in again.",
     icon: "⚠️",
   },
 };
@@ -121,7 +121,7 @@ export function showSessionToast(
       <div>
         <div>${msg[lang]}</div>
         <div style="font-size: 12px; opacity: 0.6; margin-top: 4px;">
-          ${lang === "th" ? "กำลังนำไปหน้าเข้าสู่ระบบ..." : "Redirecting to login..."}
+          ${lang === "th" ? "กำลังนำไปหน้าเข้าสู่ระบบ..." : "Redirecting to sign-in..."}
         </div>
       </div>
       <div style="

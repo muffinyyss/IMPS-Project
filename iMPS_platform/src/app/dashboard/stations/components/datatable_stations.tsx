@@ -307,7 +307,7 @@ const StatCardSkeleton = () => (
   </div>
 );
 
-// สีของการ์ดตู้ชาร์จ 3 สถานะ — เทา (ยังไม่ได้ตั้งค่า) ต้องแยกจากแดง (ออฟไลน์)
+// สีของการ์ดเครื่องอัดประจุไฟฟ้า 3 สถานะ — เทา (ยังไม่ได้ตั้งค่า) ต้องแยกจากแดง (ออฟไลน์)
 // ตู้ที่ยังไม่ตั้งค่าไม่เคยส่งสถานะเข้ามา จะทาสีแดงว่าออฟไลน์ไม่ได้ เพราะยังไม่รู้ว่าออฟไลน์จริงไหม
 const CHARGER_TONES = {
   green: { bar: "tw-bg-gradient-to-r tw-from-green-400 tw-to-emerald-500", iconBox: "tw-bg-green-50 tw-ring-1 tw-ring-green-200", icon: "tw-text-green-600", chip: "tw-bg-green-100 tw-text-green-700", dot: "tw-bg-green-500 tw-animate-pulse" },
@@ -453,47 +453,47 @@ export function SearchDataTables() {
   const t = useMemo(() => {
     const translations = {
       th: {
-        stationManagement: "จัดการสถานี", stationManagementDesc: "จัดการสถานีและตู้ชาร์จ คลิกที่แถวเพื่อดูตู้ชาร์จ คลิกที่การ์ดตู้ชาร์จเพื่อดูรายละเอียด",
+        stationManagement: "จัดการสถานี", stationManagementDesc: "จัดการสถานีและเครื่องอัดประจุไฟฟ้า คลิกที่แถวเพื่อดูเครื่องอัดประจุไฟฟ้า คลิกที่การ์ดเครื่องอัดประจุไฟฟ้าเพื่อดูรายละเอียด",
         addStation: "เพิ่มสถานี", add: "เพิ่ม", entriesPerPage: "รายการต่อหน้า", search: "ค้นหา (ชื่อสถานี / SN)", images: "รูปภาพ",
-        stationName: "ชื่อสถานี", chargers: "ตู้ชาร์จ", owner: "เจ้าของ", technician: "ช่างเทคนิค",
+        stationName: "ชื่อสถานี", chargers: "เครื่องอัดประจุไฟฟ้า", owner: "เจ้าของ", technician: "ช่างเทคนิค",
         active: "เปิดใช้งาน", inactive: "ปิดใช้งาน", actions: "จัดการ", online: "ออนไลน์", offline: "ออฟไลน์",
         maximoLocation: "Maximo Location", maximoDescription: "Maximo Description", ocppUrl: "OCPP URL", ocppSection: "🔌 OCPP",
         warrantyStatus: "การรับประกัน", investmentScope: "สัดส่วนการลงทุน", selectPlaceholder: "เลือก", ioCode: "รหัสค่าใช้จ่าย (IO)", coordsInvalid: "พิกัดไม่ถูกต้อง — กรอกทั้งละติจูดและลองจิจูด (เช่น 13.7563 และ 100.5018)",
         maximoSearch: "ค้นหา location...", maximoEmpty: "ไม่พบ location",
-        chargerBoxId: "รหัสตู้ชาร์จ (Charge Box ID)", chargerType: "ประเภทตู้ชาร์จ",
+        chargerBoxId: "รหัสเครื่องอัดประจุไฟฟ้า (Charge Box ID)", chargerType: "ประเภทเครื่องอัดประจุไฟฟ้า",
         brand: "ยี่ห้อ", vendor: "ผู้จำหน่าย (Vendor)", model: "รุ่น", serialNumber: "S/N", workOrder: "W/O", power: "กำลังไฟ",
         cables: "สายชาร์จ", warranty: "รับประกัน", year: "ปี", firmware: "เฟิร์มแวร์",
-        addCharger: "+ เพิ่มตู้ชาร์จ", noChargersYet: "ยังไม่มีตู้ชาร์จ", addFirstCharger: "+ เพิ่มตู้ชาร์จแรก",
-        editStation: "แก้ไขสถานี", editCharger: "แก้ไขตู้ชาร์จ", addChargerTitle: "เพิ่มตู้ชาร์จ",
+        addCharger: "+ เพิ่มเครื่องอัดประจุไฟฟ้า", noChargersYet: "ยังไม่มีเครื่องอัดประจุไฟฟ้า", addFirstCharger: "+ เพิ่มเครื่องอัดประจุไฟฟ้าแรก",
+        editStation: "แก้ไขสถานี", editCharger: "แก้ไขเครื่องอัดประจุไฟฟ้า", addChargerTitle: "เพิ่มเครื่องอัดประจุไฟฟ้า",
         station: "สถานี", cancel: "ยกเลิก", save: "บันทึก", saving: "กำลังบันทึก...",
-        create: "สร้างตู้ชาร์จ", creating: "กำลังสร้าง...",
+        create: "สร้างเครื่องอัดประจุไฟฟ้า", creating: "กำลังสร้าง...",
         chargerNo: "ตู้ที่", auto: "อัตโนมัติ", plcFirmware: "เฟิร์มแวร์ PLC", piFirmware: "เฟิร์มแวร์ Raspberry Pi",
         routerFirmware: "เฟิร์มแวร์ Router", commissioningDate: "วันที่เริ่มใช้งาน",
         warrantyYears: "ระยะรับประกัน (ปี)", numberOfCables: "จำนวนสายชาร์จ", status: "สถานะ",
-        stationImage: "รูปสถานี", chargerImage: "รูปตู้ชาร์จ", deviceImage: "รูปอุปกรณ์", mdbImage: "MDB",
+        stationImage: "รูปสถานี", chargerImage: "รูปเครื่องอัดประจุไฟฟ้า", deviceImage: "รูปอุปกรณ์", mdbImage: "MDB",
         currentImage: "รูปปัจจุบัน", newImage: "รูปใหม่", uploadImage: "อัปโหลดรูป", replaceImage: "เปลี่ยนรูปใหม่",
         willBeDeleted: "จะถูกลบ", undo: "เลิกทำ", noImageUploaded: "ยังไม่มีรูป", clickToRemove: "คลิก × เพื่อลบ",
         page: "หน้า", of: "จาก", loading: "กำลังโหลด...", noStationsFound: "ไม่พบสถานี",
         editStationTooltip: "แก้ไขสถานี", deleteStationTooltip: "ลบสถานี",
         updateSuccess: "อัปเดตสำเร็จ", createSuccess: "สร้างสำเร็จ", deleteSuccess: "ลบสำเร็จ",
-        chargerDeleted: "ลบตู้ชาร์จแล้ว", chargerCreated: "สร้างตู้ชาร์จสำเร็จ",
-        chargerUpdated: "อัปเดตตู้ชาร์จสำเร็จ", stationUpdated: "อัปเดตสถานีสำเร็จ",
+        chargerDeleted: "ลบเครื่องอัดประจุไฟฟ้าแล้ว", chargerCreated: "สร้างเครื่องอัดประจุไฟฟ้าสำเร็จ",
+        chargerUpdated: "อัปเดตเครื่องอัดประจุไฟฟ้าสำเร็จ", stationUpdated: "อัปเดตสถานีสำเร็จ",
         available: "พร้อมใช้งาน", availableOf: "หัว", notConfigured: "ยังไม่ได้ตั้งค่า",
-        stationInfo: "ข้อมูลสถานี", chargerInfo: "ข้อมูลตู้ชาร์จ",
+        stationInfo: "ข้อมูลสถานี", chargerInfo: "ข้อมูลเครื่องอัดประจุไฟฟ้า",
         upload: "เลือกรูป", noImages: "ยังไม่มีรูป",
         stationImages: "รูปภาพสถานี", chargerImages: "รูปภาพ",
         duplicateChargeBoxID: "Charge Box ID ซ้ำกัน กรุณาตรวจสอบ",
         imageOnly: "กรุณาเลือกเฉพาะไฟล์รูปภาพ", fileTooLarge: "มีขนาดใหญ่เกินไป (สูงสุด 3MB)",
         noEditPermission: "คุณไม่มีสิทธิ์แก้ไขสถานีนี้",
         updateFailed: "อัปเดตไม่สำเร็จ",
-        deleteStationFailed: "ลบสถานีไม่สำเร็จ", deleteChargerFailed: "ลบตู้ชาร์จไม่สำเร็จ",
-        createChargerFailed: "สร้างตู้ชาร์จไม่สำเร็จ", createStationFailed: "สร้างสถานีไม่สำเร็จ",
+        deleteStationFailed: "ลบสถานีไม่สำเร็จ", deleteChargerFailed: "ลบเครื่องอัดประจุไฟฟ้าไม่สำเร็จ",
+        createChargerFailed: "สร้างเครื่องอัดประจุไฟฟ้าไม่สำเร็จ", createStationFailed: "สร้างสถานีไม่สำเร็จ",
         fetchFailed: "โหลดข้อมูลไม่สำเร็จ", networkError: "เครือข่าย/เซิร์ฟเวอร์ผิดพลาด",
         currentImageBadge: "ปัจจุบัน", deviceImageBadge: "อุปกรณ์",
       },
       en: {
         stationManagement: "Station Management", stationManagementDesc: "Manage Stations and Chargers. Click on a row to view chargers, click on a charger card to view details.",
-        addStation: "ADD STATION", add: "ADD", entriesPerPage: "entries per page", search: "Search (name / SN)", images: "Images",
+        addStation: "Add Station", add: "Add", entriesPerPage: "entries per page", search: "Search (name / SN)", images: "Images",
         stationName: "Station Name", chargers: "Chargers", owner: "Owner", technician: "Technician",
         active: "Active", inactive: "Inactive", actions: "Actions", online: "online", offline: "offline",
         maximoLocation: "Maximo Location", maximoDescription: "Maximo Description", ocppUrl: "OCPP URL", ocppSection: "🔌 OCPP",
@@ -517,7 +517,7 @@ export function SearchDataTables() {
         updateSuccess: "Updated successfully", createSuccess: "Created successfully", deleteSuccess: "Deleted successfully",
         chargerDeleted: "Charger deleted", chargerCreated: "Charger created successfully",
         chargerUpdated: "Charger updated successfully", stationUpdated: "Station updated successfully",
-        available: "Available", availableOf: "heads", notConfigured: "Not configured",
+        available: "Available", availableOf: "connectors", notConfigured: "Not configured",
         stationInfo: "Station Information", chargerInfo: "Charger Information",
         upload: "Browse", noImages: "No images yet",
         stationImages: "Station Images", chargerImages: "Images",
@@ -913,7 +913,7 @@ export function SearchDataTables() {
     setConfirmDialog({
       open: true,
       title: lang === "th" ? "ลบสถานี?" : "Delete Station?",
-      message: lang === "th" ? `คุณต้องการลบสถานี "${station.station_name}" และตู้ชาร์จทั้งหมดใช่หรือไม่?` : `Are you sure you want to delete "${station.station_name}" and all its chargers?`,
+      message: lang === "th" ? `คุณต้องการลบสถานี "${station.station_name}" และเครื่องอัดประจุไฟฟ้าทั้งหมดใช่หรือไม่?` : `Are you sure you want to delete "${station.station_name}" and all its chargers?`,
       loading: false,
       onConfirm: async () => {
         try {
@@ -932,8 +932,8 @@ export function SearchDataTables() {
     if (!charger.id) return;
     setConfirmDialog({
       open: true,
-      title: lang === "th" ? "ลบตู้ชาร์จ?" : "Delete Charger?",
-      message: lang === "th" ? `คุณต้องการลบตู้ชาร์จ "${charger.chargeBoxID}" ใช่หรือไม่?` : `Are you sure you want to delete charger "${charger.chargeBoxID}"?`,
+      title: lang === "th" ? "ลบเครื่องอัดประจุไฟฟ้า?" : "Delete Charger?",
+      message: lang === "th" ? `คุณต้องการลบเครื่องอัดประจุไฟฟ้า "${charger.chargeBoxID}" ใช่หรือไม่?` : `Are you sure you want to delete charger "${charger.chargeBoxID}"?`,
       loading: false,
       onConfirm: async () => {
         try {
@@ -1014,7 +1014,7 @@ export function SearchDataTables() {
     return baseColumns;
   }, [me, technicians, isAdmin, t, availability]);
 
-  // ค้นหา: ชื่อสถานี / station_id / เจ้าของ + SN และ Charge Box ID ของตู้ชาร์จในสถานีนั้น
+  // ค้นหา: ชื่อสถานี / station_id / เจ้าของ + SN และ Charge Box ID ของเครื่องอัดประจุไฟฟ้าในสถานีนั้น
   const chargerMatches = useCallback((row: StationRow, q: string) =>
     row.chargers.some((c) => [c.SN, c.chargeBoxID].some((v) => String(v ?? "").toLowerCase().includes(q))), []);
 
@@ -1147,7 +1147,7 @@ export function SearchDataTables() {
               </div>
               <div className="tw-group tw-relative tw-overflow-hidden tw-rounded-2xl tw-bg-gradient-to-br tw-from-gray-900 tw-via-gray-800 tw-to-gray-900 tw-px-4 sm:tw-px-5 tw-py-3.5 sm:tw-py-4 tw-ring-1 tw-ring-white/10 tw-shadow-lg hover:tw-shadow-xl tw-transition-all tw-duration-300 hover:tw--translate-y-0.5">
                 <div className="tw-absolute tw-inset-0 tw-opacity-[0.03]" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '20px 20px' }} />
-                <div className="tw-relative tw-z-10"><div className="tw-flex tw-items-center tw-gap-2 tw-mb-2"><div className="tw-h-8 tw-w-8 tw-rounded-xl tw-bg-amber-500/20 tw-flex tw-items-center tw-justify-center tw-ring-1 tw-ring-amber-400/20"><BoltIcon className="tw-h-4 tw-w-4 tw-text-amber-400" /></div><span className="tw-text-[10px] sm:tw-text-[11px] tw-font-semibold tw-text-white/40 tw-uppercase tw-tracking-wider">{lang === "th" ? "ตู้ชาร์จ" : "Chargers"}</span></div><div className="tw-text-2xl sm:tw-text-3xl tw-font-black tw-text-white tw-tabular-nums tw-tracking-tight tw-leading-none">{chargerCounts.total}</div></div>
+                <div className="tw-relative tw-z-10"><div className="tw-flex tw-items-center tw-gap-2 tw-mb-2"><div className="tw-h-8 tw-w-8 tw-rounded-xl tw-bg-amber-500/20 tw-flex tw-items-center tw-justify-center tw-ring-1 tw-ring-amber-400/20"><BoltIcon className="tw-h-4 tw-w-4 tw-text-amber-400" /></div><span className="tw-text-[10px] sm:tw-text-[11px] tw-font-semibold tw-text-white/40 tw-uppercase tw-tracking-wider">{lang === "th" ? "เครื่องอัดประจุไฟฟ้า" : "Chargers"}</span></div><div className="tw-text-2xl sm:tw-text-3xl tw-font-black tw-text-white tw-tabular-nums tw-tracking-tight tw-leading-none">{chargerCounts.total}</div></div>
               </div>
               <div onClick={() => setStatusFilter((prev) => (prev === "online" ? "all" : "online"))} className={`tw-group tw-relative tw-overflow-hidden tw-rounded-2xl tw-bg-gradient-to-br tw-from-gray-900 tw-via-gray-800 tw-to-gray-900 tw-px-4 sm:tw-px-5 tw-py-3.5 sm:tw-py-4 tw-ring-1 tw-shadow-lg hover:tw-shadow-xl tw-transition-all tw-duration-300 hover:tw--translate-y-0.5 tw-cursor-pointer ${statusFilter === "online" ? "tw-ring-green-400 tw-scale-[1.02]" : "tw-ring-white/10"}`}>
                 <div className="tw-absolute tw-inset-0 tw-opacity-[0.03]" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '20px 20px' }} />

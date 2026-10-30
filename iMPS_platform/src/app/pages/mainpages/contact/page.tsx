@@ -6,10 +6,10 @@ import { apiFetch } from "@/utils/api";
 import useLanguage, { type Lang } from "@/utils/useLanguage";
 
 const T = {
-    title: { th: "ติดต่อเรา", en: "Contact US" },
+    title: { th: "ติดต่อเรา", en: "Contact Us" },
     intro: {
-        th: "Lorem Ipsum เป็นข้อความจำลองของอุตสาหกรรมการพิมพ์และการเรียงพิมพ์ ซึ่งถูกใช้เป็นข้อความจำลองมาตรฐานของอุตสาหกรรมมาตั้งแต่ปี ค.ศ. 1500",
-        en: "Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry's standard dummy text ever since the 1500s",
+        th: "ติดต่อทีมงาน iMPS เพื่อสอบถามการใช้งานระบบ แจ้งปัญหา หรือขอข้อมูลเพิ่มเติม",
+        en: "Contact the iMPS team for help using the system, to report a problem, or to request more information.",
     },
     sendUsAMessage: { th: "ส่งข้อความถึงเรา", en: "Send us a message" },
     successMsg: { th: "ขอบคุณที่ติดต่อเรา! เราจะติดต่อกลับโดยเร็วที่สุด", en: "Thank you for contacting us! We will get back to you as soon as possible." },

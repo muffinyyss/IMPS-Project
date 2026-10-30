@@ -4,7 +4,7 @@ import { Battery50Icon, SpeakerWaveIcon } from "@heroicons/react/24/solid";
 export const deviceCardData1 = [
   {
     icon: Battery50Icon,
-    title: "DC Power Contractor",
+    title: "DC Power Contactor",
     value: "99%",
   },
   {
@@ -39,12 +39,12 @@ export const deviceCardData1 = [
   },
   {
     icon: SpeakerWaveIcon,
-    title: "AC Power Contractor",
+    title: "AC Power Contactor",
     value: "15/100",
   },
   {
     icon: SpeakerWaveIcon,
-    title: "Moter Starter",
+    title: "Motor Starter",
     value: "15/100",
   },
 ];

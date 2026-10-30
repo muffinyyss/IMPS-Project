@@ -54,8 +54,8 @@ function calcRisks(d: any, lang: Lang) {
       active: d.icp_state === 9 || d.icp_state === 10,
       value: `ICP: ${d.icp_state ?? "—"} (${d.icp_name ?? "—"})`,
       action: th
-        ? "ตรวจสอบ CP signal voltage และ PLC contractor"
-        : "Check CP signal voltage and PLC contractor",
+        ? "ตรวจสอบ CP signal voltage และ PLC contactor"
+        : "Check CP signal voltage and PLC contactor",
     },
     {
       key: "uslink_fault",

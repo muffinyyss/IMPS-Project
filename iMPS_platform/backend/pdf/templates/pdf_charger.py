@@ -67,12 +67,12 @@ ROW_TITLES_TH = {
     "r5": "ตรวจสอบปุ่มหยุดฉุกเฉิน",
     "r6": "ตรวจสอบ QR CODE",
     "r7": "ตรวจสอบป้ายเตือนระวังไฟฟ้าช็อก",
-    "r8": "ป้ายเตือนต้องการระบายอากาศ",
+    "r8": "ตรวจสอบป้ายเตือนต้องการระบายอากาศ",
     "r9": "ตรวจสอบป้ายบ่งชี้ปุ่มฉุกเฉิน",
     "r10": "ตรวจสอบแรงดันไฟฟ้าที่พิน CP",
-    "r11": "ตรวจสอบแผ่นกรองระบายอากาศ",
+    "r11": "ตรวจสอบแผ่นกรองอากาศ",
     "r12": "ตรวจสอบจุดต่อทางไฟฟ้า",
-    "r13": "ตรวจสอบคอนแทคเตอร์",
+    "r13": "ตรวจสอบคอนแทกเตอร์",
     "r14": "ตรวจสอบอุปกรณ์ป้องกันไฟกระชาก",
     "r15": "ตรวจสอบลำดับเฟส",
     "r16": "วัดแรงดันไฟฟ้าด้านเข้า",
@@ -82,15 +82,15 @@ ROW_TITLES_TH = {
 
 # English version
 ROW_TITLES_EN = {
-    "r1": "General condition inspection",
+    "r1": "Check general condition",
     "r2": "Check sealant and silicone",
     "r3": "Check charging cables",
     "r4": "Check charging connector",
     "r5": "Check emergency stop button",
     "r6": "Check QR CODE",
-    "r7": "Electric shock warning sign",
-    "r8": "Ventilation warning sign",
-    "r9": "Check emergency button sign",
+    "r7": "Check electric shock warning sign",
+    "r8": "Check ventilation warning sign",
+    "r9": "Check emergency button indicator sign",
     "r10": "Check CP pin voltage",
     "r11": "Check air filter",
     "r12": "Check electrical connections",
@@ -123,17 +123,17 @@ SUB_ROW_TITLES_TH = {
     "r10_1": "แรงดันไฟฟ้าที่พิน CP สายที่ 1",
     "r10_2": "แรงดันไฟฟ้าที่พิน CP สายที่ 2",
     
-    "r11_1": "แผ่นกรองระบายอากาศ (ด้านซ้าย)",
-    "r11_2": "แผ่นกรองระบายอากาศ (ด้านขวา)",
-    "r11_3": "แผ่นกรองระบายอากาศ (ด้านหน้า)",
-    "r11_4": "แผ่นกรองระบายอากาศ (ด้านหลัง)",
-    "r11_5": "แผ่นกรองระบายอากาศ (ด้านล่าง)",
+    "r11_1": "แผ่นกรองอากาศ (ด้านซ้าย)",
+    "r11_2": "แผ่นกรองอากาศ (ด้านขวา)",
+    "r11_3": "แผ่นกรองอากาศ (ด้านหน้า)",
+    "r11_4": "แผ่นกรองอากาศ (ด้านหลัง)",
+    "r11_5": "แผ่นกรองอากาศ (ด้านล่าง)",
     
-    "r17_1": "หัวชาร์จที่ 1",
-    "r17_2": "หัวชาร์จที่ 2",
+    "r17_1": "ทดสอบการอัดประจุ สายที่ 1",
+    "r17_2": "ทดสอบการอัดประจุ สายที่ 2",
     
-    "r18_1": "Router-ทำความสะอาดหน้าสัมผัสซิม1และซิม2",
-    "r18_2": "Router-ทำความสะอาด PORT LAN",
+    "r18_1": "Router - ทำความสะอาดหน้าสัมผัสซิม 1 และซิม 2",
+    "r18_2": "Router - ทำความสะอาดพอร์ต LAN",
     "r18_3": "ทำความสะอาดทั่วไป",
 }
 
@@ -163,8 +163,8 @@ SUB_ROW_TITLES_EN = {
     "r17_1": "Charging test cable 1",
     "r17_2": "Charging test cable 2",
     
-    "r18_1": "Clean SIM1 and SIM2 contacts",
-    "r18_2": "Clean LAN port",
+    "r18_1": "Router - Clean SIM1 and SIM2 contacts",
+    "r18_2": "Router - Clean LAN port",
     "r18_3": "General cleaning",
 }
 
@@ -933,7 +933,7 @@ def _draw_header(
     label_doc_name: str = "Doc Name",
     addr_line1: str = "Electricity Generating Authority of Thailand (EGAT)",  # เพิ่ม
     addr_line2: str = "53 Moo 2 Charansanitwong Road, Bang Kruai, Nonthaburi 11130, Thailand",  # เพิ่ม
-    addr_line3: str = "Call Center Tel. 02-114-3350",  # เพิ่ม
+    addr_line3: str = "EGAT Call Center Tel. 0-2436-1416",  # เพิ่ม
 ) -> float:
     left = pdf.l_margin
     right = pdf.r_margin
@@ -1628,7 +1628,7 @@ class ReportPDF(HTML2PDF):
         self._label_doc_name = "Doc Name"
         self._addr_line1 = "Electricity Generating Authority of Thailand (EGAT)"
         self._addr_line2 = "53 Moo 2 Charansanitwong Road, Bang Kruai, Nonthaburi 11130, Thailand"
-        self._addr_line3 = "Call Center Tel. 02-114-3350"
+        self._addr_line3 = "EGAT Call Center Tel. 0-2436-1416"
 
     def header(self):
         # ทุกหน้าเรียกอัตโนมัติ
@@ -1751,7 +1751,7 @@ def make_pm_report_html_pdf_bytes(
         label_doc_name = "Doc Name"
         addr_line1 = "Electricity Generating Authority of Thailand (EGAT)"
         addr_line2 = "53 Moo 2 Charansanitwong Road, Bang Kruai, Nonthaburi 11130, Thailand"
-        addr_line3 = "Call Center Tel. 02-114-3350"
+        addr_line3 = "EGAT Call Center Tel. 0-2436-1416"
         
     else:  # "th"
         # Thai titles
@@ -1780,7 +1780,7 @@ def make_pm_report_html_pdf_bytes(
         
         # Job info labels
         label_station = "สถานี"
-        label_charger_no = "หมายเลขเครื่องชาร์จ"
+        label_charger_no = "เครื่องที่"
         label_model = "รุ่น"
         label_serial = "หมายเลขซีเรียล"
         label_pm_date = "วันที่ PM"
@@ -1791,7 +1791,7 @@ def make_pm_report_html_pdf_bytes(
         label_doc_name = "ชื่อเอกสาร"
         addr_line1 = "การไฟฟ้าฝ่ายผลิตแห่งประเทศไทย (กฟผ.)"
         addr_line2 = "เลขที่ 53 หมู่ 2 ถนนจรัญสนิทวงศ์ ตำบลบางกรวย อำเภอบางกรวย จังหวัดนนทบุรี 11130"
-        addr_line3 = "ศูนย์บริการข้อมูล กฟผ. สายด่วน 1416"
+        addr_line3 = "ศูนย์บริการข้อมูล กฟผ. โทร 0-2436-1416"
     
     # สร้าง doc_name จาก sn และปี (เช่น F1500624011_2/2026)
     doc_name = str(doc.get("doc_name", ""))

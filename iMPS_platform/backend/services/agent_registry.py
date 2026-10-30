@@ -49,7 +49,7 @@ MODULE_KNOWLEDGE: dict[str, dict] = {
     "m2": {
         "num": 2,
         "name_en": "Charger Air Filter Clogging",
-        "name_th": "การตันของแผ่นกรองอากาศเครื่องอัดประจุ",
+        "name_th": "การตันของแผ่นกรองอากาศเครื่องอัดประจุไฟฟ้า",
         "weight": 0.12,
         "input_db": "module2ChargerDustPrediction",
         "collection_key": "SN",
@@ -68,7 +68,7 @@ MODULE_KNOWLEDGE: dict[str, dict] = {
             "พัดลมระบายความร้อนเสีย/รอบตก (fan_RPM ต่ำ)",
         ],
         "recommended_actions": [
-            "ทำความสะอาด/เปลี่ยนแผ่นกรองอากาศเครื่องชาร์จ",
+            "ทำความสะอาด/เปลี่ยนแผ่นกรองอากาศเครื่องอัดประจุไฟฟ้า",
             "ตรวจพัดลมระบายความร้อนทุกตัว",
         ],
         "standards": [],
@@ -76,7 +76,7 @@ MODULE_KNOWLEDGE: dict[str, dict] = {
     "m3": {
         "num": 3,
         "name_en": "Charger Offline Detection",
-        "name_th": "การออฟไลน์ของเครื่องอัดประจุ",
+        "name_th": "การออฟไลน์ของเครื่องอัดประจุไฟฟ้า",
         "weight": 0.16,
         "input_db": "module3ChargerOfflineAnalysis",
         "collection_key": "SN",
@@ -107,7 +107,7 @@ MODULE_KNOWLEDGE: dict[str, dict] = {
     "m4": {
         "num": 4,
         "name_en": "Abnormal Power Delivery",
-        "name_th": "การจ่ายไฟฟ้าผิดปกติของเครื่องอัดประจุ",
+        "name_th": "การจ่ายไฟฟ้าผิดปกติของเครื่องอัดประจุไฟฟ้า",
         "weight": 0.20,
         "input_db": "module4AbnormalPowerPrediction",
         "collection_key": "SN",
@@ -193,7 +193,7 @@ MODULE_KNOWLEDGE: dict[str, dict] = {
     "m7": {
         "num": 7,
         "name_en": "EV-PLCC Communication Fault",
-        "name_th": "ความผิดปกติการสื่อสาร EV↔เครื่องอัดประจุ (PLCC)",
+        "name_th": "ความผิดปกติการสื่อสาร EV↔เครื่องอัดประจุไฟฟ้า (PLCC)",
         "weight": 0.10,
         "input_db": "module7ChargerPowerIssue",
         "collection_key": "SN",

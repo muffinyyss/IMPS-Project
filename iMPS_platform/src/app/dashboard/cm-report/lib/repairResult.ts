@@ -15,9 +15,9 @@ export const normalizeRepairResult = (v: string): string =>
   LEGACY_REPAIR_MAP[(v || "").trim()] ?? (v || "").trim();
 
 const LABELS: Record<string, { th: string; en: string }> = {
-  "WO - wait for scheduled": { th: "รอกำหนดวันเข้าซ่อม", en: "WO - wait for scheduled" },
-  "WO - wait for material": { th: "รออะไหล่/วัสดุ", en: "WO - wait for material" },
-  "WO - wait for site condition": { th: "รอสภาพหน้างานพร้อม", en: "WO - wait for site condition" },
+  "WO - wait for scheduled": { th: "รอกำหนดวันเข้าซ่อม", en: "WO - Waiting for schedule" },
+  "WO - wait for material": { th: "รออะไหล่/วัสดุ", en: "WO - Waiting for material" },
+  "WO - wait for site condition": { th: "รอสภาพหน้างานพร้อม", en: "WO - Waiting for site condition" },
   // ค่าที่บันทึกคือ "รออนุมัติ" แต่ในมุมช่างคือซ่อมจบแล้ว จึงโชว์เป็น "แก้ไขสำเร็จ"
   "WO - wait for approve": { th: "แก้ไขสำเร็จ", en: "Repair completed" },
   // ค่าที่ระบบเขียนเองตอนปิดงาน — โผล่ในตาราง/การ์ดประวัติได้

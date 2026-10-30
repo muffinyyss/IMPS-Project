@@ -71,16 +71,16 @@ PHOTO_Q_W = 85.0
 # Thai version
 ROW_TITLES_TH = {
     "r1": "ตรวจสอบสภาพทั่วไป",
-    "r2": "ตรวจสอบสภาพดักซีล,ซิลิโคนกันซึม",
+    "r2": "ตรวจสอบสภาพดักซีล, ซิลิโคนกันซึม",
     "r3": "ตรวจสอบ Power Meter",
     "r4": "ตรวจสอบแรงดันไฟฟ้า Breaker Main",
     "r5": "ตรวจสอบแรงดันไฟฟ้า Breaker Charger",
     "r6": "ตรวจสอบแรงดันไฟฟ้า Breaker CCB",
     "r7": "ตรวจสอบแรงดันไฟฟ้า RCD",
-    "r8": "ทดสอบปุ่ม RCD Trip",
-    "r9": "ทดสอบปุ่ม Breaker CCB Trip",
-    "r10": "ทดสอบปุ่ม Breaker Charger Trip",
-    "r11": "ทดสอบปุ่ม Breaker Main Trip",
+    "r8": "ทดสอบปุ่ม Trip Test RCD",
+    "r9": "ทดสอบปุ่ม Trip Test Breaker CCB",
+    "r10": "ทดสอบปุ่ม Trip Test Breaker Charger",
+    "r11": "ทดสอบปุ่ม Trip Test Breaker Main",
     "r12": "ตรวจสอบจุดต่อทางไฟฟ้า",
     "r13": "ทำความสะอาดตู้ MDB"
 }
@@ -970,7 +970,7 @@ def _draw_header(
     label_doc_name: str = "Doc Name",
     addr_line1: str = "Electricity Generating Authority of Thailand (EGAT)",  # เพิ่ม
     addr_line2: str = "53 Moo 2 Charansanitwong Road, Bang Kruai, Nonthaburi 11130, Thailand",  # เพิ่ม
-    addr_line3: str = "Call Center Tel. 02-114-3350",  # เพิ่ม
+    addr_line3: str = "EGAT Call Center Tel. 0-2436-1416",  # เพิ่ม
 ) -> float:
     left = pdf.l_margin
     right = pdf.r_margin
@@ -1520,7 +1520,7 @@ class ReportPDF(HTML2PDF):
         self._label_doc_name = "Doc Name"
         self._addr_line1 = "Electricity Generating Authority of Thailand (EGAT)"
         self._addr_line2 = "53 Moo 2 Charansanitwong Road, Bang Kruai, Nonthaburi 11130, Thailand"
-        self._addr_line3 = "Call Center Tel. 02-114-3350"
+        self._addr_line3 = "EGAT Call Center Tel. 0-2436-1416"
 
     def header(self):
         # ทุกหน้าเรียกอัตโนมัติ
@@ -1646,7 +1646,7 @@ def make_pm_report_html_pdf_bytes(
         label_doc_name = "Doc Name"
         addr_line1 = "Electricity Generating Authority of Thailand (EGAT)"
         addr_line2 = "53 Moo 2 Charansanitwong Road, Bang Kruai, Nonthaburi 11130, Thailand"
-        addr_line3 = "Call Center Tel. 02-114-3350"
+        addr_line3 = "EGAT Call Center Tel. 0-2436-1416"
         
     else:  # "th"
         # Thai titles
@@ -1682,7 +1682,7 @@ def make_pm_report_html_pdf_bytes(
         label_doc_name = "ชื่อเอกสาร"
         addr_line1 = "การไฟฟ้าฝ่ายผลิตแห่งประเทศไทย (กฟผ.)"
         addr_line2 = "เลขที่ 53 หมู่ 2 ถนนจรัญสนิทวงศ์ ตำบลบางกรวย อำเภอบางกรวย จังหวัดนนทบุรี 11130"
-        addr_line3 = "ศูนย์บริการข้อมูล กฟผ. สายด่วน 1416"
+        addr_line3 = "ศูนย์บริการข้อมูล กฟผ. โทร 0-2436-1416"
     
     # สร้าง doc_name จาก sn และปี (เช่น F1500624011_2/2026)
     doc_name = str(doc.get("doc_name", ""))

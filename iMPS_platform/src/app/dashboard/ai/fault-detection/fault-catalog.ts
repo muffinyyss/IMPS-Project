@@ -47,7 +47,7 @@ const FAULT_DEFINITIONS: Record<string, FaultDefinition> = {
     },
   },
   EVSE_FAULT: {
-    title: { th: "ตู้ชาร์จรายงานความขัดข้อง", en: "Charger-reported fault" },
+    title: { th: "เครื่องอัดประจุไฟฟ้ารายงานความขัดข้อง", en: "Charger-reported fault" },
     cause: {
       th: "EVSEStatusCode ระบุ EVSE_Malfunction หรือ EVSE_EmergencyShutdown จึงอาจเป็นความผิดปกติภายในตู้ วงจรกำลัง ระบบควบคุม หรือการหยุดฉุกเฉิน",
       en: "EVSEStatusCode reports EVSE_Malfunction or EVSE_EmergencyShutdown, which may indicate an internal charger, power-stage, control-system, or emergency-stop condition.",
@@ -57,7 +57,7 @@ const FAULT_DEFINITIONS: Record<string, FaultDefinition> = {
       en: "DIN SPEC 70121 / ISO 15118-2 — EVSEStatusCode; related DC-EVSE safety requirements are covered by IEC 61851-23",
     },
     stopParty: "evse",
-    stopPartyLabel: { th: "ตู้ชาร์จ (EVSE)", en: "Charger (EVSE)" },
+    stopPartyLabel: { th: "เครื่องอัดประจุไฟฟ้า (EVSE)", en: "Charger (EVSE)" },
     attribution: {
       th: "ตู้เป็นฝ่ายรายงาน fault และโดยปกติจะหยุดหรือไม่อนุญาตการจ่ายกำลังเพื่อความปลอดภัย",
       en: "The charger reports the fault and normally stops or inhibits power delivery for safety.",

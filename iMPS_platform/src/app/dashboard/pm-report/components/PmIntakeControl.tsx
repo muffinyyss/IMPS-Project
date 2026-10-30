@@ -4,7 +4,7 @@
  * สวิตช์ "ปิดรับใบงาน PM จาก Maximo" (หน้า PM List) — backend: routers/pm_auto_wo.py
  *
  * ปิดรับ = Maximo ยิง IN06 เข้ามาจะได้ 423 และ iMPS ออกใบงานเองทุก 6 เดือน
- * นับจากวัน commissioning ของตู้ชาร์จ (ออกในเดือนที่ครบรอบ)
+ * นับจากวัน commissioning ของเครื่องอัดประจุไฟฟ้า (ออกในเดือนที่ครบรอบ)
  *
  * - ทุกคนเห็นแถบสถานะเมื่อปิดรับอยู่
  * - planner / owner / admin เปิดดูตู้ที่ครบรอบเดือนนี้ได้
@@ -43,7 +43,7 @@ const PREVIEW_ROLES = ["admin", "owner", "planner"];
 const T = {
   th: {
     closedTitle: "ปิดรับใบงาน PM จาก Maximo",
-    closedBody: (n: number) => `iMPS ออกใบงาน PM เองทุก ${n} เดือน นับจากวัน commissioning ของตู้ชาร์จ (ออกในเดือนที่ครบรอบ)`,
+    closedBody: (n: number) => `iMPS ออกใบงาน PM เองทุก ${n} เดือน นับจากวัน commissioning ของเครื่องอัดประจุไฟฟ้า (ออกในเดือนที่ครบรอบ)`,
     openBody: "รับใบงาน PM จาก Maximo (IN06) ตามปกติ",
     changed: (by: string, at: string) => `ตั้งค่าโดย ${by} · ${at}`,
     lastRun: (m: string, c: number) => `ออกใบงานล่าสุด รอบ ${m}: ${c} ใบ`,
@@ -127,7 +127,7 @@ const T = {
     missing: (n: number) => `${n} charger(s) have no commissioning date — set it on EV Stations`,
     runResult: (c: number, s: number) => `${c} new work order(s) · ${s} station(s) skipped`,
     error: "Request failed",
-    cycle: (n: number) => `cycle ${n}`,
+    cycle: (n: number) => `Cycle ${n}`,
   },
 };
 

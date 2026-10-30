@@ -16,15 +16,14 @@ export default function Landing() {
             variant="h1"
             className="tw-font-extrabold tw-tracking-tight tw-text-4xl sm:tw-text-5xl lg:tw-text-6xl"
           >
-            Ai Maintenance
+            AI Maintenance
             <br />
-            as a service Platform
+            as a Service Platform
           </Typography>
 
           <Typography className="tw-mt-6 tw-max-w-xl tw-text-gray-600 tw-text-base sm:tw-text-lg">
-            Journey to the edge of wonder and witness the Aurora Borealis,
-            where nature&apos;s most dazzling light show awaits to captivate
-            your senses and ignite&nbsp;your imagination.
+            Monitor EV chargers in real time, plan preventive maintenance,
+            track repairs and predict faults with AI&nbsp;&mdash; all in one platform.
           </Typography>
         </div>
 

@@ -57,7 +57,7 @@ log = logging.getLogger("uvicorn.error")
 
 router = APIRouter()
 
-# ฟอร์มจริง 5 ชนิดของใบ PM — ลำดับในหน้าเว็บ (PDF ทั้งใบเรียงตู้ชาร์จก่อน ดู build_job_pdf)
+# ฟอร์มจริง 5 ชนิดของใบ PM — ลำดับในหน้าเว็บ (PDF ทั้งใบเรียงเครื่องอัดประจุไฟฟ้าก่อน ดู build_job_pdf)
 SECTIONS: tuple[str, ...] = ("station", "mdb", "ccb", "cbbox", "charger")
 
 # กลุ่มที่แสดงในหน้าเว็บ — ยุบ MDB/CCB/CB_BOX เข้าใต้ Station
@@ -76,7 +76,7 @@ SECTION_LABELS: dict[str, dict[str, str]] = {
     "mdb": {"th": "MDB", "en": "MDB"},
     "ccb": {"th": "CCB", "en": "CCB"},
     "cbbox": {"th": "CB_BOX", "en": "CB_BOX"},
-    "charger": {"th": "ตู้ชาร์จ", "en": "Charger"},
+    "charger": {"th": "เครื่องอัดประจุไฟฟ้า", "en": "Charger"},
 }
 
 # ชนิดส่วน → template PDF ของ /pdf/{kind}/{id}/export เดิม
@@ -122,7 +122,7 @@ def section_scope_filter(section: str, station_id: str, sn: str = "") -> dict:
 
 def station_chargers(station_id: str) -> list[dict]:
     """
-    ตู้ชาร์จทั้งหมดของสถานี — เรียงตามหมายเลขตู้ ลำดับส่วนในใบจะได้ไม่สลับไปมา
+    เครื่องอัดประจุไฟฟ้าทั้งหมดของสถานี — เรียงตามหมายเลขตู้ ลำดับส่วนในใบจะได้ไม่สลับไปมา
 
     อ่านไม่ได้ = ไม่โชว์ใบย่อยของส่วน charger ส่วนอื่นยังใช้งานได้ตามปกติ
     """
@@ -132,7 +132,7 @@ def station_chargers(station_id: str) -> list[dict]:
             {"_id": 0, "SN": 1, "chargerNo": 1, "chargerType": 1, "brand": 1, "model": 1},
         ))
     except Exception as e:
-        log.warning(f"  ⚠️ อ่านรายชื่อตู้ชาร์จของสถานี {station_id} ไม่สำเร็จ: {e}")
+        log.warning(f"  ⚠️ อ่านรายชื่อเครื่องอัดประจุไฟฟ้าของสถานี {station_id} ไม่สำเร็จ: {e}")
         return []
     out = [d for d in docs if str(d.get("SN") or "").strip() not in ("", "-")]
     out.sort(key=lambda d: (str(d.get("chargerNo") or "~"), str(d.get("SN") or "")))
@@ -354,7 +354,7 @@ async def _section_states(job: dict, chargers: list[dict] | None = None) -> list
                 no = str(ch.get("chargerNo") or "").strip()
                 doc = await _find_section_report(section, station_id, sn, job_id)
                 label = {
-                    "th": f"ตู้ชาร์จ {no}" if no else sn,
+                    "th": f"เครื่องอัดประจุไฟฟ้า {no}" if no else sn,
                     "en": f"Charger {no}" if no else sn,
                 }
                 out.append(_state_row(
@@ -641,7 +641,7 @@ def _party_done(key: str, party: dict, entries: list[dict]) -> bool:
 
 
 # ══════════════════════════════════════════════════════════════════
-# อนุมัติชั้นแรกโดย planner ของ vendor — เฉพาะฟอร์มตู้ชาร์จ (ตัดสินใจ 2026-10-21)
+# อนุมัติชั้นแรกโดย planner ของ vendor — เฉพาะฟอร์มเครื่องอัดประจุไฟฟ้า (ตัดสินใจ 2026-10-21)
 #   ตู้ที่มอบให้ vendor ที่มี planner ของตัวเอง (มีใบส่งต่อใน vendor_plans เช่น EDS)
 #   ฝ่าย vendor ส่งงาน → planner ของ vendor ตรวจ (ตีกลับรายฟอร์มได้) แล้วกด "อนุมัติงานของ <vendor>"
 #   ครั้งเดียวทั้งฝ่าย → ค่อยนับว่าฝ่ายนั้นส่งครบ → ครบทุกฝ่าย = Wait for approve ให้ planner ต้นทาง
@@ -662,7 +662,7 @@ def review_vendors(wo: dict | None) -> dict[str, str]:
 
 
 def party_needs_vendor_review(key: str, party: dict, wo: dict | None) -> bool:
-    """ฝ่ายนี้เป็น vendor ที่มี planner และมีฟอร์มตู้ชาร์จในแผน (ไม่ N/A)"""
+    """ฝ่ายนี้เป็น vendor ที่มี planner และมีฟอร์มเครื่องอัดประจุไฟฟ้าในแผน (ไม่ N/A)"""
     return key in review_vendors(wo) and any(s.get("section") == CHARGER_SECTION for s in party["states"])
 
 
@@ -685,7 +685,7 @@ def _party_cleared(key: str, party: dict, entries: list[dict], wo: dict | None) 
 
 
 def vendor_reviewer_key(wo: dict | None, current: UserClaims, company: str) -> str:
-    """planner ของ vendor ที่ต้องตรวจฟอร์มตู้ชาร์จของฝ่ายตัวเองในใบนี้ → key ฝ่าย ไม่ใช่ = "" """
+    """planner ของ vendor ที่ต้องตรวจฟอร์มเครื่องอัดประจุไฟฟ้าของฝ่ายตัวเองในใบนี้ → key ฝ่าย ไม่ใช่ = "" """
     if (current.role or "").strip().lower() != "planner":
         return ""
     key = user_party_key(wo, current, company)
@@ -764,7 +764,7 @@ def _assert_origin_approver(wo: dict | None, current: UserClaims) -> None:
         name = review_vendors(wo).get(vendor) or company
         raise HTTPException(
             status_code=403,
-            detail=f"planner ของ {name} อนุมัติได้เฉพาะงานตู้ชาร์จของ {name} — อนุมัติ/ตีกลับทั้งใบเป็นของ planner ต้นทาง",
+            detail=f"planner ของ {name} อนุมัติได้เฉพาะงานเครื่องอัดประจุไฟฟ้าของ {name} — อนุมัติ/ตีกลับทั้งใบเป็นของ planner ต้นทาง",
         )
 
 
@@ -802,7 +802,7 @@ async def _with_ownership(jobs: list[dict], current: UserClaims) -> list[dict]:
         for key, p in parties.items():
             review = vendor_review_state(key, p, entries, wo)
             entry = next((e for e in entries if e.get("key") == key), None) or {}
-            # ฟอร์มตู้ชาร์จของฝ่ายนี้รอ / ผ่าน planner ของ vendor แล้ว — หน้ารวม/ฟอร์มใช้ตัดสินว่าใครตรวจได้
+            # ฟอร์มเครื่องอัดประจุไฟฟ้าของฝ่ายนี้รอ / ผ่าน planner ของ vendor แล้ว — หน้ารวม/ฟอร์มใช้ตัดสินว่าใครตรวจได้
             # ยังไม่ผ่าน planner ของ vendor (waiting / pending) = ฝ่ายอื่น (planner ต้นทาง) ดูได้อย่างเดียว
             # ไม่มีปุ่มแก้ไข จนกว่า planner ของ vendor จะอนุมัติ (2026-10-22) — admin/owner ยังทำแทนได้
             hold = (review in ("waiting", "pending") and key != my_key and not bypass
@@ -841,7 +841,7 @@ async def _with_ownership(jobs: list[dict], current: UserClaims) -> list[dict]:
             or j.get("status") != pm_flow.PM_STATUS_DRAFT
         )
         j["split"] = len(parties) > 1
-        # planner ของ vendor = ตรวจ/อนุมัติเฉพาะฟอร์มตู้ชาร์จของฝ่ายตัวเอง / อนุมัติทั้งใบเป็นของ planner ต้นทาง
+        # planner ของ vendor = ตรวจ/อนุมัติเฉพาะฟอร์มเครื่องอัดประจุไฟฟ้าของฝ่ายตัวเอง / อนุมัติทั้งใบเป็นของ planner ต้นทาง
         j["vendor_reviewer"] = vendor_reviewer_key(wo, current, company)
         j["can_approve"] = is_origin_approver(wo, current, company)
     return jobs
@@ -1076,7 +1076,7 @@ def assert_super_admin(current: UserClaims) -> None:
 
 async def delete_job_cascade(station_id: str, job: dict) -> dict:
     """
-    ลบใบแม่ + เอกสารของทุกส่วนที่ผูกอยู่ (Station/MDB/CCB/CB_BOX + ตู้ชาร์จทุกตู้)
+    ลบใบแม่ + เอกสารของทุกส่วนที่ผูกอยู่ (Station/MDB/CCB/CB_BOX + เครื่องอัดประจุไฟฟ้าทุกตู้)
     คืนจำนวนเอกสารที่ลบของแต่ละส่วน — ไฟล์รูปในโฟลเดอร์ uploads ไม่ได้ลบตาม
     """
     job_id = str(job["_id"])
@@ -1320,7 +1320,7 @@ async def submit_station_pm_job(
              "submitted": True, "submitted_by": who, "submitted_at": now}
     entries = [e for e in job.get("work_entries") or [] if isinstance(e, dict) and e.get("key") != key]
     entries.append(entry)
-    # ฝ่าย vendor ที่มีฟอร์มตู้ชาร์จ ต้องผ่าน planner ของ vendor ก่อน (entry ใหม่ = ยังไม่ผ่าน)
+    # ฝ่าย vendor ที่มีฟอร์มเครื่องอัดประจุไฟฟ้า ต้องผ่าน planner ของ vendor ก่อน (entry ใหม่ = ยังไม่ผ่าน)
     all_done = all(_party_cleared(k, p, entries, wo) for k, p in parties.items())
     needs_review = party_needs_vendor_review(key, party, wo)
 
@@ -1462,7 +1462,7 @@ async def delete_section_photo(
         job_id=job_id, station_id=station_id, sn=body.sn,
     )
 
-    # (เลิกใช้ 2026-10-22) ฟอร์มตู้ชาร์จที่ planner ของ vendor อนุมัติแล้ว ช่างแก้ได้ — กติกาเดียวกับ pm_scope.guard
+    # (เลิกใช้ 2026-10-22) ฟอร์มเครื่องอัดประจุไฟฟ้าที่ planner ของ vendor อนุมัติแล้ว ช่างแก้ได้ — กติกาเดียวกับ pm_scope.guard
 
     coll = section_collection(body.section, station_id, body.sn)
     oid = pm_flow.to_oid(body.report_id)
@@ -1510,7 +1510,7 @@ async def approve_station_pm_job(
     job = await jobs.find_one({"_id": pm_flow.to_oid(job_id)})
     if not job:
         raise HTTPException(status_code=404, detail=f"ไม่พบใบ PM สถานี id={job_id}")
-    # planner ของ vendor อนุมัติได้แค่ฟอร์มตู้ชาร์จของฝ่ายตัวเอง (vendor-approve) ไม่ใช่ทั้งใบ
+    # planner ของ vendor อนุมัติได้แค่ฟอร์มเครื่องอัดประจุไฟฟ้าของฝ่ายตัวเอง (vendor-approve) ไม่ใช่ทั้งใบ
     _assert_origin_approver(await _job_wo(job), current)
 
     # อนุมัติได้เฉพาะใบที่ส่งครบทุกส่วนในแผนแล้ว — กันปิดใบทั้งที่ช่างยังทำไม่เสร็จ
@@ -1675,7 +1675,7 @@ async def reject_station_pm_job(
     sections = await _section_states(job)
     required = await job_planned_keys(job)
     # ทุกฝ่ายต้องส่งงานใหม่ — เก็บเวลา/ผู้ลงเวลาเดิมไว้เติมให้ตอนกดส่งใหม่
-    # ฟอร์มตู้ชาร์จของ vendor ต้องผ่าน planner ของ vendor อีกรอบ
+    # ฟอร์มเครื่องอัดประจุไฟฟ้าของ vendor ต้องผ่าน planner ของ vendor อีกรอบ
     entries = [{**e, **_REOPENED} for e in job.get("work_entries") or [] if isinstance(e, dict)]
     await jobs.update_one(
         {"_id": job["_id"]},
@@ -1695,7 +1695,7 @@ async def reject_station_pm_job(
 
 
 # ══════════════════════════════════════════════════════════════════
-# อนุมัติชั้น vendor — planner ของ vendor (เช่น EDS) อนุมัติฟอร์มตู้ชาร์จของฝ่ายตัวเองทีเดียว
+# อนุมัติชั้น vendor — planner ของ vendor (เช่น EDS) อนุมัติฟอร์มเครื่องอัดประจุไฟฟ้าของฝ่ายตัวเองทีเดียว
 # ══════════════════════════════════════════════════════════════════
 
 class VendorApproveIn(BaseModel):
@@ -1711,7 +1711,7 @@ async def vendor_approve_station_pm_job(
     current: UserClaims = Depends(get_current_user),
 ):
     """
-    planner ของ vendor อนุมัติงานตู้ชาร์จของฝ่ายตัวเองในใบ (ชั้นแรก) — แล้วส่งต่อให้ planner ต้นทาง
+    planner ของ vendor อนุมัติงานเครื่องอัดประจุไฟฟ้าของฝ่ายตัวเองในใบ (ชั้นแรก) — แล้วส่งต่อให้ planner ต้นทาง
 
     กดได้เมื่อฝ่ายนั้นกด "ส่งงาน" แล้ว และทุกฟอร์มของฝ่ายยังอยู่ในสถานะส่งแล้ว
     ครบทุกฝ่าย (และทุกฝ่าย vendor ผ่าน planner ของตัวเองแล้ว) → ใบเป็น Wait for approve
@@ -1746,13 +1746,13 @@ async def vendor_approve_station_pm_job(
     else:
         key = vendor_reviewer_key(wo, current, pm_scope.company_of(current))
         if not key:
-            raise HTTPException(status_code=403, detail="เฉพาะ planner ของ vendor ที่รับงานตู้ชาร์จในใบนี้")
+            raise HTTPException(status_code=403, detail="เฉพาะ planner ของ vendor ที่รับงานเครื่องอัดประจุไฟฟ้าในใบนี้")
 
     party = parties.get(key)
     name = (party or {}).get("name") or review_vendors(wo).get(key) or key
     review = vendor_review_state(key, party, entries, wo) if party else ""
     if not review:
-        raise HTTPException(status_code=400, detail=f"ใบนี้ไม่มีฟอร์มตู้ชาร์จของ {name} ที่ต้องอนุมัติ")
+        raise HTTPException(status_code=400, detail=f"ใบนี้ไม่มีฟอร์มเครื่องอัดประจุไฟฟ้าของ {name} ที่ต้องอนุมัติ")
     if review == "waiting":
         raise HTTPException(status_code=409, detail=f"ฝ่าย {name} ยังไม่ได้ส่งงาน หรือมีฟอร์มที่ยังแก้อยู่")
     if review == "approved":
@@ -1778,7 +1778,7 @@ async def vendor_approve_station_pm_job(
     await jobs.update_one({"_id": job["_id"]}, {"$set": update})
     fresh = await jobs.find_one({"_id": job["_id"]}) or job
     log.info(
-        f"  ✅ planner {name} อนุมัติงานตู้ชาร์จของใบ {fresh.get('issue_id') or job_id} ({who})"
+        f"  ✅ planner {name} อนุมัติงานเครื่องอัดประจุไฟฟ้าของใบ {fresh.get('issue_id') or job_id} ({who})"
         + (" → ครบทุกฝ่าย รอ planner ต้นทางอนุมัติ" if all_done else "")
     )
     job_out = _serialize_job(fresh, await _section_states(fresh), required)
@@ -1801,7 +1801,7 @@ class SectionRejectIn(BaseModel):
 
 
 def _rejected_summary(sections: list[dict]) -> str:
-    """เหตุผลรวมของใบ = ส่วนที่โดนตีกลับและยังไม่ได้ส่งใหม่ เช่น "MDB: …; ตู้ชาร์จ 2: …" """
+    """เหตุผลรวมของใบ = ส่วนที่โดนตีกลับและยังไม่ได้ส่งใหม่ เช่น "MDB: …; เครื่องอัดประจุไฟฟ้า 2: …" """
     parts: list[str] = []
     for s in sections:
         remark = str(s.get("reject_remark") or "").strip()
@@ -1872,9 +1872,9 @@ async def reject_station_pm_section(
     vendor_key = vendor_reviewer_key(wo, current, pm_scope.company_of(current))
 
     if vendor_key:
-        # planner ของ vendor — ตีกลับได้เฉพาะฟอร์มตู้ชาร์จของฝ่ายตัวเองที่รอตัวเองอนุมัติอยู่
+        # planner ของ vendor — ตีกลับได้เฉพาะฟอร์มเครื่องอัดประจุไฟฟ้าของฝ่ายตัวเองที่รอตัวเองอนุมัติอยู่
         if section != CHARGER_SECTION or owner_key != vendor_key:
-            raise HTTPException(status_code=403, detail="ตีกลับได้เฉพาะฟอร์มตู้ชาร์จที่เป็นงานของบริษัทคุณ")
+            raise HTTPException(status_code=403, detail="ตีกลับได้เฉพาะฟอร์มเครื่องอัดประจุไฟฟ้าที่เป็นงานของบริษัทคุณ")
         if review != "pending":
             raise HTTPException(
                 status_code=409,
@@ -1980,11 +1980,11 @@ def job_pdf_cache_path(station_id: str, job_id: str, lang: str, part: str = "") 
     suffix = f"_{part}" if part else ""
     # _v2 = ช่องลายเซ็นมี planner ต้นทางเป็นพยานของตู้ vendor (2026-10-22) — ไฟล์รุ่นก่อนไม่ถูกใช้ต่อ
     # _v3 = แก้ขนาดตัวอักษรในตาราง checklist เพี้ยนเป็น 6pt หลังแถวแรก (2026-10-22)
-    # _v4 = PDF ทั้งใบเรียงตู้ชาร์จก่อน แล้วตามด้วยอุปกรณ์ไฟฟ้า Station/MDB/CCB/CB_BOX (2026-10-22)
+    # _v4 = PDF ทั้งใบเรียงเครื่องอัดประจุไฟฟ้าก่อน แล้วตามด้วยอุปกรณ์ไฟฟ้า Station/MDB/CCB/CB_BOX (2026-10-22)
     # _v5 = ชื่อสถานียาวไม่ตกบรรทัด — ขยายคอลัมน์ซ้ายของบล็อกข้อมูลงาน (2026-10-22)
     # _v6 = ชื่อเอกสารหัวกระดาษไม่ล้นกรอบ, CCB ข้อ 9 ไม่ขาด, "วันที่ :" ใต้ลายเซ็นตามภาษา (2026-10-22)
     # _v7 = ป้าย/หัวตารางตามภาษาทุกฟอร์ม, ที่อยู่เดียวกัน, วันที่ 22/10/2569, วันที่อนุมัติใต้ลายเซ็น, ผลตรวจ 3 ช่อง (2026-10-22)
-    # _v8 = บล็อกข้อมูลงาน 2 คอลัมน์เท่ากัน / _v9 = เรียงตู้ชาร์จ → Station → CB_BOX → MDB → CCB, ป้าย Pass/Fail/N/A 11pt (2026-10-22)
+    # _v8 = บล็อกข้อมูลงาน 2 คอลัมน์เท่ากัน / _v9 = เรียงเครื่องอัดประจุไฟฟ้า → Station → CB_BOX → MDB → CCB, ป้าย Pass/Fail/N/A 11pt (2026-10-22)
     # _v10 = ชื่อเอกสารหัวกระดาษ 9pt (กล่องขวากว้าง 50 มม.) / _v11 = ชื่อในกล่องลายเซ็น + ผู้เห็นชอบ = planner ผู้อนุมัติใบ
     # _v12 = role ในวงเล็บใต้ชื่อในกล่องลายเซ็น
     return pathlib.Path(UPLOADS_ROOT) / "pdf_cache" / "stationPMJob" / station_id / f"{job_id}{suffix}_{lang}_v12.pdf"
@@ -2144,7 +2144,7 @@ async def build_job_pdf(job: dict, station_id: str, lang: str, part: str = "") -
 
     wanted = PDF_PARTS.get(part) if part else None
     states = [s for s in await _section_states(job) if wanted is None or s["section"] in wanted]
-    # ลำดับในเล่ม: ตู้ชาร์จ → Station → CB_BOX → MDB → CCB — sort แบบ stable จึงคงลำดับตู้เดิม
+    # ลำดับในเล่ม: เครื่องอัดประจุไฟฟ้า → Station → CB_BOX → MDB → CCB — sort แบบ stable จึงคงลำดับตู้เดิม
     # (SECTIONS ไม่แก้ เพราะหน้าเว็บ/ตารางใช้ลำดับนั้น)
     states.sort(key=lambda s: PDF_SECTION_ORDER.get(s["section"], len(PDF_SECTION_ORDER)))
     vendor_approvers = await _charger_vendor_approvers(job, states)
@@ -2229,7 +2229,7 @@ async def export_station_pm_job_pdf(
     station_id: str = Query(...),
     lang: str = Query("th"),
     dl: int = Query(0, description="1 = ดาวน์โหลด, 0 = เปิดดูในเบราว์เซอร์"),
-    part: str = Query("", description="station = การ์ด Station (Station/MDB/CCB/CB_BOX), charger = การ์ดตู้ชาร์จ, ว่าง = ทั้งใบ"),
+    part: str = Query("", description="station = การ์ด Station (Station/MDB/CCB/CB_BOX), charger = การ์ดเครื่องอัดประจุไฟฟ้า, ว่าง = ทั้งใบ"),
     current: UserClaims = Depends(get_current_user),
 ):
     """PDF ของทั้งใบ หรือของการ์ดเดียว (ดู build_job_pdf)"""

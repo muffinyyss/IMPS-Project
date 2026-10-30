@@ -410,7 +410,7 @@ export default function CMListPage() {
       rowsPerPage: "แถวต่อหน้า",
       statusFilterLabel: "กรองตามสถานะ",
       tableCount: (n: number, q?: string) => `${n} รายการ${q ? ` · "${q}"` : ""}`,
-      searchPlaceholder: "ค้นหา station, issue ID, ตู้ชาร์จ, บริษัท, equipment, severity…",
+      searchPlaceholder: "ค้นหา station, issue ID, เครื่องอัดประจุไฟฟ้า, บริษัท, equipment, severity…",
       clearFilters: "ล้างตัวกรอง",
       pagination: (from: number, to: number, total: number) => `แสดง ${from}–${to} จาก ${total} รายการ`,
       loading: "กำลังโหลด",
@@ -424,7 +424,7 @@ export default function CMListPage() {
       quickInProgress: "รอดำเนินการ", quickComplete: "เสร็จสิ้น", quickCancelled: "ยกเลิก",
       sortAsc: "เรียงน้อย→มาก", sortDesc: "เรียงมาก→น้อย",
       headers: {
-        station: "สถานี", charger: "ตู้ชาร์จ", brand: "บริษัท", sr: "เลขที่ SR", wo: "เลขที่ WO",
+        station: "สถานี", charger: "เครื่องอัดประจุไฟฟ้า", brand: "บริษัท", sr: "เลขที่ SR", wo: "เลขที่ WO",
         reported_by: "ผู้แจ้งปัญหา", equipment: "อุปกรณ์ที่ผิดปกติ", problem: "ปัญหาที่พบ",
         severity: "ความรุนแรง", date: "วันที่", status: "สถานะ",
       },

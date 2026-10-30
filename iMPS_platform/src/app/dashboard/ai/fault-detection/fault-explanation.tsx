@@ -136,7 +136,7 @@ export function ObservedStopAttribution({
         heading: "ผู้เริ่มหยุดจาก packet จริง",
         parties: {
           vehicle: "รถ (EV/EVCC)",
-          charger: "ตู้ชาร์จ (EVSE/SECC)",
+          charger: "เครื่องอัดประจุไฟฟ้า (EVSE/SECC)",
           communication: "ลิงก์สื่อสารขาด — ยังชี้รถ/ตู้ไม่ได้",
           unknown: "ยังระบุไม่ได้จาก PCAP",
           not_applicable: "ยังไม่เริ่ม charging session",

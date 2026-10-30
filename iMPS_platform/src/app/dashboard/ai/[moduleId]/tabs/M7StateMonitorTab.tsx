@@ -20,7 +20,7 @@ const T = {
   inferredNotDirect: { th: "อนุมานค่า (ไม่ได้อ่านโดยตรง)", en: "Inferred (not direct read)" },
   inferred: { th: "อนุมานค่า", en: "Inferred" },
   connectivity: { th: "การเชื่อมต่อ", en: "Connectivity" },
-  contractorStatus: { th: "สถานะ Contractor", en: "Contractor Status" },
+  contractorStatus: { th: "สถานะ Contactor", en: "Contactor Status" },
   powerTelemetry: { th: "ข้อมูลกำลังไฟ", en: "Power Telemetry" },
   anomalyResults: { th: "ผลการตรวจจับความผิดปกติ", en: "Anomaly Detection Results" },
   icpState: { th: "สถานะ ICP", en: "ICP State" },
@@ -364,9 +364,9 @@ export default function M7StateMonitorTab({ data, countdown, isPaused, onToggleP
           <DetTitle>🔌 {tr("contractorStatus", lang)}</DetTitle>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             <ContractorLed label="AC Magnetic 1" val={t.AC_magnetic_contractor1 ?? null} />
-            <ContractorLed label="DC Contractor 1" val={t.DC_contractor1 ?? null} />
-            <ContractorLed label="DC Contractor 2" val={t.DC_contractor2 ?? null} />
-            <ContractorLed label="DC Contractor 3" val={t.DC_contractor3 ?? null} />
+            <ContractorLed label="DC Contactor 1" val={t.DC_contractor1 ?? null} />
+            <ContractorLed label="DC Contactor 2" val={t.DC_contractor2 ?? null} />
+            <ContractorLed label="DC Contactor 3" val={t.DC_contractor3 ?? null} />
           </div>
         </DetCard>
       </div>

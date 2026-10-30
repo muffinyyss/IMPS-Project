@@ -223,7 +223,7 @@ type StationSource = "" | "maximo" | "name";
 /** Maximo charger under a station (from /maximo/locations/{code}/chargers) */
 export type MaximoCharger = { location: string; name: string; description: string; charger_type: string; power_kw: string };
 
-/** ชื่อตู้ชาร์จ = segment ท้ายของ Maximo location เช่น "PTG0001-EV-BTL01GU201" → "BTL01GU201" */
+/** ชื่อเครื่องอัดประจุไฟฟ้า = segment ท้ายของ Maximo location เช่น "PTG0001-EV-BTL01GU201" → "BTL01GU201" */
 const chargerShortName = (location: string): string =>
     location.includes("-EV-") ? location.split("-EV-").pop()! : "";
 
@@ -346,29 +346,29 @@ export default function AddStationModal({
     const t = useMemo(() => {
         const tr = {
             th: {
-                addNewStation: "เพิ่มสถานีใหม่", subtitle: "กรอกข้อมูลสถานีและตู้ชาร์จ",
+                addNewStation: "เพิ่มสถานีใหม่", subtitle: "กรอกข้อมูลสถานีและเครื่องอัดประจุไฟฟ้า",
                 stationInfo: "ข้อมูลสถานี", stationName: "ชื่อสถานี", owner: "เจ้าของ",
                 status: "สถานะ", active: "เปิดใช้งาน", inactive: "ปิดใช้งาน",
                 maximoLocation: "Location", maximoDesc: "Description",
                 warrantyStatus: "การรับประกัน", investmentScope: "สัดส่วนการลงทุน", ioCode: "รหัสค่าใช้จ่าย (IO)", coordsInvalid: "พิกัดไม่ถูกต้อง — กรอกทั้งละติจูดและลองจิจูด (เช่น 13.7563 และ 100.5018)",
                 selectPlaceholder: "เลือก",
                 stationImages: "รูปภาพสถานี", station: "สถานี", mdb: "MDB",
-                chargers: "ตู้ชาร์จ", addCharger: "เพิ่มตู้ชาร์จ", chargerNo: "ตู้ชาร์จ #",
+                chargers: "เครื่องอัดประจุไฟฟ้า", addCharger: "เพิ่มเครื่องอัดประจุไฟฟ้า", chargerNo: "เครื่องอัดประจุไฟฟ้า #",
                 chargerBoxId: "Charge Box ID", ocppUrl: "OCPP URL", ocppSection: "OCPP",
                 chargerType: "ประเภท", chargerNoAuto: "ลำดับ (อัตโนมัติ)", auto: "อัตโนมัติ",
                 brand: "ยี่ห้อ", vendor: "ผู้จำหน่าย (Vendor)", model: "รุ่น", serialNumber: "S/N",
                 workOrder: "WO", power: "กำลังไฟ (kW)", plcFirmware: "PLC Firmware",
                 piFirmware: "Pi Firmware", routerFirmware: "Router Firmware",
                 commissioningDate: "วันเริ่มใช้งาน", warrantyYears: "รับประกัน (ปี)",
-                numberOfCables: "จำนวนสาย", images: "รูปภาพ", charger: "ตู้ชาร์จ",
-                device: "อุปกรณ์", chargerCount: "ตู้ชาร์จ", cancel: "ยกเลิก",
+                numberOfCables: "จำนวนสาย", images: "รูปภาพ", charger: "เครื่องอัดประจุไฟฟ้า",
+                device: "อุปกรณ์", chargerCount: "เครื่องอัดประจุไฟฟ้า", cancel: "ยกเลิก",
                 createStation: "สร้างสถานี", saving: "กำลังบันทึก...",
                 pleaseEnterStationName: "กรุณากรอกชื่อสถานี",
                 pleaseFillChargerBoxId: "กรุณากรอก Charge Box ID ให้ครบ",
-                atLeastOneCharger: "ต้องมีตู้ชาร์จอย่างน้อย 1 ตู้",
+                atLeastOneCharger: "ต้องมีเครื่องอัดประจุไฟฟ้าอย่างน้อย 1 เครื่อง",
                 selectImageOnly: "กรุณาเลือกไฟล์รูปภาพเท่านั้น",
                 fileTooLarge: "ไฟล์ใหญ่เกินไป (สูงสุด 3MB)",
-                upload: "เลือกรูป", noImages: "ยังไม่มีรูป", removeCharger: "ลบตู้ชาร์จนี้",
+                upload: "เลือกรูป", noImages: "ยังไม่มีรูป", removeCharger: "ลบเครื่องอัดประจุไฟฟ้านี้",
                 duplicateSN: "SN ซ้ำกัน กรุณาตรวจสอบ",
                 duplicateWO: "WO ซ้ำกัน กรุณาตรวจสอบ",
                 duplicateChargeBoxID: "Charge Box ID ซ้ำกัน กรุณาตรวจสอบ",
@@ -380,8 +380,8 @@ export default function AddStationModal({
                 sourceName: "กรอกชื่อสถานี",
                 selectSourceFirst: "เลือกแหล่งข้อมูลก่อน — Maximo หรือกรอกชื่อสถานี",
                 pleaseSelectMaximo: "กรุณาเลือก Location",
-                loadingChargers: "กำลังดึงข้อมูลตู้ชาร์จจาก Maximo...",
-                noChargersFound: "ไม่พบตู้ชาร์จใน Maximo สำหรับ location นี้",
+                loadingChargers: "กำลังดึงข้อมูลเครื่องอัดประจุไฟฟ้าจาก Maximo...",
+                noChargersFound: "ไม่พบเครื่องอัดประจุไฟฟ้าใน Maximo สำหรับ location นี้",
             },
             en: {
                 addNewStation: "Add New Station", subtitle: "Fill in station and charger details",
@@ -433,7 +433,7 @@ export default function AddStationModal({
     });
     const [stationPreviews, setStationPreviews] = useState<Record<StationImageKind, string[]>>({ station: [], mdb: [] });
     const [chargerPreviews, setChargerPreviews] = useState<Record<string, { charger: string[]; device: string[] }>>({});
-    // ตู้ชาร์จถูก auto-fill จาก Maximo หลังเลือก station location — เริ่มต้นว่างเสมอ
+    // เครื่องอัดประจุไฟฟ้าถูก auto-fill จาก Maximo หลังเลือก station location — เริ่มต้นว่างเสมอ
     const [chargers, setChargers] = useState<ChargerForm[]>([]);
     const [submitting, setSubmitting] = useState(false);
 
@@ -443,7 +443,7 @@ export default function AddStationModal({
     // แหล่งข้อมูล (checkbox): "maximo" = เลือกจาก Maximo, "name" = กรอกชื่อสถานีเอง
     const [selectedSource, setSelectedSource] = useState<StationSource>("");
     const [maximoLoading, setMaximoLoading] = useState(false);
-    // โหลดรายการตู้ชาร์จใต้ station ที่เลือก (auto-fill จาก Maximo)
+    // โหลดรายการเครื่องอัดประจุไฟฟ้าใต้ station ที่เลือก (auto-fill จาก Maximo)
     const [chargersLoading, setChargersLoading] = useState(false);
     const chargersFetchSeq = useRef(0);
 
@@ -465,13 +465,13 @@ export default function AddStationModal({
         return () => { cancelled = true; };
     }, [open, selectedSource]);
 
-    /** ล้าง location + ตู้ชาร์จที่เลือกไว้ (ใช้ตอนเปลี่ยนแหล่งข้อมูล) */
+    /** ล้าง location + เครื่องอัดประจุไฟฟ้าที่เลือกไว้ (ใช้ตอนเปลี่ยนแหล่งข้อมูล) */
     const clearSelectedLocation = () => {
         setStation((s) => ({ ...s, maximo_location: "", maximo_desc: "", station_name: "" }));
         Object.values(chargerPreviews).forEach((p) => { p.charger?.forEach((u) => URL.revokeObjectURL(u)); p.device?.forEach((u) => URL.revokeObjectURL(u)); });
         setChargerPreviews({});
         setChargers([]);
-        chargersFetchSeq.current++; // ยกเลิกผล fetch ตู้ชาร์จที่ค้างอยู่
+        chargersFetchSeq.current++; // ยกเลิกผล fetch เครื่องอัดประจุไฟฟ้าที่ค้างอยู่
         setChargersLoading(false);
     };
 
@@ -482,7 +482,7 @@ export default function AddStationModal({
         clearSelectedLocation();
     };
 
-    /** เพิ่ม/ลบตู้ชาร์จเอง (เฉพาะโหมดกรอกชื่อเอง — โหมด Maximo auto-fill เท่านั้น) */
+    /** เพิ่ม/ลบเครื่องอัดประจุไฟฟ้าเอง (เฉพาะโหมดกรอกชื่อเอง — โหมด Maximo auto-fill เท่านั้น) */
     const addManualCharger = () => setChargers((prev) => [...prev, createEmptyCharger(prev.length + 1)]);
     const removeManualCharger = (id: string) => {
         const p = chargerPreviews[id];
@@ -508,7 +508,7 @@ export default function AddStationModal({
     const onChargerChange = (id: string, key: keyof ChargerForm, value: any) =>
         setChargers((prev) => prev.map((c) => (c.id === id ? { ...c, [key]: value } : c)));
 
-    /** เลือก Maximo station → ดึงตู้ชาร์จใต้ station นั้นจาก Maximo มา auto-fill (แทนที่ชุดเดิมทั้งหมด) */
+    /** เลือก Maximo station → ดึงเครื่องอัดประจุไฟฟ้าใต้ station นั้นจาก Maximo มา auto-fill (แทนที่ชุดเดิมทั้งหมด) */
     const handleMaximoStationSelect = async (loc: string, desc: string) => {
         setStation((s) => ({
             ...s,
@@ -517,7 +517,7 @@ export default function AddStationModal({
             // ใช้ description เป็นชื่อสถานี (fallback เป็นรหัส location ถ้า desc ว่าง)
             station_name: desc || loc,
         }));
-        // ล้าง preview รูปของตู้ชาร์จชุดเดิมก่อนแทนที่
+        // ล้าง preview รูปของเครื่องอัดประจุไฟฟ้าชุดเดิมก่อนแทนที่
         Object.values(chargerPreviews).forEach((p) => { p.charger?.forEach((u) => URL.revokeObjectURL(u)); p.device?.forEach((u) => URL.revokeObjectURL(u)); });
         setChargerPreviews({});
         setChargers([]);

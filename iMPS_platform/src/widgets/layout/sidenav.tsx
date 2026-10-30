@@ -356,7 +356,7 @@ export default function Sidenav({ }: PropTypes) {
                     <span className="tw-inline-flex tw-items-center tw-justify-center tw-w-5">
                       {profileRoute?.icon ?? <i className="fa fa-user" />}
                     </span>
-                    <span>{profileRoute?.name ?? "My profile"}</span>
+                    <span>{profileRoute?.name ?? "My Profile"}</span>
                   </button>
 
                   <button
@@ -371,7 +371,7 @@ export default function Sidenav({ }: PropTypes) {
                     <span className="tw-inline-flex tw-items-center tw-justify-center tw-w-5">
                       {logoutRoute?.icon ?? <i className="fa fa-sign-out" />}
                     </span>
-                    <span>{logoutRoute?.name ?? "logout"}</span>
+                    <span>{logoutRoute?.name ?? "Logout"}</span>
                   </button>
                 </div>
               </div>,
