@@ -196,7 +196,7 @@ export default function SiteNavbar() {
         md:tw-grid md:tw-grid-cols-[1fr_auto_1fr] md:tw-items-center
       ">
         {/* Brand */}
-        <Link href="/" prefetch={false} className="tw-flex tw-items-center tw-space-x-2" aria-label="IMPS Home">
+        <Link href="/" prefetch={false} className="tw-flex tw-items-center tw-space-x-2" aria-label="iMPS Home">
           <span className="tw-text-3xl md:tw-text-4xl tw-font-extrabold">
             <span className="tw-text-yellow-500">i</span>
             <span className="tw-text-gray-900">MPS</span>
@@ -222,7 +222,7 @@ export default function SiteNavbar() {
                     role="link"
                     aria-disabled="true"
                     className="tw-text-gray-400 tw-cursor-not-allowed tw-select-none tw-pointer-events-none"
-                    title="Please login first"
+                    title="Please sign in first"
                   >
                     {item.label}
                   </span>
@@ -319,7 +319,7 @@ export default function SiteNavbar() {
                       role="link"
                       aria-disabled="true"
                       className="tw-block tw-py-2 tw-text-gray-400 tw-cursor-not-allowed tw-select-none tw-pointer-events-none"
-                      title="Please login first"
+                      title="Please sign in first"
                     >
                       {item.label}
                     </span>

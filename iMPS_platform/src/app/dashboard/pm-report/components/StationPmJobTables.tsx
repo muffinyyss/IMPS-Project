@@ -80,7 +80,7 @@ const SECTION_TITLE: Record<SectionId, { th: string; en: string }> = {
   mdb: { th: "MDB", en: "MDB" },
   ccb: { th: "CCB", en: "CCB" },
   cbbox: { th: "CB_BOX", en: "CB_BOX" },
-  charger: { th: "ตู้ชาร์จ", en: "Charger" },
+  charger: { th: "เครื่องอัดประจุไฟฟ้า", en: "Charger" },
 };
 
 const SECTION_HINT: Record<SectionId, { th: string; en: string }> = {
@@ -88,7 +88,7 @@ const SECTION_HINT: Record<SectionId, { th: string; en: string }> = {
   mdb: { th: "ตู้ MDB เบรกเกอร์ แรงดันไฟฟ้า Trip test", en: "MDB cabinet, breakers, voltage, trip tests" },
   ccb: { th: "ตู้ CCB เบรกเกอร์ย่อย แรงดันไฟฟ้า", en: "CCB cabinet, sub-breakers, voltage" },
   cbbox: { th: "CB Box จุดต่อ และอุปกรณ์ป้องกัน", en: "CB Box, connections and protection devices" },
-  charger: { th: "ตู้ชาร์จทุกตู้ในสถานี — กรอกทีละตู้", en: "Every charger at this station — one checklist each" },
+  charger: { th: "เครื่องอัดประจุไฟฟ้าทุกเครื่องในสถานี — กรอกทีละเครื่อง", en: "Every charger at this station — one checklist each" },
 };
 
 const SECTION_GROUP_HINT: Record<SectionGroupId, { th: string; en: string }> = {
@@ -134,7 +134,7 @@ type SectionState = {
   reject_remark?: string;
   rejected_by?: string;
   /**
-   * ฟอร์มตู้ชาร์จของ vendor ที่มี planner ของตัวเอง (เช่น EDS) ต้องผ่าน planner ของ vendor ก่อน
+   * ฟอร์มเครื่องอัดประจุไฟฟ้าของ vendor ที่มี planner ของตัวเอง (เช่น EDS) ต้องผ่าน planner ของ vendor ก่อน
    * "" = ไม่ต้องผ่าน | waiting = ฝ่ายยังไม่ส่งงาน | pending = รอ planner ของ vendor | approved = ผ่านแล้ว
    */
   vendor_review?: VendorReview;
@@ -191,7 +191,7 @@ type Job = {
   participant?: boolean;
   split?: boolean;
   work_entries?: WorkEntry[];
-  /** คนที่ login เป็น planner ของ vendor ในใบนี้ → key ฝ่ายที่ต้องตรวจฟอร์มตู้ชาร์จ ("" = ไม่ใช่) */
+  /** คนที่ login เป็น planner ของ vendor ในใบนี้ → key ฝ่ายที่ต้องตรวจฟอร์มเครื่องอัดประจุไฟฟ้า ("" = ไม่ใช่) */
   vendor_reviewer?: string;
   /** อนุมัติ/ตีกลับทั้งใบได้ (planner ต้นทาง / admin) — planner ของ vendor ไม่ได้ */
   can_approve?: boolean;
@@ -204,7 +204,7 @@ type JobParty = {
   ready: boolean;
   missing: { th: string; en: string }[];
   submitted: boolean;
-  /** ฟอร์มตู้ชาร์จของฝ่ายนี้ต้องผ่าน planner ของ vendor ก่อน (ดู SectionState.vendor_review) */
+  /** ฟอร์มเครื่องอัดประจุไฟฟ้าของฝ่ายนี้ต้องผ่าน planner ของ vendor ก่อน (ดู SectionState.vendor_review) */
   vendor_review?: VendorReview;
   vendor_approved_by?: string;
   /** ฝ่ายนี้กด "เริ่ม PM" แล้ว + เวลาที่กด — ค่าเริ่มต้นของเวลาเริ่ม PM ตอนส่งงานของฝ่ายนี้ */
@@ -300,7 +300,7 @@ const T = {
   view: { th: "ดู", en: "View" },
   notFilled: { th: "ยังไม่กรอก", en: "Not filled" },
   downloadPdf: { th: "PDF ทั้งใบ", en: "Full PDF" },
-  // PDF รายการ์ด — Station (รวม MDB/CCB/CB_BOX) / ตู้ชาร์จทุกตู้: checklist ก่อน รูปตามหลัง
+  // PDF รายการ์ด — Station (รวม MDB/CCB/CB_BOX) / เครื่องอัดประจุไฟฟ้าทุกตู้: checklist ก่อน รูปตามหลัง
   cardPdf: { th: "PDF", en: "PDF" },
   cardPdfTitle: { th: "PDF ของส่วนนี้ — checklist ทุกฟอร์มก่อน แล้วตามด้วยรูป", en: "PDF of this part — all checklists first, then photos" },
   cardPdfEmpty: { th: "ยังไม่มีฟอร์มที่กรอกแล้ว", en: "No filled forms yet" },
@@ -389,21 +389,21 @@ const T = {
     en: "Send only this form back for fixes — the other forms stay waiting for approval. Tell the technician what to change.",
   },
   sectionRejected: { th: "ตีกลับ", en: "Sent back" },
-  // อนุมัติชั้นแรกโดย planner ของ vendor (ฟอร์มตู้ชาร์จที่มอบให้ vendor เช่น EDS)
+  // อนุมัติชั้นแรกโดย planner ของ vendor (ฟอร์มเครื่องอัดประจุไฟฟ้าที่มอบให้ vendor เช่น EDS)
   vendorApprove: { th: "อนุมัติงานของ {p}", en: "Approve {p} work" },
   vendorApproving: { th: "กำลังอนุมัติ…", en: "Approving…" },
-  vendorApproveTitle: { th: "อนุมัติงานตู้ชาร์จของ {p}", en: "Approve {p} charger work" },
+  vendorApproveTitle: { th: "อนุมัติงานเครื่องอัดประจุไฟฟ้าของ {p}", en: "Approve {p} charger work" },
   vendorApproveConfirm: {
-    th: "ตรวจฟอร์มตู้ชาร์จของ {p} ครบแล้ว — อนุมัติแล้วจะส่งต่อให้ planner ต้นทางอนุมัติใบงาน (ฟอร์มที่ต้องแก้ให้เปิดฟอร์มแล้วกด \"ตีกลับฟอร์มนี้\" ก่อน)",
+    th: "ตรวจฟอร์มเครื่องอัดประจุไฟฟ้าของ {p} ครบแล้ว — อนุมัติแล้วจะส่งต่อให้ planner ต้นทางอนุมัติใบงาน (ฟอร์มที่ต้องแก้ให้เปิดฟอร์มแล้วกด \"ตีกลับฟอร์มนี้\" ก่อน)",
     en: "All {p} charger forms reviewed — approving passes them on to the origin planner for final approval (send back any form that needs fixing first)",
   },
   vendorReviewHint: {
-    th: "ฟอร์มตู้ชาร์จของ {p} รอคุณตรวจ — เปิดดูแต่ละฟอร์มเพื่อตีกลับรายฟอร์ม หรือกด \"อนุมัติงานของ {p}\" เพื่อส่งต่อให้ planner ต้นทาง",
+    th: "ฟอร์มเครื่องอัดประจุไฟฟ้าของ {p} รอคุณตรวจ — เปิดดูแต่ละฟอร์มเพื่อตีกลับรายฟอร์ม หรือกด \"อนุมัติงานของ {p}\" เพื่อส่งต่อให้ planner ต้นทาง",
     en: "{p} charger forms are waiting for your review — open a form to send it back, or approve to pass them on to the origin planner",
   },
-  // planner ของ vendor ตรวจ/อนุมัติจากในฟอร์มตู้ชาร์จ — หน้ารวมเหลือแค่ข้อความบอกทาง
+  // planner ของ vendor ตรวจ/อนุมัติจากในฟอร์มเครื่องอัดประจุไฟฟ้า — หน้ารวมเหลือแค่ข้อความบอกทาง
   vendorReviewOpenForm: {
-    th: "ฟอร์มตู้ชาร์จของ {p} รอคุณตรวจ — เปิดฟอร์มตู้ชาร์จเพื่ออนุมัติหรือตีกลับ",
+    th: "ฟอร์มเครื่องอัดประจุไฟฟ้าของ {p} รอคุณตรวจ — เปิดฟอร์มเครื่องอัดประจุไฟฟ้าเพื่ออนุมัติหรือตีกลับ",
     en: "{p} charger forms are waiting for your review — open a charger form to approve or send it back",
   },
   vendorPending: { th: "รอ planner {p} อนุมัติ", en: "Waiting for {p} planner" },
@@ -417,7 +417,7 @@ const T = {
   errCreate: { th: "เปิดใบใหม่ไม่สำเร็จ", en: "Failed to create document" },
   errAction: { th: "ทำรายการไม่สำเร็จ", en: "Action failed" },
 
-  noChargers: { th: "สถานีนี้ยังไม่มีตู้ชาร์จในระบบ", en: "No chargers registered at this station" },
+  noChargers: { th: "สถานีนี้ยังไม่มีเครื่องอัดประจุไฟฟ้าในระบบ", en: "No chargers registered at this station" },
   chargersDone: { th: "กรอกแล้ว", en: "filled" },
   na: { th: "N/A", en: "N/A" },
   ownedBy: { th: "งานของ", en: "Assigned to" },
@@ -1153,7 +1153,7 @@ export default function StationPmJobTables() {
     }
   };
 
-  /** planner ของ vendor อนุมัติงานตู้ชาร์จของฝ่ายตัวเองทีเดียว → ส่งต่อให้ planner ต้นทาง (backend: vendor-approve) */
+  /** planner ของ vendor อนุมัติงานเครื่องอัดประจุไฟฟ้าของฝ่ายตัวเองทีเดียว → ส่งต่อให้ planner ต้นทาง (backend: vendor-approve) */
   const [vendorApproveParty, setVendorApproveParty] = useState<JobParty | null>(null);
   const vendorApprove = async (party: JobParty, onDone?: () => void) => {
     if (!currentJob || acting) return;
@@ -1179,7 +1179,7 @@ export default function StationPmJobTables() {
     }
   };
 
-  // หน้าต่างยืนยัน — ใช้ทั้งหน้ารวม (admin อนุมัติแทน) และในฟอร์มตู้ชาร์จ (planner ของ vendor)
+  // หน้าต่างยืนยัน — ใช้ทั้งหน้ารวม (admin อนุมัติแทน) และในฟอร์มเครื่องอัดประจุไฟฟ้า (planner ของ vendor)
   const vendorApproveDialog = (onDone?: () => void) => {
     const label = vendorApproveParty?.name || t("ownTeam", lang);
     return (
@@ -1243,12 +1243,12 @@ export default function StationPmJobTables() {
     // ใบที่เพิ่งตีกลับบางฟอร์มไป (In Progress + มีเหตุผลตีกลับ) ยังตีกลับฟอร์มอื่นที่รออนุมัติเพิ่มได้
     const inReview = currentJob?.status === "Wait for approve"
       || (currentJob?.status === "draft" && !!currentJob?.reject_remark);
-    // ฟอร์มตู้ชาร์จของ vendor ที่รอ planner ของ vendor — ชั้นแรกเป็นของ planner vendor (ต้นทางยังตรวจไม่ได้)
+    // ฟอร์มเครื่องอัดประจุไฟฟ้าของ vendor ที่รอ planner ของ vendor — ชั้นแรกเป็นของ planner vendor (ต้นทางยังตรวจไม่ได้)
     const vendorPending = openedSection?.vendor_review === "pending";
     const vendorReviewing = viewing && !!currentJob?.vendor_reviewer && vendorPending
       && String(openedSection?.owner ?? "").trim().toLowerCase() === currentJob.vendor_reviewer
       && !!openedSection?.report_id && sectionStatus === "wait for approve";
-    // ฝ่ายที่ planner vendor คนนี้กำลังตรวจ — อนุมัติจากในฟอร์มตู้ชาร์จได้เลย (อนุมัติทุกฟอร์มตู้ชาร์จของฝ่ายนี้ทีเดียว)
+    // ฝ่ายที่ planner vendor คนนี้กำลังตรวจ — อนุมัติจากในฟอร์มเครื่องอัดประจุไฟฟ้าได้เลย (อนุมัติทุกฟอร์มเครื่องอัดประจุไฟฟ้าของฝ่ายนี้ทีเดียว)
     const vendorParty = vendorReviewing
       ? currentJob?.parties?.find((p) => p.key === currentJob.vendor_reviewer && p.vendor_review === "pending")
       : undefined;
@@ -1258,7 +1258,7 @@ export default function StationPmJobTables() {
     const sectionRejectRemark = sectionStatus === "draft" ? (openedSection?.reject_remark ?? "") : "";
     const canEditSent = viewing && PM_EDIT_SENT_ROLES.includes(me?.role ?? "") && !!openedSection?.report_id
       && openedSection?.editable !== false
-      // (2026-10-22) ฟอร์มตู้ชาร์จที่ planner ของ vendor อนุมัติแล้ว ช่างของ vendor (EDS) ยังแก้ได้เหมือนช่างทีมต้นทาง
+      // (2026-10-22) ฟอร์มเครื่องอัดประจุไฟฟ้าที่ planner ของ vendor อนุมัติแล้ว ช่างของ vendor (EDS) ยังแก้ได้เหมือนช่างทีมต้นทาง
       && !inUseByOther(openedSection)
       && !["closed", "submitted"].includes(sectionStatus)
       // ใบรออนุมัติ (Wait for approve) ช่างยังแก้ฟอร์มของตัวเองได้จนกว่า planner จะอนุมัติปิดใบ (2026-10-22)
@@ -1957,7 +1957,7 @@ export default function StationPmJobTables() {
           <div className="tw-mt-6 tw-flex tw-justify-end">{closeJobButton}</div>
         )}
 
-        {/* planner ของ vendor (เช่น EDS) ตรวจแค่ฟอร์มตู้ชาร์จ — ปุ่มอนุมัติอยู่ในฟอร์มตู้ชาร์จ (ข้างปุ่มแก้ไข) หน้ารวมบอกทางอย่างเดียว
+        {/* planner ของ vendor (เช่น EDS) ตรวจแค่ฟอร์มเครื่องอัดประจุไฟฟ้า — ปุ่มอนุมัติอยู่ในฟอร์มเครื่องอัดประจุไฟฟ้า (ข้างปุ่มแก้ไข) หน้ารวมบอกทางอย่างเดียว
             admin อนุมัติแทนได้ทุกราย จากหน้ารวมนี้ */}
         {job.status === "draft" && vendorTargets.length > 0 && (
           <div className="tw-mt-6 tw-flex tw-flex-col tw-items-end tw-gap-2">

@@ -68,8 +68,8 @@ const T = {
     en: "53 Moo 2, Charan Sanitwong Rd., Bang Kruai, Bang Kruai",
   },
   companyAddressLine2: {
-    th: "จังหวัดนนทบุรี 11130 ศูนย์บริการข้อมูล กฟผ. สายด่วน 1416",
-    en: "Nonthaburi 11130, EGAT Call Center: 1416",
+    th: "จังหวัดนนทบุรี 11130 ศูนย์บริการข้อมูล กฟผ. สายด่วน 1416 / 02-114-3350",
+    en: "Nonthaburi 11130, EGAT Call Center 1416 / Tel. 02-114-3350",
   },
 
   backToList: { th: "Back", en: "Back" },
@@ -78,7 +78,7 @@ const T = {
   plannerOnlyTitle: { th: "วางแผนใบงานนี้ไม่ได้", en: "Cannot plan this work order" },
   noStationTitle: { th: "ใบงานนี้ยังไม่ผูกกับสถานีใน iMPS", en: "This work order is not linked to an iMPS station" },
   noStationBody: {
-    th: "จึงยังไม่รู้ว่าเป็นสถานีไหน และดึงรายการตู้ชาร์จมาให้เลือกไม่ได้ — ตั้งค่า maximo_location ของสถานีให้ตรงกับ Location ด้านบนที่หน้า EV Stations ก่อน",
+    th: "จึงยังไม่รู้ว่าเป็นสถานีไหน และดึงรายการเครื่องอัดประจุไฟฟ้ามาให้เลือกไม่ได้ — ตั้งค่า maximo_location ของสถานีให้ตรงกับ Location ด้านบนที่หน้า EV Stations ก่อน",
     en: "The station is unknown, so chargers cannot be listed — set the station's maximo_location to match the Location above on the EV Stations page",
   },
   plannerOnlyBody: {
@@ -347,7 +347,7 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
 
   useEffect(() => { load(); }, [load]);
 
-  // ตู้ชาร์จ + อุปกรณ์ระดับสถานี อยู่ในลิสต์เดียวกัน ไม่ต้องแยกหัวข้อ
+  // เครื่องอัดประจุไฟฟ้า + อุปกรณ์ระดับสถานี อยู่ในลิสต์เดียวกัน ไม่ต้องแยกหัวข้อ
   const equipmentOptions = useMemo(
     () => (choices ? [...choices.chargers, ...choices.fixed] : []),
     [choices]
@@ -597,7 +597,7 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
           </div>
 
           {/* หาสถานีไม่เจอ — ต้องบอกให้ชัด ไม่งั้น planner เห็นแต่ช่อง Station ว่าง
-              กับรายการอุปกรณ์ที่ไม่มีตู้ชาร์จ แล้วไม่รู้ว่าเพราะอะไร */}
+              กับรายการอุปกรณ์ที่ไม่มีเครื่องอัดประจุไฟฟ้า แล้วไม่รู้ว่าเพราะอะไร */}
           {!loading && wo && !(wo.station_id || "").trim() && (
             <div className="tw-mb-4 tw-flex tw-items-start tw-gap-3 tw-px-4 tw-py-3 tw-rounded-lg tw-bg-amber-50 tw-border tw-border-amber-200">
               <ExclamationTriangleIcon className="tw-w-5 tw-h-5 tw-text-amber-500 tw-mt-0.5 tw-flex-shrink-0" />
@@ -917,7 +917,7 @@ export default function PmPlanForm({ source, identifier, wonum, onSaved, onCance
                     }
                   />
                   <div className="tw-p-4">
-                    {/* รวมตู้ชาร์จกับอุปกรณ์ระดับสถานีเป็นลิสต์เดียว — ผู้ใช้ติ๊กจากที่เดียวจบ */}
+                    {/* รวมเครื่องอัดประจุไฟฟ้ากับอุปกรณ์ระดับสถานีเป็นลิสต์เดียว — ผู้ใช้ติ๊กจากที่เดียวจบ */}
                     {locked ? (
                       // แก้ไม่ได้ = โชว์เฉพาะอุปกรณ์ที่เลือกไว้ ในกล่องสีเทาแบบเดียวกับช่องอ่านอย่างเดียว
                       plannedEquipment.length === 0 ? (

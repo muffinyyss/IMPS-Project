@@ -562,7 +562,7 @@ function M7Algorithm({ color }: { color: string }) {
         <>
             <InfoBlock title="EV-PLCC State Machine Analysis" color={color}>
                 <ModelCard id="SM" name="State Machine Analyzer" type="Rule" icon="🔍" color={color} desc={th ? "ตรวจสอบ ICP state transitions ตาม IEC 61851-1 CP signaling protocol — invalid transitions = anomaly flag" : "Checks ICP state transitions against the IEC 61851-1 CP signaling protocol — invalid transitions = anomaly flag"} output="bool anomaly + string transition_error + float health_impact" />
-                <ModelCard id="PLCC" name="EVPLCC Analyzer" type="AI" icon="🔌" color={color} desc={th ? "วิเคราะห์ EV Power Line Communication quality, contractor status, และ ISO 15118 USLink protocol sequence" : "Analyzes EV Power Line Communication quality, contractor status, and the ISO 15118 USLink protocol sequence"} output="bool communication_ok + string protocol_state + float anomaly_score" />
+                <ModelCard id="PLCC" name="EVPLCC Analyzer" type="AI" icon="🔌" color={color} desc={th ? "วิเคราะห์ EV Power Line Communication quality, contactor status, และ ISO 15118 USLink protocol sequence" : "Analyzes EV Power Line Communication quality, contactor status, and the ISO 15118 USLink protocol sequence"} output="bool communication_ok + string protocol_state + float anomaly_score" />
             </InfoBlock>
 
             <InfoBlock title="ICP States (11) — IEC 61851-1 CP Signaling" color={color}>

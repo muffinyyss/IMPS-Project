@@ -34,13 +34,13 @@ const T = {
   pageSubtitle: { th: "ค้นหาและดาวน์โหลดเอกสาร CM Report", en: "Search and download CM Report documents" },
 
   // Buttons
-  upload: { th: "อัพโหลด", en: "Upload" },
+  upload: { th: "อัปโหลด", en: "Upload" },
   add: { th: "+ เพิ่ม", en: "+ Add" },
-  companyModalTitle: { th: "เปิดใบงานนี้ให้บริษัทไหน", en: "Open this work order for which company?" },
+  companyModalTitle: { th: "เปิดใบงานนี้ให้บริษัทไหน", en: "Which company is this work order for?" },
   companyModalHint: { th: "เลือกบริษัทที่รับผิดชอบใบงานนี้ — ใช้แยกงานในหน้า CM List และ Dashboard", en: "Pick the company responsible for this work order — used to split work in CM List and Dashboard." },
   companyConfirm: { th: "เปิดใบงาน", en: "Open work order" },
   cancel: { th: "ยกเลิก", en: "Cancel" },
-  uploadBtn: { th: "อัพโหลด", en: "Upload" },
+  uploadBtn: { th: "อัปโหลด", en: "Upload" },
 
   // Table Headers
   colNo: { th: "ลำดับ", en: "No." },
@@ -94,12 +94,12 @@ const T = {
   alertSelectStation: { th: "กรุณาเลือกสถานีก่อน", en: "Please select a station first" },
   alertPdfOnly: { th: "รองรับเฉพาะไฟล์ PDF เท่านั้น", en: "Only PDF files are supported" },
   alertInvalidDate: { th: "รูปแบบวันที่ไม่ถูกต้อง", en: "Invalid date format" },
-  alertUploadFailed: { th: "อัพโหลดไม่สำเร็จ:", en: "Upload failed:" },
-  alertUploadSuccess: { th: "อัพโหลดสำเร็จ", en: "Upload successful" },
-  alertUploadError: { th: "เกิดข้อผิดพลาดระหว่างอัพโหลด", en: "An error occurred during upload" },
+  alertUploadFailed: { th: "อัปโหลดไม่สำเร็จ:", en: "Upload failed:" },
+  alertUploadSuccess: { th: "อัปโหลดสำเร็จ", en: "Upload successful" },
+  alertUploadError: { th: "เกิดข้อผิดพลาดระหว่างอัปโหลด", en: "An error occurred during upload" },
 
   // Tooltips
-  uploadPdf: { th: "อัพโหลด PDF", en: "Upload PDF" },
+  uploadPdf: { th: "อัปโหลด PDF", en: "Upload PDF" },
 };
 
 const t = (key: keyof typeof T, lang: Lang): string => T[key][lang];

@@ -19,7 +19,7 @@ import { safeNextPath } from "@/utils/safe-next";
 // ===== Translations =====
 const T = {
   signIn:        { th: "เข้าสู่ระบบ", en: "Sign In" },
-  subtitle:      { th: "กรอกอีเมลและรหัสผ่านเพื่อเข้าสู่ระบบ", en: "Enter your email and password to Sign In." },
+  subtitle:      { th: "กรอกอีเมลและรหัสผ่านเพื่อเข้าสู่ระบบ", en: "Enter your email and password to sign in." },
   yourEmail:     { th: "อีเมลของคุณ", en: "Your email" },
   password:      { th: "รหัสผ่าน", en: "Password" },
   forgotPassword:{ th: "ลืมรหัสผ่าน?", en: "Forgot password?" },
@@ -27,9 +27,9 @@ const T = {
   back:          { th: "ย้อนกลับ", en: "Back" },
   imageAlt:      { th: "ภาพประกอบ", en: "Illustration" },
   badResponse:   { th: "เซิร์ฟเวอร์ตอบกลับไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง", en: "Invalid server response. Please try again." },
-  loginFailed:   { th: "เข้าสู่ระบบไม่สำเร็จ", en: "Login failed" },
+  loginFailed:   { th: "เข้าสู่ระบบไม่สำเร็จ", en: "Sign-in failed" },
   serverError:   { th: "เซิร์ฟเวอร์มีข้อผิดพลาด กรุณาแจ้งผู้ดูแลระบบ", en: "Server error. Please contact the administrator." },
-  loginSuccess:  { th: "เข้าสู่ระบบสำเร็จ ✅", en: "Login success ✅" },
+  loginSuccess:  { th: "เข้าสู่ระบบสำเร็จ ✅", en: "Signed in successfully ✅" },
 } as const;
 
 const t = (k: keyof typeof T, lang: Lang) => T[k][lang];

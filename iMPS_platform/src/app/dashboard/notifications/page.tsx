@@ -330,13 +330,13 @@ export default function NotificationsPage() {
     settingsOff: lang === "th" ? "ปิด" : "Off",
     settingsReset: lang === "th" ? "รีเซ็ตค่าเริ่มต้น" : "Reset defaults",
     emailRules: lang === "th" ? "ตั้งค่าส่งอีเมล" : "Email Notifications",
-    emailRulesDesc: lang === "th" ? "กำหนดสถานี/ตู้ชาร์จ ที่จะส่งอีเมลแจ้งเตือน" : "Configure email alerts per station/charger",
+    emailRulesDesc: lang === "th" ? "กำหนดสถานี/เครื่องอัดประจุไฟฟ้า ที่จะส่งอีเมลแจ้งเตือน" : "Configure email alerts per station/charger",
     addRule: lang === "th" ? "เพิ่มกฎ" : "Add Rule",
     editRule: lang === "th" ? "แก้ไขกฎ" : "Edit Rule",
     newRule: lang === "th" ? "กฎใหม่" : "New Rule",
     station: lang === "th" ? "สถานี" : "Station",
-    charger: lang === "th" ? "ตู้ชาร์จ" : "Charger",
-    allChargers: lang === "th" ? "ทุกตู้ชาร์จ" : "All Chargers",
+    charger: lang === "th" ? "เครื่องอัดประจุไฟฟ้า" : "Charger",
+    allChargers: lang === "th" ? "เครื่องอัดประจุไฟฟ้าทั้งหมด" : "All Chargers",
     recipients: lang === "th" ? "ผู้รับอีเมล" : "Recipients",
     recipientsDesc: lang === "th" ? "แสดงเฉพาะ Admin และ Owner ของสถานีนี้" : "Showing Admin and Owner of this station",
     save: lang === "th" ? "บันทึก" : "Save",
@@ -1187,7 +1187,7 @@ export default function NotificationsPage() {
 
           {/* ★ SN (Charger) filter (searchable) */}
           <div className="tw-flex tw-items-center tw-gap-2">
-            <label className="tw-text-sm tw-text-gray-500">{lang === "th" ? "ตู้ชาร์จ:" : "Charger:"}</label>
+            <label className="tw-text-sm tw-text-gray-500">{lang === "th" ? "เครื่องอัดประจุไฟฟ้า:" : "Charger:"}</label>
             <div className="tw-relative tw-min-w-[200px] tw-max-w-[300px]" ref={chargerDropdownRef}>
               <input
                 type="text"

@@ -79,7 +79,7 @@ ROW_TITLES_EN = {
     "r4": "Check sealant and silicone",
     "r5": "Check voltage of circuit breaker \n(Safety Switch / Circuit Breaker)",
     "r6": "Emergency button",
-    "r7": "Test Trip Test button (Circuit Breaker)",
+    "r7": "Press the Trip Test button (Circuit Breaker)",
     "r8": "Check electrical connections and tighten",
     "r9": "Clean equipment cabinet"
 }
@@ -716,7 +716,7 @@ def _draw_header(
     label_doc_name: str = "Doc Name",
     addr_line1: str = "Electricity Generating Authority of Thailand (EGAT)",  # เพิ่ม
     addr_line2: str = "53 Moo 2 Charansanitwong Road, Bang Kruai, Nonthaburi 11130, Thailand",  # เพิ่ม
-    addr_line3: str = "Call Center Tel. 02-114-3350",  # เพิ่ม
+    addr_line3: str = "EGAT Call Center Tel. 0-2436-1416",  # เพิ่ม
 ) -> float:
     left = pdf.l_margin
     right = pdf.r_margin
@@ -1452,7 +1452,7 @@ class ReportPDF(HTML2PDF):
         self._label_doc_name = "Doc Name"
         self._addr_line1 = "Electricity Generating Authority of Thailand (EGAT)"
         self._addr_line2 = "53 Moo 2 Charansanitwong Road, Bang Kruai, Nonthaburi 11130, Thailand"
-        self._addr_line3 = "Call Center Tel. 02-114-3350"
+        self._addr_line3 = "EGAT Call Center Tel. 0-2436-1416"
         self._label_performed = "Performed by"
         self._label_approved = "Approved by"
         self._label_witnessed = "Witnessed by"
@@ -1597,7 +1597,7 @@ def make_pm_report_html_pdf_bytes(
         label_doc_name = "Doc Name"
         addr_line1 = "Electricity Generating Authority of Thailand (EGAT)"
         addr_line2 = "53 Moo 2 Charansanitwong Road, Bang Kruai, Nonthaburi 11130, Thailand"
-        addr_line3 = "Call Center Tel. 02-114-3350"
+        addr_line3 = "EGAT Call Center Tel. 0-2436-1416"
 
     else:  # "th"
         # Thai titles
@@ -1633,7 +1633,7 @@ def make_pm_report_html_pdf_bytes(
         label_doc_name = "ชื่อเอกสาร"
         addr_line1 = "การไฟฟ้าฝ่ายผลิตแห่งประเทศไทย (กฟผ.)"
         addr_line2 = "เลขที่ 53 หมู่ 2 ถนนจรัญสนิทวงศ์ ตำบลบางกรวย อำเภอบางกรวย จังหวัดนนทบุรี 11130"
-        addr_line3 = "ศูนย์บริการข้อมูล กฟผ. สายด่วน 1416"
+        addr_line3 = "ศูนย์บริการข้อมูล กฟผ. โทร 0-2436-1416"
 
     # ========== ตั้งค่า labels ให้กับ pdf object ==========
     pdf._label_page = label_page

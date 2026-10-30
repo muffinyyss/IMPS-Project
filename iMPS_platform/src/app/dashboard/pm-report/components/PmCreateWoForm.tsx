@@ -51,8 +51,8 @@ const T = {
     en: "53 Moo 2, Charan Sanitwong Rd., Bang Kruai, Bang Kruai",
   },
   companyAddressLine2: {
-    th: "จังหวัดนนทบุรี 11130 ศูนย์บริการข้อมูล กฟผ. สายด่วน 1416",
-    en: "Nonthaburi 11130, EGAT Call Center: 1416",
+    th: "จังหวัดนนทบุรี 11130 ศูนย์บริการข้อมูล กฟผ. สายด่วน 1416 / 02-114-3350",
+    en: "Nonthaburi 11130, EGAT Call Center 1416 / Tel. 02-114-3350",
   },
 
   backToList: { th: "Back", en: "Back" },

@@ -27,10 +27,10 @@ const sections = [
         ],
     },
     {
-        title: "Ourservice",
+        title: "Our Services",
         links: [
             { label: "EV Charge", href: "#" },
-            { label: "IMPS", href: "#" },
+            { label: "iMPS", href: "#" },
         ],
     },
 ];
@@ -102,7 +102,7 @@ export default function SiteFooter() {
                 {/* เส้นคั่น + bottom bar */}
                 <div className="tw-mt-10 tw-border-t tw-border-gray-200 tw-pt-6 tw-flex tw-flex-col sm:tw-flex-row tw-items-start sm:tw-items-center tw-justify-between tw-gap-4">
                     <p className="tw-text-xs tw-text-gray-500">
-                        © {new Date().getFullYear()} Your Company. All rights reserved.
+                        © {new Date().getFullYear()} iMPS. All rights reserved.
                     </p>
 
                     <ul className="tw-flex tw-flex-wrap tw-gap-x-6 tw-gap-y-2 tw-text-sm tw-text-gray-600">

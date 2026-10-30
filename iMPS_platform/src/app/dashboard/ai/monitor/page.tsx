@@ -26,7 +26,7 @@ const T = {
     stationsUnit: { th: "สถานี", en: "stations" },
     colStation: { th: "สถานี", en: "Station" },
     colHealth: { th: "สุขภาพ", en: "Health" },
-    colCover: { th: "ครอบคลุม", en: "Cover" },
+    colCover: { th: "ครอบคลุม", en: "Coverage" },
     colUpdated: { th: "อัปเดต", en: "Updated" },
     loading: { th: "กำลังโหลด...", en: "Loading..." },
     noStationFound: { th: "ไม่พบข้อมูลสถานี", en: "No station found" },

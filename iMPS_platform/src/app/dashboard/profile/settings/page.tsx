@@ -29,7 +29,7 @@ const T = {
   newPassword: { th: "รหัสผ่านใหม่", en: "New Password" },
   confirmNewPassword: { th: "ยืนยันรหัสผ่านใหม่", en: "Confirm New Password" },
   passwordsDoNotMatch: { th: "รหัสผ่านไม่ตรงกัน", en: "Passwords do not match" },
-  passwordRequirement: { th: "ข้อกำหนดรหัสผ่าน", en: "Password Requirement" },
+  passwordRequirement: { th: "ข้อกำหนดรหัสผ่าน", en: "Password Requirements" },
   passwordGuide: {
     th: "กรุณาทำตามคำแนะนำนี้เพื่อให้ได้รหัสผ่านที่ปลอดภัย",
     en: "Please follow this guide for a strong password",
@@ -47,7 +47,7 @@ const T = {
   confirmTitle: { th: "ยืนยันการเปลี่ยนรหัสผ่าน", en: "Confirm password change" },
   confirmQuestion: { th: "คุณต้องการเปลี่ยนรหัสผ่านใช่หรือไม่?", en: "Do you want to change your password?" },
   confirmNote: {
-    th: "หลังจากเปลี่ยนรหัสผ่านแล้ว ระบบจะนำคุณไปหน้าเข้าสู่ระบบเพื่อ Login ใหม่",
+    th: "หลังจากเปลี่ยนรหัสผ่านแล้ว ระบบจะนำคุณไปหน้าเข้าสู่ระบบเพื่อเข้าสู่ระบบใหม่",
     en: "After changing your password you will be redirected to sign in again.",
   },
   cancel: { th: "ยกเลิก", en: "Cancel" },

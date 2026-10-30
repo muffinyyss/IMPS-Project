@@ -42,7 +42,7 @@ import "./fault-detection.css";
 const COPY = {
   th: {
     eyebrow: "AI · CHARGER FAULT INTELLIGENCE",
-    title: "แดชบอร์ดตรวจจับความผิดปกติตู้ชาร์จ",
+    title: "แดชบอร์ดตรวจจับความผิดปกติเครื่องอัดประจุไฟฟ้า",
     subtitle: "สำรวจผล benchmark ที่ตรวจสอบแล้วทั้ง fleet เปรียบเทียบกฎ ISO 15118 และวิเคราะห์ PCAP ใหม่ด้วย Agentic AI ในพื้นที่เดียวกัน",
     desktopSubtitle: "สำรวจผล benchmark ที่ตรวจสอบแล้วทั้ง fleet เปรียบเทียบกฎ ISO 15118 และเจาะลึกสัดส่วน Fault ของทุกสถานีในโปรแกรมเดียว",
     modelBadge: "VERIFIED RESEARCH",

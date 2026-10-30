@@ -78,7 +78,7 @@ FONT_CONFIG = {
 TRANSLATIONS = {
     "th": {
         "page": "หน้า",
-        "ev_charger_safety_test": "การทดสอบความปลอดภัยเครื่องชาร์จ EV",
+        "ev_charger_safety_test": "การทดสอบความปลอดภัยเครื่องอัดประจุไฟฟ้า",
         "issue_id": "รหัสเอกสาร",
         "manufacturer": "ผู้ผลิต",
         "model": "รุ่น",
@@ -100,7 +100,7 @@ TRANSLATIONS = {
         "pe_continuity": "PE.Continuity",
         "protective": "ตัวนำป้องกัน",
         "conductors_of": "ของ",
-        "charger": "เครื่องชาร์จ",
+        "charger": "เครื่องอัดประจุไฟฟ้า",
         "left_cover": "ฝาครอบซ้าย",
         "right_cover": "ฝาครอบขวา",
         "front_cover": "ฝาครอบหน้า",
@@ -113,7 +113,7 @@ TRANSLATIONS = {
         "isolation_transformer": "หม้อแปลงแยก",
         "power_standby": "พลังงานขณะสแตนด์บาย",
         "charging_process_testing": "การทดสอบกระบวนการชาร์จ",
-        "charger_safety": "ความปลอดภัยเครื่องชาร์จ",
+        "charger_safety": "ความปลอดภัยเครื่องอัดประจุไฟฟ้า",
         "h1": "H.1",
         "h2": "H.2",
         "ccs2": "CCS2",

@@ -64,7 +64,7 @@ const CBMCard = () => {
             },
             en: {
                 conditionBasedMaintenance: "Condition-Based Maintenance",
-                conditionBase: "Condition-Base",
+                conditionBase: "Condition-Based",
                 conditionBaseDesc: "Monitor and maintain based on actual operating conditions",
                 askExpert: "Ask expert",
                 askExpertDesc: "Consult experts about maintenance issues",

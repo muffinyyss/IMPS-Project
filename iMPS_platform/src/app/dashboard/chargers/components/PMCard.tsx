@@ -104,7 +104,7 @@ export default function PMCard({ sn }: PMCardProps) {
         disabled: "Disabled",
         active: "Active",
         inactive: "Inactive",
-        pmLatest: "PM Latest",
+        pmLatest: "Last PM",
         nextPm: "Next PM",
         daysLeft: "Days Left",
         loading: "Loading…",

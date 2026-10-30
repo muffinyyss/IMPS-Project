@@ -76,10 +76,10 @@ FAULT_TRIGGERS = [
 ]
 
 GUN_TEMP_FIELDS = {
-    "charger_gun_temp_plus1":  "หัว 1 ขั้ว Plus (+)",
-    "charger_gun_temp_plus2":  "หัว 2 ขั้ว Plus (+)",
-    "charger_gan_temp_minus1": "หัว 1 ขั้ว Minus (−)",
-    "charger_gan_temp_minus2": "หัว 2 ขั้ว Minus (−)",
+    "charger_gun_temp_plus1":  "หัวชาร์จ 1 ขั้วบวก (+)",
+    "charger_gun_temp_plus2":  "หัวชาร์จ 2 ขั้วบวก (+)",
+    "charger_gan_temp_minus1": "หัวชาร์จ 1 ขั้วลบ (−)",
+    "charger_gan_temp_minus2": "หัวชาร์จ 2 ขั้วลบ (−)",
 }
 
 # ══════════════════════════════════════════════════════════════════
@@ -348,10 +348,10 @@ async def _check_all_edgebox():
 
         charger_label = info.get("charger_name") or f"Charger {info.get('charger_no', sn)}"
         problem = (
-            f"[Auto CM] ตู้ชาร์จ {charger_label} (SN: {sn}) "
-            f"Edge Box offline เกิน {OFFLINE_THRESHOLD_MIN} นาที\n"
-            f"Edge Box offline since: {_to_thai_str(offline_since)}\n"
-            f"ระบบตรวจพบและสร้าง CM report อัตโนมัติ"
+            f"[Auto CM] เครื่องอัดประจุไฟฟ้า {charger_label} (SN: {sn}) "
+            f"Edge Box ออฟไลน์เกิน {OFFLINE_THRESHOLD_MIN} นาที\n"
+            f"ออฟไลน์ตั้งแต่: {_to_thai_str(offline_since)}\n"
+            f"ระบบตรวจพบและเปิดใบงาน CM อัตโนมัติ"
         )
         remarks = f"Auto-generated: Edge Box offline > {OFFLINE_THRESHOLD_MIN} min"
 
@@ -508,12 +508,12 @@ async def _check_all_router_temp():
 
         charger_label = info.get("charger_name") or f"Charger {info.get('charger_no', sn)}"
         problem = (
-            f"[Auto CM] ตู้ชาร์จ {charger_label} (SN: {sn}) "
-            f"Router temperature สูงเกินกำหนด: {temp_val}°C (threshold: {ROUTER_TEMP_THRESHOLD}°C) "
+            f"[Auto CM] เครื่องอัดประจุไฟฟ้า {charger_label} (SN: {sn}) "
+            f"อุณหภูมิ Router สูงเกินกำหนด: {temp_val}°C (เกณฑ์: {ROUTER_TEMP_THRESHOLD}°C) "
             f"ต่อเนื่องเกิน {ROUTER_TEMP_DURATION_MIN} นาที\n"
             f"สูงต่อเนื่องตั้งแต่: {_to_thai_str(over_since)}\n"
-            f"Detected at: {_to_thai_str(ts_str)}\n"
-            f"ระบบตรวจพบและสร้าง CM report อัตโนมัติ"
+            f"ตรวจพบเมื่อ: {_to_thai_str(ts_str)}\n"
+            f"ระบบตรวจพบและเปิดใบงาน CM อัตโนมัติ"
         )
         remarks = (
             f"Auto-generated: Router temp {temp_val}°C > {ROUTER_TEMP_THRESHOLD}°C "
@@ -746,12 +746,12 @@ async def _check_all_gun_temp():
                 remark_cond = f"temp {temp_val}°C < 0"
 
             problem = (
-                f"[Auto CM] ตู้ชาร์จ {charger_label} (SN: {sn}) "
-                f"Charger Gun temperature ผิดปกติ — {friendly}: {cond_text} "
+                f"[Auto CM] เครื่องอัดประจุไฟฟ้า {charger_label} (SN: {sn}) "
+                f"อุณหภูมิหัวชาร์จผิดปกติ — {friendly}: {cond_text} "
                 f"ต่อเนื่องเกิน {GUN_TEMP_DURATION_HOURS} ชม.\n"
                 f"ผิดปกติต่อเนื่องตั้งแต่: {_to_thai_str(since_ts)}\n"
-                f"Detected at: {_to_thai_str(ts_str)}\n"
-                f"ระบบตรวจพบและสร้าง CM report อัตโนมัติ"
+                f"ตรวจพบเมื่อ: {_to_thai_str(ts_str)}\n"
+                f"ระบบตรวจพบและเปิดใบงาน CM อัตโนมัติ"
             )
             remarks = (
                 f"Auto-generated: Gun temp {friendly} {remark_cond} "
@@ -1001,10 +1001,10 @@ async def _check_all_fault_triggers():
                     or f"Charger {info.get('charger_no', sn)}"
                 )
                 problem = (
-                    f"[Auto CM] ตู้ชาร์จ {charger_label} (SN: {sn}) — Head {head}\n"
-                    f"{fault_name} detected — {trigger_reason}\n"
-                    f"จำนวน Head {head} วันนี้: {today_count} ครั้ง\n"
-                    f"ระบบตรวจพบและสร้าง CM report อัตโนมัติ"
+                    f"[Auto CM] เครื่องอัดประจุไฟฟ้า {charger_label} (SN: {sn}) — หัวชาร์จ {head}\n"
+                    f"ตรวจพบ {fault_name} — {trigger_reason}\n"
+                    f"จำนวนครั้งของหัวชาร์จ {head} วันนี้: {today_count} ครั้ง\n"
+                    f"ระบบตรวจพบและเปิดใบงาน CM อัตโนมัติ"
                 )
                 remarks = f"Auto-generated: Head {head} — {trigger_reason}"
 

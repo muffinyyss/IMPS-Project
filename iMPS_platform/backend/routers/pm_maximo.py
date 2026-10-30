@@ -769,7 +769,7 @@ async def maximo_pm_open(
             content={
                 "status": "REJECTED",
                 "message": "iMPS ปิดรับใบงาน PM จาก Maximo — ใบงาน PM ออกโดย iMPS "
-                           "ตามรอบ commissioning ของตู้ชาร์จ",
+                           "ตามรอบ commissioning ของเครื่องอัดประจุไฟฟ้า",
             },
         )
 
@@ -1694,7 +1694,7 @@ def _charger_no_labels(station_ids) -> dict[tuple[str, str], str]:
 
 def _station_equipment_choices(station_id: str) -> tuple[list[dict], list[dict]]:
     """
-    (ตู้ชาร์จ, อุปกรณ์ระดับสถานี) ที่เลือก PM ได้ในสถานีหนึ่ง
+    (เครื่องอัดประจุไฟฟ้า, อุปกรณ์ระดับสถานี) ที่เลือก PM ได้ในสถานีหนึ่ง
 
     ใช้ร่วมกันระหว่างใบงานที่ Maximo เปิดมา (มี wonum แล้ว) กับฟอร์มเพิ่มใบงานเอง
     ในหน้า PM List ที่ยังไม่มี wonum — เลือกสถานีแล้วต้องได้รายการชุดเดียวกัน
@@ -1738,7 +1738,7 @@ def _build_equipment_items(station_id: str, equipment: list["EquipmentItem"]) ->
     """
     items: list[dict] = []
     seen: set[str] = set()
-    no_labels: dict[tuple[str, str], str] | None = None  # หาเมื่อมีตู้ชาร์จในแผน
+    no_labels: dict[tuple[str, str], str] | None = None  # หาเมื่อมีเครื่องอัดประจุไฟฟ้าในแผน
     for e in equipment:
         etype = _norm_equip_type(e.type)
         if etype not in EQUIP_TYPES:
@@ -1803,7 +1803,7 @@ async def pm_equipment_choices(
 ):
     """
     รายการอุปกรณ์ที่เลือก PM ได้ภายใต้สถานีของใบงานนี้
-    (ตู้ชาร์จทุกตู้ในสถานี + อุปกรณ์ระดับสถานี mdb/ccb/cbbox/station)
+    (เครื่องอัดประจุไฟฟ้าทุกตู้ในสถานี + อุปกรณ์ระดับสถานี mdb/ccb/cbbox/station)
     ให้ frontend เอาไปทำ checkbox เลือกหลายตัว
     """
     wonum = (wonum or "").strip()

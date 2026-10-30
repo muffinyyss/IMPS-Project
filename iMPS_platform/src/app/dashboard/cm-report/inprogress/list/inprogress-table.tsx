@@ -78,9 +78,9 @@ const T = {
   alertSelectStation: { th: "กรุณาเลือกสถานีก่อน", en: "Please select a station first" },
   alertPdfOnly: { th: "รองรับเฉพาะไฟล์ PDF เท่านั้น", en: "Only PDF files are supported" },
   alertInvalidDate: { th: "รูปแบบวันที่ไม่ถูกต้อง", en: "Invalid date format" },
-  alertUploadFailed: { th: "อัพโหลดไม่สำเร็จ:", en: "Upload failed:" },
-  alertUploadSuccess: { th: "อัพโหลดสำเร็จ", en: "Upload successful" },
-  alertUploadError: { th: "เกิดข้อผิดพลาดระหว่างอัพโหลด", en: "An error occurred during upload" },
+  alertUploadFailed: { th: "อัปโหลดไม่สำเร็จ:", en: "Upload failed:" },
+  alertUploadSuccess: { th: "อัปโหลดสำเร็จ", en: "Upload successful" },
+  alertUploadError: { th: "เกิดข้อผิดพลาดระหว่างอัปโหลด", en: "An error occurred during upload" },
 };
 
 const t = (key: keyof typeof T, lang: Lang): string => T[key][lang];
@@ -135,11 +135,11 @@ const isPlanningWait = (v?: string, assignees?: string[]) => {
 // Sub-tabs ของหน้า In Progress (มุมขวา) — filter ตาม repair_result ยกเว้น tab approve ที่ใช้ status "Wait for approve"
 // legacy = ค่า repair_result เดิมก่อนเปลี่ยนชื่อ (รองรับข้อมูลเก่า)
 const WO_SUBTABS = [
-  { id: "all", th: "ทั้งหมด", en: "All", legacy: [] as string[] },
-  { id: "scheduled", th: "WO - wait for scheduled", en: "WO - wait for scheduled", legacy: ["WO - wait for manpower"] },
-  { id: "spare", th: "WO - wait for material", en: "WO - wait for material", legacy: ["WO - wait for spare part"] },
-  { id: "site", th: "WO - wait for site condition", en: "WO - wait for site condition", legacy: ["WO - wait for site access"] },
-  { id: "approve", th: "WO - wait for approve", en: "WO - wait for approve", legacy: [] as string[] },
+  { id: "all", value: "", th: "ทั้งหมด", en: "All", legacy: [] as string[] },
+  { id: "scheduled", value: "WO - wait for scheduled", th: "รอกำหนดวันเข้าซ่อม", en: "Waiting for schedule", legacy: ["WO - wait for manpower"] },
+  { id: "spare", value: "WO - wait for material", th: "รออะไหล่/วัสดุ", en: "Waiting for material", legacy: ["WO - wait for spare part"] },
+  { id: "site", value: "WO - wait for site condition", th: "รอสภาพหน้างานพร้อม", en: "Waiting for site condition", legacy: ["WO - wait for site access"] },
+  { id: "approve", value: "WO - wait for approve", th: "รออนุมัติ", en: "Waiting for approval", legacy: [] as string[] },
 ] as const;
 
 export default function CMInProgressReportPage({ token, apiBase = BASE }: Props) {
@@ -800,7 +800,7 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
     }
     const sub = WO_SUBTABS.find((s) => s.id === woSubTab);
     // match ค่าใหม่ + ค่าเก่าที่เปลี่ยนชื่อแล้ว (backward-compat)
-    const targets = [sub?.en ?? "", ...(sub?.legacy ?? [])].filter(Boolean);
+    const targets = [sub?.value ?? "", ...(sub?.legacy ?? [])].filter(Boolean);
     return data.filter((r) => targets.includes(r.repair_result ?? ""));
   }, [data, woSubTab]);
 
@@ -903,7 +903,7 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
                     {/* "ทั้งหมด" ไม่ใช่ค่า repair_result เลยแปลเองในตาราง ที่เหลือใช้ป้ายชุดเดียวกับฟอร์ม */}
                     {st.id === "all"
                       ? (lang === "en" ? st.en : st.th)
-                      : repairResultLabel(st.en, lang)}
+                      : repairResultLabel(st.value, lang)}
                   </button>
                 );
               })}

@@ -227,8 +227,8 @@ T: Dict[str, Tuple[str, str]] = {
              "Electricity Generating Authority of Thailand (EGAT)"),
     "org2": ("เลขที่ 53 หมู่ 2 ถนนจรัญสนิทวงศ์ ตำบลบางกรวย อำเภอบางกรวย",
              "53 Moo 2, Charan Sanitwong Rd., Bang Kruai Sub-district, Bang Kruai District"),
-    "org3": ("จังหวัดนนทบุรี 11130 ศูนย์บริการข้อมูล กฟผ. สายด่วน 1416",
-             "Nonthaburi 11130, EGAT Call Center 1416"),
+    "org3": ("จังหวัดนนทบุรี 11130 ศูนย์บริการข้อมูล กฟผ. โทร 0-2436-1416",
+             "Nonthaburi 11130, EGAT Call Center Tel. 0-2436-1416"),
     # --- ชื่อหมวด ---
     "sec1": ("ข้อมูลการแจ้ง", "Report Information"),
     "sec2": ("รายละเอียดปัญหา", "Problem Details"),
@@ -246,10 +246,10 @@ T: Dict[str, Tuple[str, str]] = {
     "wo_no": ("เลขที่ WO", "WO No."),
     "location": ("สถานที่", "Location"),
     "wo_status": ("สถานะงาน", "Job Status"),
-    "faulty_equipment": ("ตำแหน่งอุปกรณ์ที่พบความผิดปกติ", "Faulty Equipment / Location"),
+    "faulty_equipment": ("ตำแหน่งจุดที่พบปัญหา", "Faulty Equipment / Location"),
     "faulty_equipment_repair": ("อุปกรณ์ที่ชำรุด", "Faulty Equipment"),
-    "charger_no": ("หมายเลขตู้ชาร์จ", "Charger No."),
-    "charger_sn": ("S/N ตู้ชาร์จ", "Charger S/N"),
+    "charger_no": ("หมายเลขเครื่องอัดประจุไฟฟ้า", "Charger No."),
+    "charger_sn": ("S/N เครื่องอัดประจุไฟฟ้า", "Charger S/N"),
     "severity": ("ความเร่งด่วน", "Urgency"),
     "problem_details": ("รายละเอียดปัญหา", "Problem Details"),
     "problem_found": ("รายละเอียดปัญหาที่พบ", "Problem Found"),
@@ -1065,7 +1065,7 @@ def _draw_header(
     label_doc_name: str = "ชื่อเอกสาร",
     addr_line1: str = "การไฟฟ้าฝ่ายผลิตแห่งประเทศไทย (กฟผ.)",
     addr_line2: str = "เลขที่ 53 หมู่ 2 ถนนจรัญสนิทวงศ์ ตำบลบางกรวย อำเภอบางกรวย จังหวัดนนทบุรี 11130",
-    addr_line3: str = "ศูนย์บริการข้อมูล กฟผ. สายด่วน 1416",
+    addr_line3: str = "ศูนย์บริการข้อมูล กฟผ. โทร 0-2436-1416",
 ) -> float:
     """วาด Header เอกสาร: โลโก้ / ที่อยู่ / เลขที่เอกสาร / ชื่อเอกสาร"""
     left = pdf.l_margin
@@ -2320,7 +2320,7 @@ def make_cm_report_pdf_bytes(
         },
     ]
 
-    # ใบที่ปัญหาอยู่ที่ตู้ชาร์จ ต้องระบุว่าตู้ไหน — ฟอร์มกรอก charger_no/charger_sn ไว้เฉพาะ
+    # ใบที่ปัญหาอยู่ที่เครื่องอัดประจุไฟฟ้า ต้องระบุว่าตู้ไหน — ฟอร์มกรอก charger_no/charger_sn ไว้เฉพาะ
     # failure class ระดับตู้ (DC/AC Charger) ใบระดับสถานีจึงไม่มีค่าและไม่ต้องขึ้นแถวนี้
     # เช็คจากค่าที่มีจริงแทนรหัส class เพราะใบเก่าใช้รหัสคนละชุด (DCCHARFC/ACCHARFC)
     charger_no = _display_value(doc.get("charger_no"), "")

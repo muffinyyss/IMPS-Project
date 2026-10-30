@@ -94,14 +94,14 @@ export default function PipelineConfigModal({ open, onClose, sn, chargeBoxID, st
   const t = useMemo(() => {
     const tr = {
       th: {
-        title: "ตั้งค่า Pipeline", charger: "ตู้ชาร์จ", station: "สถานี",
+        title: "ตั้งค่า Pipeline", charger: "เครื่องอัดประจุไฟฟ้า", station: "สถานี",
         hardware: "ฮาร์ดแวร์", topics: "MQTT Topics", serviceLife: "อายุการใช้งาน",
         dcContractorCount: "จำนวน DC Contactor", powerModuleCount: "จำนวน Power Module", dcFanCount: "จำนวน DC Fan",
         fanType: "ชนิดพัดลม", energyMeterType: "ชนิดมิเตอร์", powerModuleDefaults: "ค่าเริ่มต้น Power Module",
         endDate: "วันหมดอายุการใช้งาน",
         addPm: "เพิ่ม", pmKey: "คีย์ (เช่น pm1)", pmValue: "ค่า", remove: "ลบ",
         save: "บันทึก", saving: "กำลังบันทึก...", saved: "บันทึกสำเร็จ", loading: "กำลังโหลด...",
-        cancel: "ยกเลิก", notFound: "ไม่พบตู้ชาร์จนี้", emptyTopicHint: "เว้นว่าง = null", noSn: "ไม่พบ SN ของตู้ชาร์จ",
+        cancel: "ยกเลิก", notFound: "ไม่พบเครื่องอัดประจุไฟฟ้านี้", emptyTopicHint: "เว้นว่าง = null", noSn: "ไม่พบ SN ของเครื่องอัดประจุไฟฟ้า",
       },
       en: {
         title: "Pipeline Config", charger: "Charger", station: "Station",

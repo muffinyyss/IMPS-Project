@@ -79,10 +79,10 @@ ROW_TITLES_TH = {
     "r2": "ตรวจสอบสภาพดักซีล, ซิลิโคนกันซึม",
     "r3": "ตรวจสอบระบบระบายอากาศ",
     "r4": "ตรวจสอบระบบแสงสว่าง",
-    "r5": "ตรวจสอบเครื่องสำรองไฟฟ้า (UPS)",
+    "r5": "ตรวจสอบระบบสำรองไฟฟ้า (UPS)",
     "r6": "ตรวจสอบระบบกล้องวงจรปิด (CCTV)",
-    "r7": "ตรวจสอบเร้าเตอร์ (Router)",
-    "r8": "ตรวจสอบ (Consumer Unit)",
+    "r7": "ตรวจสอบเราเตอร์ (Router)",
+    "r8": "ตรวจสอบตู้คอนซูเมอร์ยูนิต (Consumer Unit)",
     "r9": "ตรวจสอบแรงดันไฟฟ้า (Consumer Unit) - เมนเบรกเกอร์ (Main Breaker)",
     "r10": "ตรวจสอบแรงดันไฟฟ้า (Consumer Unit) - เบรกเกอร์วงจรย่อย",
     "r11": "ทำความสะอาด",
@@ -949,7 +949,7 @@ def _draw_header(
     label_doc_name: str = "Doc Name",
     addr_line1: str = "Electricity Generating Authority of Thailand (EGAT)",  # เพิ่ม
     addr_line2: str = "53 Moo 2 Charansanitwong Road, Bang Kruai, Nonthaburi 11130, Thailand",  # เพิ่ม
-    addr_line3: str = "Call Center Tel. 02-114-3350",  # เพิ่ม
+    addr_line3: str = "EGAT Call Center Tel. 0-2436-1416",  # เพิ่ม
 ) -> float:
     left = pdf.l_margin
     right = pdf.r_margin
@@ -1563,7 +1563,7 @@ class ReportPDF(HTML2PDF):
         self._label_doc_name = "Doc Name"
         self._addr_line1 = "Electricity Generating Authority of Thailand (EGAT)"
         self._addr_line2 = "53 Moo 2 Charansanitwong Road, Bang Kruai, Nonthaburi 11130, Thailand"
-        self._addr_line3 = "Call Center Tel. 02-114-3350"
+        self._addr_line3 = "EGAT Call Center Tel. 0-2436-1416"
         self._label_performed = "Performed by"
         self._label_approved = "Approved by"
         self._label_witnessed = "Witnessed by"
@@ -1641,11 +1641,11 @@ def make_pm_report_html_pdf_bytes(
     # ========== เลือกข้อความตามภาษา ==========
     if lang == "en":
         # English titles
-        doc_title_post = "Preventive Maintenance Checklist - Circuit Breaker"
-        doc_title_post_cont = "Preventive Maintenance Checklist - Circuit Breaker (Continued)"
-        doc_title_photo_cont = "Preventive Maintenance - Photos - Circuit Breaker (Continued)"
-        doc_title_photo_pre = "Preventive Maintenance - Photos - Circuit Breaker (PRE)"
-        doc_title_photo_post = "Preventive Maintenance - Photos - Circuit Breaker"
+        doc_title_post = "Preventive Maintenance Checklist - CCB"
+        doc_title_post_cont = "Preventive Maintenance Checklist - CCB (Continued)"
+        doc_title_photo_cont = "Preventive Maintenance - Photos - CCB (Continued)"
+        doc_title_photo_pre = "Preventive Maintenance - Photos - CCB (PRE)"
+        doc_title_photo_post = "Preventive Maintenance - Photos - CCB"
 
         # Table headers
         header_item = "Item"
@@ -1672,15 +1672,15 @@ def make_pm_report_html_pdf_bytes(
         label_doc_name = "Doc Name"
         addr_line1 = "Electricity Generating Authority of Thailand (EGAT)"
         addr_line2 = "53 Moo 2 Charansanitwong Road, Bang Kruai, Nonthaburi 11130, Thailand"
-        addr_line3 = "Call Center Tel. 02-114-3350"
+        addr_line3 = "EGAT Call Center Tel. 0-2436-1416"
 
     else:  # "th"
         # Thai titles
-        doc_title_post = "รายการตรวจสอบการบำรุงรักษาเชิงป้องกัน - Circuit Breaker"
-        doc_title_post_cont = "รายการตรวจสอบการบำรุงรักษาเชิงป้องกัน - Circuit Breaker (ต่อ)"
-        doc_title_photo_cont = "การบำรุงรักษาเชิงป้องกัน - รูปภาพ - Circuit Breaker (ต่อ)"
-        doc_title_photo_pre = "การบำรุงรักษาเชิงป้องกัน - รูปภาพ - Circuit Breaker (ก่อน PM)"
-        doc_title_photo_post = "การบำรุงรักษาเชิงป้องกัน - รูปภาพ - Circuit Breaker"
+        doc_title_post = "รายการตรวจสอบการบำรุงรักษาเชิงป้องกัน - CCB"
+        doc_title_post_cont = "รายการตรวจสอบการบำรุงรักษาเชิงป้องกัน - CCB (ต่อ)"
+        doc_title_photo_cont = "การบำรุงรักษาเชิงป้องกัน - รูปภาพ - CCB (ต่อ)"
+        doc_title_photo_pre = "การบำรุงรักษาเชิงป้องกัน - รูปภาพ - CCB (ก่อน PM)"
+        doc_title_photo_post = "การบำรุงรักษาเชิงป้องกัน - รูปภาพ - CCB"
 
         # Table headers
         header_item = "รายการ"
@@ -1707,7 +1707,7 @@ def make_pm_report_html_pdf_bytes(
         label_doc_name = "ชื่อเอกสาร"
         addr_line1 = "การไฟฟ้าฝ่ายผลิตแห่งประเทศไทย (กฟผ.)"
         addr_line2 = "เลขที่ 53 หมู่ 2 ถนนจรัญสนิทวงศ์ ตำบลบางกรวย อำเภอบางกรวย จังหวัดนนทบุรี 11130"
-        addr_line3 = "ศูนย์บริการข้อมูล กฟผ. สายด่วน 1416"
+        addr_line3 = "ศูนย์บริการข้อมูล กฟผ. โทร 0-2436-1416"
     
     pdf = ReportPDF(unit="mm", format="A4", issue_id=issue_id, doc_name=doc_name)
     _signers = doc.get("_signers") or {}
@@ -2222,7 +2222,7 @@ def make_pm_report_html_pdf_bytes(
     pdf.set_xy(x0, y)
     pdf.set_font(base_font, "B", 13)
     pdf.set_fill_color(255, 230, 100)
-    title_text = doc_title_photo_post if has_pre_photos else ("Photos - Circuit Breaker" if lang == "en" else "รูปภาพ - Circuit Breaker")
+    title_text = doc_title_photo_post if has_pre_photos else ("Photos - CCB" if lang == "en" else "รูปภาพ - CCB")
     pdf.cell(page_w, TITLE_H, title_text, border=1, ln=1, align="C", fill=True)
     y += TITLE_H
 
