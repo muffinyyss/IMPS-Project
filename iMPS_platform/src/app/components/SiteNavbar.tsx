@@ -5,6 +5,7 @@ import HoverPrefetchLink from "@/components/HoverPrefetchLink";
 import { usePathname, useRouter } from "next/navigation";
 import React, { useEffect, useState } from "react";
 import { logout } from "@/utils/api";
+import { verifySession } from "@/utils/session-guard";
 
 type NavItem = { label: string; href: string; requireAuth?: boolean };
 type User = { username: string; role?: string; company?: string };
@@ -22,6 +23,8 @@ export default function SiteNavbar() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
+  // backend ยืนยันแล้วว่า session ยังใช้ได้ (/me = 200) — โปรไฟล์ใน localStorage อย่างเดียวเชื่อไม่ได้
+  const [sessionOk, setSessionOk] = useState(false);
 
   const loadUserFromStorage = () => {
     try {
@@ -45,12 +48,38 @@ export default function SiteNavbar() {
       }
     };
 
+    // โปรไฟล์ใน localStorage ไม่รู้ว่า token (คุกกี้ HttpOnly) หมดอายุแล้ว — เช่นเปิดเว็บใหม่หลังตี 3
+    // จึงถาม backend ทุกครั้งที่เปิดหน้า/กลับมาที่แท็บ ถ้า 401 → ล้างโปรไฟล์ แสดงปุ่ม Login แทนชื่อ
+    let alive = true;
+    const verify = async () => {
+      let hasProfile = false;
+      try {
+        const raw = localStorage.getItem("user");
+        hasProfile = !!raw && raw !== "undefined" && raw !== "null";
+      } catch { }
+      if (!hasProfile) {
+        setSessionOk(false);
+        return;
+      }
+      const result = await verifySession();
+      if (!alive) return;
+      if (result === "invalid") {
+        setUser(null);
+        window.dispatchEvent(new Event("auth"));   // ส่วนอื่นที่อ่านโปรไฟล์จะได้รู้
+      }
+      setSessionOk(result === "valid");
+    };
+
     load();
+    void verify();
 
     const onStorage = () => load();                     // ข้ามแท็บ
     const onAuth = () => load();                        // แท็บเดียวกัน
     const onVisibility = () => {
-      if (document.visibilityState === "visible") load(); // กลับมาเห็นแท็บ
+      if (document.visibilityState === "visible") {     // กลับมาเห็นแท็บ (อาจเปิดค้างข้ามคืน)
+        load();
+        void verify();
+      }
     };
 
     window.addEventListener("storage", onStorage);
@@ -58,6 +87,7 @@ export default function SiteNavbar() {
     document.addEventListener("visibilitychange", onVisibility);
 
     return () => {
+      alive = false;
       window.removeEventListener("storage", onStorage);
       window.removeEventListener("auth", onAuth);
       document.removeEventListener("visibilitychange", onVisibility);
@@ -101,8 +131,10 @@ export default function SiteNavbar() {
   // ถ้ารอให้กดก่อนค่อยเริ่ม ลูกโซ่นี้กินเวลา ~2 วินาที
   // จึงอุ่นไว้ "หน้าเดียว" ตอนเบราว์เซอร์ว่าง หลังหน้าแรกโหลดเสร็จ
   // (เมนูอื่นยังคงอุ่นตอนชี้เมาส์เท่านั้น — ไม่ได้กลับไปโหลดทุกหน้าเหมือนเดิม)
+  // อุ่นเฉพาะเมื่อ backend ยืนยัน session แล้ว: ถ้าอุ่นตอน token หมดอายุ middleware จะตอบ redirect ไปหน้า login
+  // และ Next เก็บ redirect นั้นไว้ใน router cache — หลัง login ใหม่การกด Dashboard จะเด้งกลับหน้า login อีก
   useEffect(() => {
-    if (!user) return;
+    if (!user || !sessionOk) return;
     const target = resolveHref(navItems.find((i) => i.label === "Dashboard")!);
     let cancelled = false;
     const warm = () => {
@@ -124,7 +156,7 @@ export default function SiteNavbar() {
       else window.clearTimeout(id);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.role]);
+  }, [user?.role, sessionOk]);
 
   // Handle Dashboard click - clear charger selection for admin
   //
@@ -150,6 +182,7 @@ export default function SiteNavbar() {
     // backend ต้องลบคุกกี้ session — ลบแค่ localStorage แล้วคุกกี้ยังเรียก API ได้ต่ออีก 24 ชม.
     await logout();
     setUser(null);
+    setSessionOk(false);
     router.push("/auth/signin/basic");
   };
 

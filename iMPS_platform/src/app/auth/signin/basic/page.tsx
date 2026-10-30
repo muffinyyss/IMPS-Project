@@ -5,7 +5,6 @@ import React, { useState } from "react";
 import Link from "next/link";
 import HoverPrefetchLink from "@/components/HoverPrefetchLink";
 import { ArrowLeftIcon } from "@heroicons/react/24/outline";
-import { useRouter } from "next/navigation";
 // @material-tailwind/react
 import {
   Input,
@@ -43,13 +42,13 @@ export default function BasicPage() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
-  const router = useRouter();
   const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "https://localhost:8000";
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setMessage("");
     setLoading(true);
+    let navigating = false;
 
     try {
       const formData = new URLSearchParams();
@@ -101,15 +100,20 @@ export default function BasicPage() {
       // ✅ แจ้ง Navbar ให้รีโหลดสถานะทันที (แท็บเดียวกัน storage ไม่ยิง)
       window.dispatchEvent(new Event("auth"));
 
-      setMessage(data?.message || t("loginSuccess", lang));
+      setMessage(t("loginSuccess", lang));
       // กลับไปหน้าที่ขอไว้ก่อนถูกส่งมา login (middleware / session หมดอายุ) — เฉพาะ path ภายในเว็บ
       const safeNext = safeNextPath(new URLSearchParams(window.location.search).get("next"));
-      router.push(safeNext || "/pages/mainpages/home");
+      // ต้องโหลดหน้าใหม่ทั้งหน้า ไม่ใช้ router.push:
+      // ตอน session หมด Next เคย prefetch หน้า dashboard ไว้ และ middleware ตอบ redirect มาหน้า login
+      // redirect นั้นค้างอยู่ใน router cache → router.push ไปหน้าเดิมจึงพากลับมาหน้า login (ขึ้น "ok" แต่ไม่ไปไหน)
+      // โหลดใหม่ทั้งหน้าทิ้ง cache ฝั่ง client และให้ middleware ตรวจคุกกี้ใหม่จริง
+      navigating = true;
+      window.location.replace(safeNext || "/pages/mainpages/home");
     } catch (err: any) {
       console.error(err);
       setMessage(err?.message || t("serverError", lang));
     } finally {
-      setLoading(false);
+      if (!navigating) setLoading(false);   // กำลังเปลี่ยนหน้า → ปุ่มค้าง "กำลังเข้าสู่ระบบ..." กันกดซ้ำ
     }
   };
 

@@ -1,4 +1,4 @@
-import { API_BASE, handleUnauthorized } from "./api";
+import { API_BASE, handleUnauthorized, clearSessionProfile } from "./api";
 
 /**
  * ดัก 401 จาก backend ทุก request ทั้งเว็บ — ไม่ใช่แค่ที่เรียกผ่าน apiFetch — รวมถึง SSE (EventSource)
@@ -14,6 +14,8 @@ import { API_BASE, handleUnauthorized } from "./api";
 const IGNORED_PATHS = ["/login", "/logout", "/refresh", "/forgot-password", "/reset-password"];
 
 let installed = false;
+// fetch ตัวจริงก่อนถูกห่อ — ใช้กับการเช็ค session แบบเงียบ (verifySession) ที่ต้องไม่เด้งไป login
+let rawFetch: typeof window.fetch | null = null;
 
 function backendPath(input: RequestInfo | URL): string | null {
   try {
@@ -96,6 +98,7 @@ export function installSessionGuard() {
   installed = true;
 
   const originalFetch = window.fetch.bind(window);
+  rawFetch = originalFetch;
   window.fetch = async function (input: RequestInfo | URL, init?: RequestInit) {
     const res = await originalFetch(input, init);
     if (res.status === 401 && shouldHandle401(input)) {
@@ -105,4 +108,27 @@ export function installSessionGuard() {
   };
 
   installEventSourceGuard();
+}
+
+// ---------- เช็ค session แบบเงียบ (หน้า public) ----------
+// หน้า /pages/* (Home, Package, ...) แสดงชื่อผู้ใช้จากโปรไฟล์ใน localStorage ซึ่งไม่รู้ว่า token หมดอายุแล้ว
+// (token อยู่ในคุกกี้ HttpOnly, JS อ่านไม่ได้) → ชื่อค้าง "Hi, ..." ทั้งที่ session หมดตั้งแต่ตี 3
+// ถาม /me ด้วย fetch ตัวจริง (ไม่ผ่านตัวดัก) เพราะหน้า public ไม่ควรขึ้น toast แล้วเด้งไป login
+
+export type SessionCheck = "valid" | "invalid" | "unknown";
+
+/** 200 = ใช้ได้, 401 = หมดอายุ/ถูกเพิกถอน (ล้างโปรไฟล์ให้), อย่างอื่น/เน็ตหลุด = ไม่รู้ (ไม่แตะโปรไฟล์) */
+export async function verifySession(): Promise<SessionCheck> {
+  if (typeof window === "undefined") return "unknown";
+  const f = rawFetch ?? window.fetch.bind(window);
+  try {
+    const res = await f(`${API_BASE}/me`, { credentials: "include", cache: "no-store" });
+    if (res.status === 401) {
+      clearSessionProfile();
+      return "invalid";
+    }
+    return res.ok ? "valid" : "unknown";
+  } catch {
+    return "unknown";
+  }
 }

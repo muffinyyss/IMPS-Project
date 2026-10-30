@@ -179,3 +179,34 @@ describe("session guard — SSE (EventSource)", () => {
     expect(es.url).toBe("http://localhost:8000/CBM?SN=x");
   });
 });
+
+describe("verifySession — หน้า public เช็คว่าชื่อผู้ใช้ที่ค้างอยู่ยังล็อกอินจริงไหม", () => {
+  it("/me ตอบ 401 (token หมดตอนตี 3) → ล้างโปรไฟล์ คืน invalid และไม่ขึ้น toast/ไม่เด้ง", async () => {
+    const mod = await setup("/pages/mainpages/home");
+    store.set("user", JSON.stringify({ username: "Planner EDS" }));
+    backendFetch.mockResolvedValueOnce(json(401, { detail: "token_expired" }));
+    expect(await mod.verifySession()).toBe("invalid");
+    await flush();
+    expect(String(backendFetch.mock.calls[0][0])).toMatch(/\/me$/);
+    expect(store.has("user")).toBe(false);
+    expect(replace).not.toHaveBeenCalled();
+  });
+
+  it("/me ตอบ 200 → valid และเก็บโปรไฟล์ไว้", async () => {
+    const mod = await setup("/pages/mainpages/home");
+    store.set("user", "{}");
+    backendFetch.mockResolvedValueOnce(json(200, { id: "u1" }));
+    expect(await mod.verifySession()).toBe("valid");
+    expect(store.has("user")).toBe(true);
+  });
+
+  it("เน็ตหลุด / backend 5xx → unknown ไม่ลบโปรไฟล์", async () => {
+    const mod = await setup("/pages/mainpages/home");
+    store.set("user", "{}");
+    backendFetch.mockRejectedValueOnce(new TypeError("network")).mockResolvedValueOnce(json(502));
+    expect(await mod.verifySession()).toBe("unknown");
+    expect(await mod.verifySession()).toBe("unknown");
+    expect(store.has("user")).toBe(true);
+    expect(replace).not.toHaveBeenCalled();
+  });
+});
