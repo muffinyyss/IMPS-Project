@@ -49,6 +49,14 @@ const WO_PM_TYPE_LABEL: Record<string, string> = {
   CG: "CHARGER", MB: "MDB", CC: "CCB", CB: "CB-BOX", ST: "STATION",
 };
 
+/** พื้นป้าย % success rate บนแท่ง vendor — เขียว ≥ 80 · เหลือง 50–79 · แดง < 50 (ตัวอักษรสีเข้มเสมอ) */
+function rateBadgeColor(rate: number | null | undefined): string {
+  if (rate == null) return "#ffffff";
+  if (rate >= 80) return "#bbf7d0";
+  if (rate >= 50) return "#fde68a";
+  return "#fecaca";
+}
+
 /** ชื่อ brand มาจากฐานข้อมูล — escape ก่อนใส่ลง HTML ของ tooltip ApexCharts */
 function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] as string));
@@ -392,7 +400,7 @@ export default function PMDashboardPage() {
       errorPrefix: "โหลดข้อมูลไม่สำเร็จ",
       taskUnit: "งาน",
       successLabel: "สำเร็จ",
-      vendorRateHint: "% บนแท่ง = อัตราสำเร็จของ vendor ในเดือนนั้น (Complete ÷ งานที่ไม่ยกเลิก — สูตรเดียวกับ PM Success Rate) · % ข้างชื่อ vendor = รวมทุกเดือนในกราฟ",
+      vendorRateHint: "% บนแท่ง = อัตราสำเร็จของ vendor ในเดือนนั้น (Complete ÷ งานที่ไม่ยกเลิก — สูตรเดียวกับ PM Success Rate) · % ข้างชื่อ vendor = รวมทุกเดือนในกราฟ · สีป้าย: เขียว ≥ 80% · เหลือง 50–79% · แดง < 50%",
       vendorRateChipTitle: (brand: string, done: number, total: number) =>
         `${brand}: Complete ${done} จาก ${total} งาน (ไม่รวมยกเลิก) — รวมทุกเดือนในกราฟ`,
       volumeWarning: (limit: number) => `ใบงาน Maximo แสดงผลได้สูงสุด ${limit.toLocaleString()} ใบ — กราฟอาจไม่ครบทั้งหมด`,
@@ -441,7 +449,7 @@ export default function PMDashboardPage() {
       errorPrefix: "Failed to load",
       taskUnit: "jobs",
       successLabel: "Success",
-      vendorRateHint: "% on each bar = the vendor's success rate that month (Complete ÷ non-cancelled jobs — same formula as PM Success Rate) · % next to the vendor name = all months shown",
+      vendorRateHint: "% on each bar = the vendor's success rate that month (Complete ÷ non-cancelled jobs — same formula as PM Success Rate) · % next to the vendor name = all months shown · badge colour: green ≥ 80% · yellow 50–79% · red < 50%",
       vendorRateChipTitle: (brand: string, done: number, total: number) =>
         `${brand}: ${done} of ${total} jobs complete (excl. cancelled) — all months shown`,
       volumeWarning: (limit: number) => `Maximo work orders are capped at ${limit.toLocaleString()} — charts may be incomplete`,
@@ -597,12 +605,28 @@ export default function PMDashboardPage() {
         const s = displayedVendorMonthlySeries[opts?.seriesIndex as number];
         const m = opts?.dataPointIndex as number;
         if (!s || !(Number(val) > 0)) return "";
+        // ก้อนเตี้ยกว่าป้าย (~18px) ไม่โชว์ป้าย กันป้ายทับกันในแท่ง — ยังอ่าน % ได้จาก tooltip
+        const g = opts?.w?.globals;
+        const range = g ? g.maxY - g.minY : 0;
+        if (g && range > 0 && (Number(val) / range) * g.gridHeight < 18) return "";
         const rate = vendorMonthData.stats.get(s.brand)?.months[m]?.rate;
         return rate == null ? "" : `${Math.round(rate)}%`;
       },
-      style: { fontSize: "13px", fontWeight: 800, colors: ["#ffffff"] },
-      // เงาบาง ๆ ให้ตัวขาวอ่านออกบนสีอ่อน (เหลือง/เทาของ Unknown)
-      dropShadow: { enabled: true, top: 0, left: 0, blur: 1.5, color: "#0f172a", opacity: 0.55 },
+      // ป้ายแบบเม็ดยา: พื้นสีตามระดับ % (style.colors = สีพื้นเมื่อเปิด background) ตัวอักษรเข้ม — อ่านออกบนทุกสี vendor
+      style: {
+        fontSize: "12px",
+        fontWeight: 700,
+        colors: [({ seriesIndex, dataPointIndex }: { seriesIndex: number; dataPointIndex: number }) => {
+          const s = displayedVendorMonthlySeries[seriesIndex];
+          return rateBadgeColor(s ? vendorMonthData.stats.get(s.brand)?.months[dataPointIndex]?.rate : null);
+        }],
+      },
+      background: {
+        enabled: true, foreColor: "#0f172a", padding: 5, borderRadius: 8,
+        borderWidth: 1, borderColor: "#ffffff", opacity: 1,
+        dropShadow: { enabled: true, top: 1, left: 0, blur: 2, color: "#0f172a", opacity: 0.25 },
+      },
+      dropShadow: { enabled: false },
     },
     grid: { borderColor: "#f1f5f9" },
     // ก้อนที่เตี้ยเกินกว่าตัวอักษร Apex ซ่อนป้ายเอง — ยังอ่าน % ได้จาก tooltip
