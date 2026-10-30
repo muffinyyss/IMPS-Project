@@ -31,7 +31,7 @@
     --skip-unmapped       ไม่สร้างสถานีที่ไม่มีรหัส Maximo
     --maximo-csv FILE     ใช้ไฟล์ export ของ Maximo (location,description) แทนการเรียก Maximo จริง
 
-MONGO_URI: อ่านจาก environment ก่อน ไม่มีจะอ่านจาก backend/.env
+MONGO_URI: อ่านจาก environment ก่อน ไม่มีจะอ่านจาก backend/.env (หรือ --env-file)
 ทุกครั้งที่รันจะเขียนรายงาน <ไฟล์ข้อมูล>_report_<เวลา>.csv ไว้ข้างไฟล์ข้อมูล
 """
 import argparse
@@ -44,6 +44,7 @@ import sys
 from datetime import datetime, timezone
 
 from pymongo import MongoClient
+from pymongo.errors import OperationFailure
 
 BACKEND_DIR = pathlib.Path(__file__).resolve().parent.parent
 TH_LAT = (5.5, 20.5)
@@ -55,29 +56,37 @@ ACTOR = "import:sync_stations_from_excel"
 
 
 # ───────────────────────── helpers ─────────────────────────
+ENV_FILE = BACKEND_DIR / ".env"   # เปลี่ยนได้ด้วย --env-file
+
+
+def env_values() -> dict:
+    """อ่าน .env แบบเดียวกับ backend (python-dotenv: คีย์ซ้ำ ตัวหลังชนะ, รองรับ export / quote / comment)"""
+    if not ENV_FILE.exists():
+        return {}
+    try:
+        from dotenv import dotenv_values
+        return {k: v for k, v in dotenv_values(ENV_FILE).items() if v is not None}
+    except ImportError:
+        out = {}
+        for line in ENV_FILE.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line.startswith("export "):
+                line = line[7:].strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, v = line.split("=", 1)
+            out[k.strip()] = v.strip().strip('"').strip("'")
+        return out
+
+
 def read_uri() -> str:
-    uri = os.getenv("MONGO_URI")
-    if uri:
-        return uri
-    env = BACKEND_DIR / ".env"
-    if env.exists():
-        for line in env.read_text(encoding="utf-8").splitlines():
-            if line.strip().startswith("MONGO_URI="):
-                return line.split("=", 1)[1].strip().strip('"').strip("'")
-    return "mongodb://localhost:27017/"
+    return os.getenv("MONGO_URI") or env_values().get("MONGO_URI") or "mongodb://localhost:27017/"
 
 
 def load_backend_env():
-    """ให้ services.maximo เห็นค่า MAXIMO_* จาก backend/.env (ไม่ทับค่าที่ตั้งไว้แล้ว)"""
-    env = BACKEND_DIR / ".env"
-    if not env.exists():
-        return
-    for line in env.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        k, v = line.split("=", 1)
-        os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+    """ให้ services.maximo เห็นค่า MAXIMO_* จาก .env (ไม่ทับค่าที่ตั้งไว้ใน environment แล้ว)"""
+    for k, v in env_values().items():
+        os.environ.setdefault(k, v)
 
 
 def masked(uri: str) -> str:
@@ -191,7 +200,13 @@ def main():
     ap.add_argument("--no-chargers", action="store_true")
     ap.add_argument("--skip-unmapped", action="store_true")
     ap.add_argument("--maximo-csv")
+    ap.add_argument("--env-file", help="ไฟล์ .env ที่ backend ใช้จริง (ค่าตั้งต้น backend/.env)")
     args = ap.parse_args()
+    global ENV_FILE
+    if args.env_file:
+        ENV_FILE = pathlib.Path(args.env_file).expanduser()
+        if not ENV_FILE.exists():
+            sys.exit(f"[!] ไม่พบไฟล์ {ENV_FILE}")
 
     with open(args.csv_path, encoding="utf-8-sig", newline="") as f:
         rows = [{k: (v or "").strip() for k, v in r.items()} for r in csv.DictReader(f)]
@@ -199,8 +214,16 @@ def main():
         sys.exit("[!] ไฟล์ว่าง")
 
     uri = read_uri()
-    print(f"[i] MongoDB: {masked(uri)}")
-    db = MongoClient(uri, serverSelectionTimeoutMS=10000)["iMPS"]
+    print(f"[i] MongoDB: {masked(uri)}  (จาก {'environment' if os.getenv('MONGO_URI') else ENV_FILE})")
+    mclient = MongoClient(uri, serverSelectionTimeoutMS=10000)
+    try:
+        mclient.admin.command("ping")
+        mclient["iMPS"]["stations"].find_one({}, {"_id": 1})
+    except OperationFailure as e:
+        sys.exit(f"[!] MongoDB ไม่ยอมให้เข้า ({e.code}: {e.details.get('errmsg') if e.details else e}) — "
+                 "URI นี้ไม่ใช่ตัวที่ backend ใช้จริง หรือขาด ?authSource=admin  "
+                 "ลองระบุ --env-file <ไฟล์ .env ของ service> หรือตั้ง MONGO_URI ก่อนรัน")
+    db = mclient["iMPS"]
     stations, chargers, users = db["stations"], db["charger"], db["users"]
 
     # ── Maximo ──
