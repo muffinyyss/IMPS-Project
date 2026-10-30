@@ -9,7 +9,7 @@ from bson.errors import InvalidId
 from zoneinfo import ZoneInfo
 from pymongo.errors import DuplicateKeyError, OperationFailure
 from typing import List, Dict, Any, Optional
-import asyncio, json, re, uuid, pathlib, secrets
+import asyncio, json, re, time, uuid, pathlib, secrets
 from image_convert import normalize_image_bytes, ImageConversionError
 from config import (
     users_collection, station_collection, charger_collection,
@@ -85,9 +85,90 @@ async def get_owners(current: UserClaims = Depends(get_current_user)):
     return {"owners": owners}
 
 
+# ── Cache รายการ Maximo location (สำหรับ dropdown หน้า EV Stations) ──
+# เดิมทุกครั้งที่เปิด dialog → ยิง Maximo ใหม่ ไล่ทีละ 100 record ของทุก location ที่มี -EV
+# (หลายพันรายการ) แถม level=station กับ level=charger ยิงพร้อมกันเลยดึงชุดเดียวกัน 2 รอบ
+# → dropdown ช้า ตอนนี้เก็บผลไว้ใน memory แบบ stale-while-revalidate:
+#   - ยังสด (< TTL)      → ตอบจาก cache ทันที
+#   - เก่าแล้ว            → ตอบของเก่าทันที แล้ว refresh เบื้องหลัง
+#   - ไม่มีเลย            → ดึงจาก Maximo (request ที่มาพร้อมกันรอผลชุดเดียวกัน ไม่ยิงซ้ำ)
+#   - Maximo ล่มตอน refresh → ใช้ของเดิมต่อ
+# warm ตั้งแต่ backend start (main.py lifespan) — คนแรกที่เปิด dialog ก็ไม่ต้องรอ
+MAXIMO_LOCATION_TTL_S = 15 * 60
+_maximo_loc_cache: Dict[str, tuple] = {}          # key -> (loaded_at_monotonic, members)
+_maximo_loc_locks: Dict[str, asyncio.Lock] = {}
+_maximo_loc_refreshing: set = set()
+
+
+async def _load_ev_members():
+    from services.maximo import query_locations
+    return await query_locations("%-EV%")
+
+
+async def _load_station_members():
+    from services.maximo import query_locations_by_codes
+    ev_members = await _cached_maximo_locations("ev", _load_ev_members)
+    if ev_members is None:
+        return None
+    # station code = ส่วนหน้าก่อน "-EV" (เช่น "HMP0002-EV-BTL01..." -> "HMP0002")
+    codes = sorted({
+        (m.get("location") or "").split("-EV")[0]
+        for m in ev_members
+        if "-EV" in (m.get("location") or "")
+    } - {""})
+    return await query_locations_by_codes(codes)
+
+
+async def _reload_maximo_locations(key: str, loader):
+    lock = _maximo_loc_locks.setdefault(key, asyncio.Lock())
+    async with lock:
+        hit = _maximo_loc_cache.get(key)
+        # มี request อื่นโหลดเสร็จระหว่างรอ lock แล้ว → ใช้ของนั้น
+        if hit and time.monotonic() - hit[0] < MAXIMO_LOCATION_TTL_S:
+            return hit[1]
+        members = await loader()
+        if members is None:
+            return hit[1] if hit else None   # Maximo ล่ม → ใช้ของเดิม (ถ้ามี)
+        _maximo_loc_cache[key] = (time.monotonic(), members)
+        return members
+
+
+async def _refresh_in_background(key: str, loader):
+    try:
+        await _reload_maximo_locations(key, loader)
+    except Exception as e:
+        print(f"[maximo-locations] background refresh {key} failed: {e}")
+    finally:
+        _maximo_loc_refreshing.discard(key)
+
+
+async def _cached_maximo_locations(key: str, loader, force: bool = False):
+    hit = _maximo_loc_cache.get(key)
+    if hit and not force:
+        if time.monotonic() - hit[0] >= MAXIMO_LOCATION_TTL_S and key not in _maximo_loc_refreshing:
+            _maximo_loc_refreshing.add(key)
+            asyncio.create_task(_refresh_in_background(key, loader))
+        return hit[1]
+    if force:
+        _maximo_loc_cache.pop(key, None)
+    return await _reload_maximo_locations(key, loader)
+
+
+async def warm_maximo_locations() -> None:
+    """เรียกจาก main.py ตอน start — โหลด cache ไว้ก่อน (ห้าม throw)"""
+    from services.maximo import MAXIMO_ENABLED
+    if not MAXIMO_ENABLED:
+        return
+    try:
+        await _cached_maximo_locations("station", _load_station_members)
+    except Exception as e:
+        print(f"[maximo-locations] warm failed: {e}")
+
+
 @router.get("/maximo/locations")
 async def get_maximo_locations(
     level: str = Query("charger", description="ระดับ location: 'station' (ไม่มี -EV ต่อท้าย) หรือ 'charger' (มี -EV)"),
+    refresh: bool = Query(False, description="true = ข้าม cache ดึงจาก Maximo ใหม่"),
     current: UserClaims = Depends(get_current_user),
 ):
     """
@@ -96,31 +177,21 @@ async def get_maximo_locations(
     - level=charger : location ที่มี -EV (เช่น HMP0002-EV-BTL01GU001) — ค่า default
     - level=station : station root ที่ไม่มี -EV ต่อท้าย (เช่น HMP0002)
                       derive จาก prefix ของ EV-family แล้ว query description กลับ
+    ผลถูก cache ใน memory (ดู MAXIMO_LOCATION_TTL_S)
     """
-    from services.maximo import (
-        query_locations, query_locations_by_codes, MAXIMO_ENABLED,
-    )
+    from services.maximo import MAXIMO_ENABLED
 
     if not MAXIMO_ENABLED:
         return {"enabled": False, "locations": []}
 
-    # EV-family (ทุก location ที่มี -EV)
-    ev_members = await query_locations("%-EV%")
-    if ev_members is None:
-        raise HTTPException(status_code=502, detail="Maximo query failed")
-
     if level == "station":
-        # station code = ส่วนหน้าก่อน "-EV" (เช่น "HMP0002-EV-BTL01..." -> "HMP0002")
-        codes = sorted({
-            (m.get("location") or "").split("-EV")[0]
-            for m in ev_members
-            if "-EV" in (m.get("location") or "")
-        } - {""})
-        members = await query_locations_by_codes(codes)
-        if members is None:
-            raise HTTPException(status_code=502, detail="Maximo query failed")
+        if refresh:
+            _maximo_loc_cache.pop("ev", None)
+        members = await _cached_maximo_locations("station", _load_station_members, force=refresh)
     else:
-        members = ev_members
+        members = await _cached_maximo_locations("ev", _load_ev_members, force=refresh)
+    if members is None:
+        raise HTTPException(status_code=502, detail="Maximo query failed")
 
     locations = [
         {"location": m.get("location", ""), "description": m.get("description", "")}

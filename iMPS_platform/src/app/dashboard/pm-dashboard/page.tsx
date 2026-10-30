@@ -57,6 +57,56 @@ function rateBadgeColor(rate: number | null | undefined): string {
   return "#fecaca";
 }
 
+/**
+ * ป้าย % ของกราฟ vendor — ก้อนที่เตี้ยกว่าป้ายย้ายป้ายไปวางซ้อนเหนือแท่ง (ไม่ซ่อน) ให้เห็นครบทุก vendor ทุกเดือน
+ * ความสูงพื้นที่พล็อตเป็นค่าประมาณของกราฟสูง 400px (หักแกน X/ขอบ) — ใช้ตัดสินในก้อน/เหนือแท่ง และเผื่อหัวแกน Y
+ */
+const VENDOR_PLOT_PX = 330;
+const VENDOR_LABEL_MIN_PX = 18;
+const VENDOR_LABEL_STEP_PX = 22;
+
+/** ปัดเพดานแกน Y เป็นเลขกลม ๆ */
+function niceCeil(v: number): number {
+  if (v <= 0) return 1;
+  const step = v <= 10 ? 2 : v <= 50 ? 5 : v <= 100 ? 10 : v <= 500 ? 50 : 100;
+  return Math.ceil(v / step) * step;
+}
+
+/**
+ * แบ่งป้าย: ก้อนที่สูง ≥ VENDOR_LABEL_MIN_PX ใส่ป้ายในก้อน · ที่เหลือวางเหนือแท่ง (ซ้อนขึ้นไปตามลำดับก้อนล่าง→บน)
+ * แล้วเลือกเพดานแกน Y ให้มีที่ว่างพอสำหรับป้ายที่ซ้อนเหนือแท่ง
+ */
+function layoutVendorLabels(series: { data: number[] }[]) {
+  const totals = Array.from({ length: 12 }, (_, m) => series.reduce((sum, s) => sum + (s.data[m] || 0), 0));
+  const maxTotal = Math.max(0, ...totals);
+  const above = (yMax: number) => {
+    const out: [number, number][] = [];
+    for (let m = 0; m < 12; m++) {
+      series.forEach((s, i) => {
+        const v = s.data[m] || 0;
+        if (v > 0 && (v / yMax) * VENDOR_PLOT_PX < VENDOR_LABEL_MIN_PX) out.push([i, m]);
+      });
+    }
+    return out;
+  };
+  let yMax = niceCeil(maxTotal);
+  for (let iter = 0; iter < 6; iter++) {
+    const list = above(yMax);
+    let need = maxTotal;
+    totals.forEach((total, m) => {
+      const n = list.filter(([, mm]) => mm === m).length;
+      if (!n) return;
+      const frac = Math.min(0.8, (n * VENDOR_LABEL_STEP_PX + 10) / VENDOR_PLOT_PX);
+      need = Math.max(need, total / (1 - frac));
+    });
+    const next = niceCeil(need);
+    if (next <= yMax) break;
+    yMax = next;
+  }
+  const list = above(yMax);
+  return { yMax, totals, above: list, aboveKeys: new Set(list.map(([i, m]) => `${i}|${m}`)) };
+}
+
 /** ชื่อ brand มาจากฐานข้อมูล — escape ก่อนใส่ลง HTML ของ tooltip ApexCharts */
 function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] as string));
@@ -588,6 +638,37 @@ export default function PMDashboardPage() {
     [displayedVendorMonthlySeries, vendorMonthData.stats]
   );
 
+  const vendorLabelLayout = useMemo(() => layoutVendorLabels(displayedVendorMonthlySeries), [displayedVendorMonthlySeries]);
+
+  /** ป้าย % ของก้อนเตี้ย = annotation จุดบนยอดแท่ง ซ้อนขึ้นไปทีละชั้น · ขอบสีตาม vendor ให้รู้ว่าเป็นของใคร */
+  const vendorAboveLabels = useMemo<PointAnnotations[]>(() => {
+    const stackCount = Array(12).fill(0) as number[];
+    const points: PointAnnotations[] = [];
+    for (const [i, m] of vendorLabelLayout.above) {
+      const s = displayedVendorMonthlySeries[i];
+      const rate = s ? vendorMonthData.stats.get(s.brand)?.months[m]?.rate : null;
+      if (!s || rate == null) continue;
+      const k = stackCount[m]++;
+      points.push({
+        x: t.monthsShort[m],
+        y: vendorLabelLayout.totals[m],
+        marker: { size: 0 },
+        label: {
+          text: `${Math.round(rate)}%`,
+          borderColor: vendorColorMap[s.brand] ?? "#94a3b8",
+          borderWidth: 2,
+          borderRadius: 8,
+          offsetY: -k * VENDOR_LABEL_STEP_PX,
+          style: {
+            background: rateBadgeColor(rate), color: "#0f172a", fontSize: "12px", fontWeight: 700,
+            padding: { left: 6, right: 6, top: 2, bottom: 3 },
+          },
+        },
+      });
+    }
+    return points;
+  }, [vendorLabelLayout, displayedVendorMonthlySeries, vendorMonthData.stats, vendorColorMap, t]);
+
   const vendorMonthlyBarOptions = useMemo<ApexCharts.ApexOptions>(() => ({
     chart: {
       type: "bar", stacked: true, toolbar: { show: false },
@@ -597,7 +678,9 @@ export default function PMDashboardPage() {
     },
     colors: displayedVendorMonthlySeries.map((s) => vendorColorMap[s.brand] ?? "#94a3b8"),
     xaxis: { categories: t.monthsShort, labels: { rotate: 0, style: { fontSize: "12px" } } },
-    yaxis: { labels: { formatter: (v: number) => String(Math.round(v)) } },
+    // เพดานแกน Y กำหนดเอง — เผื่อที่ว่างเหนือแท่งให้ป้ายของก้อนเตี้ย
+    yaxis: { min: 0, max: vendorLabelLayout.yMax, labels: { formatter: (v: number) => String(Math.round(v)) } },
+    annotations: { points: vendorAboveLabels },
     legend: { show: false },
     dataLabels: {
       enabled: true,
@@ -605,10 +688,8 @@ export default function PMDashboardPage() {
         const s = displayedVendorMonthlySeries[opts?.seriesIndex as number];
         const m = opts?.dataPointIndex as number;
         if (!s || !(Number(val) > 0)) return "";
-        // ก้อนเตี้ยกว่าป้าย (~18px) ไม่โชว์ป้าย กันป้ายทับกันในแท่ง — ยังอ่าน % ได้จาก tooltip
-        const g = opts?.w?.globals;
-        const range = g ? g.maxY - g.minY : 0;
-        if (g && range > 0 && (Number(val) / range) * g.gridHeight < 18) return "";
+        // ก้อนเตี้ยกว่าป้าย → ป้ายไปอยู่เหนือแท่งแทน (vendorAboveLabels)
+        if (vendorLabelLayout.aboveKeys.has(`${opts?.seriesIndex}|${m}`)) return "";
         const rate = vendorMonthData.stats.get(s.brand)?.months[m]?.rate;
         return rate == null ? "" : `${Math.round(rate)}%`;
       },
@@ -629,8 +710,8 @@ export default function PMDashboardPage() {
       dropShadow: { enabled: false },
     },
     grid: { borderColor: "#f1f5f9" },
-    // ก้อนที่เตี้ยเกินกว่าตัวอักษร Apex ซ่อนป้ายเอง — ยังอ่าน % ได้จาก tooltip
-    plotOptions: { bar: { borderRadius: 3, columnWidth: "55%", dataLabels: { hideOverflowingLabels: true } } },
+    // ไม่ให้ Apex ซ่อนป้ายเอง — ก้อนเตี้ยย้ายป้ายขึ้นเหนือแท่งแล้ว
+    plotOptions: { bar: { borderRadius: 3, columnWidth: "55%", dataLabels: { hideOverflowingLabels: false } } },
     tooltip: {
       // tooltip ต่อก้อน vendor: % สำเร็จ + แยกจำนวนทุกสถานะ — ใบยกเลิกโชว์เป็นข้อมูลประกอบ ไม่อยู่ในตัวหารของ %
       custom: ({ seriesIndex, dataPointIndex }: { seriesIndex: number; dataPointIndex: number }) => {
@@ -656,7 +737,7 @@ export default function PMDashboardPage() {
         );
       },
     },
-  }), [displayedVendorMonthlySeries, t, vendorColorMap, vendorMonthData.stats]);
+  }), [displayedVendorMonthlySeries, t, vendorColorMap, vendorMonthData.stats, vendorLabelLayout, vendorAboveLabels]);
   const vendorMonthlyHasData = useMemo(
     () => displayedVendorMonthlySeries.some((s) => s.data.some((v) => v > 0)),
     [displayedVendorMonthlySeries]

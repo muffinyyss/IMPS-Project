@@ -194,6 +194,29 @@ const Spinner = () => (
 /** Maximo location option from API */
 export type MaximoLocation = { location: string; description: string };
 
+/**
+ * โหลดรายการ Maximo location (cache ระดับ module — ใช้ร่วมกันทุก dialog/หน้าจอ
+ * จนกว่าจะ reload หน้า) เปิด dialog ซ้ำ / สลับ Add ↔ Edit ไม่ต้องยิง API ใหม่
+ * request ที่ยังไม่เสร็จก็ใช้ promise เดียวกัน; ถ้าล้มเหลวจะล้าง cache ให้ลองใหม่ได้
+ */
+const maximoLocationCache: Partial<Record<"station" | "charger", Promise<MaximoLocation[]>>> = {};
+export const fetchMaximoLocations = (level: "station" | "charger"): Promise<MaximoLocation[]> => {
+    const cached = maximoLocationCache[level];
+    if (cached) return cached;
+    const p = (async () => {
+        const res = await apiFetch(`/maximo/locations?level=${level}`);
+        if (!res.ok) throw new Error(`Maximo locations ${level}: ${res.status}`);
+        const json = await res.json();
+        return Array.isArray(json?.locations) ? (json.locations as MaximoLocation[]) : [];
+    })();
+    maximoLocationCache[level] = p;
+    p.catch(() => { if (maximoLocationCache[level] === p) delete maximoLocationCache[level]; });
+    return p;
+};
+
+/** จำนวนตัวเลือกสูงสุดที่ render ใน dropdown ครั้งเดียว (ที่เหลือให้พิมพ์ค้นหา) — กัน DOM หลายพันแถวทำให้หน่วง */
+const MAXIMO_RENDER_LIMIT = 100;
+
 /** แหล่งข้อมูลชื่อสถานี: "maximo" = เลือกจาก Maximo location, "name" = กรอกชื่อเอง */
 type StationSource = "" | "maximo" | "name";
 
@@ -279,8 +302,8 @@ export const MaximoLocationSelect = ({
                             <li className="tw-px-3 tw-py-3 tw-flex tw-items-center tw-gap-2 tw-text-sm tw-text-blue-gray-400"><Spinner />{loadingLabel}</li>
                         ) : filtered.length === 0 ? (
                             <li className="tw-px-3 tw-py-3 tw-text-sm tw-text-blue-gray-400">{emptyLabel}</li>
-                        ) : (
-                            filtered.map((o) => (
+                        ) : (<>
+                            {filtered.slice(0, MAXIMO_RENDER_LIMIT).map((o) => (
                                 <li key={o.location}>
                                     <button
                                         type="button"
@@ -291,8 +314,13 @@ export const MaximoLocationSelect = ({
                                         {o.description && <span className="tw-block tw-text-[11px] tw-text-blue-gray-400 tw-truncate">{o.description}</span>}
                                     </button>
                                 </li>
-                            ))
-                        )}
+                            ))}
+                            {filtered.length > MAXIMO_RENDER_LIMIT && (
+                                <li className="tw-px-3 tw-py-2 tw-text-[11px] tw-text-blue-gray-400 tw-border-t tw-border-blue-gray-50">
+                                    {MAXIMO_RENDER_LIMIT} / {filtered.length} — {searchPlaceholder}
+                                </li>
+                            )}
+                        </>)}
                     </ul>
                 </div>
             )}
@@ -426,11 +454,8 @@ export default function AddStationModal({
         (async () => {
             setMaximoLoading(true);
             try {
-                const res = await apiFetch(`/maximo/locations?level=station`);
-                if (!cancelled && res.ok) {
-                    const json = await res.json();
-                    if (Array.isArray(json?.locations)) setStationLocations(json.locations);
-                }
+                const locations = await fetchMaximoLocations("station");
+                if (!cancelled) setStationLocations(locations);
             } catch (e) {
                 console.error("Failed to fetch Maximo locations:", e);
             } finally {
